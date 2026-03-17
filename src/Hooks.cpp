@@ -1,26 +1,47 @@
 #include "Hooks.h"
 #include "Globals.h"
+#include "State.h"
+#include "Feature.h"
+#include "Menu.h"
 
 namespace {
 
-    // ---- Hook thunks (pass-through for now) ----
+    // ---- Hook thunks ----
 
     static bool __fastcall Hook_BeginTechnique(void* shader, uint32_t vsTechID,
         uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass)
     {
+        auto& state = State::GetSingleton();
+        state.currentShader = shader;
+        state.currentTechniqueID = psTechID;
         return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
     }
 
     static void __fastcall Hook_LightingSetupGeometry(void* shader, void* renderPass)
     {
         Hooks::OriginalLightingSetupGeometry(shader, renderPass);
-        // Feature callbacks will be added in integration task
+
+        // Bind shared data CB
+        State::GetSingleton().BindSharedData();
+
+        // Feature callbacks
+        for (auto* f : Feature::GetFeatureList()) {
+            if (f->loaded && f->enabled) {
+                f->OnSetupGeometry(renderPass);
+            }
+        }
     }
 
     static void __fastcall Hook_LightingSetupMaterial(void* shader, void* material)
     {
         Hooks::OriginalLightingSetupMaterial(shader, material);
-        // Feature callbacks will be added in integration task
+
+        // Feature callbacks
+        for (auto* f : Feature::GetFeatureList()) {
+            if (f->loaded && f->enabled) {
+                f->OnSetupMaterial(material);
+            }
+        }
     }
 
     static void __fastcall Hook_LoadShaders(void* shader)
@@ -31,7 +52,33 @@ namespace {
 
     static HRESULT __stdcall Hook_Present(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags)
     {
-        // Menu draw will be added in integration task
+        static bool menuInitialized = false;
+
+        if (!menuInitialized) {
+            // Initialize Menu on first Present call (device/context now guaranteed valid)
+            DXGI_SWAP_CHAIN_DESC desc{};
+            swapChain->GetDesc(&desc);
+            Menu::GetSingleton().Initialize(desc.OutputWindow, Globals::GetDevice(), Globals::GetContext());
+            menuInitialized = true;
+        }
+
+        // Per-frame updates
+        auto& state = State::GetSingleton();
+        state.UpdatePerFrame();
+        state.frameCount++;
+
+        // Feature lifecycle
+        Feature::ResetAll();
+        Feature::PrepassAll();
+
+        // Toggle menu with F10
+        if (GetAsyncKeyState(VK_F10) & 1) {
+            Menu::GetSingleton().Toggle();
+        }
+
+        // Draw menu overlay
+        Menu::GetSingleton().Draw();
+
         return Hooks::OriginalPresent(swapChain, syncInterval, flags);
     }
 
@@ -60,7 +107,7 @@ namespace Hooks {
 
     void InstallShaderHooks()
     {
-        spdlog::info("Hooks::InstallShaderHooks — installing Detour hooks...");
+        spdlog::info("Hooks::InstallShaderHooks - installing Detour hooks...");
 
         auto base = Globals::GetBase();
 
@@ -95,11 +142,11 @@ namespace Hooks {
 
     void InstallRenderHooks()
     {
-        spdlog::info("Hooks::InstallRenderHooks — installing vtable hooks...");
+        spdlog::info("Hooks::InstallRenderHooks - installing vtable hooks...");
 
         auto vtable = reinterpret_cast<uintptr_t*>(Globals::GetBSLightingShaderVtable());
         if (!vtable) {
-            spdlog::error("  BSLightingShader vtable is null — skipping render hooks");
+            spdlog::error("  BSLightingShader vtable is null - skipping render hooks");
             return;
         }
 
@@ -107,7 +154,7 @@ namespace Hooks {
         void* origGeom = nullptr;
         if (PatchVtableEntry(vtable, 7, reinterpret_cast<void*>(Hook_LightingSetupGeometry), &origGeom)) {
             OriginalLightingSetupGeometry = reinterpret_cast<SetupGeometry_t>(origGeom);
-            spdlog::info("  Hooked BSLightingShader::SetupGeometry (vtable[7]) — original {:X}",
+            spdlog::info("  Hooked BSLightingShader::SetupGeometry (vtable[7]) - original {:X}",
                 reinterpret_cast<uintptr_t>(origGeom));
         } else {
             spdlog::error("  Failed to hook BSLightingShader::SetupGeometry");
@@ -117,7 +164,7 @@ namespace Hooks {
         void* origMat = nullptr;
         if (PatchVtableEntry(vtable, 4, reinterpret_cast<void*>(Hook_LightingSetupMaterial), &origMat)) {
             OriginalLightingSetupMaterial = reinterpret_cast<SetupMaterial_t>(origMat);
-            spdlog::info("  Hooked BSLightingShader::SetupMaterial (vtable[4]) — original {:X}",
+            spdlog::info("  Hooked BSLightingShader::SetupMaterial (vtable[4]) - original {:X}",
                 reinterpret_cast<uintptr_t>(origMat));
         } else {
             spdlog::error("  Failed to hook BSLightingShader::SetupMaterial");
@@ -126,19 +173,19 @@ namespace Hooks {
 
     void InstallD3DHooks()
     {
-        spdlog::info("Hooks::InstallD3DHooks — installing D3D vtable hooks...");
+        spdlog::info("Hooks::InstallD3DHooks - installing D3D vtable hooks...");
 
         // Get swap chain: renderer singleton at base+0x609BF80, dereference, then offset +0x70
         auto renderer = Globals::GetRenderer();
         if (!renderer) {
-            spdlog::error("  Renderer singleton is null — skipping D3D hooks");
+            spdlog::error("  Renderer singleton is null - skipping D3D hooks");
             return;
         }
 
         auto swapChainPtr = reinterpret_cast<IDXGISwapChain**>(renderer + 0x70);
         IDXGISwapChain* swapChain = *swapChainPtr;
         if (!swapChain) {
-            spdlog::error("  IDXGISwapChain is null — skipping D3D hooks");
+            spdlog::error("  IDXGISwapChain is null - skipping D3D hooks");
             return;
         }
 
@@ -150,7 +197,7 @@ namespace Hooks {
         void* origPresent = nullptr;
         if (PatchVtableEntry(swapChainVtable, 8, reinterpret_cast<void*>(Hook_Present), &origPresent)) {
             OriginalPresent = reinterpret_cast<Present_t>(origPresent);
-            spdlog::info("  Hooked IDXGISwapChain::Present (vtable[8]) — original {:X}",
+            spdlog::info("  Hooked IDXGISwapChain::Present (vtable[8]) - original {:X}",
                 reinterpret_cast<uintptr_t>(origPresent));
         } else {
             spdlog::error("  Failed to hook IDXGISwapChain::Present");
@@ -159,13 +206,13 @@ namespace Hooks {
 
     void InstallAll()
     {
-        spdlog::info("Hooks::InstallAll — beginning hook installation...");
+        spdlog::info("Hooks::InstallAll - beginning hook installation...");
 
         InstallShaderHooks();
         InstallRenderHooks();
         InstallD3DHooks();
 
-        spdlog::info("Hooks::InstallAll — hook installation complete");
+        spdlog::info("Hooks::InstallAll - hook installation complete");
     }
 
 }  // namespace Hooks
