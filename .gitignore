@@ -1,0 +1,6 @@
+build/
+.vs/
+*.user
+CMakeUserPresets.json
+package/Data/F4SE/Plugins/*.dll
+package/Data/F4SE/Plugins/*.pdb
