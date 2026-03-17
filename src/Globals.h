@@ -1,0 +1,44 @@
+#pragma once
+#include "PCH.h"
+
+namespace Globals {
+    void Initialize();
+    bool IsInitialized();
+
+    // D3D11 — from Renderer singleton at base+0x609BF80
+    ID3D11Device* GetDevice();           // base+0x609BF88
+    ID3D11DeviceContext* GetContext();    // base+0x609BF98
+
+    // Renderer
+    uintptr_t GetRenderer();             // base+0x609BF80
+    uintptr_t GetRenderManager();        // base+0x6239340
+    uintptr_t GetGraphicsState();        // base+0x6235AC0
+
+    // Shader singletons
+    uintptr_t GetBSLightingShaderVtable(); // base+0x309AAB8
+    uintptr_t GetBSLightingShader();       // base+0x6733100
+    uintptr_t GetBSGrassShaderVtable();    // base+0x3098DA8
+    uintptr_t GetBSGrassShader();          // base+0x6732948
+    uintptr_t GetImageSpaceManager();      // base+0x6732C38
+
+    // VR state
+    bool IsVR();
+    uintptr_t GetIVRSystem();              // base+0x5bbeab0
+    uint32_t* GetVREyeIndex();             // base+0x391e750
+    uint32_t* GetVRStereoFlag();           // base+0x391e738
+
+    // Sky/Weather
+    uintptr_t GetSky();                    // base+0x6235AC8 (VR preferred)
+    uintptr_t GetShadowStateRing();        // base+0x68780D0
+    float* GetShadowDistanceCache();       // base+0x68788f0
+    uint32_t* GetCascadeCountGlobal();     // base+0x3924818
+
+    // Render targets
+    uintptr_t GetRenderTargetManager();    // base+0x38ac010
+
+    // Fog globals region
+    uintptr_t GetFogGlobals();             // base+0x65A2AC4
+
+    // Module base (cached)
+    uintptr_t GetBase();
+}
