@@ -86,7 +86,7 @@ source_group(
 )
 
 # ---- Create DLL ----
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_library(${PROJECT_NAME} SHARED ${SOURCES} "${SOURCE_DIR}/exports.def")
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 

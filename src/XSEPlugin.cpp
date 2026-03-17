@@ -76,7 +76,14 @@ namespace {
     }
 }
 
-extern "C" __declspec(dllexport) bool F4SEPlugin_Load(const F4SE::LoadInterface* a_f4se) {
+extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info) {
+    a_info->infoVersion = F4SE::PluginInfo::kVersion;
+    a_info->name = "FO4VR Community Shaders";
+    a_info->version = 1;
+    return true;
+}
+
+extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f4se) {
     InitializeLog();
     F4SE::Init(a_f4se);
 
