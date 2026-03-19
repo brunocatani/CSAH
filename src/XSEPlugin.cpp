@@ -31,6 +31,9 @@ namespace {
                 // Initialize globals (D3D device, game state pointers)
                 Globals::Initialize();
 
+                // Initialize state manager (creates SharedDataCB)
+                State::GetSingleton().Initialize();
+
                 // Install all hooks
                 Hooks::InstallAll();
 
@@ -55,6 +58,9 @@ namespace {
 
                 // Apply post-load engine fixes (INI overrides)
                 EngineFixes::ApplyPostLoadFixes();
+
+                // Start cascade runtime timer (VR array expansion + mask restoration)
+                EngineFixes::StartCascadeRuntime();
 
                 // Replace shader permutations for BSLightingShader
                 auto lightingShader = Globals::GetBSLightingShader();

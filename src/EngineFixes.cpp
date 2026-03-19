@@ -1377,14 +1377,8 @@ namespace EngineFixes
 
         bool iniOk = ForceINISettings();
 
-        // TODO: Phase 1 could also restore mask rotation from safe mode (0x3) to
-        // full 4-cascade mode (0xF) once VR cascade arrays are verified populated.
-        // This requires checking flat array entries like VR-Shadow-Boost's
-        // TryRestoreMaskRotation(). For now, safe mode (mask=0x3, 2 cascades
-        // rendered per frame) is maintained as a conservative default.
-        // The mask restoration logic from VR-Shadow-Boost uses a timer-based
-        // approach that polls scene node state — this will be integrated in a
-        // future update once the runtime monitoring framework is in place.
+        // Cascade runtime (VR array expansion, mask restoration) is handled by
+        // StartCascadeRuntime() called separately after this function.
 
         spdlog::info("[EngineFixes] Phase 1 complete: ini={}", iniOk);
         return iniOk;
