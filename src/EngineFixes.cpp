@@ -371,6 +371,426 @@ namespace EngineFixes
     }
 
     // =========================================================================
+    // CascadeRuntime — timer-based VR array expansion and mask restoration
+    // Ported from VR-Shadow-Boost cascade_patch.cpp runtime logic
+    // =========================================================================
+    namespace CascadeRuntime
+    {
+        // ----- Constants (from VR-Shadow-Boost cascade_patch.cpp) -----
+
+        // VR cascade array container
+        constexpr std::uintptr_t ArrayPtr       = 0x6878b18;   // pBuf at +0x00, capacity at +0x08
+        constexpr std::uintptr_t ArrayCount     = 0x6878b28;   // count (uint32)
+        constexpr std::size_t    EntrySize       = 0x180;
+        constexpr std::uint32_t  TargetCount     = 4;
+
+        // Pool self-ref offsets within each VR array entry
+        constexpr std::uintptr_t PoolOffsets[]   = { 0x70, 0xA8, 0xE8, 0x128 };
+
+        // Scene node pointers
+        constexpr std::uintptr_t SceneNodePtr    = 0x6879520;  // Render scene node
+        constexpr std::uintptr_t SceneNodePtr2   = 0x6885d40;  // Setup scene node
+
+        // Cascade group offsets (relative to scene node)
+        constexpr std::uintptr_t CascadeGroupOff = 0x248;
+        constexpr std::uintptr_t VRFlagOff       = 0x173;      // uint8, must be 1
+        constexpr std::uintptr_t FlatCountOff    = 0x190;      // uint32
+        constexpr std::uintptr_t FlatBufferOff   = 0x198;      // uintptr_t
+        constexpr std::uintptr_t ShaderObjOff    = 0x2B8;      // uintptr_t
+
+        // Flat entry layout
+        constexpr std::size_t    FlatEntrySize      = 0x110;
+        constexpr std::uintptr_t FlatShadowMapOff   = 0x50;
+        constexpr std::uintptr_t FlatLastCascadeOff = 0x102;
+
+        // Shader object fields
+        constexpr std::uintptr_t ShaderStoredCountOff = 0x1D8;  // uint32
+        constexpr std::uintptr_t ShaderArrayCapOff    = 0x168;  // uint16
+        constexpr std::uintptr_t ShaderArrayCntOff    = 0x16A;  // uint16
+
+        // Mask rotation global
+        constexpr std::uintptr_t MaskGlobal      = 0x6885cc4;
+
+        // Cascade count global (same as CascadeOffsets::CountGlobal)
+        constexpr std::uintptr_t CountGlobal     = 0x3924818;
+
+        // ----- State tracking -----
+        static HANDLE   g_timerHandle  = nullptr;
+        static bool     g_vrExpanded   = false;
+        static bool     g_maskRestored = false;
+        static uint32_t g_tickCount    = 0;
+
+        // ----- ForceCascadeCount4 -----
+        static void ForceCascadeCount4()
+        {
+            auto base = GetBase();
+            auto* p = reinterpret_cast<volatile std::uint32_t*>(base + CountGlobal);
+            if (*p != 4) {
+                *p = 4;
+                spdlog::trace("[CascadeRuntime] Forced cascade count global to 4");
+            }
+        }
+
+        // ----- FixSetupSceneNode -----
+        // If setup scene node is null, copy render scene node pointer there
+        static void FixSetupSceneNode()
+        {
+            auto base = GetBase();
+            auto renderNode = *reinterpret_cast<std::uintptr_t*>(base + SceneNodePtr);
+            auto* pSetup    = reinterpret_cast<std::uintptr_t*>(base + SceneNodePtr2);
+
+            if (renderNode != 0 && *pSetup == 0) {
+                *pSetup = renderNode;
+                spdlog::info("[CascadeRuntime] Copied render scene node 0x{:X} to setup slot", renderNode);
+            }
+        }
+
+        // ----- ForceCascadeGroupVRFlag -----
+        // For both scene nodes, force VR flag byte at cascade_group+0x173 to 1
+        static void ForceCascadeGroupVRFlag()
+        {
+            auto base = GetBase();
+            std::uintptr_t nodeAddrs[] = { base + SceneNodePtr, base + SceneNodePtr2 };
+
+            for (auto nodeAddr : nodeAddrs) {
+                auto node = *reinterpret_cast<std::uintptr_t*>(nodeAddr);
+                if (node == 0) continue;
+
+                auto cg = *reinterpret_cast<std::uintptr_t*>(node + CascadeGroupOff);
+                if (cg == 0) continue;
+
+                auto* vrFlag = reinterpret_cast<std::uint8_t*>(cg + VRFlagOff);
+                if (*vrFlag == 0) {
+                    *vrFlag = 1;
+                    spdlog::info("[CascadeRuntime] Forced VR flag at CG 0x{:X}+0x173 to 1", cg);
+                }
+            }
+        }
+
+        // ----- ForceShaderFields -----
+        // Force shader stored count, array cap, and array cnt to >= 4
+        static void ForceShaderFields()
+        {
+            auto base = GetBase();
+            std::uintptr_t nodeAddrs[] = { base + SceneNodePtr, base + SceneNodePtr2 };
+
+            for (auto nodeAddr : nodeAddrs) {
+                auto node = *reinterpret_cast<std::uintptr_t*>(nodeAddr);
+                if (node == 0) continue;
+
+                auto cg = *reinterpret_cast<std::uintptr_t*>(node + CascadeGroupOff);
+                if (cg == 0) continue;
+
+                auto shader = *reinterpret_cast<std::uintptr_t*>(cg + ShaderObjOff);
+                if (shader == 0) continue;
+
+                auto* storedCount = reinterpret_cast<std::uint32_t*>(shader + ShaderStoredCountOff);
+                auto* arrayCap    = reinterpret_cast<std::uint16_t*>(shader + ShaderArrayCapOff);
+                auto* arrayCnt    = reinterpret_cast<std::uint16_t*>(shader + ShaderArrayCntOff);
+
+                if (*storedCount < 4) {
+                    spdlog::info("[CascadeRuntime] Shader 0x{:X}: stored count {} -> 4", shader, *storedCount);
+                    *storedCount = 4;
+                }
+                if (*arrayCap < 4) {
+                    spdlog::info("[CascadeRuntime] Shader 0x{:X}: array cap {} -> 4", shader, *arrayCap);
+                    *arrayCap = 4;
+                }
+                if (*arrayCnt < 4) {
+                    spdlog::info("[CascadeRuntime] Shader 0x{:X}: array cnt {} -> 4", shader, *arrayCnt);
+                    *arrayCnt = 4;
+                }
+            }
+        }
+
+        // ----- TryExpandVRArray -----
+        // Expand VR cascade array from 2 entries to 4 by template-copying entry 0
+        static void TryExpandVRArray()
+        {
+            if (g_vrExpanded) return;
+
+            auto base = GetBase();
+
+            // Container: pBuf at ArrayPtr+0x00, capacity at ArrayPtr+0x08, count at ArrayCount
+            auto* pBuf      = reinterpret_cast<std::uintptr_t*>(base + ArrayPtr);
+            auto* pCapacity = reinterpret_cast<std::uint64_t*>(base + ArrayPtr + 0x08);
+            auto* pCount    = reinterpret_cast<std::uint32_t*>(base + ArrayCount);
+
+            std::uintptr_t buf = *pBuf;
+            std::uint64_t  cap = *pCapacity;
+            std::uint32_t  cnt = *pCount;
+
+            if (cnt >= TargetCount) {
+                spdlog::info("[CascadeRuntime] VR array already has {} entries, marking expanded", cnt);
+                g_vrExpanded = true;
+                return;
+            }
+
+            if (buf == 0) {
+                spdlog::trace("[CascadeRuntime] VR array buffer is null, waiting...");
+                return;
+            }
+
+            // Template: entry 0
+            auto* templateEntry = reinterpret_cast<std::uint8_t*>(buf);
+
+            auto fixupEntry = [](std::uint8_t* dst) {
+                // Clear spinlock at entry start
+                *reinterpret_cast<std::uint32_t*>(dst + 0x00) = 0;
+                *reinterpret_cast<std::uint32_t*>(dst + 0x04) = 0;
+
+                // Reset pool self-ref pointers
+                for (auto poolOff : PoolOffsets) {
+                    *reinterpret_cast<std::uintptr_t*>(dst + poolOff) = 0;
+                    *reinterpret_cast<std::uintptr_t*>(dst + poolOff + 8) =
+                        reinterpret_cast<std::uintptr_t>(dst + poolOff);
+                }
+            };
+
+            if (cap >= TargetCount) {
+                // In-place expansion: buffer has enough capacity
+                spdlog::info("[CascadeRuntime] In-place VR array expansion (cap={}, cnt={}->4)", cap, cnt);
+
+                for (std::uint32_t i = cnt; i < TargetCount; i++) {
+                    auto* dst = reinterpret_cast<std::uint8_t*>(buf + i * EntrySize);
+                    std::memcpy(dst, templateEntry, EntrySize);
+                    fixupEntry(dst);
+                }
+
+                // Fix existing entries' pool tails if zero
+                for (std::uint32_t i = 0; i < cnt; i++) {
+                    auto* entry = reinterpret_cast<std::uint8_t*>(buf + i * EntrySize);
+                    for (auto poolOff : PoolOffsets) {
+                        auto* pTail = reinterpret_cast<std::uintptr_t*>(entry + poolOff + 8);
+                        if (*pTail == 0) {
+                            *pTail = reinterpret_cast<std::uintptr_t>(entry + poolOff);
+                        }
+                    }
+                }
+
+                *pCount = TargetCount;
+                g_vrExpanded = true;
+                spdlog::info("[CascadeRuntime] VR array expanded in-place to {} entries", TargetCount);
+
+            } else {
+                // Need to allocate new buffer
+                spdlog::info("[CascadeRuntime] Allocating new VR array buffer (cap={} < 4)", cap);
+
+                std::size_t newSize = TargetCount * EntrySize;
+                void* newBuf = VirtualAlloc(nullptr, newSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (!newBuf) {
+                    spdlog::error("[CascadeRuntime] VirtualAlloc failed for VR array (size={})", newSize);
+                    return;
+                }
+
+                std::memset(newBuf, 0, newSize);
+
+                // Copy existing entries
+                std::memcpy(newBuf, reinterpret_cast<void*>(buf), cnt * EntrySize);
+
+                // Template-copy new entries from entry 0
+                auto* newBase = reinterpret_cast<std::uint8_t*>(newBuf);
+                for (std::uint32_t i = cnt; i < TargetCount; i++) {
+                    auto* dst = newBase + i * EntrySize;
+                    std::memcpy(dst, newBase, EntrySize);  // copy from entry 0 of new buffer
+                    fixupEntry(dst);
+                }
+
+                // Fix all entries' pool tails
+                for (std::uint32_t i = 0; i < TargetCount; i++) {
+                    auto* entry = newBase + i * EntrySize;
+                    for (auto poolOff : PoolOffsets) {
+                        auto* pTail = reinterpret_cast<std::uintptr_t*>(entry + poolOff + 8);
+                        if (*pTail == 0 || *pTail < reinterpret_cast<std::uintptr_t>(newBase) ||
+                            *pTail >= reinterpret_cast<std::uintptr_t>(newBase + newSize)) {
+                            *pTail = reinterpret_cast<std::uintptr_t>(entry + poolOff);
+                        }
+                    }
+                }
+
+                // Swap pointer and update count
+                *pBuf = reinterpret_cast<std::uintptr_t>(newBuf);
+                *pCapacity = TargetCount;
+                *pCount = TargetCount;
+                g_vrExpanded = true;
+                spdlog::info("[CascadeRuntime] VR array reallocated to {} entries at 0x{:X}",
+                             TargetCount, reinterpret_cast<std::uintptr_t>(newBuf));
+            }
+        }
+
+        // ----- TryRestoreMaskRotation -----
+        // Restore full 4-cascade mask rotation once VR arrays are verified
+        static void TryRestoreMaskRotation()
+        {
+            if (g_maskRestored) return;
+            if (!g_vrExpanded) return;
+
+            auto base = GetBase();
+
+            // Validate render scene node exists
+            auto renderNode = *reinterpret_cast<std::uintptr_t*>(base + SceneNodePtr);
+            if (renderNode == 0) {
+                spdlog::trace("[CascadeRuntime] Mask restore: render node null, waiting...");
+                return;
+            }
+
+            // Validate cascade group exists
+            auto cg = *reinterpret_cast<std::uintptr_t*>(renderNode + CascadeGroupOff);
+            if (cg == 0) {
+                spdlog::trace("[CascadeRuntime] Mask restore: cascade group null, waiting...");
+                return;
+            }
+
+            // Validate flat array has 4+ entries with valid shadow maps
+            auto flatCount  = *reinterpret_cast<std::uint32_t*>(cg + FlatCountOff);
+            auto flatBuffer = *reinterpret_cast<std::uintptr_t*>(cg + FlatBufferOff);
+
+            if (flatCount < 4 || flatBuffer == 0) {
+                spdlog::trace("[CascadeRuntime] Mask restore: flat array not ready (count={}, buf=0x{:X})",
+                              flatCount, flatBuffer);
+                return;
+            }
+
+            // Validate shadow maps at +0x50 for each of 4 entries
+            for (std::uint32_t i = 0; i < 4; i++) {
+                auto entryAddr = flatBuffer + i * FlatEntrySize;
+                auto shadowMap = *reinterpret_cast<std::uintptr_t*>(entryAddr + FlatShadowMapOff);
+                if (shadowMap == 0) {
+                    spdlog::trace("[CascadeRuntime] Mask restore: flat[{}] shadow map is null", i);
+                    return;
+                }
+            }
+
+            // Check all 4 crash prevention caves are non-null
+            if (!g_nullSafetyCave || !g_nodeAllocCave || !g_entryZeroInitCave || !g_ptrValidationCave) {
+                spdlog::warn("[CascadeRuntime] Mask restore: not all crash caves active "
+                             "(null={}, node={}, zero={}, ptr={})",
+                             g_nullSafetyCave != nullptr, g_nodeAllocCave != nullptr,
+                             g_entryZeroInitCave != nullptr, g_ptrValidationCave != nullptr);
+                return;
+            }
+
+            // Force VR flag before restoring masks
+            ForceCascadeGroupVRFlag();
+
+            // Clear flat[3]+0x102 last-cascade flag
+            auto* lastCascadeFlag = reinterpret_cast<std::uint8_t*>(
+                flatBuffer + 3 * FlatEntrySize + FlatLastCascadeOff);
+            *lastCascadeFlag = 0;
+
+            // Restore all 4 mask bytes from safe mode (0x03) to full rotation
+            using namespace CascadeOffsets;
+            int restored = 0;
+
+            if (PatchByte(base + InitMask_Byte, InitMask_Safe, InitMask_Old,
+                           "Restore InitMask 0x03->0x0F")) restored++;
+            if (PatchByte(base + FallbackMask_Byte, FallbackMask_Safe, FallbackMask_Old,
+                           "Restore FallbackMask 0x03->0x0F")) restored++;
+            if (PatchByte(base + ArrayEntry1_Byte, ArrayEntry1_Safe, ArrayEntry1_Old,
+                           "Restore ArrayEntry1 0x03->0x05")) restored++;
+            if (PatchByte(base + ArrayEntry3_Byte, ArrayEntry3_Safe, ArrayEntry3_Old,
+                           "Restore ArrayEntry3 0x03->0x09")) restored++;
+
+            if (restored == 4) {
+                g_maskRestored = true;
+                spdlog::info("[CascadeRuntime] Mask rotation fully restored ({}/4 patches)", restored);
+            } else {
+                spdlog::warn("[CascadeRuntime] Mask restoration partial: {}/4 patches", restored);
+            }
+        }
+
+        // ----- ClampMaskGlobal -----
+        // While masks haven't been restored, clamp the runtime mask global to safe range
+        static void ClampMaskGlobal()
+        {
+            if (g_maskRestored) return;
+
+            auto base = GetBase();
+            auto* pMask = reinterpret_cast<volatile std::uint32_t*>(base + MaskGlobal);
+            std::uint32_t val = *pMask;
+            if (val > 0x03) {
+                *pMask = val & 0x03;
+                spdlog::trace("[CascadeRuntime] Clamped mask global 0x{:X} -> 0x{:X}", val, val & 0x03);
+            }
+        }
+
+        // ----- TimerCallback -----
+        static VOID CALLBACK TimerCallback(PVOID /*lpParam*/, BOOLEAN /*TimerOrWaitFired*/)
+        {
+            g_tickCount++;
+
+            __try {
+                ForceCascadeCount4();
+                ForceCascadeGroupVRFlag();
+                FixSetupSceneNode();
+                ForceShaderFields();
+                ClampMaskGlobal();
+
+                if (!g_maskRestored) {
+                    TryExpandVRArray();
+                    TryRestoreMaskRotation();
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                spdlog::error("[CascadeRuntime] Exception in timer tick {} (code 0x{:08X})",
+                              g_tickCount, GetExceptionCode());
+            }
+
+            // Self-delete timer after 60 ticks if mask restoration is complete
+            if (g_maskRestored && g_tickCount >= 60) {
+                spdlog::info("[CascadeRuntime] Mask restored and {} ticks elapsed, stopping timer",
+                             g_tickCount);
+                if (g_timerHandle) {
+                    DeleteTimerQueueTimer(nullptr, g_timerHandle, nullptr);
+                    g_timerHandle = nullptr;
+                }
+            }
+        }
+    }  // namespace CascadeRuntime
+
+    // =========================================================================
+    // StartCascadeRuntime — start 500ms timer for VR array expansion + mask restoration
+    // =========================================================================
+    void StartCascadeRuntime()
+    {
+        if (CascadeRuntime::g_timerHandle) {
+            spdlog::warn("[EngineFixes] CascadeRuntime timer already running");
+            return;
+        }
+
+        spdlog::info("[EngineFixes] Starting CascadeRuntime timer (2000ms delay, 500ms interval)...");
+
+        BOOL ok = CreateTimerQueueTimer(
+            &CascadeRuntime::g_timerHandle,
+            nullptr,                           // default timer queue
+            CascadeRuntime::TimerCallback,
+            nullptr,                           // no parameter
+            2000,                              // initial delay ms
+            500,                               // interval ms
+            WT_EXECUTEDEFAULT);
+
+        if (!ok) {
+            spdlog::error("[EngineFixes] CreateTimerQueueTimer failed (err {})", GetLastError());
+            CascadeRuntime::g_timerHandle = nullptr;
+        } else {
+            spdlog::info("[EngineFixes] CascadeRuntime timer started");
+        }
+    }
+
+    // =========================================================================
+    // StopCascadeRuntime — cleanup timer on shutdown
+    // =========================================================================
+    void StopCascadeRuntime()
+    {
+        if (CascadeRuntime::g_timerHandle) {
+            spdlog::info("[EngineFixes] Stopping CascadeRuntime timer...");
+            DeleteTimerQueueTimer(nullptr, CascadeRuntime::g_timerHandle, INVALID_HANDLE_VALUE);
+            CascadeRuntime::g_timerHandle = nullptr;
+            spdlog::info("[EngineFixes] CascadeRuntime timer stopped");
+        }
+    }
+
+    // =========================================================================
     // EnableTiledDeferredLighting — 5 NOP patches from F4VR-Tiled-Lighting
     // =========================================================================
     bool EnableTiledDeferredLighting()

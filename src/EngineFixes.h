@@ -14,4 +14,8 @@ namespace EngineFixes
     // Phase 1: Apply after game load (INI overrides, runtime fixes)
     bool ApplyPostLoadFixes();
     bool ForceINISettings();               // bComputeShaderDeferredTiledLighting = true
+
+    // Phase 2: Runtime cascade management (timer-based polling)
+    void StartCascadeRuntime();     // Start 500ms timer for VR array expansion + mask restoration
+    void StopCascadeRuntime();      // Cleanup timer on shutdown
 }
