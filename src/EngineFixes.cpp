@@ -328,6 +328,12 @@ namespace EngineFixes
         constexpr std::uintptr_t ArrayEntry3_Byte  = 0x284ea5f;
         constexpr std::uint8_t   ArrayEntry3_Old   = 0x09;
         constexpr std::uint8_t   ArrayEntry3_Safe  = 0x03;
+
+        // Shared shadow maps: RIGHT eye uses LEFT eye's shadow maps
+        constexpr std::uintptr_t SharedShadow_Activate = 0x290d9d0;  // MOV RCX,[R15+0x58] disp byte
+        constexpr std::uintptr_t SharedShadow_Dispatch = 0x290d9d9;  // MOV RDX,[R15+0x58] disp byte
+        constexpr std::uint8_t   SharedShadow_Old      = 0x58;
+        constexpr std::uint8_t   SharedShadow_New      = 0x50;
     }
 
     // =========================================================================
@@ -1369,18 +1375,45 @@ namespace EngineFixes
     }
 
     // =========================================================================
+    // EnableSharedShadowMaps — RIGHT eye uses LEFT eye's shadow maps
+    // Patches two displacement bytes (0x58 -> 0x50) so RIGHT eye reads the same
+    // shadow map slots as LEFT eye, halving shadow map render cost in VR.
+    // Must be applied post-load to avoid infinite loading screen.
+    // =========================================================================
+    bool EnableSharedShadowMaps()
+    {
+        using namespace CascadeOffsets;
+        auto base = GetBase();
+        int applied = 0;
+
+        spdlog::info("[EngineFixes] Applying shared shadow maps patches...");
+
+        if (PatchByte(base + SharedShadow_Activate, SharedShadow_Old, SharedShadow_New,
+                       "SharedShadow: activate displacement 0x58->0x50"))
+            applied++;
+
+        if (PatchByte(base + SharedShadow_Dispatch, SharedShadow_Old, SharedShadow_New,
+                       "SharedShadow: dispatch displacement 0x58->0x50"))
+            applied++;
+
+        spdlog::info("[EngineFixes] Shared shadow maps: {}/2 patches applied", applied);
+        return applied == 2;
+    }
+
+    // =========================================================================
     // ApplyPostLoadFixes — Phase 1: after game load
     // =========================================================================
     bool ApplyPostLoadFixes()
     {
         spdlog::info("[EngineFixes] ===== Phase 1: Post-load fixes =====");
 
-        bool iniOk = ForceINISettings();
+        bool iniOk    = ForceINISettings();
+        bool sharedOk = EnableSharedShadowMaps();
 
         // Cascade runtime (VR array expansion, mask restoration) is handled by
         // StartCascadeRuntime() called separately after this function.
 
-        spdlog::info("[EngineFixes] Phase 1 complete: ini={}", iniOk);
+        spdlog::info("[EngineFixes] Phase 1 complete: ini={} shared_shadows={}", iniOk, sharedOk);
         return iniOk;
     }
 
