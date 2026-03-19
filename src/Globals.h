@@ -33,6 +33,17 @@ namespace Globals {
     float* GetShadowDistanceCache();       // base+0x68788f0
     uint32_t* GetCascadeCountGlobal();     // base+0x3924818
 
+    // Shadow scene nodes (for cascade runtime)
+    uintptr_t GetShadowSceneNode();        // base+0x6879520 (render)
+    uintptr_t GetShadowSceneNode2();       // base+0x6885d40 (setup, VR-only)
+
+    // VR cascade array
+    uintptr_t GetVRCascadeArrayPtr();      // base+0x6878b18
+    uint32_t* GetVRCascadeArrayCount();    // base+0x6878b28
+
+    // Cascade mask global
+    uint32_t* GetCascadeMaskGlobal();      // base+0x6885cc4
+
     // Render targets
     uintptr_t GetRenderTargetManager();    // base+0x38ac010
 

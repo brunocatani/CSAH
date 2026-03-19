@@ -169,6 +169,39 @@ namespace Globals {
         return reinterpret_cast<uint32_t*>(s_base + 0x3924818);
     }
 
+    // ---- Shadow scene nodes ----
+
+    uintptr_t GetShadowSceneNode()
+    {
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x6879520);
+        return s_base ? *ptr : 0;
+    }
+
+    uintptr_t GetShadowSceneNode2()
+    {
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x6885d40);
+        return s_base ? *ptr : 0;
+    }
+
+    // ---- VR cascade array ----
+
+    uintptr_t GetVRCascadeArrayPtr()
+    {
+        return s_base ? s_base + 0x6878b18 : 0;
+    }
+
+    uint32_t* GetVRCascadeArrayCount()
+    {
+        return s_base ? reinterpret_cast<uint32_t*>(s_base + 0x6878b28) : nullptr;
+    }
+
+    // ---- Cascade mask ----
+
+    uint32_t* GetCascadeMaskGlobal()
+    {
+        return s_base ? reinterpret_cast<uint32_t*>(s_base + 0x6885cc4) : nullptr;
+    }
+
     // ---- Render targets ----
 
     uintptr_t GetRenderTargetManager()
