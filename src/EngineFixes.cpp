@@ -466,25 +466,24 @@ namespace EngineFixes
                 applied++;
         }
 
-        // 6. Patch 4-cascade shadow distance (.rdata, needs VirtualProtect)
+        // 6. Write shadow distance to .data (NOT .rdata)
+        // The CMP patch above (SetupCmpImm: 2->4) makes the function read from
+        // ShadowDist2Cascade (.data, 0x3924808) instead of ShadowDist4Cascade (.rdata).
+        // VR-Shadow-Boost v13.4+ abandoned the .rdata VirtualProtect approach.
         total++;
         {
-            auto* pDist4 = reinterpret_cast<float*>(base + ShadowDist4Cascade);
-            auto dist2 = *reinterpret_cast<float*>(base + ShadowDist2Cascade);
+            auto* pDist2 = reinterpret_cast<float*>(base + ShadowDist2Cascade);
+            float origDist2 = *pDist2;
 
-            if (*pDist4 > 1e30f) {
-                float newDist = (dist2 > 0.0f) ? dist2 * 5.0f : 15000.0f;
-                DWORD oldProtect;
-                if (VirtualProtect(pDist4, 4, PAGE_READWRITE, &oldProtect)) {
-                    *pDist4 = newDist;
-                    VirtualProtect(pDist4, 4, oldProtect, &oldProtect);
-                    spdlog::info("[EngineFixes]   Shadow distance (.rdata): FLT_MAX -> {:.1f}", newDist);
-                    applied++;
-                } else {
-                    spdlog::error("[EngineFixes]   Shadow distance: VirtualProtect failed");
-                }
+            if (origDist2 > 0.0f && origDist2 < 1e10f) {
+                float newDist = origDist2 * 5.0f;
+                *pDist2 = newDist;  // .data is RW, no VirtualProtect needed
+                spdlog::info("[EngineFixes]   Shadow distance (.data): {:.1f} -> {:.1f}", origDist2, newDist);
+                applied++;
             } else {
-                spdlog::info("[EngineFixes]   Shadow distance already patched: {:.1f}", *pDist4);
+                // Fallback if dist2 is uninitialized
+                *pDist2 = 15000.0f;
+                spdlog::info("[EngineFixes]   Shadow distance (.data): fallback -> 15000.0");
                 applied++;
             }
         }
