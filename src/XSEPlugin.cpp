@@ -26,56 +26,54 @@ namespace {
         switch (msg->type) {
             case F4SE::MessagingInterface::kPostPostLoad:
             {
-                spdlog::info("=== PostPostLoad: Initializing core systems ===");
+                spdlog::info("=== PostPostLoad: Early init (no D3D yet) ===");
 
-                // Initialize globals (D3D device, game state pointers)
-                Globals::Initialize();
+                // Detour hooks target code addresses, safe to install before D3D
+                Hooks::InstallShaderHooks();
 
-                // Initialize state manager (creates SharedDataCB)
-                State::GetSingleton().Initialize();
-
-                // Install all hooks
-                Hooks::InstallAll();
-
-                // Initialize shader cache
-                ShaderCache::GetSingleton().Initialize();
-
-                // Register features
+                // Register features (no GPU resources yet)
                 Feature::RegisterFeature(&g_linearLighting);
 
-                // Load settings
+                // Load settings from disk
                 Feature::LoadAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
 
-                // Initialize features (create GPU resources)
-                Feature::InitializeAll();
-
-                spdlog::info("=== Core systems initialized ===");
+                spdlog::info("=== PostPostLoad complete ===");
                 break;
             }
             case F4SE::MessagingInterface::kGameDataReady:
             {
-                spdlog::info("=== GameDataReady: Applying post-load fixes ===");
+                spdlog::info("=== GameDataReady: D3D and game data available ===");
 
-                // Apply post-load engine fixes (INI overrides)
+                // NOW initialize globals — D3D device/context should be alive
+                Globals::Initialize();
+
+                // Initialize state (creates SharedDataCB — needs device)
+                State::GetSingleton().Initialize();
+
+                // Initialize shader cache
+                ShaderCache::GetSingleton().Initialize();
+
+                // Initialize features (create GPU resources — needs device)
+                Feature::InitializeAll();
+
+                // Install D3D and vtable hooks (needs renderer + vtables)
+                Hooks::InstallRenderHooks();
+                Hooks::InstallD3DHooks();
+
+                // Apply post-load engine fixes
                 EngineFixes::ApplyPostLoadFixes();
 
-                // Start cascade runtime timer (VR array expansion + mask restoration)
+                // Start cascade runtime
                 EngineFixes::StartCascadeRuntime();
 
-                // Replace shader permutations for BSLightingShader
-                auto lightingShader = Globals::GetBSLightingShader();
-                if (lightingShader) {
-                    spdlog::info("Starting shader replacement for BSLightingShader...");
-                    ShaderReplacer::GetSingleton().ReplaceAllPermutations(
-                        reinterpret_cast<void*>(lightingShader), 8);
-                } else {
-                    spdlog::error("BSLightingShader singleton is null - shader replacement skipped");
-                }
+                // Shader replacement will be triggered by the LoadShaders hook
+                // when each shader type's FXP is loaded
+                spdlog::info("Shader replacement will be triggered by LoadShaders hook");
 
                 // Save settings (captures any defaults)
                 Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
 
-                spdlog::info("=== Post-load initialization complete ===");
+                spdlog::info("=== GameDataReady init complete ===");
                 break;
             }
         }
