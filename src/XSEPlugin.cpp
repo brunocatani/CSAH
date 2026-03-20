@@ -14,7 +14,15 @@ static LinearLighting g_linearLighting;
 
 namespace {
     void InitializeLog() {
-        auto path = std::filesystem::path("Data/F4SE/Plugins/fo4vr-community-shaders.log");
+        // Build log path relative to the DLL's own directory
+        wchar_t dllPath[MAX_PATH]{};
+        HMODULE hModule = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCWSTR>(&InitializeLog), &hModule);
+        GetModuleFileNameW(hModule, dllPath, MAX_PATH);
+
+        auto path = std::filesystem::path(dllPath).parent_path() / "fo4vr-community-shaders.log";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
         auto log = std::make_shared<spdlog::logger>("global", std::move(sink));
         log->set_level(spdlog::level::info);

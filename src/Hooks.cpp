@@ -3,6 +3,7 @@
 #include "State.h"
 #include "Feature.h"
 #include "Menu.h"
+#include <imgui.h>
 
 namespace {
 
@@ -50,6 +51,22 @@ namespace {
         Hooks::OriginalLoadShaders(shader);
     }
 
+    static LRESULT CALLBACK Hook_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+    {
+        auto& menu = Menu::GetSingleton();
+        if (menu.initialized && menu.isVisible) {
+            menu.ProcessWndProc(hwnd, msg, wParam, lParam);
+
+            ImGuiIO& io = ImGui::GetIO();
+            if ((io.WantCaptureKeyboard && (msg >= WM_KEYFIRST && msg <= WM_KEYLAST)) ||
+                (io.WantCaptureMouse && (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST))) {
+                return 1;
+            }
+        }
+
+        return CallWindowProcA(Hooks::OriginalWndProc, hwnd, msg, wParam, lParam);
+    }
+
     static HRESULT __stdcall Hook_Present(IDXGISwapChain* swapChain, UINT syncInterval, UINT flags)
     {
         static bool menuInitialized = false;
@@ -59,13 +76,23 @@ namespace {
             DXGI_SWAP_CHAIN_DESC desc{};
             swapChain->GetDesc(&desc);
             Menu::GetSingleton().Initialize(desc.OutputWindow, Globals::GetDevice(), Globals::GetContext());
+
+            // Subclass the game window to forward input to ImGui
+            Hooks::OriginalWndProc = reinterpret_cast<WNDPROC>(
+                SetWindowLongPtrA(desc.OutputWindow, GWLP_WNDPROC,
+                    reinterpret_cast<LONG_PTR>(Hook_WndProc)));
+            if (Hooks::OriginalWndProc) {
+                spdlog::info("  Subclassed WndProc for ImGui input");
+            } else {
+                spdlog::error("  Failed to subclass WndProc — menu input will not work");
+            }
+
             menuInitialized = true;
         }
 
-        // Per-frame updates
+        // Per-frame updates (UpdatePerFrame increments frameCount internally)
         auto& state = State::GetSingleton();
         state.UpdatePerFrame();
-        state.frameCount++;
 
         // Feature lifecycle
         Feature::ResetAll();
@@ -160,15 +187,11 @@ namespace Hooks {
             spdlog::error("  Failed to hook BSLightingShader::SetupGeometry");
         }
 
-        // --- SetupMaterial at vtable[4] (byte offset +0x20) ---
-        void* origMat = nullptr;
-        if (PatchVtableEntry(vtable, 4, reinterpret_cast<void*>(Hook_LightingSetupMaterial), &origMat)) {
-            OriginalLightingSetupMaterial = reinterpret_cast<SetupMaterial_t>(origMat);
-            spdlog::info("  Hooked BSLightingShader::SetupMaterial (vtable[4]) - original {:X}",
-                reinterpret_cast<uintptr_t>(origMat));
-        } else {
-            spdlog::error("  Failed to hook BSLightingShader::SetupMaterial");
-        }
+        // --- SetupMaterial — DISABLED until vtable index verified via Ghidra ---
+        // Testing showed vtable[4] contains non-code data (0x73657A6973 = ASCII "sizes").
+        // No features currently use OnSetupMaterial(), safe to skip.
+        // TODO: Verify correct vtable index for BSLightingShader::SetupMaterial (RVA 0x289D510)
+        spdlog::info("  SetupMaterial hook SKIPPED (vtable index needs Ghidra verification)");
     }
 
     void InstallD3DHooks()
