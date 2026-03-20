@@ -4,6 +4,7 @@
 #include "Feature.h"
 #include "Menu.h"
 #include <imgui.h>
+#include "ShaderReplacer.h"
 
 namespace {
 
@@ -47,8 +48,29 @@ namespace {
 
     static void __fastcall Hook_LoadShaders(void* shader)
     {
-        spdlog::info("BSShader::LoadShaders called for shader at {:X}", reinterpret_cast<uintptr_t>(shader));
         Hooks::OriginalLoadShaders(shader);
+
+        // After the game loads this shader's FXP, attempt replacement
+        // BSShader+0x00 is the vtable pointer — compare to known vtable addresses
+        if (!shader) return;
+
+        auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
+        auto base = Globals::GetBase();
+        if (!base) return;
+
+        if (vtablePtr == base + 0x309AAB8) {
+            // BSLightingShader (type 8)
+            spdlog::info("BSShader::LoadShaders — BSLightingShader loaded at {}, triggering replacement",
+                         fmt::ptr(shader));
+            ShaderReplacer::GetSingleton().ReplaceAllPermutations(shader, 8);
+        } else if (vtablePtr == base + 0x3098DA8) {
+            // BSGrassShader (type 6) — future use
+            spdlog::info("BSShader::LoadShaders — BSGrassShader loaded at {}", fmt::ptr(shader));
+            // Future: ShaderReplacer::GetSingleton().ReplaceAllPermutations(shader, 6);
+        } else {
+            spdlog::debug("BSShader::LoadShaders — shader at {} vtable {:X}",
+                          fmt::ptr(shader), vtablePtr);
+        }
     }
 
     static LRESULT CALLBACK Hook_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
