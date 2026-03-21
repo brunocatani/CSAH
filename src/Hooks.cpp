@@ -41,62 +41,26 @@ namespace {
                 auto base = REL::Module::get().base();
                 auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
 
-                spdlog::info("========== SHADER DUMP #{} ==========", s_seenCount);
-                spdlog::info("  Address: {}", fmt::ptr(shader));
-                spdlog::info("  Vtable RVA: {:#x}", vtablePtr - base);
+                spdlog::info("===SHADER#{} addr={} vtable_rva={:#x}===",
+                             s_seenCount, fmt::ptr(shader), vtablePtr - base);
 
-                // Dump raw uint32 values at many offsets to find type field
-                for (size_t off = 0x10; off <= 0x28; off += 4) {
+                // Dump uint32 values at wide range of offsets to find type field
+                // BSShader type is a small integer (0-20). Look for it.
+                std::string line;
+                for (size_t off = 0x10; off <= 0x30; off += 4) {
                     uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
-                    spdlog::info("  +{:#04x} (u32): {} ({:#x})", off, val, val);
-                }
-
-                // Try to read name/string pointers at various offsets
-                // BSShader stores name at param_1[0x39] = +0x1C8
-                // But VR class layout may differ
-                for (size_t off : {0x1C0ull, 0x1C8ull, 0x1D0ull, 0x1D8ull, 0x1E0ull}) {
-                    auto ptr = *reinterpret_cast<uintptr_t*>(shaderAddr + off);
-                    if (ptr > 0x10000 && ptr < 0x7FFFFFFFFFFF) {
-                        // Check if it looks like a string (first few bytes are printable ASCII)
-                        auto cstr = reinterpret_cast<const char*>(ptr);
-                        bool isString = true;
-                        for (int i = 0; i < 4 && cstr[i]; ++i) {
-                            if (cstr[i] < 0x20 || cstr[i] > 0x7E) { isString = false; break; }
-                        }
-                        if (isString && cstr[0] != '\0') {
-                            spdlog::info("  +{:#04x} (str): \"{}\"", off, cstr);
-                        }
+                    if (val <= 20) {  // Only log small values that could be shader types
+                        line += fmt::format("+{:#x}={} ", off, val);
                     }
                 }
+                if (!line.empty()) spdlog::info("  Small vals: {}", line);
 
-                // Also try at lower offsets where some BSShader implementations store names
-                for (size_t off : {0x30ull, 0x38ull, 0x40ull, 0x48ull, 0x50ull, 0x58ull}) {
-                    auto ptr = *reinterpret_cast<uintptr_t*>(shaderAddr + off);
-                    if (ptr > 0x10000 && ptr < 0x7FFFFFFFFFFF) {
-                        auto cstr = reinterpret_cast<const char*>(ptr);
-                        bool isString = true;
-                        for (int i = 0; i < 4 && cstr[i]; ++i) {
-                            if (cstr[i] < 0x20 || cstr[i] > 0x7E) { isString = false; break; }
-                        }
-                        if (isString && cstr[0] != '\0') {
-                            spdlog::info("  +{:#04x} (str): \"{}\"", off, cstr);
-                        }
-                    }
-                }
-
-                // Dump the first 8 qwords as hex for manual inspection
-                spdlog::info("  Raw qwords:");
-                for (size_t i = 0; i < 8; ++i) {
-                    auto val = *reinterpret_cast<uintptr_t*>(shaderAddr + i * 8);
-                    spdlog::info("    +{:#04x}: {:#018x}", i * 8, val);
-                }
-
-                // Check for type=8 at ANY offset in the first 0x30 bytes
+                // Check for type=8 at ANY uint32 offset in first 0x30 bytes
                 bool found8 = false;
-                for (size_t off = 0x10; off <= 0x28; off += 4) {
+                for (size_t off = 0x10; off <= 0x30; off += 4) {
                     uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
                     if (val == 8) {
-                        spdlog::info("  >>> TYPE=8 FOUND AT +{:#04x}! <<<", off);
+                        spdlog::info("  >>> TYPE=8 AT +{:#x} <<<", off);
                         found8 = true;
                     }
                 }
