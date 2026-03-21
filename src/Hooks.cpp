@@ -61,6 +61,7 @@ namespace {
                     for (uint32_t i = 0; i < bucketCount && i < 100; ++i) {
                         if (!entries[i].data) continue;
                         uint32_t key = *reinterpret_cast<uint32_t*>(entries[i].data);
+                        if (key == 0) continue;  // Skip empty entries
                         uint32_t matType = (key >> 8) & 0x3F;
                         if (matType <= 0x13) {
                             looksLikeLighting = true;
@@ -79,7 +80,9 @@ namespace {
                         ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
                             [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
                     } else {
-                        spdlog::info("  PS scatter table found but NOT BSLightingShader (matTypes out of range)");
+                        auto base = REL::Module::get().base();
+                        spdlog::info("  PS scatter table (count={}) but NOT BSLightingShader (vtable RVA={:#x})",
+                                     bucketCount, vtablePtr - base);
                     }
                 } else {
                     spdlog::debug("  No valid PS scatter table (count={}, buckets={})",
