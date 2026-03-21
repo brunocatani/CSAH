@@ -12,7 +12,8 @@ namespace {
 
     // ---- Forward declarations for deferred D3D init ----
     static bool s_deferredD3DInitDone = false;
-    static void* s_capturedBSLightingShader = nullptr;  // Captured from Hook_LoadShaders
+    static bool s_shaderReplacementDone = false;
+    static void* s_capturedBSLightingShader = nullptr;
     static void TryDeferredD3DInit();
 
     // ---- Hook thunks ----
@@ -25,13 +26,25 @@ namespace {
             TryDeferredD3DInit();
         }
 
+        // Capture BSLightingShader and trigger replacement on first encounter
+        if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
+            auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
+            auto base = REL::Module::get().base();
+            if (vtablePtr == base + 0x309AAB8) {
+                s_shaderReplacementDone = true;
+                s_capturedBSLightingShader = shader;
+                spdlog::info("BeginTechnique: Captured BSLightingShader at {}, triggering shader replacement",
+                             fmt::ptr(shader));
+                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+            }
+        }
+
         auto& state = State::GetSingleton();
         state.currentShader = shader;
         state.currentTechniqueID = psTechID;
         return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
     }
-
-    static bool s_shaderReplacementDone = false;
 
     static void __fastcall Hook_LightingSetupGeometry(void* shader, void* renderPass)
     {
