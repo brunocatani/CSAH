@@ -58,11 +58,10 @@ private:
     void WalkScatterTable(void* bsShader, size_t tableOffset,
                           std::function<void(uint32_t techniqueID, void* shaderObj)> callback);
 
-    // Scatter table offsets (from Ghidra RE)
-    // BSShader base: VS=0x28, PS=0xB8
-    // BSLightingShader VR: uses custom PS table at 0x120 (from constructor FUN_1428b5a60)
+    // Scatter table offsets (from Ghidra FXP loader FUN_142814260)
+    // FXP data loads into: VS=+0x28, HS=+0x58, DS=+0x88, PS=+0xB8, CS=+0xE8
     static constexpr size_t kVSTableOffset = 0x28;
-    static constexpr size_t kPSTableOffset = 0x120;  // BSLightingShader custom PS table
+    static constexpr size_t kPSTableOffset = 0xB8;
 
     // D3D shader pointer offset within BSGraphics shader blob
     static constexpr size_t kD3DShaderPtrOffset = 0x08;

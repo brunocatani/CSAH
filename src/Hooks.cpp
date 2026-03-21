@@ -229,31 +229,22 @@ namespace {
             if (bsLighting && Globals::GetDevice()) {
                 auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
 
-                // Check BOTH possible scatter table locations
-                uint32_t psCountBase = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
-                auto* psBucketsBase = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
+                // FXP loader (FUN_142814260) populates PS scatter table at +0xB8
+                // Internal layout: capacity-1 at +0xBC, buckets at +0xD8
+                uint32_t psCapMinus1 = *reinterpret_cast<uint32_t*>(bsAddr + 0xBC);
+                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xD8);
 
-                // Custom table from BSLightingShader constructor:
-                // capacity at +0x124, buckets at +0x140
-                uint32_t psCountCustom = *reinterpret_cast<uint32_t*>(bsAddr + 0x124);
-                auto* psBucketsCustom = *reinterpret_cast<void**>(bsAddr + 0x140);
-
-                // Log every 300 frames (~5 sec) to track state
+                // Log every 300 frames
                 if (s_frameCounter % 300 == 1) {
-                    spdlog::info("Present[{}]: BSLighting scatter check — base(count={},buckets={}) custom(count={},buckets={})",
-                                 s_frameCounter, psCountBase, fmt::ptr(psBucketsBase),
-                                 psCountCustom, fmt::ptr(psBucketsCustom));
+                    spdlog::info("Present[{}]: PS scatter — capMinus1={} buckets={}",
+                                 s_frameCounter, psCapMinus1, fmt::ptr(psBuckets));
                 }
 
-                // Try base table first, then custom
                 void* targetShader = nullptr;
-                if (psCountBase > 0 && psBucketsBase) {
+                if (psBuckets && psCapMinus1 > 0) {
                     targetShader = bsLighting;
-                    spdlog::info("Present: BASE scatter table populated! count={}", psCountBase);
-                } else if (psCountCustom > 0 && psBucketsCustom) {
-                    // Custom table found — need to update kPSTableOffset
-                    targetShader = bsLighting;
-                    spdlog::info("Present: CUSTOM scatter table populated! count={} at +0x120", psCountCustom);
+                    spdlog::info("Present: PS scatter table populated! cap={} buckets={}",
+                                 psCapMinus1 + 1, fmt::ptr(psBuckets));
                 }
 
                 if (targetShader) {
