@@ -26,20 +26,47 @@ namespace {
             TryDeferredD3DInit();
         }
 
-        // Identify BSLightingShader by checking the BSShader type field at offset +0x18.
-        // From Ghidra: BSShader constructor stores type as uint32 at this+0x18.
-        // BSLightingShader = type 8 (confirmed from Skyrim CS RE and FO4 constructors).
+        // Identify BSLightingShader by checking the BSShader type field.
+        // Log type candidates from each unique shader to find the correct offset.
         if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
-            uint32_t shaderType = *reinterpret_cast<uint32_t*>(
-                reinterpret_cast<uintptr_t>(shader) + 0x18);
+            static uintptr_t s_seenShaders[32] = {};
+            static int s_seenCount = 0;
+            auto shaderAddr = reinterpret_cast<uintptr_t>(shader);
 
-            if (shaderType == 8) {  // BSLightingShader
-                s_shaderReplacementDone = true;
-                s_capturedBSLightingShader = shader;
-                spdlog::info("BeginTechnique: Found BSLightingShader (type=8) at {}", fmt::ptr(shader));
-                spdlog::info("  Triggering filtered replacement for parallax permutations");
-                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+            bool alreadySeen = false;
+            for (int i = 0; i < s_seenCount; ++i) {
+                if (s_seenShaders[i] == shaderAddr) { alreadySeen = true; break; }
+            }
+            if (!alreadySeen && s_seenCount < 32) {
+                s_seenShaders[s_seenCount++] = shaderAddr;
+                auto base = REL::Module::get().base();
+                auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
+
+                // Read the name pointer at offset 0x1C8 (param_1[0x39])
+                auto namePtr = *reinterpret_cast<const char**>(shaderAddr + 0x1C8);
+                const char* name = "?";
+                // Validate pointer before reading
+                if (namePtr && reinterpret_cast<uintptr_t>(namePtr) > 0x10000 &&
+                    reinterpret_cast<uintptr_t>(namePtr) < 0x7FFFFFFFFFFF) {
+                    name = namePtr;
+                }
+
+                // Read type candidates at common offsets
+                uint32_t type18 = *reinterpret_cast<uint32_t*>(shaderAddr + 0x18);
+                uint32_t type1C = *reinterpret_cast<uint32_t*>(shaderAddr + 0x1C);
+                uint32_t type20 = *reinterpret_cast<uint32_t*>(shaderAddr + 0x20);
+
+                spdlog::info("BeginTechnique: shader={} vtable_rva={:#x} name='{}' type+18={} +1C={} +20={}",
+                             fmt::ptr(shader), vtablePtr - base, name, type18, type1C, type20);
+
+                // Check all offsets for type 8
+                if (type18 == 8 || type1C == 8 || type20 == 8) {
+                    s_shaderReplacementDone = true;
+                    s_capturedBSLightingShader = shader;
+                    spdlog::info("  *** BSLightingShader FOUND! Triggering replacement ***");
+                    ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                        [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                }
             }
         }
 
