@@ -1,5 +1,7 @@
 #include "Menu.h"
 #include "Feature.h"
+#include "ShaderCache.h"
+#include "ShaderReplacer.h"
 
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
@@ -191,20 +193,37 @@ void Menu::DrawFeatureList() {
 }
 
 void Menu::DrawShaderCacheStatus() {
-    // TODO: Hook into ShaderCache to display real compilation stats
+    auto& cache = ShaderCache::GetSingleton();
+
     ImGui::Text("Shader Cache Status");
     ImGui::Separator();
 
-    ImGui::TextDisabled("(Statistics will be available once shader cache integration is complete)");
+    ImGui::Text("Compiled Shaders: %u", cache.stats.compiled.load());
+    ImGui::Text("Cache Hits: %u", cache.stats.cacheHits.load());
+    ImGui::Text("Cache Misses: %u", cache.stats.cacheMisses.load());
 
-    // Placeholder layout for future integration
-    ImGui::Text("Compiled Shaders: --");
-    ImGui::Text("Cache Hits: --");
-    ImGui::Text("Cache Misses: --");
-    ImGui::Text("Compilation Errors: --");
+    uint32_t errors = cache.stats.errors.load();
+    if (errors > 0) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Compilation Errors: %u", errors);
+    } else {
+        ImGui::Text("Compilation Errors: 0");
+    }
+
+    ImGui::Spacing();
+    ImGui::Text("Disk Cache: %s", cache.diskCacheEnabled ? "Enabled" : "Disabled");
+    ImGui::Text("Cache Path: %s", cache.diskCachePath.string().c_str());
 
     if (ImGui::Button("Clear Shader Cache")) {
-        // TODO: Integrate with ShaderCache::Clear() when available
-        spdlog::info("Shader cache clear requested from menu (not yet implemented)");
+        cache.Clear();
+        spdlog::info("Shader cache cleared from menu");
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("Restore Vanilla Shaders")) {
+        ShaderReplacer::GetSingleton().RestoreAllVanillaPS();
+        spdlog::info("Vanilla shaders restored from menu");
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Restore all original shaders. Useful for A/B comparison.");
     }
 }
