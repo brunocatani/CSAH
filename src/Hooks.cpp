@@ -35,8 +35,25 @@ namespace {
             if (bsLighting) {
                 s_shaderReplacementDone = true;
                 s_capturedBSLightingShader = bsLighting;
+                auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
                 spdlog::info("BeginTechnique: BSLightingShader singleton at {} (from base+0x689b410)",
                              fmt::ptr(bsLighting));
+
+                // Dump scatter table state at +0xB8 (PS)
+                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
+                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
+                auto* psSentinel = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x10);
+                spdlog::info("  PS scatter: count={} buckets={} sentinel={}", psCount, fmt::ptr(psBuckets), fmt::ptr(psSentinel));
+
+                // Also check VS at +0x28
+                uint32_t vsCount = *reinterpret_cast<uint32_t*>(bsAddr + 0x28 + 0x04);
+                auto* vsBuckets = *reinterpret_cast<void**>(bsAddr + 0x28 + 0x20);
+                spdlog::info("  VS scatter: count={} buckets={}", vsCount, fmt::ptr(vsBuckets));
+
+                // Check type field
+                uint32_t type = *reinterpret_cast<uint32_t*>(bsAddr + 0x18);
+                spdlog::info("  Type at +0x18: {}", type);
+
                 spdlog::info("  Triggering filtered replacement for parallax permutations");
                 ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLighting, 8,
                     [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
