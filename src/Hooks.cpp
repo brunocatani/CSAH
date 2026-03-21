@@ -60,9 +60,10 @@ namespace {
 
         if (vtablePtr == base + 0x309AAB8) {
             // BSLightingShader (type 8)
-            spdlog::info("BSShader::LoadShaders — BSLightingShader loaded at {}, triggering replacement",
+            spdlog::info("BSShader::LoadShaders — BSLightingShader loaded at {}, triggering filtered replacement (POM permutations only)",
                          fmt::ptr(shader));
-            ShaderReplacer::GetSingleton().ReplaceAllPermutations(shader, 8);
+            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
         } else if (vtablePtr == base + 0x3098DA8) {
             // BSGrassShader (type 6) — future use
             spdlog::info("BSShader::LoadShaders — BSGrassShader loaded at {}", fmt::ptr(shader));

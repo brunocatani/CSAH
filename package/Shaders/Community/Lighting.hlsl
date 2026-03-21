@@ -80,11 +80,10 @@ float3 ApplyLinearOutput(float3 color) {
 // ============================================================================
 #ifdef EXTENDED_MATERIALS
 cbuffer ExtendedMaterialsCB : register(b5) {
-    float  EM_EnablePOM;          // 0=off, 1=on
-    float  EM_MaxSteps;           // max POM ray-march steps (artist override)
-    float  EM_ShadowQuality;     // POM self-shadow quality [0,1]
-    float  EM_FadeDistance;       // distance at which POM fades out
-    DisplacementParams EM_Displacement; // scale, offset, heightScale, flattenAmount
+    uint  EM_EnablePOM;        // 0=off, 1=on
+    uint  EM_EnableShadows;    // 0=off, 1=on
+    uint  EM_MaxSteps;         // 0=auto, >0=override
+    float EM_HeightScaleMult;  // multiplier on material height scale
 };
 
 #include "ExtendedMaterials/ExtendedMaterials.hlsli"
@@ -165,7 +164,7 @@ PS_OUTPUT PSMain(PS_INPUT input) {
 #ifdef EXTENDED_MATERIALS
     float pomPixelOffset = 0.0;
 
-    [branch] if (EM_EnablePOM > 0.5f) {
+    [branch] if (EM_EnablePOM != 0u) {
         // Build TBN matrix (tangent space -> world space, rows = T, B, N)
         float3x3 tbn = float3x3(
             normalize(input.Tangent),
@@ -174,9 +173,9 @@ PS_OUTPUT PSMain(PS_INPUT input) {
         );
 
         // View direction: from fragment toward camera.
-        // input.TexCoord3.xyz and input.TexCoord4.xyz carry world-space data
-        // in some permutations. For now we use the tangent-space vectors directly.
-        // The view direction in world space is approximated from the TBN normal.
+        // TODO: Replace with proper camera-to-fragment direction once eye position
+        // is confirmed available in PerGeometry (cb12). Using negative world normal
+        // as a rough approximation — produces visible POM displacement at non-grazing angles.
         float3 viewDir = -normalize(input.Normal);
 
         // Screen-space noise for stochastic mip selection and shadow jitter
@@ -184,6 +183,16 @@ PS_OUTPUT PSMain(PS_INPUT input) {
 
         // Compute mip level for SampleLevel inside POM loop
         float mipLevel = ExtendedMaterials::GetMipLevel(uv, TexSpecular, screenNoise);
+
+        // Build per-material DisplacementParams from the material CB and the height scale multiplier.
+        // PM_LightingEffectParams.x = specPower (cb2[7].x); we reuse it as the base height scale
+        // following the FO4 parallax convention where that field drives parallax intensity.
+        DisplacementParams dispParams;
+        float pomScale = PM_LightingEffectParams.x * EM_HeightScaleMult;
+        dispParams.DisplacementScale  = pomScale;
+        dispParams.DisplacementOffset = 0.0;
+        dispParams.HeightScale        = pomScale;
+        dispParams.FlattenAmount      = 0.0;
 
         // Ray-march the height field (height is in specular texture alpha = channel 3)
         uv = ExtendedMaterials::GetParallaxCoords(
@@ -196,7 +205,7 @@ PS_OUTPUT PSMain(PS_INPUT input) {
             TexSpecular,
             SampSpecular,
             3u,                           // channel 3 = alpha
-            EM_Displacement,
+            dispParams,
             pomPixelOffset
         );
     }
