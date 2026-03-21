@@ -31,9 +31,21 @@ namespace {
         return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
     }
 
+    static bool s_shaderReplacementDone = false;
+
     static void __fastcall Hook_LightingSetupGeometry(void* shader, void* renderPass)
     {
         Hooks::OriginalLightingSetupGeometry(shader, renderPass);
+
+        // First call: capture BSLightingShader and trigger shader replacement
+        if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
+            s_shaderReplacementDone = true;
+            s_capturedBSLightingShader = shader;
+            spdlog::info("SetupGeometry: Captured BSLightingShader at {}, triggering shader replacement",
+                         fmt::ptr(shader));
+            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+        }
 
         // Bind shared data CB
         State::GetSingleton().BindSharedData();
