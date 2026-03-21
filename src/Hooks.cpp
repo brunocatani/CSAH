@@ -61,9 +61,11 @@ namespace {
                     for (uint32_t i = 0; i < bucketCount && i < 100; ++i) {
                         if (!entries[i].data) continue;
                         uint32_t key = *reinterpret_cast<uint32_t*>(entries[i].data);
-                        if (key == 0) continue;  // Skip empty entries
+                        if (key <= 1) continue;  // Skip empty/trivial entries
                         uint32_t matType = (key >> 8) & 0x3F;
-                        if (matType <= 0x13) {
+                        // Valid BSLightingShader material types: 0-9, 0xB-0x10, 0x12-0x13
+                        // (0x0A is skipped in BSLighting technique name builder)
+                        if (matType <= 0x13 && matType != 0x0A) {
                             looksLikeLighting = true;
                             spdlog::info("  Found BSLightingShader-compatible key {:#010x} (matType={:#x})",
                                          key, matType);
