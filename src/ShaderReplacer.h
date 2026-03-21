@@ -36,15 +36,18 @@ private:
     ShaderReplacer() = default;
 
     // BSTScatterTable internal layout (from Ghidra findings):
-    //   +0x00: capacityMask (uint32, = bucketCount - 1)
-    //   +0x04: unknown (uint32)
-    //   +0x08: sentinel node pointer (void*)
-    //   +0x10: bucket array pointer (ScatterEntry*)
+    // BSTScatterTable layout (from Ghidra RE of FO4VR BSShader::BeginTechnique):
+    //   +0x00: unknown (uint32)
+    //   +0x04: bucketCount (uint32) — capacityMask = bucketCount - 1
+    //   +0x08: unknown
+    //   +0x10: sentinel node pointer (void*)
+    //   +0x20: bucket array pointer (ScatterEntry*)
+    // VS/PS entries are 0x10 bytes per bucket slot:
+    //   [0x00]: pointer to shader data (first uint32 at data = technique key)
+    //   [0x08]: next entry pointer (for chaining)
     struct ScatterEntry {
-        uint32_t key;
-        uint32_t pad;
-        void* value;       // Points to BSGraphics::PixelShader or VertexShader struct
-        ScatterEntry* next;
+        void* data;          // Points to BSGraphics shader struct; key = *(uint32_t*)data
+        ScatterEntry* next;  // Next in chain (nullptr or sentinel = end)
     };
 
     // Walk all entries in a scatter table at bsShader + tableOffset

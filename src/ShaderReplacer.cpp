@@ -20,11 +20,12 @@ void ShaderReplacer::WalkScatterTable(
 
     auto tableBase = reinterpret_cast<uintptr_t>(bsShader) + tableOffset;
 
-    // BSTScatterTable layout:
-    //   +0x00: capacityMask (uint32_t, = bucketCount - 1)
-    //   +0x10: buckets pointer (ScatterEntry*)
-    uint32_t capacityMask = *reinterpret_cast<uint32_t*>(tableBase + 0x00);
-    auto* buckets = *reinterpret_cast<ScatterEntry**>(tableBase + 0x10);
+    // BSTScatterTable layout (FO4VR, from Ghidra BSShader::BeginTechnique):
+    //   +0x04: bucketCount (uint32_t) — mask = count - 1
+    //   +0x20: buckets pointer (ScatterEntry*)
+    uint32_t bucketCount = *reinterpret_cast<uint32_t*>(tableBase + 0x04);
+    uint32_t capacityMask = bucketCount > 0 ? bucketCount - 1 : 0;
+    auto* buckets = *reinterpret_cast<ScatterEntry**>(tableBase + 0x20);
 
     if (!buckets) {
         spdlog::warn("ShaderReplacer::WalkScatterTable - null bucket array at BSShader+{:#x}", tableOffset);
@@ -36,28 +37,31 @@ void ShaderReplacer::WalkScatterTable(
         return;
     }
 
-    uint32_t bucketCount = capacityMask + 1;
+    // Sentinel pointer marks the end of chains
+    auto* sentinel = *reinterpret_cast<ScatterEntry**>(tableBase + 0x10);
 
-    spdlog::debug("ShaderReplacer::WalkScatterTable - tableOffset={:#x}, bucketCount={}, buckets={}",
-        tableOffset, bucketCount, fmt::ptr(buckets));
+    spdlog::debug("ShaderReplacer::WalkScatterTable - tableOffset={:#x}, bucketCount={}, buckets={}, sentinel={}",
+        tableOffset, capacityMask + 1, fmt::ptr(buckets), fmt::ptr(sentinel));
 
     uint32_t visited = 0;
 
-    for (uint32_t i = 0; i < bucketCount; ++i) {
+    for (uint32_t i = 0; i <= capacityMask; ++i) {
         ScatterEntry* entry = &buckets[i];
 
-        // An empty bucket has a null value pointer
-        if (!entry->value) {
+        // An empty bucket has null data pointer or points to sentinel
+        if (!entry->data) {
             continue;
         }
 
         // Walk the chain for this bucket
-        for (ScatterEntry* cur = entry; cur != nullptr; cur = cur->next) {
-            if (!cur->value) {
+        for (ScatterEntry* cur = entry; cur != nullptr && cur != sentinel; cur = cur->next) {
+            if (!cur->data) {
                 continue;
             }
 
-            callback(cur->key, cur->value);
+            // Key is at the start of the data struct
+            uint32_t key = *reinterpret_cast<uint32_t*>(cur->data);
+            callback(key, cur->data);
             ++visited;
         }
     }

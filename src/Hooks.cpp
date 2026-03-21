@@ -45,15 +45,15 @@ namespace {
                 spdlog::info("BeginTechnique: Probing shader vtable RVA={:#x} for PS scatter table",
                              vtablePtr - base);
 
-                // Probe the PS scatter table: read capacityMask and buckets pointer
-                // kPSTableOffset = 0xB8 (from ShaderReplacer.h)
+                // Probe the PS scatter table (FO4VR layout from Ghidra):
+                // Table starts at BSShader+0xB8, bucketCount at +0x04, buckets at +0x20
                 auto tableBase = reinterpret_cast<uintptr_t>(shader) + 0xB8;
-                uint32_t capacityMask = *reinterpret_cast<uint32_t*>(tableBase);
-                auto* buckets = *reinterpret_cast<void**>(tableBase + 0x10);
+                uint32_t bucketCount = *reinterpret_cast<uint32_t*>(tableBase + 0x04);
+                auto* buckets = *reinterpret_cast<void**>(tableBase + 0x20);
 
-                if (buckets && capacityMask > 0 && capacityMask < 0x10000) {
-                    spdlog::info("  PS scatter table: capacityMask={}, buckets={}",
-                                 capacityMask, fmt::ptr(buckets));
+                if (buckets && bucketCount > 0 && bucketCount < 0x10000) {
+                    spdlog::info("  PS scatter table found: bucketCount={}, buckets={}",
+                                 bucketCount, fmt::ptr(buckets));
                     // This looks like a valid shader with a PS scatter table.
                     // Try replacement — it will only compile parallax permutations.
                     s_shaderReplacementDone = true;
@@ -62,8 +62,8 @@ namespace {
                     ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
                         [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
                 } else {
-                    spdlog::debug("  No valid PS scatter table (mask={}, buckets={})",
-                                  capacityMask, fmt::ptr(buckets));
+                    spdlog::debug("  No valid PS scatter table (count={}, buckets={})",
+                                  bucketCount, fmt::ptr(buckets));
                 }
             }
         }
