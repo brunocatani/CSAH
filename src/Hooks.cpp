@@ -212,7 +212,13 @@ namespace Hooks {
     {
         spdlog::info("Hooks::InstallShaderHooks - installing Detour hooks...");
 
-        auto base = Globals::GetBase();
+        // Get base directly — Globals::Initialize() hasn't run yet at kPostPostLoad time
+        auto base = REL::Module::get().base();
+        spdlog::info("  Module base for hooks: {:#x}", base);
+        if (!base) {
+            spdlog::error("  Module base is null — cannot install hooks");
+            return;
+        }
 
         // --- BeginTechnique at base+0x2814BE0 ---
         OriginalBeginTechnique = reinterpret_cast<BeginTechnique_t>(base + 0x2814BE0);
