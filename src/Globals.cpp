@@ -63,14 +63,62 @@ namespace Globals {
 
     ID3D11Device* GetDevice()
     {
+        // Try renderer-relative offset first (more reliable for VR)
+        auto renderer = GetRenderer();
+        if (renderer) {
+            // BSGraphics::Renderer stores device at various offsets depending on version
+            // Try common offsets: +0x08, +0x18, +0x58
+            for (size_t offset : {0x08, 0x18, 0x58}) {
+                auto candidate = *reinterpret_cast<ID3D11Device**>(renderer + offset);
+                if (candidate) {
+                    // Validate: a real ID3D11Device has a vtable whose first entry is QueryInterface
+                    // Simple sanity check: vtable pointer should be in a reasonable address range
+                    auto vtable = *reinterpret_cast<uintptr_t*>(candidate);
+                    if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        // Fallback: global pointer (original approach)
         auto ptr = reinterpret_cast<ID3D11Device**>(s_base + 0x609BF88);
-        return ptr ? *ptr : nullptr;
+        auto device = ptr ? *ptr : nullptr;
+        if (device) {
+            auto vtable = *reinterpret_cast<uintptr_t*>(device);
+            if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
+                return device;
+            }
+        }
+        return nullptr;
     }
 
     ID3D11DeviceContext* GetContext()
     {
+        // Try renderer-relative offset first
+        auto renderer = GetRenderer();
+        if (renderer) {
+            for (size_t offset : {0x10, 0x20, 0x60}) {
+                auto candidate = *reinterpret_cast<ID3D11DeviceContext**>(renderer + offset);
+                if (candidate) {
+                    auto vtable = *reinterpret_cast<uintptr_t*>(candidate);
+                    if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+
+        // Fallback
         auto ptr = reinterpret_cast<ID3D11DeviceContext**>(s_base + 0x609BF98);
-        return ptr ? *ptr : nullptr;
+        auto ctx = ptr ? *ptr : nullptr;
+        if (ctx) {
+            auto vtable = *reinterpret_cast<uintptr_t*>(ctx);
+            if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
+                return ctx;
+            }
+        }
+        return nullptr;
     }
 
     // ---- Renderer ----

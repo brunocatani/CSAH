@@ -67,7 +67,12 @@ namespace {
             if (!Globals::GetDevice()) return;  // Still not ready
         }
 
+        auto* device = Globals::GetDevice();
+        auto* context = Globals::GetContext();
         spdlog::info("=== Deferred D3D init (device now available) ===");
+        spdlog::info("  Device: {}, Context: {}", fmt::ptr(device), fmt::ptr(context));
+        spdlog::info("  Renderer: {:#x}", Globals::GetRenderer());
+        spdlog::info("  BSLightingShader: {:#x}", Globals::GetBSLightingShader());
         s_deferredD3DInitDone = true;
 
         State::GetSingleton().Initialize();
