@@ -41,31 +41,15 @@ namespace {
                 auto base = REL::Module::get().base();
                 auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
 
-                spdlog::info("===SHADER#{} addr={} vtable_rva={:#x}===",
-                             s_seenCount, fmt::ptr(shader), vtablePtr - base);
+                // Type field confirmed at +0x18 from shader dump:
+                //   type=6  -> BSGrassShader
+                //   type=12 -> BSImagespaceShader
+                //   type=8  -> BSLightingShader (what we want)
+                uint32_t shaderType = *reinterpret_cast<uint32_t*>(shaderAddr + 0x18);
+                spdlog::info("===SHADER#{} addr={} vtable_rva={:#x} type+0x18={}===",
+                             s_seenCount, fmt::ptr(shader), vtablePtr - base, shaderType);
 
-                // Dump uint32 values at wide range of offsets to find type field
-                // BSShader type is a small integer (0-20). Look for it.
-                std::string line;
-                for (size_t off = 0x10; off <= 0x30; off += 4) {
-                    uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
-                    if (val <= 20) {  // Only log small values that could be shader types
-                        line += fmt::format("+{:#x}={} ", off, val);
-                    }
-                }
-                if (!line.empty()) spdlog::info("  Small vals: {}", line);
-
-                // Check for type=8 at ANY uint32 offset in first 0x30 bytes
-                bool found8 = false;
-                for (size_t off = 0x10; off <= 0x30; off += 4) {
-                    uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
-                    if (val == 8) {
-                        spdlog::info("  >>> TYPE=8 AT +{:#x} <<<", off);
-                        found8 = true;
-                    }
-                }
-
-                if (found8) {
+                if (shaderType == 8) {
                     s_shaderReplacementDone = true;
                     s_capturedBSLightingShader = shader;
                     spdlog::info("  *** BSLightingShader FOUND! Triggering replacement ***");
