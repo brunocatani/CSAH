@@ -26,70 +26,20 @@ namespace {
             TryDeferredD3DInit();
         }
 
-        // Identify BSLightingShader by probing the PS scatter table for parallax technique IDs.
-        // We can't rely on vtable address matching (VR vtable differs from flat).
-        // Instead, try each new shader we see — only BSLightingShader will have entries with 0x0800 bit.
+        // Identify BSLightingShader by checking the BSShader type field at offset +0x18.
+        // From Ghidra: BSShader constructor stores type as uint32 at this+0x18.
+        // BSLightingShader = type 8 (confirmed from Skyrim CS RE and FO4 constructors).
         if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
-            static uintptr_t s_triedVtables[32] = {};
-            static int s_triedCount = 0;
-            auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
+            uint32_t shaderType = *reinterpret_cast<uint32_t*>(
+                reinterpret_cast<uintptr_t>(shader) + 0x18);
 
-            // Only try each unique vtable once
-            bool alreadyTried = false;
-            for (int i = 0; i < s_triedCount; ++i) {
-                if (s_triedVtables[i] == vtablePtr) { alreadyTried = true; break; }
-            }
-            if (!alreadyTried && s_triedCount < 32) {
-                s_triedVtables[s_triedCount++] = vtablePtr;
-                auto base = REL::Module::get().base();
-                spdlog::info("BeginTechnique: Probing shader vtable RVA={:#x} for PS scatter table",
-                             vtablePtr - base);
-
-                // Probe the PS scatter table (FO4VR layout from Ghidra):
-                // Table starts at BSShader+0xB8, bucketCount at +0x04, buckets at +0x20
-                auto tableBase = reinterpret_cast<uintptr_t>(shader) + 0xB8;
-                uint32_t bucketCount = *reinterpret_cast<uint32_t*>(tableBase + 0x04);
-                auto* buckets = *reinterpret_cast<void**>(tableBase + 0x20);
-
-                if (buckets && bucketCount > 0 && bucketCount < 0x10000) {
-                    // Check if this is BSLightingShader by sampling technique IDs.
-                    // BSLightingShader material types are 0-0x13 (from Ghidra name builder).
-                    // Other shaders have different encodings (e.g., material type 0x2A).
-                    struct ScatterEntry { void* data; void* next; };
-                    auto* entries = reinterpret_cast<ScatterEntry*>(buckets);
-                    bool looksLikeLighting = false;
-                    for (uint32_t i = 0; i < bucketCount && i < 100; ++i) {
-                        if (!entries[i].data) continue;
-                        uint32_t key = *reinterpret_cast<uint32_t*>(entries[i].data);
-                        if (key <= 1) continue;  // Skip empty/trivial entries
-                        uint32_t matType = (key >> 8) & 0x3F;
-                        // Valid BSLightingShader material types: 0-9, 0xB-0x10, 0x12-0x13
-                        // (0x0A is skipped in BSLighting technique name builder)
-                        if (matType <= 0x13 && matType != 0x0A) {
-                            looksLikeLighting = true;
-                            spdlog::info("  Found BSLightingShader-compatible key {:#010x} (matType={:#x})",
-                                         key, matType);
-                            break;
-                        }
-                    }
-
-                    if (looksLikeLighting) {
-                        spdlog::info("  PS scatter table: bucketCount={}, confirmed BSLightingShader",
-                                     bucketCount);
-                        s_shaderReplacementDone = true;
-                        s_capturedBSLightingShader = shader;
-                        spdlog::info("  Triggering filtered replacement");
-                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
-                    } else {
-                        auto base = REL::Module::get().base();
-                        spdlog::info("  PS scatter table (count={}) but NOT BSLightingShader (vtable RVA={:#x})",
-                                     bucketCount, vtablePtr - base);
-                    }
-                } else {
-                    spdlog::debug("  No valid PS scatter table (count={}, buckets={})",
-                                  bucketCount, fmt::ptr(buckets));
-                }
+            if (shaderType == 8) {  // BSLightingShader
+                s_shaderReplacementDone = true;
+                s_capturedBSLightingShader = shader;
+                spdlog::info("BeginTechnique: Found BSLightingShader (type=8) at {}", fmt::ptr(shader));
+                spdlog::info("  Triggering filtered replacement for parallax permutations");
+                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
             }
         }
 
