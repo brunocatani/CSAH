@@ -8,6 +8,13 @@ public:
     // Walk scatter table for a shader type and replace all permutations with custom-compiled versions
     void ReplaceAllPermutations(void* bsShader, uint32_t shaderType);
 
+    // Walk scatter table for a shader type and replace only PS permutations matching the filter predicate
+    void ReplaceFilteredPermutations(void* bsShader, uint32_t shaderType,
+        std::function<bool(uint32_t techniqueID)> filter);
+
+    // Restore all vanilla PS pointers captured during filtered replacement
+    void RestoreAllVanillaPS();
+
     // Replace a single technique's pixel shader
     bool ReplacePixelShader(void* bsShader, uint32_t techniqueID, ID3D11PixelShader* customPS);
 
@@ -21,6 +28,9 @@ public:
     // Vanilla fallbacks (captured before replacement)
     std::unordered_map<uint64_t, ID3D11PixelShader*> vanillaPS;
     std::unordered_map<uint64_t, ID3D11VertexShader*> vanillaVS;
+
+    // Slot addresses for vanilla PS rollback (populated by ReplaceFilteredPermutations)
+    std::unordered_map<uint64_t, ID3D11PixelShader**> vanillaPSSlots;
 
 private:
     ShaderReplacer() = default;

@@ -163,6 +163,18 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 
     auto& cache = ShaderCache::GetSingleton();
 
+    // Map shader type to HLSL filename
+    static const std::unordered_map<uint32_t, std::wstring> kShaderFiles = {
+        {8, L"Data/Shaders/Community/Lighting.hlsl"},
+        {6, L"Data/Shaders/Community/Grass.hlsl"},
+    };
+    auto fileIt = kShaderFiles.find(shaderType);
+    if (fileIt == kShaderFiles.end()) {
+        spdlog::warn("ShaderReplacer: No custom HLSL for shader type {}, skipping", shaderType);
+        return;
+    }
+    const std::wstring& hlslPath = fileIt->second;
+
     // --- Pixel Shader pass ---
     uint32_t totalPS = 0;
     uint32_t replacedPS = 0;
@@ -202,9 +214,6 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 
         // Build defines and compile from HLSL source
         auto defines = cache.BuildDefines(shaderType, techniqueID, true);
-
-        // HLSL source path: Data/Shaders/Community/<shaderType>.hlsl
-        std::wstring hlslPath = std::format(L"Data/Shaders/Community/{}.hlsl", shaderType);
 
         compiled = cache.CompileShader(hlslPath, "PSMain", "ps_5_0", defines);
 
@@ -262,8 +271,6 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 
         auto defines = cache.BuildDefines(shaderType, techniqueID, false);
 
-        std::wstring hlslPath = std::format(L"Data/Shaders/Community/{}.hlsl", shaderType);
-
         compiled = cache.CompileShader(hlslPath, "VSMain", "vs_5_0", defines);
 
         if (compiled.valid && compiled.vs) {
@@ -285,4 +292,118 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 
     spdlog::info("ShaderReplacer: Replacement complete for shader type {} - PS {}/{}, VS {}/{}",
         shaderType, replacedPS, totalPS, replacedVS, totalVS);
+}
+
+void ShaderReplacer::ReplaceFilteredPermutations(void* bsShader, uint32_t shaderType,
+    std::function<bool(uint32_t techniqueID)> filter)
+{
+    if (!bsShader) {
+        spdlog::error("ShaderReplacer::ReplaceFilteredPermutations - null BSShader pointer");
+        return;
+    }
+
+    auto& cache = ShaderCache::GetSingleton();
+
+    // Map shader type to HLSL filename
+    static const std::unordered_map<uint32_t, std::wstring> kShaderFiles = {
+        {8, L"Data/Shaders/Community/Lighting.hlsl"},
+        {6, L"Data/Shaders/Community/Grass.hlsl"},
+    };
+    auto fileIt = kShaderFiles.find(shaderType);
+    if (fileIt == kShaderFiles.end()) {
+        spdlog::warn("ShaderReplacer: No custom HLSL for shader type {}, skipping", shaderType);
+        return;
+    }
+    const std::wstring& hlslPath = fileIt->second;
+
+    // --- Pixel Shader pass only (VS stays vanilla) ---
+    uint32_t totalPS = 0;
+    uint32_t replacedPS = 0;
+    uint32_t failedPS = 0;
+    uint32_t cachedPS = 0;
+    uint32_t skippedPS = 0;
+
+    spdlog::info("ShaderReplacer: Starting filtered PS replacement pass for shader type {} at {}",
+        shaderType, fmt::ptr(bsShader));
+
+    WalkScatterTable(bsShader, kPSTableOffset, [&](uint32_t techniqueID, void* shaderObj) {
+        ++totalPS;
+
+        // Apply filter — skip permutations that don't match
+        if (!filter(techniqueID)) {
+            ++skippedPS;
+            return;
+        }
+
+        // Build a composite key: (shaderType << 32) | techniqueID
+        uint64_t mapKey = (static_cast<uint64_t>(shaderType) << 32) | techniqueID;
+
+        // Resolve the D3D pointer slot address
+        auto* slotAddr = reinterpret_cast<ID3D11PixelShader**>(
+            reinterpret_cast<uintptr_t>(shaderObj) + kD3DShaderPtrOffset);
+        ID3D11PixelShader* vanilla = *slotAddr;
+
+        // Save vanilla pointer and slot address only on first replacement
+        if (vanillaPS.find(mapKey) == vanillaPS.end()) {
+            vanillaPS[mapKey] = vanilla;
+            vanillaPSSlots[mapKey] = slotAddr;
+        }
+
+        // Try disk cache first
+        std::string cacheKey = cache.MakeCacheKey(shaderType, techniqueID, true);
+        ShaderCache::CompiledShader compiled;
+
+        if (cache.LoadFromDiskCache(cacheKey, compiled) && compiled.valid && compiled.ps) {
+            *slotAddr = compiled.ps.Get();
+            keepAlivePS.push_back(std::move(compiled.ps));
+            ++replacedPS;
+            ++cachedPS;
+            spdlog::trace("ShaderReplacer: Filtered PS {:#010x} loaded from disk cache", techniqueID);
+            return;
+        }
+
+        // Build defines and compile from HLSL source
+        auto defines = cache.BuildDefines(shaderType, techniqueID, true);
+
+        compiled = cache.CompileShader(hlslPath, "PSMain", "ps_5_0", defines);
+
+        if (compiled.valid && compiled.ps) {
+            cache.SaveToDiskCache(cacheKey, compiled);
+
+            *slotAddr = compiled.ps.Get();
+            keepAlivePS.push_back(std::move(compiled.ps));
+            ++replacedPS;
+
+            spdlog::trace("ShaderReplacer: Filtered PS {:#010x} compiled and replaced", techniqueID);
+        } else {
+            ++failedPS;
+            spdlog::trace("ShaderReplacer: Filtered PS {:#010x} compile failed, keeping vanilla", techniqueID);
+        }
+    });
+
+    spdlog::info("ShaderReplacer: Filtered PS pass complete - total={}, skipped={}, replaced={} (cached={}), failed={}, vanilla-kept={}",
+        totalPS, skippedPS, replacedPS, cachedPS, failedPS, totalPS - skippedPS - replacedPS);
+}
+
+void ShaderReplacer::RestoreAllVanillaPS()
+{
+    uint32_t restored = 0;
+    uint32_t missing = 0;
+
+    for (auto& [mapKey, vanilla] : vanillaPS) {
+        auto slotIt = vanillaPSSlots.find(mapKey);
+        if (slotIt == vanillaPSSlots.end() || !slotIt->second) {
+            ++missing;
+            spdlog::warn("ShaderReplacer::RestoreAllVanillaPS - no slot address for key {:#018x}", mapKey);
+            continue;
+        }
+
+        *slotIt->second = vanilla;
+        ++restored;
+
+        spdlog::trace("ShaderReplacer::RestoreAllVanillaPS - restored key {:#018x} -> {}",
+            mapKey, fmt::ptr(vanilla));
+    }
+
+    spdlog::info("ShaderReplacer::RestoreAllVanillaPS - restored={}, missing-slots={}", restored, missing);
 }
