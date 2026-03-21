@@ -26,10 +26,9 @@ namespace {
             TryDeferredD3DInit();
         }
 
-        // Identify BSLightingShader by checking the BSShader type field.
-        // Log type candidates from each unique shader to find the correct offset.
+        // DIAGNOSTIC: Dump everything about each unique shader to find BSLightingShader
         if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
-            static uintptr_t s_seenShaders[32] = {};
+            static uintptr_t s_seenShaders[64] = {};
             static int s_seenCount = 0;
             auto shaderAddr = reinterpret_cast<uintptr_t>(shader);
 
@@ -37,36 +36,80 @@ namespace {
             for (int i = 0; i < s_seenCount; ++i) {
                 if (s_seenShaders[i] == shaderAddr) { alreadySeen = true; break; }
             }
-            if (!alreadySeen && s_seenCount < 32) {
+            if (!alreadySeen && s_seenCount < 64) {
                 s_seenShaders[s_seenCount++] = shaderAddr;
                 auto base = REL::Module::get().base();
                 auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
 
-                // Read the name pointer at offset 0x1C8 (param_1[0x39])
-                auto namePtr = *reinterpret_cast<const char**>(shaderAddr + 0x1C8);
-                const char* name = "?";
-                // Validate pointer before reading
-                if (namePtr && reinterpret_cast<uintptr_t>(namePtr) > 0x10000 &&
-                    reinterpret_cast<uintptr_t>(namePtr) < 0x7FFFFFFFFFFF) {
-                    name = namePtr;
+                spdlog::info("========== SHADER DUMP #{} ==========", s_seenCount);
+                spdlog::info("  Address: {}", fmt::ptr(shader));
+                spdlog::info("  Vtable RVA: {:#x}", vtablePtr - base);
+
+                // Dump raw uint32 values at many offsets to find type field
+                for (size_t off = 0x10; off <= 0x28; off += 4) {
+                    uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
+                    spdlog::info("  +{:#04x} (u32): {} ({:#x})", off, val, val);
                 }
 
-                // Read type candidates at common offsets
-                uint32_t type18 = *reinterpret_cast<uint32_t*>(shaderAddr + 0x18);
-                uint32_t type1C = *reinterpret_cast<uint32_t*>(shaderAddr + 0x1C);
-                uint32_t type20 = *reinterpret_cast<uint32_t*>(shaderAddr + 0x20);
+                // Try to read name/string pointers at various offsets
+                // BSShader stores name at param_1[0x39] = +0x1C8
+                // But VR class layout may differ
+                for (size_t off : {0x1C0ull, 0x1C8ull, 0x1D0ull, 0x1D8ull, 0x1E0ull}) {
+                    auto ptr = *reinterpret_cast<uintptr_t*>(shaderAddr + off);
+                    if (ptr > 0x10000 && ptr < 0x7FFFFFFFFFFF) {
+                        // Check if it looks like a string (first few bytes are printable ASCII)
+                        auto cstr = reinterpret_cast<const char*>(ptr);
+                        bool isString = true;
+                        for (int i = 0; i < 4 && cstr[i]; ++i) {
+                            if (cstr[i] < 0x20 || cstr[i] > 0x7E) { isString = false; break; }
+                        }
+                        if (isString && cstr[0] != '\0') {
+                            spdlog::info("  +{:#04x} (str): \"{}\"", off, cstr);
+                        }
+                    }
+                }
 
-                spdlog::info("BeginTechnique: shader={} vtable_rva={:#x} name='{}' type+18={} +1C={} +20={}",
-                             fmt::ptr(shader), vtablePtr - base, name, type18, type1C, type20);
+                // Also try at lower offsets where some BSShader implementations store names
+                for (size_t off : {0x30ull, 0x38ull, 0x40ull, 0x48ull, 0x50ull, 0x58ull}) {
+                    auto ptr = *reinterpret_cast<uintptr_t*>(shaderAddr + off);
+                    if (ptr > 0x10000 && ptr < 0x7FFFFFFFFFFF) {
+                        auto cstr = reinterpret_cast<const char*>(ptr);
+                        bool isString = true;
+                        for (int i = 0; i < 4 && cstr[i]; ++i) {
+                            if (cstr[i] < 0x20 || cstr[i] > 0x7E) { isString = false; break; }
+                        }
+                        if (isString && cstr[0] != '\0') {
+                            spdlog::info("  +{:#04x} (str): \"{}\"", off, cstr);
+                        }
+                    }
+                }
 
-                // Check all offsets for type 8
-                if (type18 == 8 || type1C == 8 || type20 == 8) {
+                // Dump the first 8 qwords as hex for manual inspection
+                spdlog::info("  Raw qwords:");
+                for (size_t i = 0; i < 8; ++i) {
+                    auto val = *reinterpret_cast<uintptr_t*>(shaderAddr + i * 8);
+                    spdlog::info("    +{:#04x}: {:#018x}", i * 8, val);
+                }
+
+                // Check for type=8 at ANY offset in the first 0x30 bytes
+                bool found8 = false;
+                for (size_t off = 0x10; off <= 0x28; off += 4) {
+                    uint32_t val = *reinterpret_cast<uint32_t*>(shaderAddr + off);
+                    if (val == 8) {
+                        spdlog::info("  >>> TYPE=8 FOUND AT +{:#04x}! <<<", off);
+                        found8 = true;
+                    }
+                }
+
+                if (found8) {
                     s_shaderReplacementDone = true;
                     s_capturedBSLightingShader = shader;
                     spdlog::info("  *** BSLightingShader FOUND! Triggering replacement ***");
                     ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
                         [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
                 }
+
+                spdlog::info("========== END SHADER DUMP ==========");
             }
         }
 
