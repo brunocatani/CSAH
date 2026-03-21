@@ -219,22 +219,48 @@ namespace {
             menuInitialized = true;
         }
 
-        // Retry shader replacement each frame until scatter tables are populated
+        // Retry shader replacement — check both base (+0xB8) and custom (+0x120) scatter tables
         if (!s_shaderReplacementDone.load()) {
+            static uint32_t s_frameCounter = 0;
+            ++s_frameCounter;
             auto base = REL::Module::get().base();
             auto singletonPtr = reinterpret_cast<void**>(base + 0x689b410);
             void* bsLighting = singletonPtr ? *singletonPtr : nullptr;
             if (bsLighting && Globals::GetDevice()) {
                 auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
-                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
-                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
-                if (psCount > 0 && psBuckets) {
+
+                // Check BOTH possible scatter table locations
+                uint32_t psCountBase = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
+                auto* psBucketsBase = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
+
+                // Custom table from BSLightingShader constructor:
+                // capacity at +0x124, buckets at +0x140
+                uint32_t psCountCustom = *reinterpret_cast<uint32_t*>(bsAddr + 0x124);
+                auto* psBucketsCustom = *reinterpret_cast<void**>(bsAddr + 0x140);
+
+                // Log every 300 frames (~5 sec) to track state
+                if (s_frameCounter % 300 == 1) {
+                    spdlog::info("Present[{}]: BSLighting scatter check — base(count={},buckets={}) custom(count={},buckets={})",
+                                 s_frameCounter, psCountBase, fmt::ptr(psBucketsBase),
+                                 psCountCustom, fmt::ptr(psBucketsCustom));
+                }
+
+                // Try base table first, then custom
+                void* targetShader = nullptr;
+                if (psCountBase > 0 && psBucketsBase) {
+                    targetShader = bsLighting;
+                    spdlog::info("Present: BASE scatter table populated! count={}", psCountBase);
+                } else if (psCountCustom > 0 && psBucketsCustom) {
+                    // Custom table found — need to update kPSTableOffset
+                    targetShader = bsLighting;
+                    spdlog::info("Present: CUSTOM scatter table populated! count={} at +0x120", psCountCustom);
+                }
+
+                if (targetShader) {
                     bool expected = false;
                     if (s_shaderReplacementDone.compare_exchange_strong(expected, true)) {
-                        s_capturedBSLightingShader = bsLighting;
-                        spdlog::info("Present: BSLightingShader PS scatter populated (count={}, buckets={})",
-                                     psCount, fmt::ptr(psBuckets));
-                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLighting, 8,
+                        s_capturedBSLightingShader = targetShader;
+                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(targetShader, 8,
                             [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
                     }
                 }
