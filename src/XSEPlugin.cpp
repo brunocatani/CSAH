@@ -53,44 +53,28 @@ namespace {
             }
             case F4SE::MessagingInterface::kGameDataReady:
             {
-                spdlog::info("=== GameDataReady: D3D and game data available ===");
+                spdlog::info("=== GameDataReady ===");
 
-                // NOW initialize globals — D3D device/context should be alive
+                // Probe globals — D3D may or may not be ready yet
                 Globals::Initialize();
 
-                // Initialize state (creates SharedDataCB — needs device)
-                State::GetSingleton().Initialize();
-
-                // Initialize shader cache
+                // Non-D3D init: shader cache directory setup
                 ShaderCache::GetSingleton().Initialize();
 
-                // Initialize features (create GPU resources — needs device)
-                Feature::InitializeAll();
-
-                // Install D3D and vtable hooks (needs renderer + vtables)
-                Hooks::InstallRenderHooks();
-                Hooks::InstallD3DHooks();
-
-                // Apply post-load engine fixes
-                EngineFixes::ApplyPostLoadFixes();
-
-                // Start cascade runtime
-                EngineFixes::StartCascadeRuntime();
-
-                // Shader replacement — BSLightingShader FXP is already loaded by this point.
-                // The LoadShaders hook deferred replacement because Globals wasn't ready.
-                // Now that D3D is initialized, trigger replacement on the BSLightingShader singleton.
-                {
-                    auto bsLightingAddr = Globals::GetBSLightingShader();
-                    if (bsLightingAddr) {
-                        auto* bsLightingShader = reinterpret_cast<void*>(bsLightingAddr);
-                        spdlog::info("Triggering deferred shader replacement for BSLightingShader at {}",
-                                     fmt::ptr(bsLightingShader));
-                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLightingShader, 8,
-                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
-                    } else {
-                        spdlog::warn("BSLightingShader singleton not available for deferred replacement");
-                    }
+                // D3D-dependent init is DEFERRED because kGameDataReady fires before
+                // D3D device is fully initialized (Device=0x0 observed in logs).
+                // The deferred init runs from Hook_LoadShaders when the device becomes
+                // available, or from Hook_BeginTechnique as a fallback.
+                if (Globals::GetDevice()) {
+                    spdlog::info("D3D device available at GameDataReady — rare, initializing now");
+                    State::GetSingleton().Initialize();
+                    Feature::InitializeAll();
+                    Hooks::InstallRenderHooks();
+                    Hooks::InstallD3DHooks();
+                    EngineFixes::ApplyPostLoadFixes();
+                    EngineFixes::StartCascadeRuntime();
+                } else {
+                    spdlog::warn("D3D device NOT ready at GameDataReady — will defer init to LoadShaders hook");
                 }
 
                 // Save settings (captures any defaults)

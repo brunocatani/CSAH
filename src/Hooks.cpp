@@ -3,16 +3,27 @@
 #include "State.h"
 #include "Feature.h"
 #include "Menu.h"
+#include "EngineFixes.h"
+#include "ShaderCache.h"
 #include <imgui.h>
 #include "ShaderReplacer.h"
 
 namespace {
+
+    // ---- Forward declarations for deferred D3D init ----
+    static bool s_deferredD3DInitDone = false;
+    static void TryDeferredD3DInit();
 
     // ---- Hook thunks ----
 
     static bool __fastcall Hook_BeginTechnique(void* shader, uint32_t vsTechID,
         uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass)
     {
+        // Fallback deferred D3D init — BeginTechnique fires during rendering when D3D is definitely ready
+        if (!s_deferredD3DInitDone) {
+            TryDeferredD3DInit();
+        }
+
         auto& state = State::GetSingleton();
         state.currentShader = shader;
         state.currentTechniqueID = psTechID;
@@ -46,6 +57,41 @@ namespace {
         }
     }
 
+    static void TryDeferredD3DInit()
+    {
+        if (s_deferredD3DInitDone) return;
+
+        // Re-probe globals — device may have become available since kGameDataReady
+        if (!Globals::GetDevice()) {
+            Globals::Initialize();  // Re-probe
+            if (!Globals::GetDevice()) return;  // Still not ready
+        }
+
+        spdlog::info("=== Deferred D3D init (device now available) ===");
+        s_deferredD3DInitDone = true;
+
+        State::GetSingleton().Initialize();
+        Feature::InitializeAll();
+        Hooks::InstallRenderHooks();
+        Hooks::InstallD3DHooks();
+        EngineFixes::ApplyPostLoadFixes();
+        EngineFixes::StartCascadeRuntime();
+
+        // Trigger shader replacement now that we can compile
+        auto bsLightingAddr = Globals::GetBSLightingShader();
+        if (bsLightingAddr) {
+            spdlog::info("Triggering deferred shader replacement for BSLightingShader");
+            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(
+                reinterpret_cast<void*>(bsLightingAddr), 8,
+                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+        } else {
+            spdlog::warn("BSLightingShader singleton still not available");
+        }
+
+        Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
+        spdlog::info("=== Deferred D3D init complete ===");
+    }
+
     static void __fastcall Hook_LoadShaders(void* shader)
     {
         Hooks::OriginalLoadShaders(shader);
@@ -54,12 +100,11 @@ namespace {
         // BSShader+0x00 is the vtable pointer — compare to known vtable addresses
         if (!shader) return;
 
-        // Guard: D3D device must be available before we can compile/create shaders.
-        // Hook_LoadShaders fires during FXP loading which can happen BEFORE kGameDataReady
-        // (where Globals::Initialize() is called). Defer replacement until device is ready.
-        if (!Globals::IsInitialized()) {
-            spdlog::debug("BSShader::LoadShaders — deferring replacement (Globals not yet initialized)");
-            return;
+        // Try deferred D3D init on each LoadShaders call — device may become available
+        // between kGameDataReady and the end of shader loading
+        if (!s_deferredD3DInitDone) {
+            TryDeferredD3DInit();
+            if (!s_deferredD3DInitDone) return;  // Still not ready
         }
 
         auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
@@ -247,6 +292,10 @@ namespace Hooks {
 
         // IDXGISwapChain vtable: Present is entry [8] (byte offset +64)
         auto swapChainVtable = *reinterpret_cast<uintptr_t**>(swapChain);
+        if (!swapChainVtable) {
+            spdlog::error("  SwapChain vtable pointer is null (D3D not fully initialized?) - skipping D3D hooks");
+            return;
+        }
 
         void* origPresent = nullptr;
         if (PatchVtableEntry(swapChainVtable, 8, reinterpret_cast<void*>(Hook_Present), &origPresent)) {
