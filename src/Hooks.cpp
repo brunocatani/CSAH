@@ -26,38 +26,20 @@ namespace {
             TryDeferredD3DInit();
         }
 
-        // DIAGNOSTIC: Dump everything about each unique shader to find BSLightingShader
-        if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
-            static uintptr_t s_seenShaders[64] = {};
-            static int s_seenCount = 0;
-            auto shaderAddr = reinterpret_cast<uintptr_t>(shader);
-
-            bool alreadySeen = false;
-            for (int i = 0; i < s_seenCount; ++i) {
-                if (s_seenShaders[i] == shaderAddr) { alreadySeen = true; break; }
-            }
-            if (!alreadySeen && s_seenCount < 64) {
-                s_seenShaders[s_seenCount++] = shaderAddr;
-                auto base = REL::Module::get().base();
-                auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
-
-                // Type field confirmed at +0x18 from shader dump:
-                //   type=6  -> BSGrassShader
-                //   type=12 -> BSImagespaceShader
-                //   type=8  -> BSLightingShader (what we want)
-                uint32_t shaderType = *reinterpret_cast<uint32_t*>(shaderAddr + 0x18);
-                spdlog::info("===SHADER#{} addr={} vtable_rva={:#x} type+0x18={}===",
-                             s_seenCount, fmt::ptr(shader), vtablePtr - base, shaderType);
-
-                if (shaderType == 8) {
-                    s_shaderReplacementDone = true;
-                    s_capturedBSLightingShader = shader;
-                    spdlog::info("  *** BSLightingShader FOUND! Triggering replacement ***");
-                    ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                        [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
-                }
-
-                spdlog::info("========== END SHADER DUMP ==========");
+        // Get BSLightingShader directly from its singleton (found via Ghidra constructor)
+        // Singleton at base+0x689b410 (DAT_14689b410 in Ghidra decompilation)
+        if (!s_shaderReplacementDone && Globals::GetDevice()) {
+            auto base = REL::Module::get().base();
+            auto singletonPtr = reinterpret_cast<void**>(base + 0x689b410);
+            void* bsLighting = singletonPtr ? *singletonPtr : nullptr;
+            if (bsLighting) {
+                s_shaderReplacementDone = true;
+                s_capturedBSLightingShader = bsLighting;
+                spdlog::info("BeginTechnique: BSLightingShader singleton at {} (from base+0x689b410)",
+                             fmt::ptr(bsLighting));
+                spdlog::info("  Triggering filtered replacement for parallax permutations");
+                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLighting, 8,
+                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
             }
         }
 
