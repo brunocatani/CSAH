@@ -66,7 +66,8 @@ namespace {
                 // The deferred init runs from Hook_LoadShaders when the device becomes
                 // available, or from Hook_BeginTechnique as a fallback.
                 if (Globals::GetDevice()) {
-                    spdlog::info("D3D device available at GameDataReady — rare, initializing now");
+                    spdlog::info("D3D device available at GameDataReady, initializing now");
+                    Hooks::MarkDeferredInitDone();  // Prevent deferred path from running again
                     State::GetSingleton().Initialize();
                     Feature::InitializeAll();
                     Hooks::InstallRenderHooks();

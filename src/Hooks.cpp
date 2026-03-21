@@ -12,6 +12,7 @@ namespace {
 
     // ---- Forward declarations for deferred D3D init ----
     static bool s_deferredD3DInitDone = false;
+    static void* s_capturedBSLightingShader = nullptr;  // Captured from Hook_LoadShaders
     static void TryDeferredD3DInit();
 
     // ---- Hook thunks ----
@@ -82,15 +83,15 @@ namespace {
         EngineFixes::ApplyPostLoadFixes();
         EngineFixes::StartCascadeRuntime();
 
-        // Trigger shader replacement now that we can compile
-        auto bsLightingAddr = Globals::GetBSLightingShader();
-        if (bsLightingAddr) {
-            spdlog::info("Triggering deferred shader replacement for BSLightingShader");
+        // Trigger shader replacement using captured pointer from Hook_LoadShaders
+        if (s_capturedBSLightingShader) {
+            spdlog::info("Triggering deferred shader replacement for BSLightingShader at {}",
+                         fmt::ptr(s_capturedBSLightingShader));
             ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(
-                reinterpret_cast<void*>(bsLightingAddr), 8,
+                s_capturedBSLightingShader, 8,
                 [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
         } else {
-            spdlog::warn("BSLightingShader singleton still not available");
+            spdlog::warn("BSLightingShader not yet captured from Hook_LoadShaders");
         }
 
         Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
@@ -113,15 +114,22 @@ namespace {
         }
 
         auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
-        auto base = Globals::GetBase();
+        auto base = REL::Module::get().base();
         if (!base) return;
 
         if (vtablePtr == base + 0x309AAB8) {
-            // BSLightingShader (type 8)
-            spdlog::info("BSShader::LoadShaders — BSLightingShader loaded at {}, triggering filtered replacement (POM permutations only)",
-                         fmt::ptr(shader));
-            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+            // BSLightingShader (type 8) — always capture the pointer
+            s_capturedBSLightingShader = shader;
+            spdlog::info("BSShader::LoadShaders — BSLightingShader captured at {}", fmt::ptr(shader));
+
+            // Only do shader replacement if D3D init is done
+            if (s_deferredD3DInitDone && Globals::GetDevice()) {
+                spdlog::info("  Triggering filtered replacement (POM permutations only)");
+                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+            } else {
+                spdlog::info("  Deferring replacement (D3D not ready or init pending)");
+            }
         } else if (vtablePtr == base + 0x3098DA8) {
             // BSGrassShader (type 6) — future use
             spdlog::info("BSShader::LoadShaders — BSGrassShader loaded at {}", fmt::ptr(shader));
@@ -316,6 +324,11 @@ namespace Hooks {
         } else {
             spdlog::error("  Failed to hook IDXGISwapChain::Present");
         }
+    }
+
+    void MarkDeferredInitDone()
+    {
+        s_deferredD3DInitDone = true;
     }
 
     void InstallAll()

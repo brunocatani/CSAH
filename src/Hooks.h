@@ -6,6 +6,7 @@ namespace Hooks {
     void InstallShaderHooks();
     void InstallRenderHooks();
     void InstallD3DHooks();
+    void MarkDeferredInitDone();
 
     // --- Hook function types ---
 
@@ -30,4 +31,7 @@ namespace Hooks {
     // IDXGISwapChain::Present
     using Present_t = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);
     inline Present_t OriginalPresent = nullptr;
+
+    // Original WndProc (captured via SetWindowLongPtrA)
+    inline WNDPROC OriginalWndProc = nullptr;
 }
