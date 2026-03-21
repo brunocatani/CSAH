@@ -52,15 +52,35 @@ namespace {
                 auto* buckets = *reinterpret_cast<void**>(tableBase + 0x20);
 
                 if (buckets && bucketCount > 0 && bucketCount < 0x10000) {
-                    spdlog::info("  PS scatter table found: bucketCount={}, buckets={}",
-                                 bucketCount, fmt::ptr(buckets));
-                    // This looks like a valid shader with a PS scatter table.
-                    // Try replacement — it will only compile parallax permutations.
-                    s_shaderReplacementDone = true;
-                    s_capturedBSLightingShader = shader;
-                    spdlog::info("  Triggering filtered replacement on this shader");
-                    ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                        [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                    // Check if this is BSLightingShader by sampling technique IDs.
+                    // BSLightingShader material types are 0-0x13 (from Ghidra name builder).
+                    // Other shaders have different encodings (e.g., material type 0x2A).
+                    struct ScatterEntry { void* data; void* next; };
+                    auto* entries = reinterpret_cast<ScatterEntry*>(buckets);
+                    bool looksLikeLighting = false;
+                    for (uint32_t i = 0; i < bucketCount && i < 100; ++i) {
+                        if (!entries[i].data) continue;
+                        uint32_t key = *reinterpret_cast<uint32_t*>(entries[i].data);
+                        uint32_t matType = (key >> 8) & 0x3F;
+                        if (matType <= 0x13) {
+                            looksLikeLighting = true;
+                            spdlog::info("  Found BSLightingShader-compatible key {:#010x} (matType={:#x})",
+                                         key, matType);
+                            break;
+                        }
+                    }
+
+                    if (looksLikeLighting) {
+                        spdlog::info("  PS scatter table: bucketCount={}, confirmed BSLightingShader",
+                                     bucketCount);
+                        s_shaderReplacementDone = true;
+                        s_capturedBSLightingShader = shader;
+                        spdlog::info("  Triggering filtered replacement");
+                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                    } else {
+                        spdlog::info("  PS scatter table found but NOT BSLightingShader (matTypes out of range)");
+                    }
                 } else {
                     spdlog::debug("  No valid PS scatter table (count={}, buckets={})",
                                   bucketCount, fmt::ptr(buckets));
