@@ -72,11 +72,11 @@ namespace Globals {
     ID3D11Device* GetDevice()
     {
         // Read from global pointer location
-        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x609BF88);
+        // From Ghidra: DAT_1460f3cf0 = *(renderer+0x48) = Device
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x60F3CF0);
         if (!ptr) return nullptr;
         auto device = reinterpret_cast<ID3D11Device*>(*ptr);
         if (!device || !IsValidPointer(reinterpret_cast<uintptr_t>(device))) return nullptr;
-        // Validate vtable pointer
         auto vtable = *reinterpret_cast<uintptr_t*>(device);
         if (!IsValidPointer(vtable)) return nullptr;
         return device;
@@ -84,7 +84,8 @@ namespace Globals {
 
     ID3D11DeviceContext* GetContext()
     {
-        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x609BF98);
+        // From Ghidra: DAT_1460f3d08 = *(renderer+0x50) = Context
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x60F3D08);
         if (!ptr) return nullptr;
         auto ctx = reinterpret_cast<ID3D11DeviceContext*>(*ptr);
         if (!ctx || !IsValidPointer(reinterpret_cast<uintptr_t>(ctx))) return nullptr;
@@ -97,7 +98,8 @@ namespace Globals {
 
     uintptr_t GetRenderer()
     {
-        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x609BF80);
+        // From Ghidra: DAT_1460f3ce8 = Renderer singleton
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x60F3CE8);
         return ptr ? *ptr : 0;
     }
 

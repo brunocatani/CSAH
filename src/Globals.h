@@ -5,12 +5,12 @@ namespace Globals {
     void Initialize();
     bool IsInitialized();
 
-    // D3D11 — from Renderer singleton at base+0x609BF80
-    ID3D11Device* GetDevice();           // base+0x609BF88
-    ID3D11DeviceContext* GetContext();    // base+0x609BF98
+    // D3D11 — from Ghidra RE of FO4VR D3D11CreateDeviceAndSwapChain call
+    ID3D11Device* GetDevice();           // base+0x60F3CF0 (DAT_1460f3cf0)
+    ID3D11DeviceContext* GetContext();    // base+0x60F3D08 (DAT_1460f3d08)
 
     // Renderer
-    uintptr_t GetRenderer();             // base+0x609BF80
+    uintptr_t GetRenderer();             // base+0x60F3CE8 (DAT_1460f3ce8)
     uintptr_t GetRenderManager();        // base+0x6239340
     uintptr_t GetGraphicsState();        // base+0x6235AC0
 

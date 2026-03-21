@@ -285,7 +285,7 @@ namespace Hooks {
     {
         spdlog::info("Hooks::InstallD3DHooks - installing D3D vtable hooks...");
 
-        // Get swap chain: renderer singleton at base+0x609BF80, dereference, then offset +0x70
+        // Get swap chain: renderer at base+0x60F3CE8, dereference, SwapChain at renderer+0x70
         auto renderer = Globals::GetRenderer();
         if (!renderer) {
             spdlog::error("  Renderer singleton is null - skipping D3D hooks");
