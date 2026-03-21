@@ -61,64 +61,36 @@ namespace Globals {
 
     // ---- D3D11 (pointer dereference from Renderer singleton) ----
 
+    // Helper: check if a pointer looks like a valid heap/COM object (not garbage)
+    static bool IsValidPointer(uintptr_t ptr)
+    {
+        // Must be above 64KB (below is reserved), must be in user-mode range,
+        // and must be 8-byte aligned (COM objects are always aligned)
+        return ptr > 0x10000 && ptr < 0x00007FFFFFFFFFFF && (ptr & 0x7) == 0;
+    }
+
     ID3D11Device* GetDevice()
     {
-        // Try renderer-relative offset first (more reliable for VR)
-        auto renderer = GetRenderer();
-        if (renderer) {
-            // BSGraphics::Renderer stores device at various offsets depending on version
-            // Try common offsets: +0x08, +0x18, +0x58
-            for (size_t offset : {0x08, 0x18, 0x58}) {
-                auto candidate = *reinterpret_cast<ID3D11Device**>(renderer + offset);
-                if (candidate) {
-                    // Validate: a real ID3D11Device has a vtable whose first entry is QueryInterface
-                    // Simple sanity check: vtable pointer should be in a reasonable address range
-                    auto vtable = *reinterpret_cast<uintptr_t*>(candidate);
-                    if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
-                        return candidate;
-                    }
-                }
-            }
-        }
-
-        // Fallback: global pointer (original approach)
-        auto ptr = reinterpret_cast<ID3D11Device**>(s_base + 0x609BF88);
-        auto device = ptr ? *ptr : nullptr;
-        if (device) {
-            auto vtable = *reinterpret_cast<uintptr_t*>(device);
-            if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
-                return device;
-            }
-        }
-        return nullptr;
+        // Read from global pointer location
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x609BF88);
+        if (!ptr) return nullptr;
+        auto device = reinterpret_cast<ID3D11Device*>(*ptr);
+        if (!device || !IsValidPointer(reinterpret_cast<uintptr_t>(device))) return nullptr;
+        // Validate vtable pointer
+        auto vtable = *reinterpret_cast<uintptr_t*>(device);
+        if (!IsValidPointer(vtable)) return nullptr;
+        return device;
     }
 
     ID3D11DeviceContext* GetContext()
     {
-        // Try renderer-relative offset first
-        auto renderer = GetRenderer();
-        if (renderer) {
-            for (size_t offset : {0x10, 0x20, 0x60}) {
-                auto candidate = *reinterpret_cast<ID3D11DeviceContext**>(renderer + offset);
-                if (candidate) {
-                    auto vtable = *reinterpret_cast<uintptr_t*>(candidate);
-                    if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
-                        return candidate;
-                    }
-                }
-            }
-        }
-
-        // Fallback
-        auto ptr = reinterpret_cast<ID3D11DeviceContext**>(s_base + 0x609BF98);
-        auto ctx = ptr ? *ptr : nullptr;
-        if (ctx) {
-            auto vtable = *reinterpret_cast<uintptr_t*>(ctx);
-            if (vtable > 0x10000 && vtable < 0x00007FFFFFFFFFFF) {
-                return ctx;
-            }
-        }
-        return nullptr;
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x609BF98);
+        if (!ptr) return nullptr;
+        auto ctx = reinterpret_cast<ID3D11DeviceContext*>(*ptr);
+        if (!ctx || !IsValidPointer(reinterpret_cast<uintptr_t>(ctx))) return nullptr;
+        auto vtable = *reinterpret_cast<uintptr_t*>(ctx);
+        if (!IsValidPointer(vtable)) return nullptr;
+        return ctx;
     }
 
     // ---- Renderer ----
