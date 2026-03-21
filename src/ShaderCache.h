@@ -39,6 +39,18 @@ public:
     bool diskCacheEnabled = true;
     std::filesystem::path diskCachePath{"Data/ShaderCache"};
 
+    // Compilation statistics
+    struct Stats {
+        std::atomic<uint32_t> compiled{0};
+        std::atomic<uint32_t> cacheHits{0};
+        std::atomic<uint32_t> cacheMisses{0};
+        std::atomic<uint32_t> errors{0};
+    };
+    Stats stats;
+
+    // Clear disk cache and reset stats
+    void Clear();
+
 private:
     ShaderCache() = default;
 };

@@ -6,32 +6,30 @@
 
 ---
 
-## CRITICAL FINDING: Parallax Runs in the Vertex Shader, Not the Pixel Shader
+## CRITICAL FINDING: FO4 Has NO Vanilla Parallax Displacement in Shaders
 
-FO4's parallax offset is computed and applied in the **vertex shader**. The PS receives UVs
-that are already displaced. This is fundamentally different from Skyrim, where parallax is
-done in the PS using the height map.
+**UPDATE (post-VS investigation):** The initial analysis assumed parallax happened in the VS.
+After disassembling the BSLightingShader VS (shader 2358, 4992 bytes, 9 TEXCOORD outputs),
+we confirmed that the VS does NOT perform any parallax displacement. The UV math is:
 
-**Implication for POM implementation:**
+```
+outputUV = inputUV * cb1[0].zw + cb1[0].xy   // simple texture scale+offset transform
+```
 
-The vanilla pipeline is: `VS reads height → offsets UVs → PS samples at displaced UVs`
+This is just the standard material texture coordinate transform (tiling/offset from .bgsm),
+NOT a height-based parallax offset. There is no height map sampling in the VS at all.
 
-For proper Parallax Occlusion Mapping (POM) we need per-pixel ray-marching against the
-height field, which must happen in the PS. Two viable approaches exist:
+**The PS also has no parallax code** — it receives the texture-transformed UVs in v4.w/v5.w
+and samples textures directly without any displacement.
 
-1. **Intercept undisplaced UVs in the VS:** Patch or replace the VS to pass the original
-   (pre-offset) UVs in an additional interpolator, then perform the full POM ray-march in the
-   PS using those undisplaced UVs. This produces correct results but requires VS modification.
-
-2. **Override VS displacement in PS:** Accept that the UVs arriving in v4.w/v5.w are already
-   displaced by one step of VS parallax, then re-read the raw vertex UV from the mesh stream
-   (not available in PS) — OR simply discard the VS displacement and re-derive UVs from the
-   tangent-space view vector that arrives in v1/v2/v3/v8/v9/v10. In practice this means the
-   VS parallax offset is a free "rough approximation" and the PS POM refines from there, at
-   the cost of a slight first-step error.
-
-**Recommended approach:** Approach 1 — intercept undisplaced UVs by patching the VS or by
-using a constant-buffer flag to suppress the VS offset when our PS POM extension is active.
+**What this means for our POM implementation:**
+- The UVs at v4.w/v5.w are **clean, undisplaced texture coordinates**
+- There is **no vanilla parallax to suppress or undo**
+- We simply inject POM ray-marching in the PS before texture sampling
+- The `PARALLAX_OCCLUSION_MAPPING` flag (0x0800) exists in the technique system but
+  the compiled shaders don't implement any displacement — ENB adds parallax via its own
+  shader injection, which is why the texture packs were designed for ENB
+- This makes our job much simpler: we're ADDING POM, not REPLACING existing parallax
 
 ---
 
@@ -220,7 +218,7 @@ Used by both shader 2682 and 2624. Indices beyond [7] only present in rich permu
 1. **CB register layout:** Game uses `b2` (PerMaterial) and `b12` (PerGeometry). Our CB at `b5` is safe.
 2. **UV packing:** Displaced UVs arrive in `v4.w` (U) and `v5.w` (V), NOT as a standard float2.
 3. **Height map location:** `t2` alpha channel (specular texture), sampler `s2`.
-4. **Parallax in VS:** The game applies parallax offset in the vertex shader. PS receives pre-displaced UVs.
+4. **No vanilla parallax:** FO4's compiled shaders have no parallax displacement. UVs are just texture-transformed.
 5. **Normal encoding:** Modified octahedral, packed into o1.xy with z stored as `-N.z` in o1.z.
 6. **Alpha test:** Enabled via `cb2[2].y == 1.0`, threshold from `cb2[2].x`.
 7. **GBuffer:** 5 render targets (albedo, normals, material, specular, emissive).
@@ -228,22 +226,18 @@ Used by both shader 2682 and 2624. Indices beyond [7] only present in rich permu
 
 ---
 
-## POM Implementation Implications
+## POM Implementation Approach
 
-Given that vanilla parallax is VS-based, our POM PS replacement must handle two cases:
+Since FO4 has NO vanilla parallax in the compiled shaders, our approach is straightforward:
 
-### Case A — VS parallax suppression (preferred)
-- Patch the loaded VS bytecode to zero out the height-based UV offset when our POM extension
-  is active (detected via a flag in the ExtendedMaterials CB at b5).
-- PS receives raw, undisplaced UVs in v4.w/v5.w.
-- PS performs full POM ray-march against t2.a height map.
-- Most accurate result.
+1. Replace the PS for `PARALLAX_OCCLUSION_MAPPING` permutations
+2. Read UVs from v4.w/v5.w (clean, texture-transformed coordinates)
+3. Before any texture sampling, run POM ray-march against t2.a (height map)
+4. Use displaced UVs for all subsequent texture reads (t0, t1, t2)
+5. Write to all 5 GBuffer render targets matching vanilla output format
 
-### Case B — PS-only override (fallback)
-- Accept the one-step VS displacement as a rough initial guess.
-- PS performs POM starting from the already-displaced UV, treating it as the first ray step.
-- Minor artifact at grazing angles on the first sample. Acceptable for most surfaces.
-- No VS patching required — simpler to implement initially.
+The tangent-space basis from v1/v2/v3 (tangent, bitangent, normal) constructs the view
+vector in tangent space, which drives the POM ray direction. World-space TBN (v8/v9/v10)
+is available in rich permutations for additional normal mapping quality.
 
-Both cases use the tangent-space basis from v1/v2/v3 (tangent, bitangent, normal) to
-construct the view vector in tangent space, which drives the POM ray direction.
+No VS changes needed. PS-only replacement.

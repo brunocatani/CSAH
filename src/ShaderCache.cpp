@@ -62,6 +62,7 @@ ShaderCache::CompiledShader ShaderCache::CompileShader(
         auto narrowPath = std::filesystem::path(hlslPath).string();
         spdlog::error("ShaderCache: Failed to compile shader '{}' entry='{}' target='{}': {}",
             narrowPath, entryPoint, target, errorMsg);
+        stats.errors++;
         return result;
     }
 
@@ -105,6 +106,7 @@ ShaderCache::CompiledShader ShaderCache::CompileShader(
     }
 
     result.valid = true;
+    stats.compiled++;
 
     auto narrowPath = std::filesystem::path(hlslPath).string();
     spdlog::debug("ShaderCache: Compiled '{}' entry='{}' target='{}' ({} bytes)",
@@ -214,6 +216,7 @@ bool ShaderCache::LoadFromDiskCache(const std::string& key, CompiledShader& out)
 
     auto filePath = diskCachePath / (key + ".cso");
     if (!std::filesystem::exists(filePath)) {
+        stats.cacheMisses++;
         return false;
     }
 
@@ -266,6 +269,7 @@ bool ShaderCache::LoadFromDiskCache(const std::string& key, CompiledShader& out)
         }
 
         out.valid = true;
+        stats.cacheHits++;
         spdlog::debug("ShaderCache: Loaded from disk cache '{}' ({} bytes)", key, out.bytecode.size());
         return true;
 
@@ -303,4 +307,24 @@ void ShaderCache::SaveToDiskCache(const std::string& key, const CompiledShader& 
     } catch (const std::exception& e) {
         spdlog::error("ShaderCache: Failed to save cache '{}': {}", key, e.what());
     }
+}
+
+void ShaderCache::Clear() {
+    if (!diskCacheEnabled) {
+        spdlog::info("ShaderCache::Clear — disk cache is disabled, nothing to clear");
+        return;
+    }
+
+    try {
+        auto removed = std::filesystem::remove_all(diskCachePath);
+        std::filesystem::create_directories(diskCachePath);
+        spdlog::info("ShaderCache::Clear — removed {} cached entries", removed);
+    } catch (const std::exception& e) {
+        spdlog::error("ShaderCache::Clear — failed: {}", e.what());
+    }
+
+    stats.compiled = 0;
+    stats.cacheHits = 0;
+    stats.cacheMisses = 0;
+    stats.errors = 0;
 }
