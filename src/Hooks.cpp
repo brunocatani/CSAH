@@ -157,7 +157,7 @@ namespace {
         auto base = REL::Module::get().base();
         if (!base) return;
 
-        if (vtablePtr == base + 0x309AAB8) {
+        if (vtablePtr == base + 0x30bbdb8) {  // BSLightingShader VR vtable (from Ghidra constructor)
             // BSLightingShader (type 8) — always capture the pointer
             s_capturedBSLightingShader = shader;
             spdlog::info("BSShader::LoadShaders — BSLightingShader captured at {}", fmt::ptr(shader));
@@ -217,6 +217,28 @@ namespace {
             }
 
             menuInitialized = true;
+        }
+
+        // Retry shader replacement each frame until scatter tables are populated
+        if (!s_shaderReplacementDone.load()) {
+            auto base = REL::Module::get().base();
+            auto singletonPtr = reinterpret_cast<void**>(base + 0x689b410);
+            void* bsLighting = singletonPtr ? *singletonPtr : nullptr;
+            if (bsLighting && Globals::GetDevice()) {
+                auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
+                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
+                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
+                if (psCount > 0 && psBuckets) {
+                    bool expected = false;
+                    if (s_shaderReplacementDone.compare_exchange_strong(expected, true)) {
+                        s_capturedBSLightingShader = bsLighting;
+                        spdlog::info("Present: BSLightingShader PS scatter populated (count={}, buckets={})",
+                                     psCount, fmt::ptr(psBuckets));
+                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLighting, 8,
+                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                    }
+                }
+            }
         }
 
         // Per-frame updates (UpdatePerFrame increments frameCount internally)
