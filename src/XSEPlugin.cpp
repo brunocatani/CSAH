@@ -77,9 +77,21 @@ namespace {
                 // Start cascade runtime
                 EngineFixes::StartCascadeRuntime();
 
-                // Shader replacement will be triggered by the LoadShaders hook
-                // when each shader type's FXP is loaded
-                spdlog::info("Shader replacement will be triggered by LoadShaders hook");
+                // Shader replacement — BSLightingShader FXP is already loaded by this point.
+                // The LoadShaders hook deferred replacement because Globals wasn't ready.
+                // Now that D3D is initialized, trigger replacement on the BSLightingShader singleton.
+                {
+                    auto bsLightingAddr = Globals::GetBSLightingShader();
+                    if (bsLightingAddr) {
+                        auto* bsLightingShader = reinterpret_cast<void*>(bsLightingAddr);
+                        spdlog::info("Triggering deferred shader replacement for BSLightingShader at {}",
+                                     fmt::ptr(bsLightingShader));
+                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLightingShader, 8,
+                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                    } else {
+                        spdlog::warn("BSLightingShader singleton not available for deferred replacement");
+                    }
+                }
 
                 // Save settings (captures any defaults)
                 Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");

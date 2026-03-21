@@ -54,6 +54,14 @@ namespace {
         // BSShader+0x00 is the vtable pointer — compare to known vtable addresses
         if (!shader) return;
 
+        // Guard: D3D device must be available before we can compile/create shaders.
+        // Hook_LoadShaders fires during FXP loading which can happen BEFORE kGameDataReady
+        // (where Globals::Initialize() is called). Defer replacement until device is ready.
+        if (!Globals::IsInitialized()) {
+            spdlog::debug("BSShader::LoadShaders — deferring replacement (Globals not yet initialized)");
+            return;
+        }
+
         auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
         auto base = Globals::GetBase();
         if (!base) return;
