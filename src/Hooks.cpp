@@ -6,13 +6,14 @@
 #include "EngineFixes.h"
 #include "ShaderCache.h"
 #include <imgui.h>
+#include <atomic>
 #include "ShaderReplacer.h"
 
 namespace {
 
     // ---- Forward declarations for deferred D3D init ----
     static bool s_deferredD3DInitDone = false;
-    static bool s_shaderReplacementDone = false;
+    static std::atomic<bool> s_shaderReplacementDone{false};
     static void* s_capturedBSLightingShader = nullptr;
     static void TryDeferredD3DInit();
 
@@ -40,7 +41,9 @@ namespace {
                 auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
 
                 if (psCount > 0 && psBuckets) {
-                    s_shaderReplacementDone = true;
+                    bool expected = false;
+                    if (!s_shaderReplacementDone.compare_exchange_strong(expected, true))
+                        return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
                     s_capturedBSLightingShader = bsLighting;
                     spdlog::info("BeginTechnique: BSLightingShader at {} — PS scatter populated (count={}, buckets={})",
                                  fmt::ptr(bsLighting), psCount, fmt::ptr(psBuckets));

@@ -8,6 +8,15 @@ ShaderReplacer& ShaderReplacer::GetSingleton()
     return instance;
 }
 
+static const std::unordered_map<uint32_t, std::wstring>& GetShaderFileMap()
+{
+    static const std::unordered_map<uint32_t, std::wstring> map = {
+        {8, L"Data/Shaders/Community/Lighting.hlsl"},
+        {6, L"Data/Shaders/Community/Grass.hlsl"},
+    };
+    return map;
+}
+
 void ShaderReplacer::WalkScatterTable(
     void* bsShader,
     size_t tableOffset,
@@ -167,13 +176,9 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 
     auto& cache = ShaderCache::GetSingleton();
 
-    // Map shader type to HLSL filename
-    static const std::unordered_map<uint32_t, std::wstring> kShaderFiles = {
-        {8, L"Data/Shaders/Community/Lighting.hlsl"},
-        {6, L"Data/Shaders/Community/Grass.hlsl"},
-    };
-    auto fileIt = kShaderFiles.find(shaderType);
-    if (fileIt == kShaderFiles.end()) {
+    auto& shaderFiles = GetShaderFileMap();
+    auto fileIt = shaderFiles.find(shaderType);
+    if (fileIt == shaderFiles.end()) {
         spdlog::warn("ShaderReplacer: No custom HLSL for shader type {}, skipping", shaderType);
         return;
     }
@@ -301,6 +306,7 @@ void ShaderReplacer::ReplaceAllPermutations(void* bsShader, uint32_t shaderType)
 void ShaderReplacer::ReplaceFilteredPermutations(void* bsShader, uint32_t shaderType,
     std::function<bool(uint32_t techniqueID)> filter)
 {
+    std::lock_guard<std::mutex> lock(replacerMutex);
     if (!bsShader) {
         spdlog::error("ShaderReplacer::ReplaceFilteredPermutations - null BSShader pointer");
         return;
@@ -309,12 +315,9 @@ void ShaderReplacer::ReplaceFilteredPermutations(void* bsShader, uint32_t shader
     auto& cache = ShaderCache::GetSingleton();
 
     // Map shader type to HLSL filename
-    static const std::unordered_map<uint32_t, std::wstring> kShaderFiles = {
-        {8, L"Data/Shaders/Community/Lighting.hlsl"},
-        {6, L"Data/Shaders/Community/Grass.hlsl"},
-    };
-    auto fileIt = kShaderFiles.find(shaderType);
-    if (fileIt == kShaderFiles.end()) {
+    auto& shaderFiles = GetShaderFileMap();
+    auto fileIt = shaderFiles.find(shaderType);
+    if (fileIt == shaderFiles.end()) {
         spdlog::warn("ShaderReplacer: No custom HLSL for shader type {}, skipping", shaderType);
         return;
     }
@@ -391,6 +394,7 @@ void ShaderReplacer::ReplaceFilteredPermutations(void* bsShader, uint32_t shader
 
 void ShaderReplacer::RestoreAllVanillaPS()
 {
+    std::lock_guard<std::mutex> lock(replacerMutex);
     uint32_t restored = 0;
     uint32_t missing = 0;
 

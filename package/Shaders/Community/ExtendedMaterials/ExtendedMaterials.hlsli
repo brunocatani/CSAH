@@ -173,8 +173,12 @@ float2 GetParallaxCoords(
         [branch] if (CS_IsVR)
             maxSteps = max(maxSteps * 0.5, 1.0);
 
+        // User override: EM_MaxSteps > 0 caps the maximum
+        if (EM_MaxSteps > 0u)
+            maxSteps = min(maxSteps, (float)EM_MaxSteps);
+
         uint numSteps = uint((maxSteps * (1.0 - nearBlendToFar)) + 0.5);
-        numSteps = clamp(numSteps, 1u, (uint)clamp(max(6.0, scale * maxSteps), 1.0, (float)EM_MaxSteps));
+        numSteps = clamp(numSteps, 1u, (uint)max(6.0, scale * maxSteps));
 
         float stepSize = rcp((float)numSteps);
 

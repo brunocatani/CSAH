@@ -58,7 +58,7 @@ void ExtendedMaterials::DrawSettings()
     }
 
     int steps = static_cast<int>(maxSteps);
-    if (ImGui::SliderInt("Max Steps (0 = Auto)", &steps, 0, 128)) {
+    if (ImGui::SliderInt("Max Steps (0 = Auto)", &steps, 0, 32)) {
         maxSteps = static_cast<uint32_t>(steps);
     }
     if (ImGui::IsItemHovered()) {

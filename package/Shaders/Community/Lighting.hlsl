@@ -14,8 +14,8 @@
 // Permutation guard: only parallax permutations should compile this shader.
 // ShaderReplacer will keep vanilla for all other permutations.
 // ============================================================================
-#if !defined(PARALLAX)
-#error "Lighting.hlsl: This shader is only for PARALLAX permutations. Non-parallax should use vanilla."
+#if !defined(PARALLAX_OCCLUSION_MAPPING)
+#error "Lighting.hlsl: This shader is only for PARALLAX_OCCLUSION_MAPPING permutations. Non-parallax should use vanilla."
 #endif
 
 // ============================================================================

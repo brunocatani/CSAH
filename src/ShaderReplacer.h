@@ -1,9 +1,13 @@
 #pragma once
 #include "PCH.h"
+#include <mutex>
 
 class ShaderReplacer {
 public:
     static ShaderReplacer& GetSingleton();
+
+    // Thread safety for concurrent access from hook callbacks
+    std::mutex replacerMutex;
 
     // Walk scatter table for a shader type and replace all permutations with custom-compiled versions
     void ReplaceAllPermutations(void* bsShader, uint32_t shaderType);
