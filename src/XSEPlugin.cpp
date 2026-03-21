@@ -1,4 +1,4 @@
-#include "PCH.h"
+﻿#include "PCH.h"
 #include "Globals.h"
 #include "EngineFixes.h"
 #include "Hooks.h"
@@ -8,9 +8,11 @@
 #include "Feature.h"
 #include "Menu.h"
 #include "Features/LinearLighting.h"
+#include "Features/ExtendedMaterials.h"
 
 // Global feature instances
 static LinearLighting g_linearLighting;
+static ExtendedMaterials g_extendedMaterials;
 
 namespace {
     void InitializeLog() {
@@ -41,6 +43,7 @@ namespace {
 
                 // Register features (no GPU resources yet)
                 Feature::RegisterFeature(&g_linearLighting);
+                Feature::RegisterFeature(&g_extendedMaterials);
 
                 // Load settings from disk
                 Feature::LoadAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
