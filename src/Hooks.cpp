@@ -26,17 +26,45 @@ namespace {
             TryDeferredD3DInit();
         }
 
-        // Capture BSLightingShader and trigger replacement on first encounter
+        // Identify BSLightingShader by probing the PS scatter table for parallax technique IDs.
+        // We can't rely on vtable address matching (VR vtable differs from flat).
+        // Instead, try each new shader we see — only BSLightingShader will have entries with 0x0800 bit.
         if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
+            static uintptr_t s_triedVtables[32] = {};
+            static int s_triedCount = 0;
             auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
-            auto base = REL::Module::get().base();
-            if (vtablePtr == base + 0x309AAB8) {
-                s_shaderReplacementDone = true;
-                s_capturedBSLightingShader = shader;
-                spdlog::info("BeginTechnique: Captured BSLightingShader at {}, triggering shader replacement",
-                             fmt::ptr(shader));
-                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+
+            // Only try each unique vtable once
+            bool alreadyTried = false;
+            for (int i = 0; i < s_triedCount; ++i) {
+                if (s_triedVtables[i] == vtablePtr) { alreadyTried = true; break; }
+            }
+            if (!alreadyTried && s_triedCount < 32) {
+                s_triedVtables[s_triedCount++] = vtablePtr;
+                auto base = REL::Module::get().base();
+                spdlog::info("BeginTechnique: Probing shader vtable RVA={:#x} for PS scatter table",
+                             vtablePtr - base);
+
+                // Probe the PS scatter table: read capacityMask and buckets pointer
+                // kPSTableOffset = 0xB8 (from ShaderReplacer.h)
+                auto tableBase = reinterpret_cast<uintptr_t>(shader) + 0xB8;
+                uint32_t capacityMask = *reinterpret_cast<uint32_t*>(tableBase);
+                auto* buckets = *reinterpret_cast<void**>(tableBase + 0x10);
+
+                if (buckets && capacityMask > 0 && capacityMask < 0x10000) {
+                    spdlog::info("  PS scatter table: capacityMask={}, buckets={}",
+                                 capacityMask, fmt::ptr(buckets));
+                    // This looks like a valid shader with a PS scatter table.
+                    // Try replacement — it will only compile parallax permutations.
+                    s_shaderReplacementDone = true;
+                    s_capturedBSLightingShader = shader;
+                    spdlog::info("  Triggering filtered replacement on this shader");
+                    ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
+                        [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                } else {
+                    spdlog::debug("  No valid PS scatter table (mask={}, buckets={})",
+                                  capacityMask, fmt::ptr(buckets));
+                }
             }
         }
 
