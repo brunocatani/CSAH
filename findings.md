@@ -227,3 +227,13 @@ The deferred composite at FUN_142848e70 runs 3 compute dispatches:
 
 GBuffer RT-to-SRV transition via FUN_141db9dd0 (6 calls, slots 0-5).
 Thread groups: (width+7)/8 × (height+7)/8 (8×8 tiles).
+
+## Finding 18: TWO BSLightingShader Objects — ROOT CAUSE
+**Date:** 2026-03-22
+
+FO4VR has TWO BSLightingShader objects:
+1. "Lighting" (DAT_14689b410, vtable 0x1430bbdb8, BeginTechnique 0x28B5C10) — accumulation only, NOT rendering
+2. "VR Extended" (DAT_14689b8a0, vtable 0x1430bf3c8, BeginTechnique 0x291DA20) — THE REAL RENDERER
+
+We Detoured the WRONG object. Hook 0x291DA20 for per-permutation support.
+SetupGeometry: vtable[9] (+0x48), not vtable[7] (+0x38).
