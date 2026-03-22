@@ -169,3 +169,21 @@ Skyrim CS compiles ONE PS PER PERMUTATION DESCRIPTOR, not one PS for all.
 
 FO4VR can't use this approach because BeginTechnique is never called.
 Alternative: identify Layout #3/#4 surfaces via RT count + SRV binding checks.
+
+## Finding 13: FO4 Deferred Rendering — T2/T3 Control Lighting
+**Date:** 2026-03-22
+
+FO4 uses TILED DEFERRED RENDERING. BSLightingShader writes RAW material data.
+Composite formula: `final = albedo * (ambient + diffuse_lights) + specular + emissive`
+
+T2/T3 zeros -> composite produces near-zero lighting -> dark output.
+Correct T2 defaults: (0, 0.118, 0.1, 1.0) — smoothness/roughness/saturate
+Correct T3 defaults: (0.02, 0.02, 0.3, 1.0) — specular/glossiness/pow(alpha,0.1)
+T2.w and T3.w MUST be non-zero for proper lighting.
+
+## Finding 14: View-Space Normals + Y-Up
+**Date:** 2026-03-22
+
+Normals in TEXCOORD0-2 are VIEW SPACE (change with camera).
+FO4 uses Y-up. min(Nz,0) ensures normals face camera.
+Lambert azimuthal: `encoded.xy = N.xy / sqrt(8-8*Nz) + 0.5, encoded.z = -Nz`
