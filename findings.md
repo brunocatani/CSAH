@@ -187,3 +187,43 @@ T2.w and T3.w MUST be non-zero for proper lighting.
 Normals in TEXCOORD0-2 are VIEW SPACE (change with camera).
 FO4 uses Y-up. min(Nz,0) ensures normals face camera.
 Lambert azimuthal: `encoded.xy = N.xy / sqrt(8-8*Nz) + 0.5, encoded.z = -Nz`
+
+## Finding 15: BSLightingShader Dual Render Paths (from Ghidra agents)
+**Date:** 2026-03-22
+
+BSLightingShader has TWO render paths to PSSetShader:
+
+**Path A (Individual passes):** Goes through BeginTechnique (vtable+0x20)
+→ BSShader::BeginTechnique → Renderer::SetShaders → PSSetShader
+
+**Path B (Grouped batch):** BYPASSES BeginTechnique entirely
+→ BSLightingShader::RenderBatch → batch dispatcher (base+0x28AA8D0)
+→ copies pre-resolved PS from group+0x68 → Renderer::SetShaders → PSSetShader
+
+Path B is why 120+ PS are "unknown" in differential tracking. BeginTechnique IS called
+for some individual passes (Path A), but the MAJORITY go through batch mode (Path B).
+
+**Renderer::SetShaders (base+0x1D92C00)** is the UNIVERSAL convergence point for ALL paths.
+Could hook this for even more reliable interception than PSSetShader vtable.
+
+The BSGraphics renderer at DAT_146235ab0 is a WRAPPER around the real D3D11 context,
+with PSSetShader at wrapper vtable offset 0x1E0 (not standard D3D11 vtable[9]).
+Our raw D3D11 PSSetShader hook still works because the wrapper delegates to real context.
+
+## Finding 16: GFXBooster Validates Our Approach
+**Date:** 2026-03-22
+
+GFXBooster (github.com/disi/GFXBooster) is an F4SE mod that successfully hooks
+PSSetShader/VSSetShader on FO4 using the same D3D11 context vtable approach.
+It identifies shaders via DXBC hash fingerprinting. Proves our architecture is correct.
+
+## Finding 17: DFTiledLighting Compute Shader Pipeline
+**Date:** 2026-03-22
+
+The deferred composite at FUN_142848e70 runs 3 compute dispatches:
+1. Light culling — binds GBuffer as SRVs (slots 0-5), builds per-tile light lists
+2. Light assignment — assigns lights to tiles
+3. Lighting composite — final lighting with shadows (technique 1 or 2)
+
+GBuffer RT-to-SRV transition via FUN_141db9dd0 (6 calls, slots 0-5).
+Thread groups: (width+7)/8 × (height+7)/8 (8×8 tiles).

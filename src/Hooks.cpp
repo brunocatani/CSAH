@@ -350,12 +350,12 @@ namespace {
         ++s_psCallCount;
 
         // Track which PS come from BeginTechnique vs unknown path
-        if (ps && !s_reportDone) {
+        // NEVER stop tracking — PS are loaded lazily as player explores
+        if (ps) {
             std::lock_guard<std::mutex> lock(s_psTrackingMutex);
             if (s_insideBeginTechnique) {
                 s_knownNonLightingPS.insert(ps);
             } else {
-                // Only track if not already known as non-lighting
                 if (s_knownNonLightingPS.find(ps) == s_knownNonLightingPS.end()) {
                     s_unknownPathPS.insert(ps);
                 }
