@@ -7,72 +7,166 @@
 #include "ShaderCache.h"
 #include <imgui.h>
 #include <atomic>
-#include "ShaderReplacer.h"
+#include <unordered_set>
+#include <d3dcompiler.h>
+#include "ParallaxHashes.h"
 
 namespace {
 
     // ---- Forward declarations for deferred D3D init ----
     static bool s_deferredD3DInitDone = false;
-    static std::atomic<bool> s_shaderReplacementDone{false};
-    static void* s_capturedBSLightingShader = nullptr;
     static void TryDeferredD3DInit();
+
+    // ---- Draw-time PS replacement cache ----
+    static std::unordered_map<uint32_t, Microsoft::WRL::ComPtr<ID3D11PixelShader>> s_compiledPS;
+    static std::mutex s_compiledPSMutex;
+
+    // ---- Visual test shader (flat red) ----
+    static Microsoft::WRL::ComPtr<ID3D11PixelShader> s_testRedPS;
+    static bool s_testRedEnabled = false;  // toggle with F9
+
+    static void CompileTestRedPS() {
+        // Bright magenta — unmistakable visual indicator for BSLightingShader surfaces
+        const char* hlsl =
+            "struct PS_OUT {\n"
+            "  float4 color0 : SV_Target0;\n"
+            "  float4 color1 : SV_Target1;\n"
+            "  float4 color2 : SV_Target2;\n"
+            "  float4 color3 : SV_Target3;\n"
+            "  float4 color4 : SV_Target4;\n"
+            "};\n"
+            "PS_OUT PSMain() {\n"
+            "  PS_OUT o;\n"
+            "  o.color0 = float4(1, 0, 1, 1);\n"   // magenta albedo
+            "  o.color1 = float4(0.5, 0.5, 1, 0);\n" // up-facing normal
+            "  o.color2 = float4(0, 0, 0, 0);\n"
+            "  o.color3 = float4(0, 0, 0, 0);\n"
+            "  o.color4 = float4(0, 0, 0, 0);\n"
+            "  return o;\n"
+            "}\n";
+
+        Microsoft::WRL::ComPtr<ID3DBlob> blob, errors;
+        HRESULT hr = D3DCompile(hlsl, strlen(hlsl), "TestRedPS", nullptr, nullptr,
+                                "PSMain", "ps_5_0", 0, 0, &blob, &errors);
+        if (FAILED(hr)) {
+            if (errors) spdlog::error("Test PS compile error: {}", (char*)errors->GetBufferPointer());
+            return;
+        }
+
+        hr = Globals::GetDevice()->CreatePixelShader(
+            blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &s_testRedPS);
+        if (SUCCEEDED(hr)) {
+            spdlog::info("Test RED pixel shader compiled and created successfully");
+        } else {
+            spdlog::error("Failed to create test PS: {:#x}", (uint32_t)hr);
+        }
+    }
+
+    // ---- Differential shader tracking ----
+    static thread_local bool s_insideBeginTechnique = false;
+    static std::unordered_set<ID3D11PixelShader*> s_knownNonLightingPS;
+    static std::unordered_set<ID3D11PixelShader*> s_unknownPathPS;
+    static std::mutex s_psTrackingMutex;
+
+    // ---- Parallax PS identification (from DXBC hash matching) ----
+    static std::unordered_set<ID3D11PixelShader*> s_parallaxPS;
+    static std::unordered_set<uint64_t> s_parallaxHashes;
+    static bool s_parallaxHashesLoaded = false;
+
+    // BSLightingShader technique ID helpers (inlined from Ghidra FUN_14293a4f0 / FUN_14293a520)
+    static uint32_t ExtractPSTechID(uint32_t combined) {
+        uint32_t id = combined;
+        if ((id & 4) == 0) id &= ~2u;
+        return id | 1;
+    }
 
     // ---- Hook thunks ----
 
-    static bool __fastcall Hook_BeginTechnique(void* shader, uint32_t vsTechID,
-        uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass)
+    // BSLightingShader::BeginTechnique (vtable[4]) — the MAIN draw-time hook
+    // This is BSLightingShader's own override, NOT the base 6-param version
+    // Signature: char(this, combinedTechID, renderPass)
+    static char __fastcall Hook_LightingBeginTechnique(void* shader, uint32_t techID, void* renderPass)
     {
-        // Fallback deferred D3D init — BeginTechnique fires during rendering when D3D is definitely ready
+        // Fallback deferred D3D init
         if (!s_deferredD3DInitDone) {
             TryDeferredD3DInit();
         }
 
-        // Get BSLightingShader directly from its singleton (found via Ghidra constructor)
-        // Singleton at base+0x689b410 (DAT_14689b410 in Ghidra decompilation)
-        if (!s_shaderReplacementDone && Globals::GetDevice()) {
-            auto base = REL::Module::get().base();
-            auto singletonPtr = reinterpret_cast<void**>(base + 0x689b410);
-            void* bsLighting = singletonPtr ? *singletonPtr : nullptr;
-            if (bsLighting) {
-                auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
+        // Call the original BSLightingShader::BeginTechnique
+        char result = Hooks::OriginalLightingBeginTechnique(shader, techID, renderPass);
 
-                // Check if scatter tables are populated (FXP loaded)
-                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsAddr + 0xB8 + 0x04);
-                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xB8 + 0x20);
+        // Track current state for feature callbacks
+        auto& state = State::GetSingleton();
+        state.currentShader = shader;
+        state.currentTechniqueID = techID;
 
-                if (psCount > 0 && psBuckets) {
-                    bool expected = false;
-                    if (!s_shaderReplacementDone.compare_exchange_strong(expected, true))
-                        return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
-                    s_capturedBSLightingShader = bsLighting;
-                    spdlog::info("BeginTechnique: BSLightingShader at {} — PS scatter populated (count={}, buckets={})",
-                                 fmt::ptr(bsLighting), psCount, fmt::ptr(psBuckets));
-                    spdlog::info("  Triggering filtered replacement for parallax permutations");
-                    ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(bsLighting, 8,
-                        [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+        // Log first few calls to confirm this hook fires
+        static uint32_t s_logCount = 0;
+        if (s_logCount < 5) {
+            spdlog::info("LightingBT[{}]: tech={:#x} result={} parallax={}",
+                         s_logCount, techID, (int)result, (techID & 0x0800) != 0);
+            ++s_logCount;
+        }
+
+        // Draw-time PS swap for parallax techniques (Skyrim CS approach)
+        if (result && (techID & 0x0800) && Globals::GetContext()) {
+            uint32_t psTechID = ExtractPSTechID(techID);
+
+            std::lock_guard<std::mutex> lock(s_compiledPSMutex);
+            auto it = s_compiledPS.find(psTechID);
+
+            if (it != s_compiledPS.end()) {
+                // Cache hit — swap if we have a valid shader
+                if (it->second) {
+                    Globals::GetContext()->PSSetShader(it->second.Get(), nullptr, 0);
                 }
-                // else: scatter tables not populated yet, will retry next frame
+                // else: compile failed previously, skip
+            } else {
+                // First encounter — compile on demand (will stutter, optimize later)
+                auto& cache = ShaderCache::GetSingleton();
+                auto defines = cache.BuildDefines(8, psTechID, true);
+                auto compiled = cache.CompileShader(
+                    L"Data/Shaders/Community/Lighting.hlsl", "PSMain", "ps_5_0", defines);
+
+                if (compiled.valid && compiled.ps) {
+                    s_compiledPS[psTechID] = compiled.ps;
+                    Globals::GetContext()->PSSetShader(compiled.ps.Get(), nullptr, 0);
+                    spdlog::info("Draw-time PS swap: tech={:#x} psTech={:#x} — compiled OK",
+                                 techID, psTechID);
+                } else {
+                    s_compiledPS[psTechID] = nullptr;  // mark failed
+                    spdlog::warn("Draw-time PS compile FAILED: tech={:#x} psTech={:#x}",
+                                 techID, psTechID);
+                }
             }
         }
 
-        auto& state = State::GetSingleton();
-        state.currentShader = shader;
-        state.currentTechniqueID = psTechID;
-        return Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
+        return result;
+    }
+
+    // Base BSShader::BeginTechnique — tags PSSetShader calls from known (non-lighting) shaders
+    static bool __fastcall Hook_BeginTechnique(void* shader, uint32_t vsTechID,
+        uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass)
+    {
+        if (!s_deferredD3DInitDone) {
+            TryDeferredD3DInit();
+        }
+
+        s_insideBeginTechnique = true;
+        bool result = Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
+        s_insideBeginTechnique = false;
+        return result;
     }
 
     static void __fastcall Hook_LightingSetupGeometry(void* shader, void* renderPass)
     {
         Hooks::OriginalLightingSetupGeometry(shader, renderPass);
 
-        // First call: capture BSLightingShader and trigger shader replacement
-        if (!s_shaderReplacementDone && shader && Globals::GetDevice()) {
-            s_shaderReplacementDone = true;
-            s_capturedBSLightingShader = shader;
-            spdlog::info("SetupGeometry: Captured BSLightingShader at {}, triggering shader replacement",
-                         fmt::ptr(shader));
-            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+        // Log first call to confirm hook fires
+        static bool s_loggedOnce = false;
+        if (!s_loggedOnce) {
+            s_loggedOnce = true;
+            spdlog::info("SetupGeometry FIRES! shader={} renderPass={}", fmt::ptr(shader), fmt::ptr(renderPass));
         }
 
         // Bind shared data CB
@@ -86,34 +180,17 @@ namespace {
         }
     }
 
-    static void __fastcall Hook_LightingSetupMaterial(void* shader, void* material)
-    {
-        Hooks::OriginalLightingSetupMaterial(shader, material);
-
-        // Feature callbacks
-        for (auto* f : Feature::GetFeatureList()) {
-            if (f->loaded && f->enabled) {
-                f->OnSetupMaterial(material);
-            }
-        }
-    }
-
     static void TryDeferredD3DInit()
     {
         if (s_deferredD3DInitDone) return;
 
-        // Re-probe globals — device may have become available since kGameDataReady
         if (!Globals::GetDevice()) {
-            Globals::Initialize();  // Re-probe
-            if (!Globals::GetDevice()) return;  // Still not ready
+            Globals::Initialize();
+            if (!Globals::GetDevice()) return;
         }
 
-        auto* device = Globals::GetDevice();
-        auto* context = Globals::GetContext();
         spdlog::info("=== Deferred D3D init (device now available) ===");
-        spdlog::info("  Device: {}, Context: {}", fmt::ptr(device), fmt::ptr(context));
-        spdlog::info("  Renderer: {:#x}", Globals::GetRenderer());
-        spdlog::info("  BSLightingShader: {:#x}", Globals::GetBSLightingShader());
+        spdlog::info("  Device: {}, Context: {}", fmt::ptr(Globals::GetDevice()), fmt::ptr(Globals::GetContext()));
         s_deferredD3DInitDone = true;
 
         State::GetSingleton().Initialize();
@@ -123,61 +200,259 @@ namespace {
         EngineFixes::ApplyPostLoadFixes();
         EngineFixes::StartCascadeRuntime();
 
-        // Trigger shader replacement using captured pointer from Hook_LoadShaders
-        if (s_capturedBSLightingShader) {
-            spdlog::info("Triggering deferred shader replacement for BSLightingShader at {}",
-                         fmt::ptr(s_capturedBSLightingShader));
-            ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(
-                s_capturedBSLightingShader, 8,
-                [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
-        } else {
-            spdlog::warn("BSLightingShader not yet captured from Hook_LoadShaders");
-        }
-
         Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
         spdlog::info("=== Deferred D3D init complete ===");
     }
 
-    static void __fastcall Hook_LoadShaders(void* shader)
-    {
-        Hooks::OriginalLoadShaders(shader);
+    // ---- ISGN layout classification for PS ----
+    // Layout groups that we can replace (GBuffer deferred with TBN + packed UVs)
+    enum class PSLayout : uint8_t {
+        Unknown = 0,
+        Layout3_GBuffer = 3,    // TEXCOORD0-4, COLOR0, EYEINDEX, SV_IsFrontFace (134 POM)
+        Layout4_GBuffer = 4,    // Same as #3 but no COLOR0 (117 POM)
+        Forward = 10,           // TEXCOORD0 + COLOR0/COLOR1 (forward pass, 1 RT)
+        DepthOnly = 11,         // SV_POSITION + EYEINDEX only (depth pre-pass)
+    };
+    static std::unordered_map<ID3D11PixelShader*, PSLayout> s_psLayoutMap;
+    static std::mutex s_psLayoutMutex;
 
-        // After the game loads this shader's FXP, attempt replacement
-        // BSShader+0x00 is the vtable pointer — compare to known vtable addresses
-        if (!shader) return;
+    // Classify ISGN layout from DXBC bytecode
+    static PSLayout ClassifyISGN(const uint8_t* dxbc, SIZE_T size) {
+        if (size < 32 || memcmp(dxbc, "DXBC", 4) != 0) return PSLayout::Unknown;
 
-        // Try deferred D3D init on each LoadShaders call — device may become available
-        // between kGameDataReady and the end of shader loading
-        if (!s_deferredD3DInitDone) {
-            TryDeferredD3DInit();
-            if (!s_deferredD3DInitDone) return;  // Still not ready
-        }
+        uint32_t numChunks = *reinterpret_cast<const uint32_t*>(dxbc + 28);
+        if (numChunks > 32) return PSLayout::Unknown;
 
-        auto vtablePtr = *reinterpret_cast<uintptr_t*>(shader);
-        auto base = REL::Module::get().base();
-        if (!base) return;
+        // Find ISGN chunk
+        for (uint32_t ci = 0; ci < numChunks; ++ci) {
+            uint32_t chunkRel = *reinterpret_cast<const uint32_t*>(dxbc + 32 + ci * 4);
+            if (chunkRel + 8 > size) break;
 
-        if (vtablePtr == base + 0x30bbdb8) {  // BSLightingShader VR vtable (from Ghidra constructor)
-            // BSLightingShader (type 8) — always capture the pointer
-            s_capturedBSLightingShader = shader;
-            spdlog::info("BSShader::LoadShaders — BSLightingShader captured at {}", fmt::ptr(shader));
+            if (memcmp(dxbc + chunkRel, "ISGN", 4) != 0) continue;
 
-            // Only do shader replacement if D3D init is done
-            if (s_deferredD3DInitDone && Globals::GetDevice()) {
-                spdlog::info("  Triggering filtered replacement (POM permutations only)");
-                ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(shader, 8,
-                    [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
-            } else {
-                spdlog::info("  Deferring replacement (D3D not ready or init pending)");
+            // Parse ISGN elements
+            uint32_t numElems = *reinterpret_cast<const uint32_t*>(dxbc + chunkRel + 8);
+            if (numElems > 64) return PSLayout::Unknown;
+
+            uint32_t elemBase = chunkRel + 16;
+            bool hasTexcoord0 = false, hasTexcoord1 = false, hasTexcoord2 = false;
+            bool hasTexcoord3 = false, hasTexcoord4 = false;
+            bool hasColor0 = false, hasColor1 = false;
+            bool hasEyeIndex = false, hasFrontFace = false;
+
+            uint32_t chunkDataStart = chunkRel + 8;
+
+            for (uint32_t i = 0; i < numElems; ++i) {
+                uint32_t eoff = elemBase + i * 24;
+                if (eoff + 24 > size) break;
+
+                uint32_t nameRel = *reinterpret_cast<const uint32_t*>(dxbc + eoff);
+                uint32_t semIdx  = *reinterpret_cast<const uint32_t*>(dxbc + eoff + 4);
+                uint32_t nameAbs = chunkDataStart + nameRel;
+                if (nameAbs >= size) continue;
+
+                const char* name = reinterpret_cast<const char*>(dxbc + nameAbs);
+
+                if (strncmp(name, "TEXCOORD", 8) == 0) {
+                    if (semIdx == 0) hasTexcoord0 = true;
+                    else if (semIdx == 1) hasTexcoord1 = true;
+                    else if (semIdx == 2) hasTexcoord2 = true;
+                    else if (semIdx == 3) hasTexcoord3 = true;
+                    else if (semIdx == 4) hasTexcoord4 = true;
+                } else if (strncmp(name, "COLOR", 5) == 0) {
+                    if (semIdx == 0) hasColor0 = true;
+                    else if (semIdx == 1) hasColor1 = true;
+                } else if (strncmp(name, "EYEINDEX", 8) == 0) {
+                    hasEyeIndex = true;
+                } else if (strncmp(name, "SV_IsFrontFace", 14) == 0) {
+                    hasFrontFace = true;
+                }
             }
-        } else if (vtablePtr == base + 0x3098DA8) {
-            // BSGrassShader (type 6) — future use
-            spdlog::info("BSShader::LoadShaders — BSGrassShader loaded at {}", fmt::ptr(shader));
-            // Future: ShaderReplacer::GetSingleton().ReplaceAllPermutations(shader, 6);
-        } else {
-            spdlog::debug("BSShader::LoadShaders — shader at {} vtable {:X}",
-                          fmt::ptr(shader), vtablePtr);
+
+            // Classify based on which semantics are present
+            // Layout #3: TEXCOORD0-4, COLOR0, EYEINDEX, SV_IsFrontFace
+            if (hasTexcoord0 && hasTexcoord1 && hasTexcoord2 && hasTexcoord3 &&
+                hasTexcoord4 && hasColor0 && hasFrontFace) {
+                return PSLayout::Layout3_GBuffer;
+            }
+            // Layout #4: same but no COLOR0
+            if (hasTexcoord0 && hasTexcoord1 && hasTexcoord2 && hasTexcoord3 &&
+                hasTexcoord4 && !hasColor0 && hasFrontFace) {
+                return PSLayout::Layout4_GBuffer;
+            }
+            // Forward pass: TEXCOORD0 + COLOR0 + COLOR1, no TBN (TEXCOORD1-2)
+            if (hasTexcoord0 && hasColor0 && hasColor1 && !hasTexcoord1) {
+                return PSLayout::Forward;
+            }
+            // Depth only: no TEXCOORD at all
+            if (!hasTexcoord0 && !hasTexcoord1) {
+                return PSLayout::DepthOnly;
+            }
+
+            return PSLayout::Unknown;
         }
+
+        return PSLayout::Unknown;
+    }
+
+    // ID3D11Device::CreatePixelShader hook — classifies ISGN layout per PS
+    static HRESULT __fastcall Hook_CreatePixelShader(ID3D11Device* device, const void* bytecode,
+        SIZE_T bytecodeLength, ID3D11ClassLinkage* classLinkage, ID3D11PixelShader** ppPS)
+    {
+        HRESULT hr = Hooks::OriginalCreatePixelShader(device, bytecode, bytecodeLength, classLinkage, ppPS);
+
+        if (SUCCEEDED(hr) && ppPS && *ppPS && bytecode && bytecodeLength >= 32) {
+            auto* dxbc = reinterpret_cast<const uint8_t*>(bytecode);
+
+            // Classify ISGN layout
+            PSLayout layout = ClassifyISGN(dxbc, bytecodeLength);
+            {
+                std::lock_guard<std::mutex> lock(s_psLayoutMutex);
+                s_psLayoutMap[*ppPS] = layout;
+            }
+
+            // Hash matching for parallax identification
+            if (!s_parallaxHashesLoaded) {
+                s_parallaxHashes = ParallaxHashes::GetHashSet();
+                s_parallaxHashesLoaded = true;
+                spdlog::info("Loaded {} parallax DXBC hashes for matching", s_parallaxHashes.size());
+            }
+
+            if (dxbc[0] == 'D' && dxbc[1] == 'X' && dxbc[2] == 'B' && dxbc[3] == 'C') {
+                uint64_t hash64 = *reinterpret_cast<const uint64_t*>(dxbc + 4);
+                if (s_parallaxHashes.count(hash64) > 0) {
+                    s_parallaxPS.insert(*ppPS);
+                }
+            }
+
+            // Log creation stats
+            static uint32_t s_totalPS = 0;
+            static uint32_t s_layout3Count = 0, s_layout4Count = 0;
+            ++s_totalPS;
+            if (layout == PSLayout::Layout3_GBuffer) ++s_layout3Count;
+            if (layout == PSLayout::Layout4_GBuffer) ++s_layout4Count;
+
+            if (s_totalPS <= 5 || (s_totalPS % 500 == 0)) {
+                spdlog::info("CreatePS[{}]: {} layout={} (L3={}, L4={} total)",
+                             s_totalPS, fmt::ptr(*ppPS), (int)layout, s_layout3Count, s_layout4Count);
+            }
+        }
+
+        return hr;
+    }
+
+    // ID3D11DeviceContext::PSSetShader hook — differential tracking + PS replacement
+    static void __fastcall Hook_PSSetShader(ID3D11DeviceContext* context, ID3D11PixelShader* ps,
+        ID3D11ClassInstance* const* ppCI, UINT numCI)
+    {
+        static uint32_t s_psCallCount = 0;
+        static bool s_reportDone = false;
+        ++s_psCallCount;
+
+        // Track which PS come from BeginTechnique vs unknown path
+        if (ps && !s_reportDone) {
+            std::lock_guard<std::mutex> lock(s_psTrackingMutex);
+            if (s_insideBeginTechnique) {
+                s_knownNonLightingPS.insert(ps);
+            } else {
+                // Only track if not already known as non-lighting
+                if (s_knownNonLightingPS.find(ps) == s_knownNonLightingPS.end()) {
+                    s_unknownPathPS.insert(ps);
+                }
+            }
+        }
+
+        // Report at 3000 and 30000 calls to capture initial + gameplay PS
+        if ((s_psCallCount == 3000 || s_psCallCount == 30000) && !s_reportDone) {
+            if (s_psCallCount == 30000) s_reportDone = true;
+            std::lock_guard<std::mutex> lock(s_psTrackingMutex);
+            spdlog::info("=== PSSetShader differential report after {} calls ===", s_psCallCount);
+            spdlog::info("  Known (from BeginTechnique): {} unique PS", s_knownNonLightingPS.size());
+            spdlog::info("  Unknown path (likely BSLightingShader): {} unique PS", s_unknownPathPS.size());
+
+            // Log the unknown PS pointers — these are our targets
+            uint32_t idx = 0;
+            for (auto* unknownPS : s_unknownPathPS) {
+                spdlog::info("  UNKNOWN_PS[{}]: {}", idx++, fmt::ptr(unknownPS));
+                if (idx >= 30) {
+                    spdlog::info("  ... and {} more", s_unknownPathPS.size() - 30);
+                    break;
+                }
+            }
+        }
+
+        // Shader replacement: ONLY replace PS that are BOTH:
+        // 1. In the "unknown path" set (BSLightingShader, from differential tracking)
+        // 2. Classified as Layout #3 or #4 (GBuffer deferred with TBN + packed UVs)
+        if (s_testRedEnabled && ps && s_testRedPS) {
+            // Check differential tracking first (cheap set lookup)
+            bool isUnknownPath = false;
+            {
+                std::lock_guard<std::mutex> lock2(s_psTrackingMutex);
+                isUnknownPath = s_unknownPathPS.count(ps) > 0;
+            }
+
+            if (!isUnknownPath) {
+                // Known non-BSLightingShader PS — pass through
+                Hooks::OriginalPSSetShader(context, ps, ppCI, numCI);
+                return;
+            }
+
+            // Check ISGN layout (from CreatePixelShader hook)
+            PSLayout layout = PSLayout::Unknown;
+            {
+                std::lock_guard<std::mutex> lock3(s_psLayoutMutex);
+                auto it = s_psLayoutMap.find(ps);
+                if (it != s_psLayoutMap.end()) {
+                    layout = it->second;
+                }
+            }
+
+            bool isReplaceable = (layout == PSLayout::Layout3_GBuffer ||
+                                  layout == PSLayout::Layout4_GBuffer);
+
+            static uint32_t s_logTimer2 = 0;
+            static uint32_t s_replaceHits = 0, s_skipLayout = 0, s_skipNoMap = 0;
+            ++s_logTimer2;
+
+            if (isReplaceable) {
+                ++s_replaceHits;
+
+                for (auto* f : Feature::GetFeatureList()) {
+                    if (f->loaded && f->enabled) {
+                        f->OnSetupGeometry(nullptr);
+                    }
+                }
+                State::GetSingleton().BindSharedData();
+                Hooks::OriginalPSSetShader(context, s_testRedPS.Get(), ppCI, numCI);
+
+                if (s_logTimer2 % 10000 == 0) {
+                    std::lock_guard<std::mutex> lock3(s_psLayoutMutex);
+                    uint32_t l3 = 0, l4 = 0, fwd = 0, dep = 0, unk = 0;
+                    for (auto& [p, l] : s_psLayoutMap) {
+                        switch (l) {
+                            case PSLayout::Layout3_GBuffer: ++l3; break;
+                            case PSLayout::Layout4_GBuffer: ++l4; break;
+                            case PSLayout::Forward: ++fwd; break;
+                            case PSLayout::DepthOnly: ++dep; break;
+                            default: ++unk; break;
+                        }
+                    }
+                    spdlog::info("=== PS ISGN layout stats (call {}) ===", s_logTimer2);
+                    spdlog::info("  CreatePS captured: {} total (L3={} L4={} Fwd={} Depth={} Unk={})",
+                                 s_psLayoutMap.size(), l3, l4, fwd, dep, unk);
+                    spdlog::info("  Replace hits: {} | Skip(wrong layout): {} | Skip(no map): {}",
+                                 s_replaceHits, s_skipLayout, s_skipNoMap);
+                }
+                return;
+            }
+
+            if (layout != PSLayout::Unknown) ++s_skipLayout;
+            else ++s_skipNoMap;
+        }
+
+        // Pass through to original
+        Hooks::OriginalPSSetShader(context, ps, ppCI, numCI);
     }
 
     static LRESULT CALLBACK Hook_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -201,77 +476,128 @@ namespace {
         static bool menuInitialized = false;
 
         if (!menuInitialized) {
-            // Initialize Menu on first Present call (device/context now guaranteed valid)
             DXGI_SWAP_CHAIN_DESC desc{};
             swapChain->GetDesc(&desc);
             Menu::GetSingleton().Initialize(desc.OutputWindow, Globals::GetDevice(), Globals::GetContext());
 
-            // Subclass the game window to forward input to ImGui
             Hooks::OriginalWndProc = reinterpret_cast<WNDPROC>(
                 SetWindowLongPtrA(desc.OutputWindow, GWLP_WNDPROC,
                     reinterpret_cast<LONG_PTR>(Hook_WndProc)));
             if (Hooks::OriginalWndProc) {
                 spdlog::info("  Subclassed WndProc for ImGui input");
-            } else {
-                spdlog::error("  Failed to subclass WndProc — menu input will not work");
             }
 
             menuInitialized = true;
         }
 
-        // Retry shader replacement — check both base (+0xB8) and custom (+0x120) scatter tables
-        if (!s_shaderReplacementDone.load()) {
-            static uint32_t s_frameCounter = 0;
-            ++s_frameCounter;
-            auto base = REL::Module::get().base();
-            auto singletonPtr = reinterpret_cast<void**>(base + 0x689b410);
-            void* bsLighting = singletonPtr ? *singletonPtr : nullptr;
-            if (bsLighting && Globals::GetDevice()) {
-                auto bsAddr = reinterpret_cast<uintptr_t>(bsLighting);
+        // One-time scatter table scan (now that LoadShaders Detour is removed, FXP should load)
+        static bool s_scatterScanned = false;
+        static uint32_t s_presentCount = 0;
+        ++s_presentCount;
+        if (!s_scatterScanned && s_presentCount == 5) {
+            s_scatterScanned = true;
+            auto bsLighting = Globals::GetBSLightingShader();
+            if (bsLighting) {
+                // Check PS scatter table at +0xB8 (count at +0x04, buckets at +0x20)
+                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsLighting + 0xB8 + 0x04);
+                void* psBuckets = *reinterpret_cast<void**>(bsLighting + 0xB8 + 0x20);
+                // Also check VS scatter table at +0x28
+                uint32_t vsCount = *reinterpret_cast<uint32_t*>(bsLighting + 0x28 + 0x04);
+                void* vsBuckets = *reinterpret_cast<void**>(bsLighting + 0x28 + 0x20);
 
-                // FXP loader (FUN_142814260) populates PS scatter table at +0xB8
-                // Internal layout: capacity-1 at +0xBC, buckets at +0xD8
-                uint32_t psCapMinus1 = *reinterpret_cast<uint32_t*>(bsAddr + 0xBC);
-                auto* psBuckets = *reinterpret_cast<void**>(bsAddr + 0xD8);
+                spdlog::info("=== Scatter table scan (frame 100, no LoadShaders Detour) ===");
+                spdlog::info("  BSLightingShader at {:#x}", bsLighting);
+                spdlog::info("  VS scatter: count={} buckets={}", vsCount, fmt::ptr(vsBuckets));
+                spdlog::info("  PS scatter: count={} buckets={}", psCount, fmt::ptr(psBuckets));
 
-                // Log every 300 frames
-                if (s_frameCounter % 300 == 1) {
-                    spdlog::info("Present[{}]: PS scatter — capMinus1={} buckets={}",
-                                 s_frameCounter, psCapMinus1, fmt::ptr(psBuckets));
-                }
-
-                void* targetShader = nullptr;
-                if (psBuckets && psCapMinus1 > 0) {
-                    targetShader = bsLighting;
-                    spdlog::info("Present: PS scatter table populated! cap={} buckets={}",
-                                 psCapMinus1 + 1, fmt::ptr(psBuckets));
-                }
-
-                if (targetShader) {
-                    bool expected = false;
-                    if (s_shaderReplacementDone.compare_exchange_strong(expected, true)) {
-                        s_capturedBSLightingShader = targetShader;
-                        ShaderReplacer::GetSingleton().ReplaceFilteredPermutations(targetShader, 8,
-                            [](uint32_t techniqueID) { return (techniqueID & 0x0800) != 0; });
+                if (psCount > 0 && psBuckets) {
+                    spdlog::info("  PS SCATTER TABLE IS POPULATED! Walking to build D3D PS -> technique map...");
+                    // Walk the scatter table and build D3D PS pointer -> technique ID map
+                    uint32_t visited = 0;
+                    auto* sentinel = *reinterpret_cast<void**>(bsLighting + 0xB8 + 0x10);
+                    struct ScatterEntry { void* data; void* next; };
+                    auto* buckets = reinterpret_cast<ScatterEntry*>(psBuckets);
+                    for (uint32_t i = 0; i < psCount; ++i) {
+                        for (auto* cur = &buckets[i]; cur && cur != sentinel && cur->data; cur = reinterpret_cast<ScatterEntry*>(cur->next)) {
+                            uint32_t techID = *reinterpret_cast<uint32_t*>(cur->data);
+                            auto* d3dPS = *reinterpret_cast<ID3D11PixelShader**>(
+                                reinterpret_cast<uintptr_t>(cur->data) + 8);
+                            bool isParallax = (techID & 0x0800) != 0;
+                            if (isParallax) {
+                                spdlog::info("  PARALLAX PS: tech={:#010x} d3dPS={}", techID, fmt::ptr(d3dPS));
+                            }
+                            ++visited;
+                        }
                     }
+                    spdlog::info("  Walked {} scatter entries total", visited);
+                } else {
+                    spdlog::info("  PS scatter table STILL EMPTY — will use differential tracking only");
                 }
             }
         }
 
-        // Per-frame updates (UpdatePerFrame increments frameCount internally)
+        // Per-frame updates
         auto& state = State::GetSingleton();
         state.UpdatePerFrame();
 
-        // Feature lifecycle
         Feature::ResetAll();
         Feature::PrepassAll();
 
-        // Toggle menu with F10
         if (GetAsyncKeyState(VK_F10) & 1) {
             Menu::GetSingleton().Toggle();
         }
 
-        // Draw menu overlay
+        // F7: Toggle visual test (magenta shader replaces all BSLightingShader PS)
+        if (GetAsyncKeyState(VK_F7) & 1) {
+            if (!s_testRedPS) {
+                CompileTestRedPS();
+            }
+            s_testRedEnabled = !s_testRedEnabled;
+            spdlog::info("Visual test shader: {}", s_testRedEnabled ? "ENABLED (magenta)" : "DISABLED");
+        }
+
+        // F6: Compile Lighting.hlsl WITH POM support and replace all BSLightingShader PS
+        static bool s_lightingPSCompiled = false;
+        static Microsoft::WRL::ComPtr<ID3D11PixelShader> s_lightingPS;
+        if (GetAsyncKeyState(VK_F6) & 1) {
+            if (!s_lightingPSCompiled) {
+                s_lightingPSCompiled = true;
+
+                // Build defines with EXTENDED_MATERIALS + PARALLAX_OCCLUSION_MAPPING
+                std::vector<D3D_SHADER_MACRO> defines;
+                defines.push_back({"EXTENDED_MATERIALS", "1"});
+                defines.push_back({"PARALLAX_OCCLUSION_MAPPING", "1"});
+                defines.push_back({nullptr, nullptr});  // terminator
+
+                Microsoft::WRL::ComPtr<ID3DBlob> blob, errors;
+                HRESULT hr = D3DCompileFromFile(
+                    L"Data/Shaders/Community/Lighting.hlsl",
+                    defines.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                    "PSMain", "ps_5_0",
+                    D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                    &blob, &errors);
+
+                if (SUCCEEDED(hr) && blob) {
+                    hr = Globals::GetDevice()->CreatePixelShader(
+                        blob->GetBufferPointer(), blob->GetBufferSize(),
+                        nullptr, &s_lightingPS);
+                    if (SUCCEEDED(hr)) {
+                        spdlog::info("Lighting.hlsl + POM compiled successfully!");
+                    }
+                } else {
+                    if (errors) {
+                        spdlog::error("Lighting.hlsl+POM compile error: {}",
+                                     (const char*)errors->GetBufferPointer());
+                    }
+                }
+            }
+            if (s_lightingPS) {
+                s_testRedPS = s_lightingPS;
+                s_testRedEnabled = !s_testRedEnabled;
+                spdlog::info("Lighting.hlsl + POM: {}", s_testRedEnabled ? "ENABLED" : "DISABLED");
+            }
+        }
+
         Menu::GetSingleton().Draw();
 
         return Hooks::OriginalPresent(swapChain, syncInterval, flags);
@@ -304,7 +630,6 @@ namespace Hooks {
     {
         spdlog::info("Hooks::InstallShaderHooks - installing Detour hooks...");
 
-        // Get base directly — Globals::Initialize() hasn't run yet at kPostPostLoad time
         auto base = REL::Module::get().base();
         spdlog::info("  Module base for hooks: {:#x}", base);
         if (!base) {
@@ -312,32 +637,43 @@ namespace Hooks {
             return;
         }
 
-        // --- BeginTechnique at base+0x2814BE0 ---
+        // CreatePixelShader hooked via InstallEarlyD3DHook() from F4SEPlugin_Load
+
+        // --- BSLightingShader::BeginTechnique at base+0x28B5C10 (Detour, not vtable) ---
+        // Must use Detour because the game devirtualizes this call (direct call, not vtable dispatch)
+        OriginalLightingBeginTechnique = reinterpret_cast<LightingBeginTechnique_t>(base + 0x28B5C10);
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(reinterpret_cast<PVOID*>(&OriginalLightingBeginTechnique), Hook_LightingBeginTechnique);
+        LONG result = DetourTransactionCommit();
+
+        if (result == NO_ERROR) {
+            spdlog::info("  Hooked BSLightingShader::BeginTechnique (Detour) at {:X}", base + 0x28B5C10);
+            // Verify Detour actually patched the prologue
+            auto* patchedBytes = reinterpret_cast<uint8_t*>(base + 0x28B5C10);
+            spdlog::info("  Prologue bytes: {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
+                         patchedBytes[0], patchedBytes[1], patchedBytes[2], patchedBytes[3],
+                         patchedBytes[4], patchedBytes[5], patchedBytes[6], patchedBytes[7]);
+            spdlog::info("  Expected: E9 xx xx xx xx (JMP rel32) if Detour applied");
+            spdlog::info("  Original: 48 8B C4 48 83 EC 68 (MOV RAX,RSP; SUB RSP,0x68) if NOT patched");
+        } else {
+            spdlog::error("  Failed to hook BSLightingShader::BeginTechnique: error {}", result);
+        }
+
+        // --- Base BSShader::BeginTechnique at base+0x2814BE0 ---
+        // Kept for deferred D3D init fallback (fires for other shader types)
         OriginalBeginTechnique = reinterpret_cast<BeginTechnique_t>(base + 0x2814BE0);
 
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
         DetourAttach(reinterpret_cast<PVOID*>(&OriginalBeginTechnique), Hook_BeginTechnique);
-        LONG result = DetourTransactionCommit();
-
-        if (result == NO_ERROR) {
-            spdlog::info("  Hooked BeginTechnique at {:X}", base + 0x2814BE0);
-        } else {
-            spdlog::error("  Failed to hook BeginTechnique: error {}", result);
-        }
-
-        // --- LoadShaders at base+0x27F4800 ---
-        OriginalLoadShaders = reinterpret_cast<LoadShaders_t>(base + 0x27F4800);
-
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
-        DetourAttach(reinterpret_cast<PVOID*>(&OriginalLoadShaders), Hook_LoadShaders);
         result = DetourTransactionCommit();
 
         if (result == NO_ERROR) {
-            spdlog::info("  Hooked LoadShaders at {:X}", base + 0x27F4800);
+            spdlog::info("  Hooked base BeginTechnique at {:X}", base + 0x2814BE0);
         } else {
-            spdlog::error("  Failed to hook LoadShaders: error {}", result);
+            spdlog::error("  Failed to hook base BeginTechnique: error {}", result);
         }
     }
 
@@ -345,13 +681,16 @@ namespace Hooks {
     {
         spdlog::info("Hooks::InstallRenderHooks - installing vtable hooks...");
 
-        auto vtable = reinterpret_cast<uintptr_t*>(Globals::GetBSLightingShaderVtable());
-        if (!vtable) {
-            spdlog::error("  BSLightingShader vtable is null - skipping render hooks");
-            return;
-        }
+        auto base = REL::Module::get().base();
 
-        // --- SetupGeometry at vtable[7] (byte offset +0x38) ---
+        // BSLightingShader VR vtable at base+0x30bbdb8 (from Ghidra constructor)
+        // NOTE: NOT 0x309AAB8 which is wrong/flat offset
+        auto vtable = reinterpret_cast<uintptr_t*>(base + 0x30bbdb8);
+        spdlog::info("  BSLightingShader VR vtable at {}", fmt::ptr(vtable));
+
+        // BeginTechnique is hooked via Detour in InstallShaderHooks (devirtualized calls)
+
+        // --- SetupGeometry at vtable[7] ---
         void* origGeom = nullptr;
         if (PatchVtableEntry(vtable, 7, reinterpret_cast<void*>(Hook_LightingSetupGeometry), &origGeom)) {
             OriginalLightingSetupGeometry = reinterpret_cast<SetupGeometry_t>(origGeom);
@@ -360,19 +699,12 @@ namespace Hooks {
         } else {
             spdlog::error("  Failed to hook BSLightingShader::SetupGeometry");
         }
-
-        // --- SetupMaterial — DISABLED until vtable index verified via Ghidra ---
-        // Testing showed vtable[4] contains non-code data (0x73657A6973 = ASCII "sizes").
-        // No features currently use OnSetupMaterial(), safe to skip.
-        // TODO: Verify correct vtable index for BSLightingShader::SetupMaterial (RVA 0x289D510)
-        spdlog::info("  SetupMaterial hook SKIPPED (vtable index needs Ghidra verification)");
     }
 
     void InstallD3DHooks()
     {
         spdlog::info("Hooks::InstallD3DHooks - installing D3D vtable hooks...");
 
-        // Get swap chain: renderer at base+0x60F3CE8, dereference, SwapChain at renderer+0x70
         auto renderer = Globals::GetRenderer();
         if (!renderer) {
             spdlog::error("  Renderer singleton is null - skipping D3D hooks");
@@ -388,10 +720,9 @@ namespace Hooks {
 
         spdlog::info("  SwapChain at {:X}", reinterpret_cast<uintptr_t>(swapChain));
 
-        // IDXGISwapChain vtable: Present is entry [8] (byte offset +64)
         auto swapChainVtable = *reinterpret_cast<uintptr_t**>(swapChain);
         if (!swapChainVtable) {
-            spdlog::error("  SwapChain vtable pointer is null (D3D not fully initialized?) - skipping D3D hooks");
+            spdlog::error("  SwapChain vtable is null - skipping D3D hooks");
             return;
         }
 
@@ -402,6 +733,115 @@ namespace Hooks {
                 reinterpret_cast<uintptr_t>(origPresent));
         } else {
             spdlog::error("  Failed to hook IDXGISwapChain::Present");
+        }
+
+        // --- ID3D11DeviceContext::PSSetShader at vtable[9] ---
+        // Get the REAL immediate context from the device (not the game's cached pointer)
+        auto* device = Globals::GetDevice();
+        ID3D11DeviceContext* realContext = nullptr;
+        if (device) {
+            device->GetImmediateContext(&realContext);
+        }
+        auto* cachedContext = Globals::GetContext();
+
+        spdlog::info("  Context comparison: cached={} vs device->GetImmediateContext={}",
+                     fmt::ptr(cachedContext), fmt::ptr(realContext));
+
+        // Hook the REAL context from GetImmediateContext
+        ID3D11DeviceContext* contextToHook = realContext ? realContext : cachedContext;
+        if (contextToHook) {
+            auto contextVtable = *reinterpret_cast<uintptr_t**>(contextToHook);
+            void* origPSSet = nullptr;
+            if (PatchVtableEntry(contextVtable, 9, reinterpret_cast<void*>(Hook_PSSetShader), &origPSSet)) {
+                OriginalPSSetShader = reinterpret_cast<PSSetShader_t>(origPSSet);
+                spdlog::info("  Hooked ID3D11DeviceContext::PSSetShader (vtable[9]) on {} - original {:X}",
+                    fmt::ptr(contextToHook), reinterpret_cast<uintptr_t>(origPSSet));
+            } else {
+                spdlog::error("  Failed to hook PSSetShader");
+            }
+        } else {
+            spdlog::error("  No D3D context available — cannot hook PSSetShader");
+        }
+
+        // Release the reference from GetImmediateContext
+        if (realContext) {
+            realContext->Release();
+        }
+
+        // CreatePixelShader already hooked early in InstallShaderHooks (via temp device Detour)
+    }
+
+    // ---- D3D11CreateDevice Detour — hooks CreatePixelShader on the REAL game device ----
+    using D3D11CreateDevice_t = HRESULT(WINAPI*)(
+        IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL*,
+        UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
+    static D3D11CreateDevice_t s_originalD3D11CreateDevice = nullptr;
+
+    static HRESULT WINAPI Hook_D3D11CreateDevice(
+        IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE DriverType, HMODULE Software,
+        UINT Flags, const D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels,
+        UINT SDKVersion, ID3D11Device** ppDevice, D3D_FEATURE_LEVEL* pFeatureLevel,
+        ID3D11DeviceContext** ppImmediateContext)
+    {
+        HRESULT hr = s_originalD3D11CreateDevice(pAdapter, DriverType, Software, Flags,
+            pFeatureLevels, FeatureLevels, SDKVersion, ppDevice, pFeatureLevel, ppImmediateContext);
+
+        if (SUCCEEDED(hr) && ppDevice && *ppDevice && !OriginalCreatePixelShader) {
+            // Hook CreatePixelShader on the REAL game device
+            auto deviceVtable = *reinterpret_cast<uintptr_t**>(*ppDevice);
+            OriginalCreatePixelShader = reinterpret_cast<CreatePixelShader_t>(deviceVtable[15]);
+
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourAttach(reinterpret_cast<PVOID*>(&OriginalCreatePixelShader), Hook_CreatePixelShader);
+            LONG result = DetourTransactionCommit();
+
+            if (result == NO_ERROR) {
+                spdlog::info("CreatePixelShader hooked via D3D11CreateDevice intercept at {:X}",
+                             deviceVtable[15]);
+            } else {
+                spdlog::error("Failed to Detour CreatePixelShader: error {}", result);
+                OriginalCreatePixelShader = nullptr;
+            }
+        }
+        return hr;
+    }
+
+    void InstallEarlyD3DHook()
+    {
+        // Force-load d3d11.dll if not already loaded
+        HMODULE d3d11 = GetModuleHandleA("d3d11.dll");
+        if (!d3d11) {
+            d3d11 = LoadLibraryA("d3d11.dll");
+            spdlog::info("Force-loaded d3d11.dll: {}", d3d11 != nullptr);
+        } else {
+            spdlog::info("d3d11.dll already loaded");
+        }
+
+        if (!d3d11) {
+            spdlog::error("Cannot load d3d11.dll — CreatePixelShader hook impossible");
+            return;
+        }
+
+        // Detour D3D11CreateDevice — this fires when the game creates its device
+        s_originalD3D11CreateDevice = reinterpret_cast<D3D11CreateDevice_t>(
+            GetProcAddress(d3d11, "D3D11CreateDevice"));
+
+        if (!s_originalD3D11CreateDevice) {
+            spdlog::error("GetProcAddress(D3D11CreateDevice) failed");
+            return;
+        }
+
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(reinterpret_cast<PVOID*>(&s_originalD3D11CreateDevice), Hook_D3D11CreateDevice);
+        LONG result = DetourTransactionCommit();
+
+        if (result == NO_ERROR) {
+            spdlog::info("Hooked D3D11CreateDevice at {:X} — will intercept CreatePixelShader on device creation",
+                         reinterpret_cast<uintptr_t>(s_originalD3D11CreateDevice));
+        } else {
+            spdlog::error("Failed to Detour D3D11CreateDevice: error {}", result);
         }
     }
 

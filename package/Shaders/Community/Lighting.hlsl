@@ -11,12 +11,9 @@
 //   LINEAR_LIGHTING    — sRGB<->linear conversion around diffuse sampling
 
 // ============================================================================
-// Permutation guard: only parallax permutations should compile this shader.
-// ShaderReplacer will keep vanilla for all other permutations.
+// Permutation support: compiles for all BSLightingShader permutations.
+// PARALLAX_OCCLUSION_MAPPING enables POM features when defined.
 // ============================================================================
-#if !defined(PARALLAX_OCCLUSION_MAPPING)
-#error "Lighting.hlsl: This shader is only for PARALLAX_OCCLUSION_MAPPING permutations. Non-parallax should use vanilla."
-#endif
 
 // ============================================================================
 // Includes
@@ -104,19 +101,25 @@ SamplerState SampSpecular : register(s2);
 // PS Input/Output Structures
 // ============================================================================
 
-// From DXBC ISGN of shader 2624 (mid-complexity parallax):
+// From FO4VR DXBC ISGN analysis — Layout #3 (134 POM shaders, most common full GBuffer layout)
+// Confirmed via disassembly of shader_2496_PS_0x006de554.dxbc:
 //   v0 = SV_POSITION, v1 = TEXCOORD0 (tangent), v2 = TEXCOORD1 (bitangent),
 //   v3 = TEXCOORD2 (normal), v4 = TEXCOORD3 (.w=U), v5 = TEXCOORD4 (.w=V),
-//   v6 = COLOR0 (.w=vertexAlpha), v7 = SV_IsFrontFace
+//   v6 = COLOR0 (.w=vertexAlpha), v7 = EYEINDEX (VR eye), v8 = SV_IsFrontFace
+//
+// NOTE: FO4VR packs UVs into TEXCOORD3.w and TEXCOORD4.w (unlike Skyrim which uses TEXCOORD0.xy)
+// NOTE: FO4VR always includes EYEINDEX (VR-only, not present in flat Skyrim)
+// NOTE: Layout #4 (117 POM) is identical but omits COLOR0 — handle with VertexColor fallback
 struct PS_INPUT {
-    float4 Position   : SV_POSITION;     // v0 — screen position
-    float3 Tangent    : TEXCOORD0;        // v1 — tangent vector
-    float3 Bitangent  : TEXCOORD1;        // v2 — bitangent vector
-    float3 Normal     : TEXCOORD2;        // v3 — normal vector
-    float4 TexCoord3  : TEXCOORD3;        // v4 — .w = texcoord U
-    float4 TexCoord4  : TEXCOORD4;        // v5 — .w = texcoord V
-    float4 VertexColor : COLOR0;          // v6 — .w = vertex alpha
-    uint   IsFrontFace : SV_IsFrontFace;  // v7 — front face flag
+    float4 Position    : SV_POSITION;     // v0 — screen position
+    float3 Tangent     : TEXCOORD0;       // v1 — tangent vector (xyz only)
+    float3 Bitangent   : TEXCOORD1;       // v2 — bitangent vector (xyz only)
+    float3 Normal      : TEXCOORD2;       // v3 — normal vector (xyz only)
+    float4 TexCoord3   : TEXCOORD3;       // v4 — .xyz=unused in basic, .w = texcoord U
+    float4 TexCoord4   : TEXCOORD4;       // v5 — .xyz=unused in basic, .w = texcoord V
+    float4 VertexColor : COLOR0;          // v6 — .w = vertex alpha (zero if Layout #4)
+    uint   EyeIndex    : EYEINDEX;        // v7 — VR eye index (0=left, 1=right)
+    bool   IsFrontFace : SV_IsFrontFace;  // v8 — front face flag
 };
 
 // 5 GBuffer render targets (CONFIRMED from DXBC OSGN):
@@ -212,18 +215,19 @@ PS_OUTPUT PSMain(PS_INPUT input) {
 #endif
 
     // ------------------------------------------------------------------
-    // 3. Alpha Test (from DXBC: cb2[2].y == 1.0 enables test)
+    // 3. Sample diffuse and handle alpha
     // ------------------------------------------------------------------
     float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
     float texAlpha = diffuseSample.a;
-    float vertexAlpha = input.VertexColor.w;
 
-    // If alpha test enabled, use texAlpha * vertexAlpha; otherwise 1.0
-    float alpha = (PM_AlphaParams.y == 1.0f) ? (texAlpha * vertexAlpha) : 1.0f;
+    // VertexColor fallback: Layout #4 (117 POM) omits COLOR0 → D3D fills with 0.
+    // Detect and treat as white (no tint) to avoid black output.
+    float4 vertexColor = input.VertexColor;
+    if (dot(vertexColor, vertexColor) < 0.0001f)
+        vertexColor = float4(1, 1, 1, 1);
 
-    // Alpha clip: threshold * alpha - 0.015686 < 0 => discard
-    float finalAlpha = alpha * PM_AlphaParams.x;
-    clip(PM_AlphaParams.x * alpha - 0.015686f);
+    float vertexAlpha = vertexColor.w;
+    float finalAlpha = texAlpha * vertexAlpha;
 
     // ------------------------------------------------------------------
     // 4. Sample normal and specular maps with (potentially POM-displaced) UV
@@ -251,6 +255,7 @@ PS_OUTPUT PSMain(PS_INPUT input) {
     float normalZ = sqrt(1.0f - nDotN);
 
     // Flip Z for back faces (IsFrontFace: nonzero = front, zero = back)
+    // IsFrontFace: true = front face, false = back face
     float3 tsNormal = float3(normalXY, input.IsFrontFace ? normalZ : -normalZ);
 
     // Transform from tangent space to world space using TBN vectors
@@ -259,25 +264,25 @@ PS_OUTPUT PSMain(PS_INPUT input) {
     float3 B = normalize(input.Bitangent);
     float3 N = input.Normal;
 
-    // N component uses raw dp3 with clamping to negative
-    float nDotNormal = dot(N, tsNormal);
+    // Standard TBN transform
     float3 worldNormal;
-    worldNormal.z = min(nDotNormal, 0.0f);  // clamp to <= 0 (DXBC uses min with 0)
     worldNormal.x = dot(T, tsNormal);
     worldNormal.y = dot(B, tsNormal);
+    worldNormal.z = dot(N, tsNormal);
+
+    // Vanilla DXBC clamps Z ≤ 0 before normalization.
+    // This ensures o1.z (= -Nz) is always ≥ 0, matching what
+    // FO4's deferred lighting pass expects.
+    worldNormal.z = min(worldNormal.z, 0.0f);
 
     // Normalize the world-space normal
     float wnLen = rsqrt(dot(worldNormal, worldNormal));
     worldNormal *= wnLen;
 
     // ------------------------------------------------------------------
-    // 7. GBuffer Output 0: Albedo
-    //    Mid-complexity permutation outputs black albedo (depth/GBuffer prepass).
-    //    Rich permutation would output diffuse * tint * vertexColor.
+    // 7. GBuffer Output 0: Albedo = diffuse texture * vertex color tint
     // ------------------------------------------------------------------
-    // For now: mid-complexity faithful reproduction = black.
-    // TODO: Add rich permutation path with #ifdef RICH_ALBEDO or similar.
-    float3 albedoColor = float3(0.0f, 0.0f, 0.0f);
+    float3 albedoColor = diffuseSample.rgb * vertexColor.rgb;
 
 #ifdef LINEAR_LIGHTING
     albedoColor = ApplyLinearOutput(albedoColor);

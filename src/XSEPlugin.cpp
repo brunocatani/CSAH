@@ -24,9 +24,12 @@ namespace {
                            reinterpret_cast<LPCWSTR>(&InitializeLog), &hModule);
         GetModuleFileNameW(hModule, dllPath, MAX_PATH);
 
+        // Use Data/F4SE/Plugins/ path for the log file (standard F4SE location)
         auto path = std::filesystem::path(dllPath).parent_path() / "fo4vr-community-shaders.log";
+
+        // Create our own named logger — NOT the global default (which other plugins share)
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
-        auto log = std::make_shared<spdlog::logger>("global", std::move(sink));
+        auto log = std::make_shared<spdlog::logger>("CS", std::move(sink));
         log->set_level(spdlog::level::info);
         log->flush_on(spdlog::level::info);
         spdlog::set_default_logger(std::move(log));
@@ -101,7 +104,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadIn
 
     spdlog::info("FO4VR Community Shaders v0.1.0 loading");
 
-    // Phase 0: Engine fixes (before game shader system init)
+    // Phase 0: Hook CreatePixelShader ASAP (before FXP loading creates shaders)
+    Hooks::InstallEarlyD3DHook();
+
+    // Phase 0b: Engine fixes (before game shader system init)
     if (!EngineFixes::ApplyAll()) {
         spdlog::warn("Some engine fixes failed - continuing with partial fixes");
     }

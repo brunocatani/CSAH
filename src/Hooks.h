@@ -6,6 +6,7 @@ namespace Hooks {
     void InstallShaderHooks();
     void InstallRenderHooks();
     void InstallD3DHooks();
+    void InstallEarlyD3DHook();  // Call from F4SEPlugin_Load (before FXP loading)
     void MarkDeferredInitDone();
 
     // --- Hook function types ---
@@ -16,17 +17,26 @@ namespace Hooks {
         uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass);
     inline BeginTechnique_t OriginalBeginTechnique = nullptr;
 
+    // BSLightingShader::BeginTechnique at vtable[4]
+    // Signature: char(this, combinedTechID, renderPass) — 3 params, NOT the base's 6-param version
+    using LightingBeginTechnique_t = char(__fastcall*)(void* shader, uint32_t techID, void* renderPass);
+    inline LightingBeginTechnique_t OriginalLightingBeginTechnique = nullptr;
+
     // BSLightingShader::SetupGeometry at vtable[7]
     using SetupGeometry_t = void(__fastcall*)(void* shader, void* renderPass);
     inline SetupGeometry_t OriginalLightingSetupGeometry = nullptr;
 
-    // BSLightingShader::SetupMaterial at vtable[4]
+    // BSLightingShader::SetupMaterial at vtable[4] — UNUSED, kept for reference
     using SetupMaterial_t = void(__fastcall*)(void* shader, void* material);
     inline SetupMaterial_t OriginalLightingSetupMaterial = nullptr;
 
-    // BSShader::LoadShaders at RVA 0x27F4800
-    using LoadShaders_t = void(__fastcall*)(void* shader);
-    inline LoadShaders_t OriginalLoadShaders = nullptr;
+    // ID3D11DeviceContext::PSSetShader — vtable[9]
+    using PSSetShader_t = void(__fastcall*)(ID3D11DeviceContext*, ID3D11PixelShader*, ID3D11ClassInstance* const*, UINT);
+    inline PSSetShader_t OriginalPSSetShader = nullptr;
+
+    // ID3D11Device::CreatePixelShader — vtable[15]
+    using CreatePixelShader_t = HRESULT(__fastcall*)(ID3D11Device*, const void*, SIZE_T, ID3D11ClassLinkage*, ID3D11PixelShader**);
+    inline CreatePixelShader_t OriginalCreatePixelShader = nullptr;
 
     // IDXGISwapChain::Present
     using Present_t = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);

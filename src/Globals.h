@@ -15,8 +15,8 @@ namespace Globals {
     uintptr_t GetGraphicsState();        // base+0x6235AC0
 
     // Shader singletons
-    uintptr_t GetBSLightingShaderVtable(); // base+0x309AAB8
-    uintptr_t GetBSLightingShader();       // base+0x6733100
+    uintptr_t GetBSLightingShaderVtable(); // base+0x30bbdb8 (VR)
+    uintptr_t GetBSLightingShader();       // base+0x68794b0 (VR, from global LoadShaders)
     uintptr_t GetBSGrassShaderVtable();    // base+0x3098DA8
     uintptr_t GetBSGrassShader();          // base+0x6732948
     uintptr_t GetImageSpaceManager();      // base+0x6732C38
