@@ -237,3 +237,23 @@ FO4VR has TWO BSLightingShader objects:
 
 We Detoured the WRONG object. Hook 0x291DA20 for per-permutation support.
 SetupGeometry: vtable[9] (+0x48), not vtable[7] (+0x38).
+
+## Finding 20: GBuffer RT Formats — MRT1 is R16G16, MRT0 is SRGB
+**Date:** 2026-03-22
+
+GBuffer render target formats from Ghidra analysis:
+- MRT0 (Albedo): R8G8B8A8_UNORM_SRGB — auto gamma encode on write!
+- MRT1 (Normals): R16G16_UNORM — ONLY 2 channels! T1.z/.w DISCARDED
+- MRT2 (Material): R8G8B8A8_UNORM
+- MRT3 (Emissive): R8G8B8A8_UNORM
+- MRT4 (Additional): R8G8B8A8_UNORM_SRGB
+- MRT5 (Motion Vectors): R16G16_FLOAT
+
+MRT0 SRGB means hardware gamma-encodes our output. If diffuse texture is
+sampled as SRGB SRV (returns LINEAR), our multiply + SRGB RT write is correct.
+If sampled as plain UNORM (returns gamma-encoded), double-encoding makes it dark.
+
+MRT1 R16G16 means deferred composite reconstructs Nz from just Nx,Ny:
+  Nz = 8 * dot(enc, enc) - 1   where enc = texValue.xy - 0.5
+
+VR composite uses DIFFERENT RT indices: 99, 100, 102, 103 (vs flat 28, 29, 32, 33).
