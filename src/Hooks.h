@@ -11,12 +11,6 @@ namespace Hooks {
 
     // --- Hook function types ---
 
-    // BSShader::BeginTechnique at RVA 0x2814BE0
-    // 6 params: this, vsTechID, hsTechID, dsTechID, psTechID, BSRenderPass*
-    using BeginTechnique_t = bool(__fastcall*)(void* shader, uint32_t vsTechID,
-        uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass);
-    inline BeginTechnique_t OriginalBeginTechnique = nullptr;
-
     // VR Extended BSLightingShader::BeginTechnique at RVA 0x291DA20
     // Signature: char(this, combinedTechID, renderPass) — 3 params
     // This is the RENDERER object, NOT the "Lighting" accumulation object (0x28B5C10)

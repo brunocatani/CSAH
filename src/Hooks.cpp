@@ -62,12 +62,6 @@ namespace {
         }
     }
 
-    // ---- Differential shader tracking ----
-    static thread_local bool s_insideBeginTechnique = false;
-    static std::unordered_set<ID3D11PixelShader*> s_knownNonLightingPS;
-    static std::unordered_set<ID3D11PixelShader*> s_unknownPathPS;
-    static std::mutex s_psTrackingMutex;
-
     // ---- Parallax PS identification (from DXBC hash matching) ----
     static std::unordered_set<ID3D11PixelShader*> s_parallaxPS;
     static std::unordered_set<uint64_t> s_parallaxHashes;
@@ -200,20 +194,6 @@ namespace {
             }
         }
 
-        return result;
-    }
-
-    // Base BSShader::BeginTechnique — tags PSSetShader calls from known (non-lighting) shaders
-    static bool __fastcall Hook_BeginTechnique(void* shader, uint32_t vsTechID,
-        uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass)
-    {
-        if (!s_deferredD3DInitDone) {
-            TryDeferredD3DInit();
-        }
-
-        s_insideBeginTechnique = true;
-        bool result = Hooks::OriginalBeginTechnique(shader, vsTechID, hsTechID, dsTechID, psTechID, renderPass);
-        s_insideBeginTechnique = false;
         return result;
     }
 
@@ -640,20 +620,6 @@ namespace Hooks {
             spdlog::error("  Failed to hook BSLightingShader::BeginTechnique: error {}", result);
         }
 
-        // --- Base BSShader::BeginTechnique at base+0x2814BE0 ---
-        // Kept for deferred D3D init fallback (fires for other shader types)
-        OriginalBeginTechnique = reinterpret_cast<BeginTechnique_t>(base + 0x2814BE0);
-
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
-        DetourAttach(reinterpret_cast<PVOID*>(&OriginalBeginTechnique), Hook_BeginTechnique);
-        result = DetourTransactionCommit();
-
-        if (result == NO_ERROR) {
-            spdlog::info("  Hooked base BeginTechnique at {:X}", base + 0x2814BE0);
-        } else {
-            spdlog::error("  Failed to hook base BeginTechnique: error {}", result);
-        }
     }
 
     void InstallRenderHooks()

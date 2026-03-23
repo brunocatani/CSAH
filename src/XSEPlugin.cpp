@@ -67,7 +67,7 @@ namespace {
                 // D3D-dependent init is DEFERRED because kGameDataReady fires before
                 // D3D device is fully initialized (Device=0x0 observed in logs).
                 // The deferred init runs from Hook_LoadShaders when the device becomes
-                // available, or from Hook_BeginTechnique as a fallback.
+                // available, or from Hook_LightingBeginTechnique as a fallback.
                 if (Globals::GetDevice()) {
                     spdlog::info("D3D device available at GameDataReady, initializing now");
                     Hooks::MarkDeferredInitDone();  // Prevent deferred path from running again
