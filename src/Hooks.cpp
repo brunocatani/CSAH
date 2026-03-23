@@ -73,6 +73,65 @@ namespace {
     static std::unordered_set<uint64_t> s_parallaxHashes;
     static bool s_parallaxHashesLoaded = false;
 
+    // ---- Scatter table reverse map: PS pointer -> technique ID ----
+    static std::unordered_map<ID3D11PixelShader*, uint32_t> s_psTechIDMap;
+    static std::mutex s_psTechIDMutex;
+    static uint32_t s_lastReverseMapSize = 0;
+
+    static void RebuildReverseMap()
+    {
+        // Use the LIGHTING (accumulation) object for scatter tables — its tables are
+        // populated by FXP loading. VR Extended's tables may differ or be empty.
+        auto bsLighting = Globals::GetBSLightingShaderAccum();
+        if (!bsLighting) return;
+
+        // PS scatter table: mask at +0xBC, sentinel at +0xC8, buckets at +0xD8
+        uint32_t psMask = *reinterpret_cast<uint32_t*>(bsLighting + 0xBC);
+        auto* sentinel = *reinterpret_cast<void**>(bsLighting + 0xC8);
+        auto* buckets = *reinterpret_cast<uintptr_t**>(bsLighting + 0xD8);
+
+        if (!buckets) return;  // mask=0 is valid (1 bucket), only skip if no bucket array
+
+        // Verification logging on first call
+        static bool s_loggedOnce = false;
+        if (!s_loggedOnce) {
+            s_loggedOnce = true;
+            spdlog::info("RebuildReverseMap: Lighting accum obj={:#x} mask={} sentinel={} buckets={}",
+                         bsLighting, psMask, fmt::ptr(sentinel), fmt::ptr(buckets));
+            // Also check VR Extended for comparison
+            auto vrExt = Globals::GetBSLightingShader();
+            if (vrExt) {
+                uint32_t vrMask = *reinterpret_cast<uint32_t*>(vrExt + 0xBC);
+                auto* vrBuckets = *reinterpret_cast<void**>(vrExt + 0xD8);
+                spdlog::info("RebuildReverseMap: VR Extended obj={:#x} mask={} buckets={}",
+                             vrExt, vrMask, fmt::ptr(vrBuckets));
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(s_psTechIDMutex);
+        uint32_t newEntries = 0;
+
+        for (uint32_t i = 0; i <= psMask; ++i) {
+            struct ScatterEntry { void* data; void* next; };
+            auto* cur = reinterpret_cast<ScatterEntry*>(&buckets[i * 2]);
+            while (cur && cur != sentinel && cur->data) {
+                uint32_t techID = *reinterpret_cast<uint32_t*>(cur->data);
+                auto* d3dPS = *reinterpret_cast<ID3D11PixelShader**>(
+                    reinterpret_cast<uintptr_t>(cur->data) + 8);
+                if (d3dPS && s_psTechIDMap.find(d3dPS) == s_psTechIDMap.end()) {
+                    s_psTechIDMap[d3dPS] = techID;
+                    ++newEntries;
+                }
+                cur = reinterpret_cast<ScatterEntry*>(cur->next);
+            }
+        }
+
+        if (newEntries > 0) {
+            spdlog::info("RebuildReverseMap: {} new entries, {} total", newEntries, s_psTechIDMap.size());
+        }
+        s_lastReverseMapSize = static_cast<uint32_t>(s_psTechIDMap.size());
+    }
+
     // BSLightingShader technique ID helpers (inlined from Ghidra FUN_14293a4f0 / FUN_14293a520)
     static uint32_t ExtractPSTechID(uint32_t combined) {
         uint32_t id = combined;
@@ -490,50 +549,11 @@ namespace {
             menuInitialized = true;
         }
 
-        // One-time scatter table scan (now that LoadShaders Detour is removed, FXP should load)
-        static bool s_scatterScanned = false;
-        static uint32_t s_presentCount = 0;
-        ++s_presentCount;
-        if (!s_scatterScanned && s_presentCount == 5) {
-            s_scatterScanned = true;
-            auto bsLighting = Globals::GetBSLightingShader();
-            if (bsLighting) {
-                // Check PS scatter table at +0xB8 (count at +0x04, buckets at +0x20)
-                uint32_t psCount = *reinterpret_cast<uint32_t*>(bsLighting + 0xB8 + 0x04);
-                void* psBuckets = *reinterpret_cast<void**>(bsLighting + 0xB8 + 0x20);
-                // Also check VS scatter table at +0x28
-                uint32_t vsCount = *reinterpret_cast<uint32_t*>(bsLighting + 0x28 + 0x04);
-                void* vsBuckets = *reinterpret_cast<void**>(bsLighting + 0x28 + 0x20);
-
-                spdlog::info("=== Scatter table scan (frame 100, no LoadShaders Detour) ===");
-                spdlog::info("  BSLightingShader at {:#x}", bsLighting);
-                spdlog::info("  VS scatter: count={} buckets={}", vsCount, fmt::ptr(vsBuckets));
-                spdlog::info("  PS scatter: count={} buckets={}", psCount, fmt::ptr(psBuckets));
-
-                if (psCount > 0 && psBuckets) {
-                    spdlog::info("  PS SCATTER TABLE IS POPULATED! Walking to build D3D PS -> technique map...");
-                    // Walk the scatter table and build D3D PS pointer -> technique ID map
-                    uint32_t visited = 0;
-                    auto* sentinel = *reinterpret_cast<void**>(bsLighting + 0xB8 + 0x10);
-                    struct ScatterEntry { void* data; void* next; };
-                    auto* buckets = reinterpret_cast<ScatterEntry*>(psBuckets);
-                    for (uint32_t i = 0; i < psCount; ++i) {
-                        for (auto* cur = &buckets[i]; cur && cur != sentinel && cur->data; cur = reinterpret_cast<ScatterEntry*>(cur->next)) {
-                            uint32_t techID = *reinterpret_cast<uint32_t*>(cur->data);
-                            auto* d3dPS = *reinterpret_cast<ID3D11PixelShader**>(
-                                reinterpret_cast<uintptr_t>(cur->data) + 8);
-                            bool isParallax = (techID & 0x0800) != 0;
-                            if (isParallax) {
-                                spdlog::info("  PARALLAX PS: tech={:#010x} d3dPS={}", techID, fmt::ptr(d3dPS));
-                            }
-                            ++visited;
-                        }
-                    }
-                    spdlog::info("  Walked {} scatter entries total", visited);
-                } else {
-                    spdlog::info("  PS scatter table STILL EMPTY — will use differential tracking only");
-                }
-            }
+        // Rebuild scatter table reverse map periodically
+        static uint32_t s_reverseMapTimer = 0;
+        ++s_reverseMapTimer;
+        if (s_reverseMapTimer == 5 || (s_reverseMapTimer % 1000 == 0)) {
+            RebuildReverseMap();
         }
 
         // Per-frame updates
