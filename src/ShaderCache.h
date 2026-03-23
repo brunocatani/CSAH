@@ -48,9 +48,22 @@ public:
     };
     Stats stats;
 
+    // Get or compile a replacement pixel shader for a technique ID.
+    // Returns nullptr if technique is unsupported or compilation fails (use vanilla).
+    ID3D11PixelShader* GetOrCompilePS(uint32_t techniqueID);
+
+    // Enable/disable technique-based replacement
+    bool techniqueReplacementEnabled = false;
+
     // Clear disk cache and reset stats
     void Clear();
 
 private:
     ShaderCache() = default;
+
+    std::unordered_map<uint32_t, Microsoft::WRL::ComPtr<ID3D11PixelShader>> m_psCache;
+    std::mutex m_psCacheMutex;
+
+    // Technique types our HLSL currently supports
+    bool IsSupportedTechnique(uint32_t techniqueID) const;
 };

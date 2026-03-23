@@ -421,9 +421,23 @@ namespace {
             return;
         }
 
-        // Future: technique-based replacement via ShaderCache (Phase 4)
-        // uint32_t techID = GetPSTechID(ps);
-        // if (techID && isGBuffer) { ... }
+        // Technique-based replacement via ShaderCache
+        if (isGBuffer) {
+            uint32_t techID = GetPSTechID(ps);
+            if (techID) {
+                auto* replacement = ShaderCache::GetSingleton().GetOrCompilePS(techID);
+                if (replacement) {
+                    State::GetSingleton().BindSharedData();
+                    for (auto* f : Feature::GetFeatureList()) {
+                        if (f->loaded && f->enabled) {
+                            f->OnSetupGeometry(nullptr);
+                        }
+                    }
+                    Hooks::OriginalPSSetShader(context, replacement, ppCI, numCI);
+                    return;
+                }
+            }
+        }
 
         // Log stats periodically
         if (s_psCallCount == 3000 || s_psCallCount == 30000) {
@@ -515,46 +529,12 @@ namespace {
             spdlog::info("Visual test shader: {}", s_testRedEnabled ? "ENABLED (magenta)" : "DISABLED");
         }
 
-        // F6: Compile Lighting.hlsl WITH POM support and replace all BSLightingShader PS
-        static bool s_lightingPSCompiled = false;
-        static Microsoft::WRL::ComPtr<ID3D11PixelShader> s_lightingPS;
+        // F6: Toggle technique-based shader replacement
         if (GetAsyncKeyState(VK_F6) & 1) {
-            if (!s_lightingPSCompiled) {
-                s_lightingPSCompiled = true;
-
-                // Build defines with EXTENDED_MATERIALS + PARALLAX_OCCLUSION_MAPPING
-                std::vector<D3D_SHADER_MACRO> defines;
-                defines.push_back({"EXTENDED_MATERIALS", "1"});
-                defines.push_back({"PARALLAX_OCCLUSION_MAPPING", "1"});
-                defines.push_back({nullptr, nullptr});  // terminator
-
-                Microsoft::WRL::ComPtr<ID3DBlob> blob, errors;
-                HRESULT hr = D3DCompileFromFile(
-                    L"Data/Shaders/Community/Lighting.hlsl",
-                    defines.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
-                    "PSMain", "ps_5_0",
-                    D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
-                    &blob, &errors);
-
-                if (SUCCEEDED(hr) && blob) {
-                    hr = Globals::GetDevice()->CreatePixelShader(
-                        blob->GetBufferPointer(), blob->GetBufferSize(),
-                        nullptr, &s_lightingPS);
-                    if (SUCCEEDED(hr)) {
-                        spdlog::info("Lighting.hlsl + POM compiled successfully!");
-                    }
-                } else {
-                    if (errors) {
-                        spdlog::error("Lighting.hlsl+POM compile error: {}",
-                                     (const char*)errors->GetBufferPointer());
-                    }
-                }
-            }
-            if (s_lightingPS) {
-                s_testRedPS = s_lightingPS;
-                s_testRedEnabled = !s_testRedEnabled;
-                spdlog::info("Lighting.hlsl + POM: {}", s_testRedEnabled ? "ENABLED" : "DISABLED");
-            }
+            auto& cache = ShaderCache::GetSingleton();
+            cache.techniqueReplacementEnabled = !cache.techniqueReplacementEnabled;
+            spdlog::info("Technique-based shader replacement: {}",
+                         cache.techniqueReplacementEnabled ? "ENABLED" : "DISABLED");
         }
 
         Menu::GetSingleton().Draw();

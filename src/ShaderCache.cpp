@@ -309,6 +309,67 @@ void ShaderCache::SaveToDiskCache(const std::string& key, const CompiledShader& 
     }
 }
 
+bool ShaderCache::IsSupportedTechnique(uint32_t techniqueID) const
+{
+    uint32_t techType = (techniqueID >> 8) & 0x1F;
+    switch (techType) {
+        case 0x00:  // Default
+        case 0x04:  // Parallax
+            return true;
+        default:
+            return false;
+    }
+    // Note: ParallaxOcc (0x0800 flag) is handled via PARALLAX_OCCLUSION_MAPPING define,
+    // not a separate technique type. It uses techType 0x00 or 0x04 with the 0x0800 flag.
+}
+
+ID3D11PixelShader* ShaderCache::GetOrCompilePS(uint32_t techniqueID)
+{
+    if (!techniqueReplacementEnabled) return nullptr;
+    if (!IsSupportedTechnique(techniqueID)) return nullptr;
+
+    // Check runtime cache
+    {
+        std::lock_guard<std::mutex> lock(m_psCacheMutex);
+        auto it = m_psCache.find(techniqueID);
+        if (it != m_psCache.end()) {
+            return it->second.Get();  // may be nullptr (failed compile)
+        }
+    }
+
+    // Try disk cache first
+    auto cacheKey = MakeCacheKey(8, techniqueID, true);  // shaderType 8 = BSLightingShader
+    CompiledShader cached;
+    if (LoadFromDiskCache(cacheKey, cached) && cached.valid && cached.ps) {
+        std::lock_guard<std::mutex> lock(m_psCacheMutex);
+        m_psCache[techniqueID] = cached.ps;
+        spdlog::info("ShaderCache: Loaded PS for tech={:#x} from disk cache", techniqueID);
+        return cached.ps.Get();
+    }
+
+    // Compile from HLSL
+    auto defines = BuildDefines(8, techniqueID, true);
+    auto compiled = CompileShader(
+        L"Data/Shaders/Community/Lighting.hlsl",
+        "PSMain", "ps_5_0", defines);
+
+    if (compiled.valid && compiled.ps) {
+        SaveToDiskCache(cacheKey, compiled);
+        std::lock_guard<std::mutex> lock(m_psCacheMutex);
+        m_psCache[techniqueID] = compiled.ps;
+        spdlog::info("ShaderCache: Compiled PS for tech={:#x} ({} bytes)", techniqueID, compiled.bytecode.size());
+        return compiled.ps.Get();
+    }
+
+    // Cache the failure so we don't retry every frame
+    {
+        std::lock_guard<std::mutex> lock(m_psCacheMutex);
+        m_psCache[techniqueID] = nullptr;
+    }
+    spdlog::warn("ShaderCache: Failed to compile PS for tech={:#x}", techniqueID);
+    return nullptr;
+}
+
 void ShaderCache::Clear() {
     if (!diskCacheEnabled) {
         spdlog::info("ShaderCache::Clear — disk cache is disabled, nothing to clear");
