@@ -119,13 +119,20 @@ namespace Globals {
 
     uintptr_t GetBSLightingShaderVtable()
     {
-        return s_base + 0x30bbdb8;  // VR vtable (from Ghidra constructor)
+        return s_base + 0x30BF3C8;  // VR Extended vtable (actual renderer)
     }
 
     uintptr_t GetBSLightingShader()
     {
-        // VR singleton at base+0x68794b0 (from global LoadShaders FUN_1427f4800)
-        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x68794b0);
+        // VR Extended renderer singleton at base+0x689b8a0
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x689b8a0);
+        return ptr ? *ptr : 0;
+    }
+
+    uintptr_t GetBSLightingShaderAccum()
+    {
+        // "Lighting" accumulation object — used for scatter table walking only
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x689b410);
         return ptr ? *ptr : 0;
     }
 
