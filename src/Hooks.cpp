@@ -354,6 +354,20 @@ namespace {
         return PSLayout::Unknown;
     }
 
+    static PSLayout GetPSLayout(ID3D11PixelShader* ps)
+    {
+        std::lock_guard<std::mutex> lock(s_psLayoutMutex);
+        auto it = s_psLayoutMap.find(ps);
+        return (it != s_psLayoutMap.end()) ? it->second : PSLayout::Unknown;
+    }
+
+    static uint32_t GetPSTechID(ID3D11PixelShader* ps)
+    {
+        std::lock_guard<std::mutex> lock(s_psTechIDMutex);
+        auto it = s_psTechIDMap.find(ps);
+        return (it != s_psTechIDMap.end()) ? it->second : 0;
+    }
+
     // ID3D11Device::CreatePixelShader hook — classifies ISGN layout per PS
     static HRESULT __fastcall Hook_CreatePixelShader(ID3D11Device* device, const void* bytecode,
         SIZE_T bytecodeLength, ID3D11ClassLinkage* classLinkage, ID3D11PixelShader** ppPS)
@@ -400,117 +414,62 @@ namespace {
         return hr;
     }
 
-    // ID3D11DeviceContext::PSSetShader hook — differential tracking + PS replacement
     static void __fastcall Hook_PSSetShader(ID3D11DeviceContext* context, ID3D11PixelShader* ps,
         ID3D11ClassInstance* const* ppCI, UINT numCI)
     {
         static uint32_t s_psCallCount = 0;
-        static bool s_reportDone = false;
         ++s_psCallCount;
 
-        // Track which PS come from BeginTechnique vs unknown path
-        // NEVER stop tracking — PS are loaded lazily as player explores
-        if (ps) {
-            std::lock_guard<std::mutex> lock(s_psTrackingMutex);
-            if (s_insideBeginTechnique) {
-                s_knownNonLightingPS.insert(ps);
-            } else {
-                if (s_knownNonLightingPS.find(ps) == s_knownNonLightingPS.end()) {
-                    s_unknownPathPS.insert(ps);
-                }
-            }
+        if (!ps) {
+            Hooks::OriginalPSSetShader(context, ps, ppCI, numCI);
+            return;
         }
 
-        // Report at 3000 and 30000 calls to capture initial + gameplay PS
-        if ((s_psCallCount == 3000 || s_psCallCount == 30000) && !s_reportDone) {
-            if (s_psCallCount == 30000) s_reportDone = true;
-            std::lock_guard<std::mutex> lock(s_psTrackingMutex);
-            spdlog::info("=== PSSetShader differential report after {} calls ===", s_psCallCount);
-            spdlog::info("  Known (from BeginTechnique): {} unique PS", s_knownNonLightingPS.size());
-            spdlog::info("  Unknown path (likely BSLightingShader): {} unique PS", s_unknownPathPS.size());
+        // Only consider GBuffer deferred shaders for replacement
+        PSLayout layout = GetPSLayout(ps);
+        bool isGBuffer = (layout == PSLayout::Layout3_GBuffer || layout == PSLayout::Layout4_GBuffer);
 
-            // Log the unknown PS pointers — these are our targets
-            uint32_t idx = 0;
-            for (auto* unknownPS : s_unknownPathPS) {
-                spdlog::info("  UNKNOWN_PS[{}]: {}", idx++, fmt::ptr(unknownPS));
-                if (idx >= 30) {
-                    spdlog::info("  ... and {} more", s_unknownPathPS.size() - 30);
-                    break;
+        // Test shader mode (F7): replace all GBuffer PS with test/lighting shader
+        if (s_testRedEnabled && isGBuffer && s_testRedPS) {
+            State::GetSingleton().BindSharedData();
+            for (auto* f : Feature::GetFeatureList()) {
+                if (f->loaded && f->enabled) {
+                    f->OnSetupGeometry(nullptr);
                 }
             }
+            Hooks::OriginalPSSetShader(context, s_testRedPS.Get(), ppCI, numCI);
+            return;
         }
 
-        // Shader replacement: ONLY replace PS that are BOTH:
-        // 1. In the "unknown path" set (BSLightingShader, from differential tracking)
-        // 2. Classified as Layout #3 or #4 (GBuffer deferred with TBN + packed UVs)
-        if (s_testRedEnabled && ps && s_testRedPS) {
-            // Check differential tracking first (cheap set lookup)
-            bool isUnknownPath = false;
+        // Future: technique-based replacement via ShaderCache (Phase 4)
+        // uint32_t techID = GetPSTechID(ps);
+        // if (techID && isGBuffer) { ... }
+
+        // Log stats periodically
+        if (s_psCallCount == 3000 || s_psCallCount == 30000) {
+            uint32_t mapped = 0;
             {
-                std::lock_guard<std::mutex> lock2(s_psTrackingMutex);
-                isUnknownPath = s_unknownPathPS.count(ps) > 0;
+                std::lock_guard<std::mutex> lock(s_psTechIDMutex);
+                mapped = static_cast<uint32_t>(s_psTechIDMap.size());
             }
-
-            if (!isUnknownPath) {
-                // Known non-BSLightingShader PS — pass through
-                Hooks::OriginalPSSetShader(context, ps, ppCI, numCI);
-                return;
-            }
-
-            // Check ISGN layout (from CreatePixelShader hook)
-            PSLayout layout = PSLayout::Unknown;
+            spdlog::info("=== PSSetShader report at {} calls ===", s_psCallCount);
+            spdlog::info("  Reverse map: {} PS with technique IDs", mapped);
             {
-                std::lock_guard<std::mutex> lock3(s_psLayoutMutex);
-                auto it = s_psLayoutMap.find(ps);
-                if (it != s_psLayoutMap.end()) {
-                    layout = it->second;
-                }
-            }
-
-            bool isReplaceable = (layout == PSLayout::Layout3_GBuffer ||
-                                  layout == PSLayout::Layout4_GBuffer);
-
-            static uint32_t s_logTimer2 = 0;
-            static uint32_t s_replaceHits = 0, s_skipLayout = 0, s_skipNoMap = 0;
-            ++s_logTimer2;
-
-            if (isReplaceable) {
-                ++s_replaceHits;
-
-                for (auto* f : Feature::GetFeatureList()) {
-                    if (f->loaded && f->enabled) {
-                        f->OnSetupGeometry(nullptr);
+                std::lock_guard<std::mutex> lock(s_psLayoutMutex);
+                uint32_t l3 = 0, l4 = 0, fwd = 0, dep = 0, unk = 0;
+                for (auto& [p, l] : s_psLayoutMap) {
+                    switch (l) {
+                        case PSLayout::Layout3_GBuffer: ++l3; break;
+                        case PSLayout::Layout4_GBuffer: ++l4; break;
+                        case PSLayout::Forward: ++fwd; break;
+                        case PSLayout::DepthOnly: ++dep; break;
+                        default: ++unk; break;
                     }
                 }
-                State::GetSingleton().BindSharedData();
-                Hooks::OriginalPSSetShader(context, s_testRedPS.Get(), ppCI, numCI);
-
-                if (s_logTimer2 % 10000 == 0) {
-                    std::lock_guard<std::mutex> lock3(s_psLayoutMutex);
-                    uint32_t l3 = 0, l4 = 0, fwd = 0, dep = 0, unk = 0;
-                    for (auto& [p, l] : s_psLayoutMap) {
-                        switch (l) {
-                            case PSLayout::Layout3_GBuffer: ++l3; break;
-                            case PSLayout::Layout4_GBuffer: ++l4; break;
-                            case PSLayout::Forward: ++fwd; break;
-                            case PSLayout::DepthOnly: ++dep; break;
-                            default: ++unk; break;
-                        }
-                    }
-                    spdlog::info("=== PS ISGN layout stats (call {}) ===", s_logTimer2);
-                    spdlog::info("  CreatePS captured: {} total (L3={} L4={} Fwd={} Depth={} Unk={})",
-                                 s_psLayoutMap.size(), l3, l4, fwd, dep, unk);
-                    spdlog::info("  Replace hits: {} | Skip(wrong layout): {} | Skip(no map): {}",
-                                 s_replaceHits, s_skipLayout, s_skipNoMap);
-                }
-                return;
+                spdlog::info("  ISGN layouts: L3={} L4={} Fwd={} Depth={} Unk={}", l3, l4, fwd, dep, unk);
             }
-
-            if (layout != PSLayout::Unknown) ++s_skipLayout;
-            else ++s_skipNoMap;
         }
 
-        // Pass through to original
         Hooks::OriginalPSSetShader(context, ps, ppCI, numCI);
     }
 
