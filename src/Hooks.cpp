@@ -683,18 +683,18 @@ namespace Hooks {
 
         auto base = REL::Module::get().base();
 
-        // BSLightingShader VR vtable at base+0x30bbdb8 (from Ghidra constructor)
-        // NOTE: NOT 0x309AAB8 which is wrong/flat offset
-        auto vtable = reinterpret_cast<uintptr_t*>(base + 0x30bbdb8);
-        spdlog::info("  BSLightingShader VR vtable at {}", fmt::ptr(vtable));
+        // VR Extended BSLightingShader vtable at base+0x30BF3C8 (from Ghidra constructor)
+        // NOTE: NOT 0x30bbdb8 which is the "Lighting" accumulation object
+        auto vtable = reinterpret_cast<uintptr_t*>(base + 0x30BF3C8);
+        spdlog::info("  VR Extended BSLightingShader vtable at {}", fmt::ptr(vtable));
 
         // BeginTechnique is hooked via Detour in InstallShaderHooks (devirtualized calls)
 
-        // --- SetupGeometry at vtable[7] ---
+        // --- SetupGeometry at vtable[9] ---
         void* origGeom = nullptr;
-        if (PatchVtableEntry(vtable, 7, reinterpret_cast<void*>(Hook_LightingSetupGeometry), &origGeom)) {
+        if (PatchVtableEntry(vtable, 9, reinterpret_cast<void*>(Hook_LightingSetupGeometry), &origGeom)) {
             OriginalLightingSetupGeometry = reinterpret_cast<SetupGeometry_t>(origGeom);
-            spdlog::info("  Hooked BSLightingShader::SetupGeometry (vtable[7]) - original {:X}",
+            spdlog::info("  Hooked VR Extended SetupGeometry (vtable[9]) - original {:X}",
                 reinterpret_cast<uintptr_t>(origGeom));
         } else {
             spdlog::error("  Failed to hook BSLightingShader::SetupGeometry");

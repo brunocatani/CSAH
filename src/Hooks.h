@@ -23,11 +23,11 @@ namespace Hooks {
     using LightingBeginTechnique_t = char(__fastcall*)(void* shader, uint32_t techID, void* renderPass);
     inline LightingBeginTechnique_t OriginalLightingBeginTechnique = nullptr;
 
-    // BSLightingShader::SetupGeometry at vtable[7]
+    // VR Extended BSLightingShader::SetupGeometry at vtable[9] (offset +0x48)
     using SetupGeometry_t = void(__fastcall*)(void* shader, void* renderPass);
     inline SetupGeometry_t OriginalLightingSetupGeometry = nullptr;
 
-    // BSLightingShader::SetupMaterial at vtable[4] — UNUSED, kept for reference
+    // BSLightingShader::SetupMaterial at vtable[6] — UNUSED, kept for reference
     using SetupMaterial_t = void(__fastcall*)(void* shader, void* material);
     inline SetupMaterial_t OriginalLightingSetupMaterial = nullptr;
 
