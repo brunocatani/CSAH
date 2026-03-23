@@ -639,9 +639,9 @@ namespace Hooks {
 
         // CreatePixelShader hooked via InstallEarlyD3DHook() from F4SEPlugin_Load
 
-        // --- BSLightingShader::BeginTechnique at base+0x28B5C10 (Detour, not vtable) ---
+        // --- VR Extended BSLightingShader::BeginTechnique at base+0x291DA20 (Detour, not vtable) ---
         // Must use Detour because the game devirtualizes this call (direct call, not vtable dispatch)
-        OriginalLightingBeginTechnique = reinterpret_cast<LightingBeginTechnique_t>(base + 0x28B5C10);
+        OriginalLightingBeginTechnique = reinterpret_cast<LightingBeginTechnique_t>(base + 0x291DA20);
 
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
@@ -649,9 +649,9 @@ namespace Hooks {
         LONG result = DetourTransactionCommit();
 
         if (result == NO_ERROR) {
-            spdlog::info("  Hooked BSLightingShader::BeginTechnique (Detour) at {:X}", base + 0x28B5C10);
+            spdlog::info("  Hooked VR Extended BSLightingShader::BeginTechnique (Detour) at {:X}", base + 0x291DA20);
             // Verify Detour actually patched the prologue
-            auto* patchedBytes = reinterpret_cast<uint8_t*>(base + 0x28B5C10);
+            auto* patchedBytes = reinterpret_cast<uint8_t*>(base + 0x291DA20);
             spdlog::info("  Prologue bytes: {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
                          patchedBytes[0], patchedBytes[1], patchedBytes[2], patchedBytes[3],
                          patchedBytes[4], patchedBytes[5], patchedBytes[6], patchedBytes[7]);

@@ -17,8 +17,9 @@ namespace Hooks {
         uint32_t hsTechID, uint32_t dsTechID, uint32_t psTechID, void* renderPass);
     inline BeginTechnique_t OriginalBeginTechnique = nullptr;
 
-    // BSLightingShader::BeginTechnique at vtable[4]
-    // Signature: char(this, combinedTechID, renderPass) — 3 params, NOT the base's 6-param version
+    // VR Extended BSLightingShader::BeginTechnique at RVA 0x291DA20
+    // Signature: char(this, combinedTechID, renderPass) — 3 params
+    // This is the RENDERER object, NOT the "Lighting" accumulation object (0x28B5C10)
     using LightingBeginTechnique_t = char(__fastcall*)(void* shader, uint32_t techID, void* renderPass);
     inline LightingBeginTechnique_t OriginalLightingBeginTechnique = nullptr;
 
