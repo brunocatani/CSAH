@@ -131,8 +131,10 @@ namespace Globals {
 
     uintptr_t GetBSLightingShaderAccum()
     {
-        // "Lighting" accumulation object — used for scatter table walking only
-        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x689b410);
+        // "Lighting" object from BSShaderManager array at base+0x68794b0
+        // This is the object whose scatter tables are populated by FXP loading.
+        // NOT 0x689b410 (which may be null or a different pointer).
+        auto ptr = reinterpret_cast<uintptr_t*>(s_base + 0x68794b0);
         return ptr ? *ptr : 0;
     }
 
