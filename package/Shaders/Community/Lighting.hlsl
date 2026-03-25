@@ -1,379 +1,224 @@
-// FO4VR Community Shaders — BSLightingShader Pixel Shader (Parallax Permutations)
+// FO4VR Community Shaders — BSLightingShader Pixel Shader
 //
-// Reconstructed from DXBC disassembly of shader 2624 (mid-complexity parallax).
-// Writes to 5 GBuffer render targets matching vanilla FO4 output.
+// Reconstructed from DXBC disassembly of vanilla VR shaders:
+//   shader_2544_PS (DEFAULT technique, Layout #3, 6 MRTs)
+//   shader_2546_PS (DEFAULT technique, Layout #4, 6 MRTs)
 //
-// This shader compiles ONLY for parallax permutations. Non-parallax permutations
-// will hit the #error guard and fall back to the vanilla shader via ShaderReplacer.
-//
-// Feature injection points:
-//   EXTENDED_MATERIALS — POM ray-march displaces UVs before texture sampling
-//   LINEAR_LIGHTING    — sRGB<->linear conversion around diffuse sampling
+// Every instruction traced register-by-register from vanilla DXBC.
+// CB offsets, texture registers, and MRT layout are Ghidra+DXBC verified.
 
 // ============================================================================
-// Permutation support: compiles for all BSLightingShader permutations.
-// PARALLAX_OCCLUSION_MAPPING enables POM features when defined.
+// Constant Buffers (DXBC-verified)
 // ============================================================================
 
-// ============================================================================
-// Includes
-// ============================================================================
-#include "Common/Color.hlsli"
-#include "Common/SharedData.hlsli"
-#include "Common/Math.hlsli"
-
-// ============================================================================
-// Constant Buffers
-// ============================================================================
-
-// PerMaterial — b2 (CONFIRMED from DXBC: dcl_constantbuffer CB2[8..11])
-// FO4 uses b2 for BSLightingShader PerMaterial, NOT b1.
+// PerMaterial — CB2[0..6] (dcl_constantbuffer CB2[7], immediateIndexed)
 cbuffer PerMaterial : register(b2) {
-    float4 PM_SpecularColor;        // cb2[0]: x=specR, y=specG, z=?, w=glossiness
-    float4 PM_EmissiveColor;        // cb2[1]: xyz=emissive RGB, w=?
-    float4 PM_AlphaParams;          // cb2[2]: x=alphaThreshold, y=useAlphaTest(1.0=on)
-    float4 PM_TintColor;            // cb2[3]: xyz=tint, w=tintBlend
-    float4 PM_EnvmapParams;         // cb2[4]: xy=envmap scale
-    float4 PM_Unused5;              // cb2[5]: not accessed in simple permutations
-    float4 PM_MaterialFlags;        // cb2[6]: x=featureFlag, y=featureFlag2, z=smoothness, w=softLightingFade
-    float4 PM_LightingEffectParams; // cb2[7]: x=specPower, y=hasRoughness, z=roughMin, w=roughMax
-    float4 PM_DirLightDir;          // cb2[8]: xyz=direction (rich permutation only)
-    float4 PM_DitherParams;         // cb2[9]: y=ditherThresh, z=ditherScale (rich only)
-    float4 PM_RoughnessParams;      // cb2[10]: x=roughness, y=hasRoughness, z=min, w=max (rich only)
+    float4 cb2_0;   // cb2[0] — SpecularColor (unused in DEFAULT technique)
+    float4 cb2_1;   // cb2[1] — .xyz=EmissiveColor, .w=alphaTestThreshold
+    float4 cb2_2;   // cb2[2] — unused in DEFAULT
+    float4 cb2_3;   // cb2[3] — unused in DEFAULT
+    float4 cb2_4;   // cb2[4] — unused in DEFAULT
+    float4 cb2_5;   // cb2[5] — .x=featureFlag1, .y=featureFlag2, .w=fadeFactor (-1=none)
+    float4 cb2_6;   // cb2[6] — .x=specPower, .y=hasRoughness, .z=roughMin, .w=roughMax
 };
 
-// PerGeometry — b12 (CONFIRMED from DXBC: dcl_constantbuffer CB12[31])
-// FO4 uses b12 for BSLightingShader PerGeometry. Only cb12[30].x confirmed used.
+// PerGeometry — CB12[0..70] (dcl_constantbuffer CB12[71], dynamicIndexed)
 cbuffer PerGeometry : register(b12) {
-    float4 PG_Padding[30];         // cb12[0..29]: layout unknown, reserved
-    float4 PG_ShadowParams;        // cb12[30]: x=shadow/interpolation factor
+    float4 cb12[71];
+    // cb12[50].x = shadow/interpolation factor
+    // cb12[51-54] = VR eye 0 reprojection matrix (TEXCOORD4 projection)
+    // cb12[55-58] = VR eye 1 reprojection matrix (TEXCOORD4 projection)
+    // cb12[63-66] = VR eye 0 projection matrix (TEXCOORD3 projection)
+    // cb12[67-70] = VR eye 1 projection matrix (TEXCOORD3 projection)
 };
 
 // ============================================================================
-// Feature: LINEAR_LIGHTING (b4)
+// Textures and Samplers (DXBC: t0/s0, t1/s1, t3/s3)
 // ============================================================================
-#ifdef LINEAR_LIGHTING
-cbuffer LinearLightingCB : register(b4) {
-    float LL_Gamma;
-    float LL_UseExact;
-    float2 LL_Pad;
-};
+Texture2D<float4> TexDiffuse        : register(t0);  // _d.dds
+Texture2D<float4> TexNormal         : register(t1);  // _n.dds (uses .zw for normal XY)
+Texture2D<float4> TexSecondaryNorm  : register(t3);  // secondary normal/detail map
 
-float3 ApplyLinearInput(float3 color) {
-    if (LL_UseExact > 0.5f)
-        return SRGBToLinear(color);
-    return SRGBToLinearFast(color);
-}
-
-float3 ApplyLinearOutput(float3 color) {
-    if (LL_UseExact > 0.5f)
-        return LinearToSRGB(color);
-    return LinearToSRGBFast(color);
-}
-#endif
+SamplerState SampDiffuse    : register(s0);
+SamplerState SampNormal     : register(s1);
+SamplerState SampSecondary  : register(s3);
 
 // ============================================================================
-// Feature: EXTENDED_MATERIALS / POM (b5)
-// ============================================================================
-#ifdef EXTENDED_MATERIALS
-cbuffer ExtendedMaterialsCB : register(b5) {
-    uint  EM_EnablePOM;        // 0=off, 1=on
-    uint  EM_EnableShadows;    // 0=off, 1=on
-    uint  EM_MaxSteps;         // 0=auto, >0=override
-    float EM_HeightScaleMult;  // multiplier on material height scale
-};
-
-#include "ExtendedMaterials/ExtendedMaterials.hlsli"
-#endif
-
-// ============================================================================
-// Textures and Samplers
-// ============================================================================
-Texture2D<float4> TexDiffuse  : register(t0);  // _d.dds — diffuse
-Texture2D<float4> TexNormal   : register(t1);  // _n.dds — normal map
-Texture2D<float4> TexSpecular : register(t2);  // _s.dds — specular; ALPHA = height map
-
-SamplerState SampDiffuse  : register(s0);
-SamplerState SampNormal   : register(s1);
-SamplerState SampSpecular : register(s2);
-
-// ============================================================================
-// PS Input/Output Structures
+// Input / Output Structures
 // ============================================================================
 
-// From FO4VR DXBC ISGN analysis — Layout #3 (134 POM shaders, most common full GBuffer layout)
-// Confirmed via disassembly of shader_2496_PS_0x006de554.dxbc:
-//   v0 = SV_POSITION, v1 = TEXCOORD0 (tangent), v2 = TEXCOORD1 (bitangent),
-//   v3 = TEXCOORD2 (normal), v4 = TEXCOORD3 (.w=U), v5 = TEXCOORD4 (.w=V),
-//   v6 = COLOR0 (.w=vertexAlpha), v7 = EYEINDEX (VR eye), v8 = SV_IsFrontFace
-//
-// NOTE: FO4VR packs UVs into TEXCOORD3.w and TEXCOORD4.w (unlike Skyrim which uses TEXCOORD0.xy)
-// NOTE: FO4VR always includes EYEINDEX (VR-only, not present in flat Skyrim)
-// NOTE: Layout #4 (117 POM) is identical but omits COLOR0 — handle with VertexColor fallback
+// Layout #3: TEXCOORD0-4, COLOR0, EYEINDEX, SV_IsFrontFace
+// Layout #4: Same but no COLOR0
 struct PS_INPUT {
-    float4 Position    : SV_POSITION;     // v0 — screen position
-    float3 Tangent     : TEXCOORD0;       // v1 — tangent vector (xyz only)
-    float3 Bitangent   : TEXCOORD1;       // v2 — bitangent vector (xyz only)
-    float3 Normal      : TEXCOORD2;       // v3 — normal vector (xyz only)
-    float4 TexCoord3   : TEXCOORD3;       // v4 — .xyz=unused in basic, .w = texcoord U
-    float4 TexCoord4   : TEXCOORD4;       // v5 — .xyz=unused in basic, .w = texcoord V
-    float4 VertexColor : COLOR0;          // v6 — .w = vertex alpha (zero if Layout #4)
-    uint   EyeIndex    : EYEINDEX;        // v7 — VR eye index (0=left, 1=right)
-    bool   IsFrontFace : SV_IsFrontFace;  // v8 — front face flag
+    float4 Position    : SV_POSITION;     // v0
+    float3 Tangent     : TEXCOORD0;       // v1
+    float3 Bitangent   : TEXCOORD1;       // v2
+    float3 Normal      : TEXCOORD2;       // v3
+    float4 TexCoord3   : TEXCOORD3;       // v4 — .xyz=position data, .w=UV.x
+    float4 TexCoord4   : TEXCOORD4;       // v5 — .xyz=position data, .w=UV.y
+    float4 VertexColor : COLOR0;          // v6 — .xyz only (Layout #4: zero-filled)
+    uint   EyeIndex    : EYEINDEX;        // v7
+    bool   IsFrontFace : SV_IsFrontFace;  // v8
 };
 
-// 5 GBuffer render targets (CONFIRMED from DXBC OSGN):
+// 6 MRTs (DXBC OSGN verified)
 struct PS_OUTPUT {
-    float4 Albedo   : SV_Target0;  // o0 — rgb=diffuse*tint, a=alpha
-    float4 Normals  : SV_Target1;  // o1 — xy=encoded normal, z=-N.z, w=alpha
-    float4 Material : SV_Target2;  // o2 — x=hasFeature, y=spec*0.003922, z=sqrt(rough*0.02), w=spec_sat
-    float4 Specular : SV_Target3;  // o3 — x=specR*spec, y=specG*smooth, z=gloss*0.01, w=clamp(alpha)
-    float4 Emissive : SV_Target4;  // o4 — xyz=emissiveColor, w=alpha
+    float4 Albedo       : SV_Target0;  // o0: .xyz=faded diffuse*vc, .w=0
+    float2 NormalEnc    : SV_Target1;  // o1: .xy=octahedral encoded normal (2 channels ONLY)
+    float4 Material     : SV_Target2;  // o2: .x=featureFlag, .y=specPow/255, .z=sqrt(rough*0.02), .w=sat(specPow)
+    float4 SecNormal    : SV_Target3;  // o3: .xyz=TBN-transformed secondary normal, .w=1/255
+    float3 Emissive     : SV_Target4;  // o4: .xyz=emissive color
+    float2 MotionVector : SV_Target5;  // o5: .xy=VR stereo motion vector
 };
 
-// ============================================================================
-// VS Stub — intentionally won't match vanilla input layout.
-// ShaderReplacer keeps vanilla VS; this just prevents linker complaints.
-// ============================================================================
-struct VS_INPUT {
-    float4 Position : POSITION;
-};
-
-struct VS_OUTPUT {
-    float4 Position : SV_POSITION;
-};
-
-VS_OUTPUT VSMain(VS_INPUT input) {
-    VS_OUTPUT output;
-    output.Position = input.Position;
-    return output;
-}
+// VS stub (vanilla VS is kept)
+struct VS_INPUT  { float4 Position : POSITION; };
+struct VS_OUTPUT { float4 Position : SV_POSITION; };
+VS_OUTPUT VSMain(VS_INPUT input) { VS_OUTPUT o; o.Position = input.Position; return o; }
 
 // ============================================================================
-// PSMain — GBuffer write for parallax permutations
+// PSMain — 1:1 reconstruction of vanilla DEFAULT technique GBuffer PS
+//
+// Source: shader_2544_PS_disasm.asm (Layout #3) and
+//         shader_2546_PS_disasm.asm (Layout #4)
 // ============================================================================
 [earlydepthstencil]
 PS_OUTPUT PSMain(PS_INPUT input) {
     PS_OUTPUT output;
 
-    // ------------------------------------------------------------------
-    // 1. Extract UV coordinates from v4.w / v5.w
-    // ------------------------------------------------------------------
+    // ---- UV extraction (DXBC lines 4-5) ----
     float2 uv = float2(input.TexCoord3.w, input.TexCoord4.w);
 
-    // ------------------------------------------------------------------
-    // 2. POM Injection Point — displace UVs before any texture sampling
-    // ------------------------------------------------------------------
-#ifdef EXTENDED_MATERIALS
-    float pomPixelOffset = 0.0;
+    // ---- Sample diffuse (DXBC line 6 / line 2) ----
+    float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 
-    [branch] if (EM_EnablePOM != 0u) {
-        // Build TBN matrix (tangent space -> world space, rows = T, B, N)
-        float3x3 tbn = float3x3(
-            normalize(input.Tangent),
-            normalize(input.Bitangent),
-            normalize(input.Normal)
-        );
+    // ---- Alpha test (Layout #4, DXBC lines 3-5 of shader 2546) ----
+    // cb2[1].w is alpha test threshold. If diffuse.a < threshold, discard.
+    clip(diffuse.a - cb2_1.w);
 
-        // View direction: from fragment toward camera.
-        // TODO: Replace with proper camera-to-fragment direction once eye position
-        // is confirmed available in PerGeometry (cb12). Using negative world normal
-        // as a rough approximation — produces visible POM displacement at non-grazing angles.
-        float3 viewDir = -normalize(input.Normal);
+    // ---- Fade factor (DXBC lines 1-3) ----
+    // If cb2[5].w == -1.0 (sentinel), no fade. Otherwise fade = 1 - cb2[5].w * shadow.
+    float shadow = cb12[50].x;
+    float fadeFactor = (cb2_5.w == -1.0) ? 1.0 : (1.0 - cb2_5.w * shadow);
 
-        // Screen-space noise for stochastic mip selection and shadow jitter
-        float screenNoise = frac(dot(input.Position.xy, float2(0.3183099, 0.1473211)));
+    // ---- Vertex color (Layout #3 uses v6.xyz, Layout #4 has no COLOR0) ----
+    float3 vcRGB = input.VertexColor.xyz;
+    // Layout #4: D3D fills missing COLOR0 with 0 → detect and use white
+    if (dot(vcRGB, vcRGB) < 0.0001) vcRGB = float3(1, 1, 1);
 
-        // Compute mip level for SampleLevel inside POM loop
-        float mipLevel = ExtendedMaterials::GetMipLevel(uv, TexSpecular, screenNoise);
+    // ==================================================================
+    // MRT0: Albedo (DXBC lines 7-8 / line 9)
+    // ==================================================================
+    output.Albedo.xyz = fadeFactor * diffuse.rgb * vcRGB;
+    output.Albedo.w = 0;  // DXBC line 0: hardcoded 0
 
-        // Build per-material DisplacementParams from the material CB and the height scale multiplier.
-        // PM_LightingEffectParams.x = specPower (cb2[7].x); we reuse it as the base height scale
-        // following the FO4 parallax convention where that field drives parallax intensity.
-        DisplacementParams dispParams;
-        float pomScale = PM_LightingEffectParams.x * EM_HeightScaleMult;
-        dispParams.DisplacementScale  = pomScale;
-        dispParams.DisplacementOffset = 0.0;
-        dispParams.HeightScale        = pomScale;
-        dispParams.FlattenAmount      = 0.0;
+    // ==================================================================
+    // Normal map sampling and TBN transform (DXBC lines 9-33)
+    // ==================================================================
 
-        // Ray-march the height field (height is in specular texture alpha = channel 3)
-        uv = ExtendedMaterials::GetParallaxCoords(
-            length(input.TexCoord3.xyz),  // distance approximation
-            uv,
-            mipLevel,
-            viewDir,
-            tbn,
-            screenNoise,
-            TexSpecular,
-            SampSpecular,
-            3u,                           // channel 3 = alpha
-            dispParams,
-            pomPixelOffset
-        );
-    }
-#endif
+    // Normalize the interpolated normal (DXBC lines 9-11)
+    float3 N = normalize(input.Normal);
 
-    // ------------------------------------------------------------------
-    // 3. Sample diffuse and handle alpha
-    // ------------------------------------------------------------------
-    float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
-    float texAlpha = diffuseSample.a;
+    // Sample primary normal from t1 (DXBC line 12)
+    // NOTE: t1.zwxy swizzle → normal.xy comes from texture .zw channels
+    float4 normalSample = TexNormal.Sample(SampNormal, uv);
+    float2 normalXY = normalSample.zw * 2.0 - 1.0;  // DXBC line 15: unpack .zw
 
-    // VertexColor fallback: Layout #4 (117 POM) omits COLOR0 → D3D fills with 0.
-    // Detect and treat as white (no tint) to avoid black output.
-    float4 vertexColor = input.VertexColor;
-    if (dot(vertexColor, vertexColor) < 0.0001f)
-        vertexColor = float4(1, 1, 1, 1);
-
-    float vertexAlpha = vertexColor.w;
-    float finalAlpha = texAlpha * vertexAlpha;
-
-    // ------------------------------------------------------------------
-    // 4. Sample normal and specular maps with (potentially POM-displaced) UV
-    // ------------------------------------------------------------------
-    float4 normalSample  = TexNormal.Sample(SampNormal, uv);
-    float4 specSample    = TexSpecular.Sample(SampSpecular, uv);
-
-    // ------------------------------------------------------------------
-    // 5. LINEAR_LIGHTING: convert diffuse to linear space
-    // ------------------------------------------------------------------
-#ifdef LINEAR_LIGHTING
-    diffuseSample.rgb = ApplyLinearInput(diffuseSample.rgb);
-#endif
-
-    // ------------------------------------------------------------------
-    // 6. Normal unpacking, TBN transform, front-face flip
-    //    (faithfully reconstructed from DXBC)
-    // ------------------------------------------------------------------
-    // Unpack normal map from [0,1] to [-1,1]
-    float2 normalXY = normalSample.xy * 2.0f - 1.0f;
-
-    // Reconstruct Z: sqrt(1 - nx*nx - ny*ny)
+    // Reconstruct Z (DXBC lines 16-19)
     float nDotN = dot(normalXY, normalXY);
-    nDotN = min(nDotN, 1.0f);
-    float normalZ = sqrt(1.0f - nDotN);
+    nDotN = min(nDotN, 1.0);
+    float normalZ = sqrt(1.0 - nDotN);
 
-    // Flip Z for back faces (IsFrontFace: nonzero = front, zero = back)
-    // IsFrontFace: true = front face, false = back face
+    // Front-face flip (DXBC line 20)
     float3 tsNormal = float3(normalXY, input.IsFrontFace ? normalZ : -normalZ);
 
-    // Transform from tangent space to world space using TBN vectors
-    // DXBC normalizes tangent and bitangent individually before the transform
-    float3 T = normalize(input.Tangent);
-    float3 B = normalize(input.Bitangent);
-    float3 N = input.Normal;
+    // Compute world normal components (DXBC lines 21-22 for N, 23-30 for T and B)
+    // The DXBC computes: wn.z = dot(N, tsNormal), clamped to ≤ 0
+    //                    wn.x = dot(normalize(T), tsNormal)
+    //                    wn.y = dot(normalize(B), tsNormal)
+    float3 T = normalize(input.Tangent);   // DXBC lines 23-25
+    float3 B = normalize(input.Bitangent); // DXBC lines 27-29
 
-    // Standard TBN transform
     float3 worldNormal;
-    worldNormal.x = dot(T, tsNormal);
-    worldNormal.y = dot(B, tsNormal);
-    worldNormal.z = dot(N, tsNormal);
+    worldNormal.x = dot(T, tsNormal);         // DXBC line 26
+    worldNormal.y = dot(B, tsNormal);         // DXBC line 30
+    worldNormal.z = min(dot(N, tsNormal), 0); // DXBC lines 21-22: clamp Z ≤ 0
 
-    // Vanilla DXBC clamps Z ≤ 0 before normalization.
-    // This ensures o1.z (= -Nz) is always ≥ 0, matching what
-    // FO4's deferred lighting pass expects.
-    worldNormal.z = min(worldNormal.z, 0.0f);
+    worldNormal = normalize(worldNormal);     // DXBC lines 31-33
 
-    // Normalize the world-space normal
-    float wnLen = rsqrt(dot(worldNormal, worldNormal));
-    worldNormal *= wnLen;
+    // ==================================================================
+    // MRT1: Octahedral normal encoding (DXBC lines 34-37)
+    // Only writes .xy — 2 channels
+    // ==================================================================
+    float encFactor = sqrt(worldNormal.z * -8.0 + 8.0);  // DXBC line 34: z*-8+8 = 8*(1-z)
+    output.NormalEnc = worldNormal.xy / encFactor + 0.5;  // DXBC lines 36-37
 
-    // ------------------------------------------------------------------
-    // 7. GBuffer Output 0: Albedo = diffuse texture * vertex color tint
-    // ------------------------------------------------------------------
-    float3 albedoColor = diffuseSample.rgb * vertexColor.rgb;
+    // ==================================================================
+    // MRT2: Material properties (DXBC lines 38-53)
+    // ==================================================================
 
-#ifdef LINEAR_LIGHTING
-    albedoColor = ApplyLinearOutput(albedoColor);
-#endif
+    // Roughness (DXBC lines 38-46)
+    float roughRange = cb2_6.w - cb2_6.z;           // line 38: roughMax - roughMin
+    float roughShadow = (cb2_6.w < 0.0) ? 0.0 : shadow;  // line 39-40
+    float roughLerped = roughShadow * roughRange + cb2_6.z;  // line 41: lerp
+    float roughDirect = roughShadow * cb2_6.w;       // line 42
+    float roughness = (cb2_6.y != 0.0) ? roughLerped : roughDirect;  // line 43-44
+    output.Material.z = sqrt(roughness * 0.02);      // lines 45-46
 
-    output.Albedo = float4(albedoColor, finalAlpha);
+    // Feature flags (DXBC lines 47-51)
+    bool shadowActive = (shadow != 0.0);              // line 47
+    bool flag1 = (cb2_5.x != 0.0);                   // line 48
+    bool flag2 = (cb2_5.y != 0.0);                   // line 48
+    output.Material.x = (flag1 || (flag2 && shadowActive)) ? 1.0 : 0.0;  // lines 49-51
 
-    // ------------------------------------------------------------------
-    // 8. GBuffer Output 1: Encoded Normals
-    //    Octahedral-style encoding: N.xy / sqrt(8*(1-N.z)) + 0.5
-    // ------------------------------------------------------------------
-    float normalEncodeFactor = sqrt(8.0f * (1.0f - worldNormal.z));
-    // Avoid division by zero when normal points straight at camera
-    normalEncodeFactor = max(normalEncodeFactor, EPSILON_DIVISION);
+    // Spec power encoding (DXBC lines 52-53)
+    output.Material.y = cb2_6.x * 0.003922;          // specPower / 255
+    output.Material.w = saturate(cb2_6.x);            // clamped specPower
 
-    output.Normals.xy = worldNormal.xy / normalEncodeFactor + 0.5f;
-    output.Normals.z  = -worldNormal.z;
-    output.Normals.w  = finalAlpha;
+    // ==================================================================
+    // MRT3: Secondary normal (DXBC lines 13-14, 54-60)
+    // Sample t3, unpack to [-1,1], normalize, TBN transform
+    // ==================================================================
+    float3 secNorm = TexSecondaryNorm.Sample(SampSecondary, uv).xyz;
+    secNorm = secNorm * 2.0 - 1.0;       // DXBC line 14: unpack
+    secNorm = normalize(secNorm);         // DXBC lines 54-56
 
-    // ------------------------------------------------------------------
-    // 9. GBuffer Output 3: Specular (done before Material because we need specR)
-    //    Reconstructed from DXBC specular output logic.
-    // ------------------------------------------------------------------
-    float shadowFactor = PG_ShadowParams.x;  // cb12[30].x
-    float smoothness   = PM_MaterialFlags.z;  // cb2[6].z
+    output.SecNormal.x = dot(T, secNorm);             // DXBC line 57
+    output.SecNormal.y = dot(B, secNorm);             // DXBC line 58
+    output.SecNormal.z = dot(N, secNorm);             // DXBC line 59
+    output.SecNormal.w = 0.003922;                    // DXBC line 60: 1/255
 
-    // Smoothness blending with shadow factor
-    float smoothShadow = shadowFactor * smoothness;
-    float invSmoothShadow = 1.0f - smoothShadow;
+    // ==================================================================
+    // MRT4: Emissive (DXBC line 61)
+    // ==================================================================
+    output.Emissive = cb2_1.xyz;
 
-    // Specular R channel: lerp between spec texture red and smoothness via shadow
-    float specBlendR = specSample.r * invSmoothShadow + smoothShadow;
+    // ==================================================================
+    // MRT5: VR Motion Vectors (DXBC lines 62-76)
+    // Projects TEXCOORD3.xyz and TEXCOORD4.xyz through VR eye-indexed
+    // matrices to compute screen-space motion delta.
+    // ==================================================================
+    uint eyeOff = input.EyeIndex * 4;  // DXBC line 64: ishl v7.x, 2
 
-    // Specular color with envmap lerping
-    float2 specColor = PM_SpecularColor.xy;   // cb2[0].xy
-    float2 envScale  = PM_EnvmapParams.xy;    // cb2[4].xy
+    // Project TEXCOORD3.xyz through eye matrix at cb12[63 + eyeOff]
+    float4 pos3 = float4(input.TexCoord3.xyz, 1.0);           // DXBC lines 62-63
+    float2 proj3;
+    proj3.x = dot(cb12[eyeOff + 63], pos3);                    // DXBC line 65
+    proj3.y = dot(cb12[eyeOff + 64], pos3);                    // DXBC line 66
+    float proj3w = dot(cb12[eyeOff + 66], pos3);               // DXBC line 67
+    proj3 /= proj3w;                                            // DXBC line 68
 
-    float2 specDelta = envScale - specColor;
-    float2 lerpedSpec = shadowFactor * specDelta + specColor;
-    lerpedSpec *= specColor;
+    // Project TEXCOORD4.xyz through eye matrix at cb12[51 + eyeOff]
+    float4 pos4 = float4(input.TexCoord4.xyz, 1.0);           // DXBC lines 69-70
+    float2 proj4;
+    proj4.x = dot(cb12[eyeOff + 51], pos4);                    // DXBC line 71
+    proj4.y = dot(cb12[eyeOff + 52], pos4);                    // DXBC line 72
+    float proj4w = dot(cb12[eyeOff + 54], pos4);               // DXBC line 73
+    proj4 /= proj4w;                                            // DXBC line 74
 
-    // Only use lerped values if envmapScale >= 0
-    float finalSpecR = (envScale.x >= 0.0f) ? lerpedSpec.x : specColor.x;
-    float finalSpecG = (envScale.y >= 0.0f) ? lerpedSpec.y : specColor.y;
-
-    output.Specular.x = finalSpecR * specSample.g;          // specR * specular green
-    output.Specular.y = finalSpecG * specBlendR;             // specG * smoothness blend
-    output.Specular.z = PM_SpecularColor.w * 0.01f;         // glossiness * 0.01
-    output.Specular.w = clamp(finalAlpha, 0.019608f, 1.0f); // alpha clamped
-
-    // ------------------------------------------------------------------
-    // 10. GBuffer Output 2: Material Properties
-    //     Roughness, feature flags, specular power encoding.
-    // ------------------------------------------------------------------
-    // Roughness calculation
-    float roughMin = PM_LightingEffectParams.z;  // cb2[7].z
-    float roughMax = PM_LightingEffectParams.w;  // cb2[7].w
-    float roughRange = roughMax - roughMin;
-    float hasRoughness = PM_LightingEffectParams.y;  // cb2[7].y
-
-    // Shadow factor for roughness (0 if roughMax < 0)
-    float roughShadow = (roughMax < 0.0f) ? 0.0f : shadowFactor;
-
-    // If hasRoughness: lerp(roughMin, roughMax, shadow); else: shadow * roughMax
-    float roughness;
-    if (hasRoughness != 0.0f)
-        roughness = roughShadow * roughRange + roughMin;
-    else
-        roughness = roughShadow * roughMax;
-
-    output.Material.z = sqrt(roughness * 0.02f);
-
-    // Feature flags for o2.x
-    bool shadowActive = (shadowFactor != 0.0f);
-    bool featureFlag1 = (PM_MaterialFlags.x != 0.0f);
-    bool featureFlag2 = (PM_MaterialFlags.y != 0.0f);
-
-    // o2.x = 1.0 if (featureFlag1 OR (featureFlag2 AND shadowActive))
-    bool hasFeature = featureFlag1 || (featureFlag2 && shadowActive);
-    output.Material.x = hasFeature ? 1.0f : 0.0f;
-
-    // Specular power encoding
-    float specPower = PM_LightingEffectParams.x;  // cb2[7].x
-    output.Material.y = specPower * 0.003922f;     // specPower * (1/255)
-    output.Material.w = saturate(specPower);        // saturate(specPower)
-
-    // ------------------------------------------------------------------
-    // 11. GBuffer Output 4: Emissive
-    // ------------------------------------------------------------------
-    output.Emissive.xyz = PM_EmissiveColor.xyz;
-    output.Emissive.w   = finalAlpha;
+    // Motion = (proj3 - proj4) * scale (DXBC lines 75-76)
+    float2 motionDelta = proj3 - proj4;                         // DXBC line 75
+    output.MotionVector = motionDelta * float2(-0.5, 0.5);     // DXBC line 76
 
     return output;
 }
