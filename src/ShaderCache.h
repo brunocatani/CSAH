@@ -64,6 +64,9 @@ private:
     std::unordered_map<uint32_t, Microsoft::WRL::ComPtr<ID3D11PixelShader>> m_psCache;
     std::mutex m_psCacheMutex;
 
+public:
     // Technique types our HLSL currently supports
     bool IsSupportedTechnique(uint32_t techniqueID) const;
+
+private:
 };

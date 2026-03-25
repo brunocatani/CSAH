@@ -72,51 +72,75 @@ namespace {
     static std::mutex s_psTechIDMutex;
     static uint32_t s_lastReverseMapSize = 0;
 
+    // PS scatter table entry layout (from Ghidra decompilation of BSShader::BeginTechnique):
+    //   +0x00: BSGraphics::PixelShader* value  (8 bytes)
+    //   +0x08: entry_type*              next   (8 bytes, nullptr=empty, sentinel=end)
+    // Total: 0x10 (16 bytes) per entry.
+    //
+    // Key comparison: entry->value->id == techID  (id is at offset 0x00 of BSGraphics::PixelShader)
+    // D3D shader:     entry->value->shader        (at offset 0x08 of BSGraphics::PixelShader)
+    //
+    // CRITICAL: The engine checks entry->next != nullptr to detect empty slots.
+    // Empty slots may have STALE non-zero values in entry->value — do NOT read value if next is null.
+    struct PSScatterEntry {
+        void* value;    // BSGraphics::PixelShader*
+        void* next;     // chain pointer (nullptr=empty, sentinel=end-of-chain)
+    };
+
     static void RebuildReverseMap()
     {
-        // Use the LIGHTING (accumulation) object for scatter tables — its tables are
-        // populated by FXP loading. VR Extended's tables may differ or be empty.
-        auto bsLighting = Globals::GetBSLightingShaderAccum();
-        if (!bsLighting) return;
+        auto bsShader = Globals::GetBSLightingShader();
+        if (!bsShader) return;
 
-        // PS scatter table: mask at +0xBC, sentinel at +0xC8, buckets at +0xD8
-        uint32_t psMask = *reinterpret_cast<uint32_t*>(bsLighting + 0xBC);
-        auto* sentinel = *reinterpret_cast<void**>(bsLighting + 0xC8);
-        auto* buckets = *reinterpret_cast<uintptr_t**>(bsLighting + 0xD8);
+        // PS BSTScatterTable offsets (from BSShader base):
+        //   +0xBC: capacity (uint32, always power of 2)
+        //   +0xC8: sentinel pointer
+        //   +0xD8: entries array pointer
+        uint32_t capacity = *reinterpret_cast<uint32_t*>(bsShader + 0xBC);
+        auto*    sentinel = *reinterpret_cast<void**>(bsShader + 0xC8);
+        auto*    entries  = reinterpret_cast<PSScatterEntry*>(
+                            *reinterpret_cast<uintptr_t*>(bsShader + 0xD8));
 
-        if (!buckets) return;  // mask=0 is valid (1 bucket), only skip if no bucket array
+        if (!entries || capacity == 0) return;
 
-        // Verification logging on first call
+        uint32_t mask = capacity - 1;  // capacity is always power of 2
+
+        // Diagnostic on first successful call
         static bool s_loggedOnce = false;
         if (!s_loggedOnce) {
             s_loggedOnce = true;
-            spdlog::info("RebuildReverseMap: Lighting accum obj={:#x} mask={} sentinel={} buckets={}",
-                         bsLighting, psMask, fmt::ptr(sentinel), fmt::ptr(buckets));
-            // Also check VR Extended for comparison
-            auto vrExt = Globals::GetBSLightingShader();
-            if (vrExt) {
-                uint32_t vrMask = *reinterpret_cast<uint32_t*>(vrExt + 0xBC);
-                auto* vrBuckets = *reinterpret_cast<void**>(vrExt + 0xD8);
-                spdlog::info("RebuildReverseMap: VR Extended obj={:#x} mask={} buckets={}",
-                             vrExt, vrMask, fmt::ptr(vrBuckets));
-            }
+            spdlog::info("RebuildReverseMap: obj={:#x} capacity={} sentinel={} entries={}",
+                         bsShader, capacity, fmt::ptr(sentinel), fmt::ptr(entries));
         }
 
         std::lock_guard<std::mutex> lock(s_psTechIDMutex);
         uint32_t newEntries = 0;
 
-        for (uint32_t i = 0; i <= psMask; ++i) {
-            struct ScatterEntry { void* data; void* next; };
-            auto* cur = reinterpret_cast<ScatterEntry*>(&buckets[i * 2]);
-            while (cur && cur != sentinel && cur->data) {
-                uint32_t techID = *reinterpret_cast<uint32_t*>(cur->data);
-                auto* d3dPS = *reinterpret_cast<ID3D11PixelShader**>(
-                    reinterpret_cast<uintptr_t>(cur->data) + 8);
-                if (d3dPS && s_psTechIDMap.find(d3dPS) == s_psTechIDMap.end()) {
-                    s_psTechIDMap[d3dPS] = techID;
-                    ++newEntries;
+        for (uint32_t bucket = 0; bucket <= mask; ++bucket) {
+            auto* entry = &entries[bucket];  // each entry is 16 bytes (sizeof PSScatterEntry)
+
+            // Engine checks: entry->next != nullptr means slot is populated
+            if (!entry->next) continue;  // empty slot — DO NOT read entry->value
+
+            uint32_t chainLen = 0;
+            while (entry && entry != sentinel && chainLen < 256) {
+                auto* shaderObj = entry->value;  // BSGraphics::PixelShader*
+                if (shaderObj) {
+                    // id at shaderObj+0x00, D3D shader at shaderObj+0x08
+                    uint32_t techID = *reinterpret_cast<uint32_t*>(shaderObj);
+                    auto*    d3dPS  = *reinterpret_cast<ID3D11PixelShader**>(
+                                      reinterpret_cast<uintptr_t>(shaderObj) + 0x08);
+                    if (d3dPS && s_psTechIDMap.find(d3dPS) == s_psTechIDMap.end()) {
+                        s_psTechIDMap[d3dPS] = techID;
+                        ++newEntries;
+                    }
                 }
-                cur = reinterpret_cast<ScatterEntry*>(cur->next);
+
+                // Follow chain: next is at entry+0x08
+                auto* next = reinterpret_cast<PSScatterEntry*>(entry->next);
+                if (next == sentinel || !next) break;  // end of chain
+                entry = next;
+                ++chainLen;
             }
         }
 
@@ -422,12 +446,26 @@ namespace {
         }
 
         // Technique-based replacement via ShaderCache
+        // Use technique ID from BeginTechnique hook (Path A) or reverse map (Path B)
         if (isGBuffer) {
-            uint32_t techID = GetPSTechID(ps);
+            auto& state = State::GetSingleton();
+            uint32_t techID = state.currentTechniqueID;  // Set by BeginTechnique hook
+            if (!techID) techID = GetPSTechID(ps);        // Fallback to reverse map
+
+            // Diagnostic: log what we see when F6 is on
+            static uint32_t s_techDiagCount = 0;
+            if (ShaderCache::GetSingleton().techniqueReplacementEnabled && s_techDiagCount < 20) {
+                ++s_techDiagCount;
+                uint32_t techType = techID ? ((techID >> 8) & 0x1F) : 0xFF;
+                spdlog::info("PSSetShader DIAG[{}]: isGBuffer={} techID={:#x} techType={} supported={}",
+                    s_techDiagCount, isGBuffer, techID, techType,
+                    techID ? ShaderCache::GetSingleton().IsSupportedTechnique(techID) : false);
+            }
+
             if (techID) {
                 auto* replacement = ShaderCache::GetSingleton().GetOrCompilePS(techID);
                 if (replacement) {
-                    State::GetSingleton().BindSharedData();
+                    state.BindSharedData();
                     for (auto* f : Feature::GetFeatureList()) {
                         if (f->loaded && f->enabled) {
                             f->OnSetupGeometry(nullptr);
@@ -502,7 +540,7 @@ namespace {
             menuInitialized = true;
         }
 
-        // Rebuild scatter table reverse map periodically
+        // Rebuild scatter table reverse map periodically (PS pointer -> technique ID)
         static uint32_t s_reverseMapTimer = 0;
         ++s_reverseMapTimer;
         if (s_reverseMapTimer == 5 || (s_reverseMapTimer % 1000 == 0)) {

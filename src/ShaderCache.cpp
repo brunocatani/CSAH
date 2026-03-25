@@ -311,16 +311,11 @@ void ShaderCache::SaveToDiskCache(const std::string& key, const CompiledShader& 
 
 bool ShaderCache::IsSupportedTechnique(uint32_t techniqueID) const
 {
-    uint32_t techType = (techniqueID >> 8) & 0x1F;
-    switch (techType) {
-        case 0x00:  // Default
-        case 0x04:  // Parallax
-            return true;
-        default:
-            return false;
-    }
-    // Note: ParallaxOcc (0x0800 flag) is handled via PARALLAX_OCCLUSION_MAPPING define,
-    // not a separate technique type. It uses techType 0x00 or 0x04 with the 0x0800 flag.
+    // Accept ALL technique types. Our Lighting.hlsl handles the default GBuffer output.
+    // BuildDefines maps technique-specific flags to #defines — the HLSL compiles with
+    // whatever defines are present. If compilation fails for a specific technique,
+    // GetOrCompilePS caches nullptr and the vanilla shader passes through.
+    return techniqueID != 0;
 }
 
 ID3D11PixelShader* ShaderCache::GetOrCompilePS(uint32_t techniqueID)
