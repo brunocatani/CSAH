@@ -135,21 +135,26 @@ std::vector<D3D_SHADER_MACRO> ShaderCache::BuildDefines(uint32_t shaderType, uin
     if (techniqueID & 0x40) defines.push_back({"CHARACTER_LIGHT", "1"});
     if (techniqueID & 0x80) defines.push_back({"BACK_LIGHTING", "1"});
 
-    // Material type (bits 8-12)
-    uint32_t materialType = (techniqueID >> 8) & 0x1F;
+    // Material type (bits 8-13) — Ghidra-verified from BSLightingShader::BeginTechnique switch
+    // at 0x28B5C10: `uVar14 = param_2 >> 8 & 0x3f`
+    uint32_t materialType = (techniqueID >> 8) & 0x3F;
     switch (materialType) {
         case 0x00: break; // Default — no define needed
         case 0x01: defines.push_back({"MATERIAL_ENVMAP", "1"}); break;
         case 0x02: defines.push_back({"MATERIAL_GLOWMAP", "1"}); break;
-        case 0x04: defines.push_back({"MATERIAL_PARALLAX", "1"}); break;
-        case 0x05: defines.push_back({"MATERIAL_FACEGEN", "1"}); break;
-        case 0x06: defines.push_back({"MATERIAL_FACEGEN_RGBTINT", "1"}); break;
-        case 0x08: defines.push_back({"MATERIAL_HAIR", "1"}); break;
-        case 0x0B: defines.push_back({"MATERIAL_EYE", "1"}); break;
-        case 0x0C: defines.push_back({"MATERIAL_LODLANDSCAPE", "1"}); break;
-        case 0x0D: defines.push_back({"MATERIAL_MULTITEX_LANDSCAPE", "1"}); break;
-        case 0x0E: defines.push_back({"MATERIAL_LODOBJECTS", "1"}); break;
-        case 0x10: defines.push_back({"MATERIAL_TREE", "1"}); break;
+        case 0x03: defines.push_back({"MATERIAL_PARALLAX", "1"}); break;
+        case 0x04: defines.push_back({"MATERIAL_FACEGEN", "1"}); break;
+        case 0x05: defines.push_back({"MATERIAL_FACEGEN_RGBTINT", "1"}); break;
+        case 0x06: defines.push_back({"MATERIAL_HAIR", "1"}); break;
+        case 0x07: defines.push_back({"MATERIAL_PARALLAX", "1"});
+                   defines.push_back({"PARALLAX_OCCLUSION_MAPPING", "1"}); break;
+        case 0x08: defines.push_back({"MATERIAL_MULTITEX_LANDSCAPE", "1"}); break;
+        case 0x09: defines.push_back({"MATERIAL_LODLANDSCAPE", "1"}); break;
+        case 0x0B: defines.push_back({"MATERIAL_MULTILAYER_PARALLAX", "1"}); break;
+        case 0x0C: defines.push_back({"MATERIAL_TREE", "1"}); break;
+        case 0x0D: defines.push_back({"MATERIAL_LODOBJECTS", "1"}); break;
+        case 0x0E: defines.push_back({"MATERIAL_LODOBJECTS_HD", "1"}); break;
+        case 0x10: defines.push_back({"MATERIAL_EYE", "1"}); break;
         case 0x12: defines.push_back({"MATERIAL_LOD_MULTITEX_LANDSCAPE", "1"}); break;
         case 0x13: defines.push_back({"MATERIAL_DISMEMBERMENT", "1"}); break;
         default:

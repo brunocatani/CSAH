@@ -22,10 +22,14 @@ public:
         const std::vector<D3D_SHADER_MACRO>& defines);
 
     // Build defines from technique ID bitfield for BSLightingShader
-    // Bitfield from Ghidra RE:
+    // Ghidra-verified from BSLightingShader::BeginTechnique switch at 0x28B5C10:
     //   Bits 0-7: modifier flags (VC, Skinned, Precipitation, MultipleLayers, SoftLighting, RimLighting, CharacterLight, BackLighting)
-    //   Bits 8-12: material type (Default=0, Envmap=1, Glowmap=2, Parallax=4, Facegen=5, FacegenRGB=6, Hair=8, Eye=0xB, LODLandscape=0xC, MultiTexLand=0xD, LODObj=0xE, Tree=0x10, LODMultiTexLand=0x12, Dismemberment=0x13)
-    //   Forward pass additional: 0x200=Shadows, 0x800=ParallaxOcc, 0x20000=SSS, 0x20000000=VRInstancedStereo
+    //   Bits 8-13: material type ((techID >> 8) & 0x3F):
+    //     0=Default, 1=Envmap, 2=Glowmap, 3=Parallax, 4=Facegen, 5=FacegenRGBTint,
+    //     6=Hair, 7=ParallaxOcc, 8=MTLand, 9=LODLand, 0xB=MultiLayerParallax,
+    //     0xC=Tree, 0xD=LODObjects, 0xE=LODObjectsHD, 0x10=Eye,
+    //     0x12=LODMultiTexLand, 0x13=Dismemberment
+    //   Additional flags: 0x200=Shadows, 0x20000=SSS, 0x20000000=VRInstancedStereo
     std::vector<D3D_SHADER_MACRO> BuildDefines(uint32_t shaderType, uint32_t techniqueID, bool isPixelShader);
 
     // Add active feature defines
