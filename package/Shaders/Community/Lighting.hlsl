@@ -71,6 +71,22 @@ struct PS_OUTPUT {
     float2 MotionVector : SV_Target5;  // o5: .xy=VR stereo motion vector
 };
 
+// Community Shaders SharedData at b3 (bound by State::BindSharedData)
+cbuffer SharedData : register(b3) {
+    float4 CS_DirLightDirection;    // [0]
+    float4 CS_DirLightColor;        // [1]
+    float4 CS_AmbientColor[6];      // [2-7]
+    float4 CS_FogParams;            // [8]
+    float4 CS_WeatherData;          // [9]
+    float  CS_Timer;                // [10].x
+    uint   CS_FrameCount;           // [10].y
+    uint   CS_IsInterior;           // [10].z
+    uint   CS_IsVR;                 // [10].w
+    float  CS_Gamma;                // [11].x
+    float  CS_DebugMRTMode;         // [11].y — 0=off, 1-6=isolate MRT
+    float2 CS_Pad;                  // [11].zw
+};
+
 // VS stub (vanilla VS is kept)
 struct VS_INPUT  { float4 Position : POSITION; };
 struct VS_OUTPUT { float4 Position : SV_POSITION; };
@@ -219,6 +235,31 @@ PS_OUTPUT PSMain(PS_INPUT input) {
     // Motion = (proj3 - proj4) * scale (DXBC lines 75-76)
     float2 motionDelta = proj3 - proj4;                         // DXBC line 75
     output.MotionVector = motionDelta * float2(-0.5, 0.5);     // DXBC line 76
+
+    // ==================================================================
+    // DEBUG: MRT isolation mode (CS_Debug.x)
+    // Press F8 in-game to cycle: 0=off, 1=albedo, 2=normals,
+    // 3=material, 4=secNormal, 5=emissive, 6=motionVec
+    // When active, writes debug color to MRT0 and neutral to all others
+    // ==================================================================
+    int debugMode = (int)CS_DebugMRTMode;
+    if (debugMode > 0) {
+        float3 debugColor = float3(1, 0, 1); // magenta = invalid mode
+        switch (debugMode) {
+            case 1: debugColor = output.Albedo.xyz; break;           // show albedo
+            case 2: debugColor = float3(output.NormalEnc, 0); break; // show encoded normals
+            case 3: debugColor = output.Material.xyz; break;         // show material
+            case 4: debugColor = output.SecNormal.xyz * 0.5 + 0.5; break; // show sec normal
+            case 5: debugColor = output.Emissive; break;             // show emissive
+            case 6: debugColor = float3(output.MotionVector * 0.5 + 0.5, 0); break; // show motion
+        }
+        output.Albedo = float4(debugColor, 0);
+        output.NormalEnc = float2(0.5, 0.5);  // neutral up-facing normal
+        output.Material = float4(0, 0, 0.1, 0);
+        output.SecNormal = float4(0, 0, 1, 0.003922);
+        output.Emissive = float3(0, 0, 0);
+        output.MotionVector = float2(0, 0);
+    }
 
     return output;
 }

@@ -277,7 +277,38 @@ namespace {
         DepthOnly = 11,         // SV_POSITION + EYEINDEX only (depth pre-pass)
     };
     static std::unordered_map<ID3D11PixelShader*, PSLayout> s_psLayoutMap;
+    static std::unordered_map<ID3D11PixelShader*, uint8_t> s_psMRTCountMap;  // SV_Target count per PS
     static std::mutex s_psLayoutMutex;
+
+    // Count OSGN SV_Target entries in DXBC bytecode
+    static uint8_t CountOSGNTargets(const uint8_t* dxbc, SIZE_T size) {
+        if (size < 32 || memcmp(dxbc, "DXBC", 4) != 0) return 0;
+        uint32_t numChunks = *reinterpret_cast<const uint32_t*>(dxbc + 28);
+        if (numChunks > 32) return 0;
+
+        for (uint32_t ci = 0; ci < numChunks; ++ci) {
+            uint32_t chunkRel = *reinterpret_cast<const uint32_t*>(dxbc + 32 + ci * 4);
+            if (chunkRel + 8 > size) break;
+            if (memcmp(dxbc + chunkRel, "OSGN", 4) != 0) continue;
+
+            uint32_t numElems = *reinterpret_cast<const uint32_t*>(dxbc + chunkRel + 8);
+            uint32_t elemBase = chunkRel + 16;
+            uint32_t chunkDataStart = chunkRel + 8;
+            uint8_t targetCount = 0;
+
+            for (uint32_t i = 0; i < numElems && i < 64; ++i) {
+                uint32_t eoff = elemBase + i * 24;
+                if (eoff + 24 > size) break;
+                uint32_t nameRel = *reinterpret_cast<const uint32_t*>(dxbc + eoff);
+                uint32_t nameAbs = chunkDataStart + nameRel;
+                if (nameAbs >= size) continue;
+                const char* name = reinterpret_cast<const char*>(dxbc + nameAbs);
+                if (strncmp(name, "SV_Target", 9) == 0) ++targetCount;
+            }
+            return targetCount;
+        }
+        return 0;
+    }
 
     // Classify ISGN layout from DXBC bytecode
     static PSLayout ClassifyISGN(const uint8_t* dxbc, SIZE_T size) {
@@ -381,11 +412,13 @@ namespace {
         if (SUCCEEDED(hr) && ppPS && *ppPS && bytecode && bytecodeLength >= 32) {
             auto* dxbc = reinterpret_cast<const uint8_t*>(bytecode);
 
-            // Classify ISGN layout
+            // Classify ISGN layout and count output MRTs
             PSLayout layout = ClassifyISGN(dxbc, bytecodeLength);
+            uint8_t mrtCount = CountOSGNTargets(dxbc, bytecodeLength);
             {
                 std::lock_guard<std::mutex> lock(s_psLayoutMutex);
                 s_psLayoutMap[*ppPS] = layout;
+                s_psMRTCountMap[*ppPS] = mrtCount;
             }
 
             // Hash matching for parallax identification
@@ -429,9 +462,17 @@ namespace {
             return;
         }
 
-        // Only consider GBuffer deferred shaders for replacement
+        // Only consider 6-MRT GBuffer deferred shaders for replacement.
+        // 5-MRT shaders have different output layout (alpha-only MRT0, no motion vectors).
         PSLayout layout = GetPSLayout(ps);
         bool isGBuffer = (layout == PSLayout::Layout3_GBuffer || layout == PSLayout::Layout4_GBuffer);
+        if (isGBuffer) {
+            std::lock_guard<std::mutex> lock(s_psLayoutMutex);
+            auto it = s_psMRTCountMap.find(ps);
+            if (it != s_psMRTCountMap.end() && it->second != 6) {
+                isGBuffer = false;  // Not our 6-MRT format — skip replacement
+            }
+        }
 
         // Test shader mode (F7): replace all GBuffer PS with test/lighting shader
         if (s_testRedEnabled && isGBuffer && s_testRedPS) {
@@ -573,6 +614,15 @@ namespace {
             cache.techniqueReplacementEnabled = !cache.techniqueReplacementEnabled;
             spdlog::info("Technique-based shader replacement: {}",
                          cache.techniqueReplacementEnabled ? "ENABLED" : "DISABLED");
+        }
+
+        // F8: Cycle MRT debug mode (0=off, 1=albedo, 2=normals, 3=material, 4=secNorm, 5=emissive, 6=motion)
+        if (GetAsyncKeyState(VK_F8) & 1) {
+            auto& s = State::GetSingleton();
+            s.sharedData.DebugMRTMode = fmodf(s.sharedData.DebugMRTMode + 1.0f, 7.0f);
+            int mode = (int)s.sharedData.DebugMRTMode;
+            const char* names[] = {"OFF", "Albedo", "Normals", "Material", "SecNormal", "Emissive", "MotionVec"};
+            spdlog::info("MRT Debug: {} ({})", names[mode], mode);
         }
 
         Menu::GetSingleton().Draw();

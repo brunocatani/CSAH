@@ -13,7 +13,8 @@ struct alignas(16) SharedDataCB {
     uint32_t IsInterior;
     uint32_t IsVR;
     float Gamma;
-    float Padding[3];
+    float DebugMRTMode;  // 0=off, 1-6=isolate that MRT to albedo
+    float Padding[2];
 };
 
 static_assert(sizeof(SharedDataCB) % 16 == 0, "SharedDataCB must be 16-byte aligned");
