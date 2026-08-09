@@ -63,5 +63,11 @@
   { "name": "LandscapeLodAlphaTestSixMrt_L3_00000303", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "LandscapeLodModelSpaceNormalsSixMrt_L4_00002202", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
   { "name": "LandscapeLodInstancedSixMrt_L4_08000202", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_INSTANCED_SIX_MRT_PS" },
-  { "name": "LandscapeLodInstancedSixMrt_L3_08000203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" }
+  { "name": "LandscapeLodInstancedSixMrt_L3_08000203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "GradientRemapSixMrt_L4_04000006", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_SIX_MRT_PS" },
+  { "name": "GradientRemapSixMrt_L3_04000007", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "GradientRemapAlphaTestSixMrt_L4_04000106", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "GradientRemapAlphaTestSixMrt_L3_04000107", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "GradientRemapTessellatedSixMrt_L4_04080002", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_TESSELLATED_SIX_MRT_PS" },
+  { "name": "GradientRemapTessellatedSixMrt_L3_04080003", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" }
 ]

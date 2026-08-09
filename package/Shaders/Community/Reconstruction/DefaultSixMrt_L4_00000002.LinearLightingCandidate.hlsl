@@ -6,13 +6,21 @@
 #define LINEAR_LIGHTING_LANDSCAPE_LOD 0
 #endif
 
+#ifndef LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_GRADIENT_REMAP 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
 
+#if LINEAR_LIGHTING_GRADIENT_REMAP && (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_LANDSCAPE_LOD)
+#error Combined gradient-remap material layouts require separate verified contracts.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP
     float4 cb2[7];
 #else
     float4 cb2[6];
@@ -55,6 +63,9 @@ Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
 Texture2D<float4> TexLandscapeLodDiffuse : register(t13);
 Texture2D<float4> TexLandscapeLodNormal : register(t15);
 #endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+Texture2D<float4> TexGradientRemap : register(t5);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -73,6 +84,9 @@ SamplerState SampAdditionalAlpha : register(s12);
 #if LINEAR_LIGHTING_LANDSCAPE_LOD
 SamplerState SampLandscapeLodDiffuse : register(s13);
 SamplerState SampLandscapeLodNormal : register(s15);
+#endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+SamplerState SampGradientRemap : register(s5);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -102,9 +116,17 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
 #endif
 
-#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[2]
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[4]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
 #else
+#define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[2]
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[4]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[5]
 #endif
 
@@ -192,6 +214,23 @@ PSOutput PSMain(PSInput input)
     alpha *= input.vertexColor.w;
 #endif
     clip(alpha - cb2[1].w);
+#endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_ALPHA_TEST
+    float gradientRemapSource = diffuseSample.x;
+#else
+    float gradientRemapSource = TexDiffuse.Sample(SampDiffuse, uv).x;
+#endif
+    float gradientRemapRow = cb2[2].x;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0;
+#endif
+    float4 gradientRemap = TexGradientRemap.SampleLevel(
+        SampGradientRemap,
+        float2(pow(gradientRemapSource, 0.454545), gradientRemapRow),
+        0.0);
+    float3 diffuse = gradientRemap.xyz;
+#elif LINEAR_LIGHTING_ALPHA_TEST
     float3 diffuse = diffuseSample.xyz;
 #else
     float3 diffuse = TexDiffuse.Sample(SampDiffuse, uv).xyz;
@@ -203,10 +242,12 @@ PSOutput PSMain(PSInput input)
     landscapeLodDiffuse = (landscapeLodDiffuse * 3.777778) - 2.006;
     diffuse *= landscapeLodDiffuse;
 #endif
-#if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_VERTEX_COLOR && !LINEAR_LIGHTING_GRADIENT_REMAP
     diffuse *= input.vertexColor.xyz;
 #endif
-    float fade = (cb2[4].w == -1.0) ? 1.0 : ((-cb2[4].w * cb12[50].x) + 1.0);
+    float fade = (LINEAR_LIGHTING_MATERIAL_PROPERTIES.w == -1.0) ?
+        1.0 :
+        ((-LINEAR_LIGHTING_MATERIAL_PROPERTIES.w * cb12[50].x) + 1.0);
     output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
     output.target0.w = cb2[0].z;
 
@@ -271,31 +312,45 @@ PSOutput PSMain(PSInput input)
         depthValue : depthAlt;
     output.target2.z = sqrt(depthValue * 0.02);
 
-    bool materialFlag = (cb12[50].x != 0.0 && cb2[4].y != 0.0) || cb2[4].x != 0.0;
+    bool materialFlag =
+        (cb12[50].x != 0.0 && LINEAR_LIGHTING_MATERIAL_PROPERTIES.y != 0.0) ||
+        LINEAR_LIGHTING_MATERIAL_PROPERTIES.x != 0.0;
     output.target2.x = materialFlag ? 1.0 : 0.0;
     output.target2.y = LINEAR_LIGHTING_DEPTH_PARAMETERS.x * 0.003922;
     output.target2.w = saturate(LINEAR_LIGHTING_DEPTH_PARAMETERS.x);
 
-    float specBlendA = cb12[50].x * cb2[4].z;
-    float specBlendB = (-cb2[4].z * cb12[50].x) + 1.0;
+    float specBlendA =
+        cb12[50].x * LINEAR_LIGHTING_MATERIAL_PROPERTIES.z;
+    float specBlendB =
+        (-LINEAR_LIGHTING_MATERIAL_PROPERTIES.z * cb12[50].x) + 1.0;
     float specBlend = (specularSample.x * specBlendB) + specBlendA;
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    float specularMask = specularSample.y * gradientRemap.w;
+#else
+    float specularMask = specularSample.y;
+#endif
 
     float3 emitColor;
 #if LINEAR_LIGHTING_INSTANCED
     uint instanceBase = input.instanceDataIndex * 6u;
     float4 instanceMaterial = cb13[instanceBase + 4u];
     output.target0.w = instanceMaterial.z;
-    output.target3.x = instanceMaterial.x * specularSample.y;
+    output.target3.x = instanceMaterial.x * specularMask;
     output.target3.y = instanceMaterial.y * specBlend;
     output.target3.z = instanceMaterial.w * 0.01;
     emitColor = cb13[instanceBase + 5u].xyz;
 #else
-    float2 materialXY = ((cb2[2].xy - cb2[0].xy) * cb12[50].xx) + cb2[0].xy;
+    float2 materialXY =
+        ((LINEAR_LIGHTING_MATERIAL_INTERPOLATION.xy - cb2[0].xy) *
+            cb12[50].xx) +
+        cb2[0].xy;
     materialXY *= cb2[0].xy;
-    materialXY = (cb2[2].xy >= 0.0) ? materialXY : cb2[0].xy;
+    materialXY = (LINEAR_LIGHTING_MATERIAL_INTERPOLATION.xy >= 0.0) ?
+        materialXY :
+        cb2[0].xy;
 
     output.target3.y = materialXY.y * specBlend;
-    output.target3.x = materialXY.x * specularSample.y;
+    output.target3.x = materialXY.x * specularMask;
     output.target3.z = cb2[0].w * 0.01;
     emitColor = cb2[1].xyz;
 #endif

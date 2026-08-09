@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 65:
-        fail("Linear Lighting manifest must contain exactly 65 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 71:
+        fail("Linear Lighting manifest must contain exactly 71 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -273,6 +273,17 @@ def verify_source_contracts(
                 "six-MRT shader is missing landscape-LOD contract: "
                 f"{token}"
             )
+    for token in (
+        "TexGradientRemap.SampleLevel",
+        "pow(gradientRemapSource, 0.454545)",
+        "gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0",
+        "specularSample.y * gradientRemap.w",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing gradient-remap contract: "
+                f"{token}"
+            )
 
     vertex_contracts = 0
     glowmap_contracts = 0
@@ -281,6 +292,7 @@ def verify_source_contracts(
     tessellated_contracts = 0
     additional_alpha_mask_contracts = 0
     landscape_lod_contracts = 0
+    gradient_remap_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -299,8 +311,10 @@ def verify_source_contracts(
             additional_alpha_mask_contracts += 1
         if "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1" in source_text:
             landscape_lod_contracts += 1
-    if vertex_contracts != 33:
-        fail(f"expected 33 COLOR0 contracts, found {vertex_contracts}")
+        if "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" in source_text:
+            gradient_remap_contracts += 1
+    if vertex_contracts != 36:
+        fail(f"expected 36 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 14:
         fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 6:
@@ -310,8 +324,8 @@ def verify_source_contracts(
             "expected 8 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 10:
-        fail(f"expected 10 tessellated contracts, found {tessellated_contracts}")
+    if tessellated_contracts != 12:
+        fail(f"expected 12 tessellated contracts, found {tessellated_contracts}")
     if additional_alpha_mask_contracts != 13:
         fail(
             "expected 13 additional-alpha-mask contracts, "
@@ -321,6 +335,11 @@ def verify_source_contracts(
         fail(
             "expected 7 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
+        )
+    if gradient_remap_contracts != 6:
+        fail(
+            "expected 6 gradient-remap contracts, "
+            f"found {gradient_remap_contracts}"
         )
 
 
@@ -376,10 +395,12 @@ def verify(root: Path) -> None:
     parity_entries = re.findall(
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
         r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
-    parity_contracts: dict[str, tuple[int, bool, bool, bool, bool, bool]] = {}
+    parity_contracts: dict[
+        str, tuple[int, bool, bool, bool, bool, bool, bool]
+    ] = {}
     for (
         name,
         mrt_count,
@@ -388,6 +409,7 @@ def verify(root: Path) -> None:
         uses_tessellated_inputs,
         has_additional_alpha_mask,
         has_landscape_lod,
+        has_gradient_remap,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -398,6 +420,7 @@ def verify(root: Path) -> None:
             uses_tessellated_inputs == "true",
             has_additional_alpha_mask == "true",
             has_landscape_lod == "true",
+            has_gradient_remap == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -505,6 +528,9 @@ def verify(root: Path) -> None:
                 and 15 in original["samplers"]
                 and 13 in original["textures"]
                 and 15 in original["textures"],
+                original["constant_buffers"].get(2) == 7
+                and 5 in original["samplers"]
+                and 5 in original["textures"],
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(

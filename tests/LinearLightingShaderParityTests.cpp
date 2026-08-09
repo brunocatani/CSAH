@@ -40,6 +40,7 @@ namespace
         bool usesTessellatedInputs{};
         bool hasAdditionalAlphaMask{};
         bool hasLandscapeLod{};
+        bool hasGradientRemap{};
     };
 
     constexpr std::array kShaderContracts{
@@ -108,6 +109,12 @@ namespace
         ShaderContract{ "LandscapeLodModelSpaceNormalsSixMrt_L4_00002202", 6, false, false, false, false, true },
         ShaderContract{ "LandscapeLodInstancedSixMrt_L4_08000202", 6, false, true, false, false, true },
         ShaderContract{ "LandscapeLodInstancedSixMrt_L3_08000203", 6, true, true, false, false, true },
+        ShaderContract{ "GradientRemapSixMrt_L4_04000006", 6, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapSixMrt_L3_04000007", 6, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestSixMrt_L4_04000106", 6, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestSixMrt_L3_04000107", 6, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapTessellatedSixMrt_L4_04080002", 6, false, false, true, false, false, true },
+        ShaderContract{ "GradientRemapTessellatedSixMrt_L3_04080003", 6, true, false, true, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -187,6 +194,12 @@ namespace
     constexpr Pixel kAdditionalAlphaNoise{ 0.75F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kLandscapeLodDiffuse{ 0.65F, 0.7F, 0.75F, 1.0F };
     constexpr Pixel kLandscapeLodNormal{ 0.6F, 0.4F, 0.0F, 1.0F };
+    constexpr std::array<Pixel, 4> kGradientRemapTexture{
+        Pixel{ 0.1F, 0.15F, 0.2F, 0.25F },
+        Pixel{ 0.25F, 0.4F, 0.65F, 0.45F },
+        Pixel{ 0.7F, 0.6F, 0.5F, 0.4F },
+        Pixel{ 0.8F, 0.55F, 0.3F, 0.75F },
+    };
 
     constexpr std::array<float, 4> kClearColor{
         123.25F,
@@ -434,6 +447,33 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return view;
     }
 
+    [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTexture2x2(
+        ID3D11Device& device,
+        const std::array<Pixel, 4>& pixels)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 2;
+        description.Height = 2;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = pixels.data();
+        initial.SysMemPitch = kFloat4Size * 2;
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device.CreateTexture2D(&description, &initial, &texture),
+            "CreateTexture2D(2x2 input)");
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device.CreateShaderResourceView(texture.Get(), nullptr, &view),
+            "CreateShaderResourceView(2x2 input)");
+        return view;
+    }
+
     [[nodiscard]] RenderTargets createRenderTargets(ID3D11Device& device)
     {
         RenderTargets result;
@@ -506,6 +546,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         UINT mrtCount,
         std::size_t caseIndex,
         bool hasAdditionalAlphaMask,
+        bool hasGradientRemap,
         AdditionalAlphaCase additionalAlphaCase)
     {
         std::array<std::array<float, 4>, 7> values{};
@@ -523,6 +564,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0.2F,
             0.9F,
         };
+        if (hasGradientRemap) {
+            values[2] = { 0.55F, 0.0F, 0.0F, 0.0F };
+            values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
+            values[4] = {};
+            values[5] = {
+                1.0F,
+                1.0F,
+                0.4F,
+                caseIndex == 2 ? -1.0F : 0.6F,
+            };
+            values[6] = depthParameters;
+            return values;
+        }
         if (hasAdditionalAlphaMask) {
             switch (additionalAlphaCase) {
             case AdditionalAlphaCase::disabled:
@@ -626,6 +680,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const LinearLightingCase& lightingCase,
         bool hasAdditionalAlphaMask,
         bool hasLandscapeLod,
+        bool hasGradientRemap,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -633,6 +688,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             mrtCount,
             caseIndex,
             hasAdditionalAlphaMask,
+            hasGradientRemap,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -683,6 +739,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto landscapeLodNormal = createTexture(
             device,
             kLandscapeLodNormal);
+        const auto gradientRemapTexture = createTexture2x2(
+            device,
+            kGradientRemapTexture);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -750,6 +809,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetSamplers(13, 1, &rawLandscapeLodSampler);
             context.PSSetSamplers(15, 1, &rawLandscapeLodSampler);
         }
+        auto* rawGradientRemapTexture = gradientRemapTexture.Get();
+        auto* rawGradientRemapSampler = sampler.Get();
+        if (hasGradientRemap) {
+            context.PSSetShaderResources(5, 1, &rawGradientRemapTexture);
+            context.PSSetSamplers(5, 1, &rawGradientRemapSampler);
+        }
 
         auto* rawMaterial = materialBuffer.Get();
         auto* rawGeometry = geometryBuffer.Get();
@@ -782,6 +847,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.PSSetShaderResources(15, 1, &nullView);
         ID3D11SamplerState* nullSampler{};
         context.PSSetSamplers(12, 1, &nullSampler);
+        if (hasGradientRemap) {
+            context.PSSetShaderResources(5, 1, &nullView);
+            context.PSSetSamplers(5, 1, &nullSampler);
+        }
         if (hasLandscapeLod) {
             context.PSSetShaderResources(13, 1, &nullView);
             context.PSSetSamplers(13, 1, &nullSampler);
@@ -872,13 +941,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto& emitColor = contract.isInstanced ?
             kInstanceEmitColor : kEmitColor;
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            auto diffuse = kDiffuseTexture[channel];
-            if (contract.hasLandscapeLod) {
-                diffuse *=
-                    (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
-            }
-            if (contract.hasVertexColor) {
-                diffuse *= kVertexColor[channel];
+            float diffuse{};
+            if (contract.hasGradientRemap) {
+                const auto gradientTexel = contract.hasVertexColor ? 1u : 3u;
+                diffuse = kGradientRemapTexture[gradientTexel][channel];
+            } else {
+                diffuse = kDiffuseTexture[channel];
+                if (contract.hasLandscapeLod) {
+                    diffuse *=
+                        (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
+                }
+                if (contract.hasVertexColor) {
+                    diffuse *= kVertexColor[channel];
+                }
             }
             expected[0][channel] = fade * transformedValue(
                 diffuse,
@@ -1004,7 +1079,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     caseIndex,
                     kDisabledCase,
                     contract.hasAdditionalAlphaMask,
-                    contract.hasLandscapeLod);
+                    contract.hasLandscapeLod,
+                    contract.hasGradientRemap);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1015,7 +1091,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     caseIndex,
                     kDisabledCase,
                     contract.hasAdditionalAlphaMask,
-                    contract.hasLandscapeLod);
+                    contract.hasLandscapeLod,
+                    contract.hasGradientRemap);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1036,7 +1113,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     caseIndex,
                     kIdentityCase,
                     contract.hasAdditionalAlphaMask,
-                    contract.hasLandscapeLod);
+                    contract.hasLandscapeLod,
+                    contract.hasGradientRemap);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1057,7 +1135,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     caseIndex,
                     kTransformedCase,
                     contract.hasAdditionalAlphaMask,
-                    contract.hasLandscapeLod);
+                    contract.hasLandscapeLod,
+                    contract.hasGradientRemap);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1105,6 +1184,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         kDisabledCase,
                         true,
                         false,
+                        false,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1116,6 +1196,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
+                        false,
                         false,
                         maskCase.value);
                     auto mismatch = compare(
