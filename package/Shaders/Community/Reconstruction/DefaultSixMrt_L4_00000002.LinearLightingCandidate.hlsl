@@ -37,6 +37,10 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
 
+#ifndef LINEAR_LIGHTING_ALPHA_TEST
+#define LINEAR_LIGHTING_ALPHA_TEST 0
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -70,7 +74,17 @@ PSOutput PSMain(PSInput input)
     PSOutput output;
 
     float2 uv = float2(input.currentPosition.w, input.previousPosition.w);
+#if LINEAR_LIGHTING_ALPHA_TEST
+    float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
+    float alpha = diffuseSample.w;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    alpha *= input.vertexColor.w;
+#endif
+    clip(alpha - cb2[1].w);
+    float3 diffuse = diffuseSample.xyz;
+#else
     float3 diffuse = TexDiffuse.Sample(SampDiffuse, uv).xyz;
+#endif
 #if LINEAR_LIGHTING_VERTEX_COLOR
     diffuse *= input.vertexColor.xyz;
 #endif

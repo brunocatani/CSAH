@@ -252,6 +252,97 @@ def verify(root: Path) -> None:
             "frame_registers": 6,
             "outputs": [0, 1, 2, 3, 4, 5],
         },
+        {
+            "label": "EnvmapSixMrt_L4_00000102",
+            "source": reconstruction
+            / "EnvmapSixMrt_L4_00000102.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapSixMrt_L4_00000102.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapSixMrt_L4_00000102.dxbc",
+            "original_size": 3384,
+            "replacement_size": 6572,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "EnvmapSixMrt_L3_00000103",
+            "source": reconstruction
+            / "EnvmapSixMrt_L3_00000103.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapSixMrt_L3_00000103.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapSixMrt_L3_00000103.dxbc",
+            "original_size": 3460,
+            "replacement_size": 6648,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "EnvmapModelSpaceSixMrt_L4_00000106",
+            "source": reconstruction
+            / "EnvmapModelSpaceSixMrt_L4_00000106.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapModelSpaceSixMrt_L4_00000106.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapModelSpaceSixMrt_L4_00000106.dxbc",
+            "original_size": 3384,
+            "replacement_size": 6572,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "EnvmapModelSpaceSixMrt_L3_00000107",
+            "source": reconstruction
+            / "EnvmapModelSpaceSixMrt_L3_00000107.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapModelSpaceSixMrt_L3_00000107.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapModelSpaceSixMrt_L3_00000107.dxbc",
+            "original_size": 3460,
+            "replacement_size": 6648,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "EnvmapProjectedFiveMrt_L4_00008102",
+            "source": reconstruction
+            / "EnvmapProjectedFiveMrt_L4_00008102.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapProjectedFiveMrt_L4_00008102.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapProjectedFiveMrt_L4_00008102.dxbc",
+            "original_size": 3100,
+            "replacement_size": 6232,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+        },
+        {
+            "label": "EnvmapProjectedFiveMrt_L3_00008103",
+            "source": reconstruction
+            / "EnvmapProjectedFiveMrt_L3_00008103.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapProjectedFiveMrt_L3_00008103.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapProjectedFiveMrt_L3_00008103.dxbc",
+            "original_size": 3176,
+            "replacement_size": 6308,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+        },
+        {
+            "label": "EnvmapProjectedFiveMrt_L4_00008106",
+            "source": reconstruction
+            / "EnvmapProjectedFiveMrt_L4_00008106.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapProjectedFiveMrt_L4_00008106.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "EnvmapProjectedFiveMrt_L4_00008106.dxbc",
+            "original_size": 3100,
+            "replacement_size": 6232,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -268,7 +359,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5, 7)
+        for index in (1, 3, 5, 7, 9, 11, 13)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
@@ -288,6 +379,10 @@ def verify(root: Path) -> None:
     if "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)" not in \
             base_source_texts[1]:
         fail("textured-emission shaders no longer transform the glow texture")
+    if "clip(alpha - cb2[1].w)" not in base_source_texts[1]:
+        fail("six-MRT envmap shaders no longer preserve alpha-reference testing")
+    if "clip(diffuse.w - cb2[1].w)" not in base_source_texts[0]:
+        fail("projected envmap shaders no longer preserve alpha-reference testing")
 
     for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
         if token not in runtime_text:

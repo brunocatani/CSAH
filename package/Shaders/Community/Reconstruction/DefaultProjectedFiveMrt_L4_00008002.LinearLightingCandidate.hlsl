@@ -22,6 +22,18 @@ SamplerState SampSpecular : register(s2);
 #define LINEAR_LIGHTING_VERTEX_COLOR 0
 #endif
 
+#ifndef LINEAR_LIGHTING_ALPHA_TEST
+#define LINEAR_LIGHTING_ALPHA_TEST 0
+#endif
+
+#ifndef LINEAR_LIGHTING_NORMAL_XY
+#define LINEAR_LIGHTING_NORMAL_XY 0
+#endif
+
+#ifndef LINEAR_LIGHTING_FORCE_EARLY_DEPTH
+#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -46,7 +58,9 @@ struct PSOutput
     float4 target4 : SV_Target4;
 };
 
+#if LINEAR_LIGHTING_FORCE_EARLY_DEPTH
 [earlydepthstencil]
+#endif
 PSOutput PSMain(PSInput input)
 {
     PSOutput output;
@@ -55,6 +69,9 @@ PSOutput PSMain(PSInput input)
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 #if LINEAR_LIGHTING_VERTEX_COLOR
     diffuse *= input.vertexColor;
+#endif
+#if LINEAR_LIGHTING_ALPHA_TEST
+    clip(diffuse.w - cb2[1].w);
 #endif
     float alphaMask = (cb2[2].y == 1.0) ? diffuse.w : 1.0;
     float alpha = alphaMask * cb2[2].x;
@@ -66,7 +83,11 @@ PSOutput PSMain(PSInput input)
     output.target0.w = alpha;
 
     float3 sourceNormal = normalize(input.normal);
+#if LINEAR_LIGHTING_NORMAL_XY
+    float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
+#else
     float2 normalSample = TexNormal.Sample(SampNormal, uv).zw;
+#endif
     float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));

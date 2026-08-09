@@ -580,7 +580,7 @@ namespace community_shaders::ui
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Opaque base + textured emission / five + six MRT" },
+                        { "label", "Captured opaque: default + envmap / five + six MRT" },
                         { "verifiedShaderContracts",
                             runtime.verifiedShaderContracts },
                         { "fullFeaturePort", false },
