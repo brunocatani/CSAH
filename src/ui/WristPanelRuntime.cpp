@@ -8,6 +8,7 @@
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
+#include "ui/LinearLightingTelemetryGate.h"
 #include "ui/PointerClickGate.h"
 #include "ui/WristPanelPose.h"
 #include "ui/WristProviderRetry.h"
@@ -193,6 +194,7 @@ namespace community_shaders::ui
         std::chrono::steady_clock::time_point nextModelPublish{};
         std::uint64_t lastPublishedUiRevision{};
         std::uint64_t lastPublishedDiagnosticsRevision{};
+        linear_lighting_telemetry::State telemetryLogState{};
 
         void pushLatestSnapshot() noexcept;
         void ensureView() noexcept;
@@ -718,9 +720,61 @@ namespace community_shaders::ui
             tasks->AddTask([]() { pushLatestSnapshot(); });
         }
 
+        void logLinearLightingMilestones() noexcept
+        {
+            const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const linear_lighting_telemetry::Sample sample{
+                .enabled = runtime.enabled,
+                .gpuResourcesReady = runtime.gpuResourcesReady,
+                .geometryProviderReady = runtime.geometryProviderReady,
+                .queuedSettingsRevision = runtime.queuedSettingsRevision,
+                .appliedSettingsRevision = runtime.appliedSettingsRevision,
+                .frameDataUploads = runtime.frameDataUploads,
+                .replacementBinds = runtime.replacementBinds,
+                .geometryUpdates = runtime.geometryUpdates,
+            };
+            const auto events = linear_lighting_telemetry::advance(
+                telemetryLogState,
+                sample);
+            if (events.settingsApplied) {
+                logging::info(
+                    "Linear Lighting render-boundary settings proof: queuedRevision={}, appliedRevision={}, enabled={}, frameDataUploads={}.",
+                    runtime.queuedSettingsRevision,
+                    runtime.appliedSettingsRevision,
+                    runtime.enabled,
+                    runtime.frameDataUploads);
+            }
+            if (events.activationReady) {
+                logging::info(
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}.",
+                    runtime.enabled,
+                    runtime.gpuResourcesReady,
+                    runtime.geometryProviderReady,
+                    runtime.frameDataUploads,
+                    runtime.matchingShadersCreated,
+                    runtime.trackedOriginalShaders);
+            }
+            if (events.firstReplacementBind) {
+                logging::info(
+                    "Linear Lighting first replacement proof: contractIndex={}, replacementBinds={}, frameDataUploads={}.",
+                    runtime.firstReplacementContractPlusOne ?
+                        runtime.firstReplacementContractPlusOne - 1 : 0,
+                    runtime.replacementBinds,
+                    runtime.frameDataUploads);
+            }
+            if (events.firstGeometryUpdate) {
+                logging::info(
+                    "Linear Lighting geometry proof: updates={}, rejects={}, replacementBinds={}.",
+                    runtime.geometryUpdates,
+                    runtime.rejectedGeometryUpdates,
+                    runtime.replacementBinds);
+            }
+        }
+
         void pushLatestSnapshot() noexcept
         {
             pushScheduled.store(false, std::memory_order_release);
+            logLinearLightingMilestones();
             if (!prisma || !prismaVr || !view ||
                 !domReady.load(std::memory_order_acquire)) {
                 return;

@@ -20,9 +20,13 @@ namespace community_shaders::linear_lighting
         std::uint32_t verifiedShaderContracts{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
+        std::uint32_t firstReplacementContractPlusOne{};
         std::uint64_t replacementBinds{};
         std::uint64_t geometryUpdates{};
         std::uint64_t rejectedGeometryUpdates{};
+        std::uint64_t queuedSettingsRevision{};
+        std::uint64_t appliedSettingsRevision{};
+        std::uint64_t frameDataUploads{};
     };
 
     class Runtime final
@@ -113,12 +117,14 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};
+        std::atomic_uint32_t firstReplacementContractPlusOne_{};
+        std::atomic_uint64_t frameDataUploads_{};
         std::array<std::atomic_bool, kShaderContractCount>
             originalCapacityWarningLogged_{};
         std::mutex shaderRegistryMutex_;
         std::mutex queuedSettingsMutex_;
         Settings queuedSettings_{};
         std::atomic_uint64_t queuedSettingsRevision_{};
-        std::uint64_t appliedSettingsRevision_{};
+        std::atomic_uint64_t appliedSettingsRevision_{};
     };
 }

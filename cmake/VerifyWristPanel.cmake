@@ -5,9 +5,14 @@ if(NOT DEFINED WRIST_PANEL_POSE_SOURCE OR
     NOT EXISTS "${WRIST_PANEL_POSE_SOURCE}")
   message(FATAL_ERROR "WRIST_PANEL_POSE_SOURCE is missing")
 endif()
+if(NOT DEFINED LINEAR_LIGHTING_RUNTIME_SOURCE OR
+    NOT EXISTS "${LINEAR_LIGHTING_RUNTIME_SOURCE}")
+  message(FATAL_ERROR "LINEAR_LIGHTING_RUNTIME_SOURCE is missing")
+endif()
 
 file(READ "${WRIST_PANEL_SOURCE}" source)
 file(READ "${WRIST_PANEL_POSE_SOURCE}" poseSource)
+file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
 
 foreach(required IN ITEMS
     "NetworkAccessPolicy::LocalOnly"
@@ -24,6 +29,10 @@ foreach(required IN ITEMS
     "wrist_panel_pose::kProberPanelPose.positionX"
     "wrist_panel_pose::kProberPanelPose.positionY"
     "wrist_panel_pose::kProberPanelPose.positionZ"
+    "logLinearLightingMilestones"
+    "Linear Lighting runtime activation proof:"
+    "Linear Lighting first replacement proof:"
+    "Linear Lighting geometry proof:"
     "wrist_provider_retry::Gate"
     "PrismaProbeFailure::SceneDepthPending"
     "attemptPrismaInitialization(\"GameDataReady\")"
@@ -35,6 +44,17 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Wrist-panel source regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "frameDataUploads_.fetch_add"
+    "firstReplacementContractPlusOne_.compare_exchange_strong"
+    "appliedSettingsRevision_.store")
+  string(FIND "${runtimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting telemetry regression: missing '${required}'")
   endif()
 endforeach()
 

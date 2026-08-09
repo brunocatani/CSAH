@@ -710,6 +710,7 @@ namespace community_shaders::linear_lighting
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
         enabled_.store(settings_.enabled, std::memory_order_release);
+        frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
 
@@ -781,12 +782,15 @@ namespace community_shaders::linear_lighting
         }
 
         ID3D11PixelShader* replacement = nullptr;
+        std::uint32_t replacementContractPlusOne{};
         for (std::size_t contractIndex = 0;
              contractIndex < originalShaders_.size() && !replacement;
              ++contractIndex) {
             for (const auto& slot : originalShaders_[contractIndex]) {
                 if (slot.load(std::memory_order_acquire) == requested) {
                     replacement = replacementShaders_[contractIndex].Get();
+                    replacementContractPlusOne =
+                        static_cast<std::uint32_t>(contractIndex + 1);
                     break;
                 }
             }
@@ -801,6 +805,12 @@ namespace community_shaders::linear_lighting
         context->PSSetConstantBuffers(5, 1, &frame);
         context->PSSetConstantBuffers(8, 1, &geometry);
         replacementCurrentlyBound_.store(true, std::memory_order_release);
+        auto noContractObserved = 0u;
+        firstReplacementContractPlusOne_.compare_exchange_strong(
+            noContractObserved,
+            replacementContractPlusOne,
+            std::memory_order_release,
+            std::memory_order_relaxed);
         replacementBinds_.fetch_add(1, std::memory_order_relaxed);
         return replacement;
     }
@@ -818,7 +828,8 @@ namespace community_shaders::linear_lighting
     {
         const auto revision =
             queuedSettingsRevision_.load(std::memory_order_acquire);
-        if (revision == appliedSettingsRevision_) {
+        if (revision ==
+            appliedSettingsRevision_.load(std::memory_order_acquire)) {
             return;
         }
 
@@ -830,7 +841,7 @@ namespace community_shaders::linear_lighting
 
         const auto wasEnabled = enabled_.load(std::memory_order_acquire);
         applySettings(next);
-        appliedSettingsRevision_ = revision;
+        appliedSettingsRevision_.store(revision, std::memory_order_release);
 
         // If the feature changed state while the engine retained the same
         // pixel-shader binding, explicitly replay the engine-requested shader.
@@ -890,6 +901,7 @@ namespace community_shaders::linear_lighting
         }
         const auto data = makeFrameData(settings_, true, false, 1.0f);
         context_->UpdateSubresource(frameBuffer_.Get(), 0, nullptr, &data, 0, 0);
+        frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
     }
 
     RuntimeSnapshot Runtime::snapshot() const noexcept
@@ -903,9 +915,18 @@ namespace community_shaders::linear_lighting
                 static_cast<std::uint32_t>(kShaderContracts.size()),
             .matchingShadersCreated = matchingShadersCreated_.load(std::memory_order_relaxed),
             .trackedOriginalShaders = trackedOriginalShaders_.load(std::memory_order_relaxed),
+            .firstReplacementContractPlusOne =
+                firstReplacementContractPlusOne_.load(
+                    std::memory_order_acquire),
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
             .geometryUpdates = geometryUpdates_.load(std::memory_order_relaxed),
             .rejectedGeometryUpdates = rejectedGeometryUpdates_.load(std::memory_order_relaxed),
+            .queuedSettingsRevision =
+                queuedSettingsRevision_.load(std::memory_order_acquire),
+            .appliedSettingsRevision =
+                appliedSettingsRevision_.load(std::memory_order_acquire),
+            .frameDataUploads =
+                frameDataUploads_.load(std::memory_order_relaxed),
         };
     }
 }
