@@ -1,0 +1,4 @@
+#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1
+#define LINEAR_LIGHTING_ALPHA_TEST 1
+#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0
+#include "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"

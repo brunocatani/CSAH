@@ -1,3 +1,11 @@
+#ifndef LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
+#endif
+
+#ifndef LINEAR_LIGHTING_LOD_OBJECT_ALPHA
+#define LINEAR_LIGHTING_LOD_OBJECT_ALPHA 0
+#endif
+
 #ifndef LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_GRADIENT_REMAP 0
 #endif
@@ -10,9 +18,17 @@
 #error Gradient hair requires the verified gradient-remap material layout.
 #endif
 
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#error Combined gradient remap and additional alpha masking require a separately verified layout.
+#endif
+
+#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && !LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#error LOD-object alpha requires the verified projected additional-alpha layout.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[8];
 #else
     float4 cb2[7];
@@ -29,6 +45,10 @@ cbuffer PerGeometry : register(b12)
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+Texture2D<float4> TexAdditionalAlpha : register(t12);
+Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
+#endif
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 Texture2D<float4> TexGradientRemap : register(t5);
 #endif
@@ -44,6 +64,9 @@ Texture2D<float4> TexGlow : register(t3);
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+SamplerState SampAdditionalAlpha : register(s12);
+#endif
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 SamplerState SampGradientRemap : register(s5);
 #endif
@@ -67,6 +90,10 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_NORMAL_XY 1
 #endif
 
+#ifndef LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 0
+#endif
+
 #ifndef LINEAR_LIGHTING_FORCE_EARLY_DEPTH
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
@@ -74,6 +101,10 @@ SamplerState SampGlow : register(s3);
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
 #else
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
@@ -113,6 +144,25 @@ PSOutput PSMain(PSInput input)
     PSOutput output;
 
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    if (cb2[6].y != 0.0)
+    {
+        float2 coordinateSign = (input.position.xy >= -input.position.xy) ?
+            float2(1.0, 1.0) : float2(-1.0, -1.0);
+        int2 noiseCoordinate = int2(
+            frac(input.position.xy * coordinateSign * 0.25) *
+            coordinateSign * 4.0);
+        float noise = TexAdditionalAlphaNoise.Load(
+            int3(noiseCoordinate, 0)).x;
+        clip((cb2[6].y * (0.5 - noise)) + cb2[6].z - 0.5);
+    }
+    if (cb2[6].w != 0.0)
+    {
+        float additionalAlpha = TexAdditionalAlpha.Sample(
+            SampAdditionalAlpha, uv).w;
+        clip(cb2[6].x - additionalAlpha);
+    }
+#endif
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 #if LINEAR_LIGHTING_VERTEX_COLOR
 #if LINEAR_LIGHTING_GRADIENT_REMAP
@@ -159,15 +209,23 @@ PSOutput PSMain(PSInput input)
     output.target0.w = alpha;
 
     float3 sourceNormal = normalize(input.normal);
+    float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
+#if LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+    float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0;
+    float3 tangentNormal = float3(
+        modelNormal.x,
+        modelNormal.z,
+        input.isFrontFace ? modelNormal.y : -modelNormal.y);
+#else
 #if LINEAR_LIGHTING_NORMAL_XY
     float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
 #else
     float2 normalSample = TexNormal.Sample(SampNormal, uv).zw;
 #endif
-    float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));
     float3 tangentNormal = float3(tangentNormalXY, input.isFrontFace ? tangentNormalZ : -tangentNormalZ);
+#endif
 
     float3 projectedNormal;
     projectedNormal.z = min(dot(sourceNormal, tangentNormal), 0.0);
@@ -198,7 +256,9 @@ PSOutput PSMain(PSInput input)
     output.target2.y = LINEAR_LIGHTING_PROJECTED_DEPTH.x * 0.003922;
     output.target2.w = saturate(LINEAR_LIGHTING_PROJECTED_DEPTH.x);
 
-#if LINEAR_LIGHTING_GRADIENT_HAIR
+#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA
+    output.target3.w = pow(alpha, 0.1);
+#elif LINEAR_LIGHTING_GRADIENT_HAIR
     output.target3.w = saturate(max(alpha, 0.019608));
 #else
     output.target3.w = alpha;

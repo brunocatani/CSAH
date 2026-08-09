@@ -129,6 +129,12 @@ namespace
         ShaderContract{ "GradientRemapHairProjectedFiveMrt_L4NoEarlyDepth_04028006", 5, false, false, false, false, false, true, true },
         ShaderContract{ "GradientRemapHairProjectedFiveMrt_L3NoEarlyDepth_04028007", 5, true, false, false, false, false, true, true },
         ShaderContract{ "GradientRemapHairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_04028107", 5, true, false, false, false, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskProjectedFiveMrt_L4_01008002", 5, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskProjectedFiveMrt_L3_01008003", 5, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskAlphaTestProjectedFiveMrt_L4_01008102", 5, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskAlphaTestProjectedFiveMrt_L3_01008103", 5, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskModelSpaceNormalsProjectedFiveMrt_L4_0100A002", 5, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskLodObjectProjectedFiveMrt_L4_01018802", 5, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -611,24 +617,31 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return values;
         }
         if (hasAdditionalAlphaMask) {
+            std::array<float, 4> maskParameters{};
             switch (additionalAlphaCase) {
             case AdditionalAlphaCase::disabled:
-                values[5] = {};
                 break;
             case AdditionalAlphaCase::texturePass:
-                values[5] = { 0.8F, 0.0F, 0.0F, 1.0F };
+                maskParameters = { 0.8F, 0.0F, 0.0F, 1.0F };
                 break;
             case AdditionalAlphaCase::textureReject:
-                values[5] = { 0.2F, 0.0F, 0.0F, 1.0F };
+                maskParameters = { 0.2F, 0.0F, 0.0F, 1.0F };
                 break;
             case AdditionalAlphaCase::noisePass:
-                values[5] = { 0.0F, 1.0F, 1.0F, 0.0F };
+                maskParameters = { 0.0F, 1.0F, 1.0F, 0.0F };
                 break;
             case AdditionalAlphaCase::noiseReject:
-                values[5] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                maskParameters = { 0.0F, 1.0F, 0.0F, 0.0F };
                 break;
             }
-            values[6] = depthParameters;
+            if (mrtCount == 5) {
+                values[5] = values[4];
+                values[6] = maskParameters;
+                values[7] = depthParameters;
+            } else {
+                values[5] = maskParameters;
+                values[6] = depthParameters;
+            }
         } else {
             values[5] = mrtCount == 5 ? values[4] : depthParameters;
             values[6] = depthParameters;

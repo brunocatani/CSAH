@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 84:
-        fail("Linear Lighting manifest must contain exactly 84 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 90:
+        fail("Linear Lighting manifest must contain exactly 90 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -300,6 +300,18 @@ def verify_source_contracts(
                 "projected shader is missing gradient-remap contract: "
                 f"{token}"
             )
+    for token in (
+        "TexAdditionalAlphaNoise.Load",
+        "clip(cb2[6].x - additionalAlpha)",
+        "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]",
+        "float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0",
+        "output.target3.w = pow(alpha, 0.1)",
+    ):
+        if token not in base_source_texts[0]:
+            fail(
+                "projected shader is missing additional-alpha-mask contract: "
+                f"{token}"
+            )
 
     vertex_contracts = 0
     glowmap_contracts = 0
@@ -310,6 +322,7 @@ def verify_source_contracts(
     landscape_lod_contracts = 0
     gradient_remap_contracts = 0
     gradient_hair_contracts = 0
+    lod_object_alpha_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -332,22 +345,24 @@ def verify_source_contracts(
             gradient_remap_contracts += 1
         if "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text:
             gradient_hair_contracts += 1
-    if vertex_contracts != 44:
-        fail(f"expected 44 COLOR0 contracts, found {vertex_contracts}")
+        if "#define LINEAR_LIGHTING_LOD_OBJECT_ALPHA 1" in source_text:
+            lod_object_alpha_contracts += 1
+    if vertex_contracts != 46:
+        fail(f"expected 46 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 14:
         fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 6:
         fail(f"expected 6 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 8:
+    if model_space_normal_contracts != 9:
         fail(
-            "expected 8 model-space-normal contracts, "
+            "expected 9 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 12:
         fail(f"expected 12 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 13:
+    if additional_alpha_mask_contracts != 19:
         fail(
-            "expected 13 additional-alpha-mask contracts, "
+            "expected 19 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 7:
@@ -364,6 +379,11 @@ def verify_source_contracts(
         fail(
             "expected 6 gradient-hair contracts, "
             f"found {gradient_hair_contracts}"
+        )
+    if lod_object_alpha_contracts != 1:
+        fail(
+            "expected 1 projected LOD-object-alpha contract, "
+            f"found {lod_object_alpha_contracts}"
         )
 
 
