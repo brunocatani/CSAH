@@ -14,6 +14,8 @@ foreach(required IN ITEMS
     "kPropertyEmissiveMultiplierOffset = 0x1B0"
     "kGeometrySetupSignature"
     "isReadableRange"
+    "isPlausibleObjectPointer"
+    "vtableCellOwned"
     "recordStage(GeometryWalkStage::pass)"
     "recordStage(GeometryWalkStage::geometry)"
     "recordStage(GeometryWalkStage::property)"
@@ -28,6 +30,27 @@ foreach(required IN ITEMS
 endforeach()
 
 string(FIND "${source}"
+  "[[nodiscard]] bool readEmissiveMultiplier" walkStart)
+string(FIND "${source}"
+  "void __fastcall hookGeometrySetup" hookStart)
+if(walkStart EQUAL -1 OR hookStart EQUAL -1 OR NOT walkStart LESS hookStart)
+  message(FATAL_ERROR
+    "FO4VR renderer hook regression: geometry walk boundary is missing")
+endif()
+math(EXPR walkLength "${hookStart} - ${walkStart}")
+string(SUBSTRING "${source}" ${walkStart} ${walkLength} walkSource)
+foreach(forbidden IN ITEMS
+    "VirtualQuery"
+    "isReadableRange"
+    "applyQueuedSettingsFor")
+  string(FIND "${walkSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "FO4VR renderer hook hot-path regression: found '${forbidden}'")
+  endif()
+endforeach()
+
+string(FIND "${source}"
   "originalGeometrySetup(receiver, pass, compiledProgram)" original_call)
 string(FIND "${source}" "updateGeometryEmissive(" update_call)
 if(original_call GREATER update_call)
@@ -38,7 +61,8 @@ endif()
 foreach(forbidden IN ITEMS
     "kGeometrySetupSlot = 6"
     "kPropertyEmissiveMultiplierOffset = 0xC8"
-    "kPropertyEmissiveMultiplierOffset = 0xB8")
+    "kPropertyEmissiveMultiplierOffset = 0xB8"
+    "applyQueuedSettingsFor")
   string(FIND "${source}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

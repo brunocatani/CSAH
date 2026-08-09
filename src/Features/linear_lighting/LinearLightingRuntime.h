@@ -21,6 +21,10 @@ namespace community_shaders::linear_lighting
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint32_t firstReplacementContractPlusOne{};
+        std::uint64_t shaderSelectionCalls{};
+        std::uint64_t rejectedShaderContexts{};
+        std::uint64_t inactiveShaderSelections{};
+        std::uint64_t unmatchedShaderSelections{};
         std::uint64_t replacementBinds{};
         std::uint64_t geometryUpdates{};
         std::uint64_t rejectedGeometryUpdates{};
@@ -62,10 +66,9 @@ namespace community_shaders::linear_lighting
             float emissiveMultiplier) noexcept;
 
         // UI/Prisma threads only publish immutable settings here. The render
-        // hook consumes the latest revision before touching the immediate
-        // context or any D3D11 resource.
+        // boundary consumes the latest revision before selecting a shader or
+        // touching the immediate context.
         void queueSettings(const Settings& settings) noexcept;
-        void applyQueuedSettingsForGeometryDraw() noexcept;
 
         void setGeometryProviderReady(bool ready) noexcept;
 
@@ -86,6 +89,7 @@ namespace community_shaders::linear_lighting
                 SIZE_T,
                 ID3D11ClassLinkage*,
                 ID3D11PixelShader**)) noexcept;
+        void applyQueuedSettingsForRenderBoundary() noexcept;
         void publishFrameData() noexcept;
 
         static constexpr std::size_t kShaderContractCount = 22;
@@ -114,6 +118,10 @@ namespace community_shaders::linear_lighting
         std::atomic_bool replacementCurrentlyBound_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
+        std::atomic_uint64_t shaderSelectionCalls_{};
+        std::atomic_uint64_t rejectedShaderContexts_{};
+        std::atomic_uint64_t inactiveShaderSelections_{};
+        std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};

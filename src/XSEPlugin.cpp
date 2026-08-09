@@ -66,14 +66,20 @@ namespace
                 community_shaders::linear_lighting::Runtime::get().snapshot();
             const auto geometry =
                 community_shaders::render::geometryHookSnapshot();
+            const auto d3d =
+                community_shaders::render::d3d11HookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, replacementBinds={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindCellOwned={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
                 linearLighting.matchingShadersCreated,
                 linearLighting.trackedOriginalShaders,
+                d3d.pixelShaderBindCalls,
+                linearLighting.shaderSelectionCalls,
                 linearLighting.replacementBinds,
+                d3d.pixelShaderBindCellOwned,
+                geometry.vtableCellOwned,
                 geometry.calls,
                 geometry.acceptedUpdates,
                 geometry.rejectedWalks,

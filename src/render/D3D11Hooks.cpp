@@ -47,6 +47,9 @@ namespace community_shaders::render
         D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
         CreatePixelShaderFunction originalCreatePixelShader{};
         PSSetShaderFunction originalPSSetShader{};
+        void** deviceCreationImportCell{};
+        void** createPixelShaderCell{};
+        void** pixelShaderBindCell{};
         std::atomic_bool deviceCreationImportInstalled{};
         std::atomic_bool deviceCaptured{};
         std::atomic_bool deviceHooksInstalled{};
@@ -102,6 +105,13 @@ namespace community_shaders::render
                 &restoredProtection);
             FlushInstructionCache(GetCurrentProcess(), target, sizeof(*target));
             return observed == expected && restored != FALSE;
+        }
+
+        [[nodiscard]] void* readPointerCell(void** cell) noexcept
+        {
+            return cell ? ReadPointerAcquire(
+                              reinterpret_cast<void* const volatile*>(cell)) :
+                          nullptr;
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -240,6 +250,8 @@ namespace community_shaders::render
                 logging::error("D3D11 CreatePixelShader vtable patch failed.");
                 return false;
             }
+            createPixelShaderCell =
+                &deviceVtable[kCreatePixelShaderVtableIndex];
             if (!patchPointer(
                     &contextVtable[kPSSetShaderVtableIndex],
                     psSetShader,
@@ -250,6 +262,7 @@ namespace community_shaders::render
                 logging::error("D3D11 PSSetShader vtable patch failed.");
                 return false;
             }
+            pixelShaderBindCell = &contextVtable[kPSSetShaderVtableIndex];
             return true;
         }
 
@@ -337,6 +350,7 @@ namespace community_shaders::render
                     "Fallout4VR D3D11 creation import patch failed; rendering remains vanilla.");
                 return false;
             }
+            deviceCreationImportCell = import;
             deviceCreationImportInstalled.store(true, std::memory_order_release);
             logging::info(
                 "Installed exact D3D11CreateDeviceAndSwapChain import hook.");
@@ -352,11 +366,23 @@ namespace community_shaders::render
 
     HookSnapshot d3d11HookSnapshot() noexcept
     {
+        const auto importInstalled =
+            deviceCreationImportInstalled.load(std::memory_order_acquire);
+        const auto hooksInstalled =
+            deviceHooksInstalled.load(std::memory_order_acquire);
         return {
-            .deviceCreationImportInstalled =
-                deviceCreationImportInstalled.load(std::memory_order_acquire),
+            .deviceCreationImportInstalled = importInstalled,
+            .deviceCreationImportOwned = importInstalled &&
+                readPointerCell(deviceCreationImportCell) ==
+                    reinterpret_cast<void*>(&hookCreateDeviceAndSwapChain),
             .deviceCaptured = deviceCaptured.load(std::memory_order_acquire),
-            .deviceHooksInstalled = deviceHooksInstalled.load(std::memory_order_acquire),
+            .deviceHooksInstalled = hooksInstalled,
+            .createPixelShaderCellOwned = hooksInstalled &&
+                readPointerCell(createPixelShaderCell) ==
+                    reinterpret_cast<void*>(&hookCreatePixelShader),
+            .pixelShaderBindCellOwned = hooksInstalled &&
+                readPointerCell(pixelShaderBindCell) ==
+                    reinterpret_cast<void*>(&hookPSSetShader),
             .deviceCreationCalls = deviceCreationCalls.load(std::memory_order_relaxed),
             .pixelShaderCreationCalls =
                 pixelShaderCreationCalls.load(std::memory_order_relaxed),

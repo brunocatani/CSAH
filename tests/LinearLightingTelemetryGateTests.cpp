@@ -20,8 +20,9 @@ namespace
         State state{};
         Sample sample{};
         auto events = advance(state, sample);
-        expect(!events.activationReady && !events.firstReplacementBind &&
-                !events.firstGeometryUpdate && !events.settingsApplied,
+        expect(!events.activationReady && !events.firstShaderBind &&
+                !events.firstReplacementBind && !events.firstGeometryUpdate &&
+                !events.settingsApplied,
             "empty runtime does not produce proof events");
 
         sample.enabled = true;
@@ -32,11 +33,13 @@ namespace
         expect(events.activationReady,
             "fully initialized enabled runtime produces activation proof");
 
+        sample.pixelShaderBindCalls = 4;
         sample.replacementBinds = 1;
         sample.geometryUpdates = 1;
         events = advance(state, sample);
-        expect(events.firstReplacementBind && events.firstGeometryUpdate,
-            "observed bind and geometry upload produce proof events");
+        expect(events.firstShaderBind && events.firstReplacementBind &&
+                events.firstGeometryUpdate,
+            "observed hook, replacement, and geometry work produce proof events");
     }
 
     void testMilestonesAreNotRepeated()
@@ -48,13 +51,14 @@ namespace
             .gpuResourcesReady = true,
             .geometryProviderReady = true,
             .frameDataUploads = 1,
+            .pixelShaderBindCalls = 5,
             .replacementBinds = 3,
             .geometryUpdates = 2,
         };
         (void)advance(state, sample);
         const auto events = advance(state, sample);
-        expect(!events.activationReady && !events.firstReplacementBind &&
-                !events.firstGeometryUpdate,
+        expect(!events.activationReady && !events.firstShaderBind &&
+                !events.firstReplacementBind && !events.firstGeometryUpdate,
             "steady runtime does not repeat milestone logs");
     }
 

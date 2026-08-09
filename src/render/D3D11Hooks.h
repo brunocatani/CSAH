@@ -7,8 +7,11 @@ namespace community_shaders::render
     struct HookSnapshot
     {
         bool deviceCreationImportInstalled{};
+        bool deviceCreationImportOwned{};
         bool deviceCaptured{};
         bool deviceHooksInstalled{};
+        bool createPixelShaderCellOwned{};
+        bool pixelShaderBindCellOwned{};
         std::uint64_t deviceCreationCalls{};
         std::uint64_t pixelShaderCreationCalls{};
         std::uint64_t pixelShaderBindCalls{};

@@ -74,6 +74,7 @@ set(RENDERER_HOOK_SOURCE
 include("${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake")
 set(WRIST_PANEL_SOURCE "${SOURCE_DIR}/ui/WristPanelRuntime.cpp")
 set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
+set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
@@ -84,6 +85,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
   "${WRIST_PANEL_SOURCE}"
   "${WRIST_PANEL_POSE_SOURCE}"
+  "${D3D11_HOOK_SOURCE}"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 
@@ -105,6 +107,7 @@ add_custom_target(VerifyWristPanel ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
     "-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   COMMENT "Verifying optional wrist-panel provider contracts"
@@ -150,7 +153,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
-  "${SOURCE_DIR}/render/D3D11Hooks.cpp"
+  "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
   "${SOURCE_DIR}/ui/LinearLightingTelemetryGate.h"
@@ -288,7 +291,7 @@ if(BUILD_FO4VR_CS_TESTS)
       "& '${CMAKE_COMMAND}' '-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake'")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
-      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"

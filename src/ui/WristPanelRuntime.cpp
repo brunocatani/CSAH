@@ -578,7 +578,9 @@ namespace community_shaders::ui
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             return runtime.replacementBinds ^ (runtime.geometryUpdates << 1) ^
-                (geometry.calls << 2) ^ (d3d.pixelShaderBindCalls << 3);
+                (geometry.calls << 2) ^ (d3d.pixelShaderBindCalls << 3) ^
+                (static_cast<std::uint64_t>(geometry.vtableCellOwned) << 4) ^
+                (static_cast<std::uint64_t>(d3d.pixelShaderBindCellOwned) << 5);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -608,6 +610,13 @@ namespace community_shaders::ui
                         { "geometryReady", runtime.geometryProviderReady },
                         { "matchingShaders", runtime.matchingShadersCreated },
                         { "trackedShaders", runtime.trackedOriginalShaders },
+                        { "shaderSelections", runtime.shaderSelectionCalls },
+                        { "rejectedShaderContexts",
+                            runtime.rejectedShaderContexts },
+                        { "inactiveShaderSelections",
+                            runtime.inactiveShaderSelections },
+                        { "unmatchedShaderSelections",
+                            runtime.unmatchedShaderSelections },
                         { "replacementBinds", runtime.replacementBinds },
                         { "geometryUpdates", runtime.geometryUpdates },
                         { "geometryRejects",
@@ -616,12 +625,20 @@ namespace community_shaders::ui
                 { "hooks",
                     {
                         { "d3dImport", d3d.deviceCreationImportInstalled },
+                        { "d3dImportOwned",
+                            d3d.deviceCreationImportOwned },
                         { "deviceCaptured", d3d.deviceCaptured },
                         { "deviceHooks", d3d.deviceHooksInstalled },
+                        { "createPixelShaderCellOwned",
+                            d3d.createPixelShaderCellOwned },
+                        { "pixelShaderBindCellOwned",
+                            d3d.pixelShaderBindCellOwned },
                         { "pixelShaderCreates",
                             d3d.pixelShaderCreationCalls },
                         { "pixelShaderBinds", d3d.pixelShaderBindCalls },
                         { "geometryInstalled", geometry.installed },
+                        { "geometryVtableCellOwned",
+                            geometry.vtableCellOwned },
                         { "geometryCalls", geometry.calls },
                         { "geometryAccepted", geometry.acceptedUpdates },
                         { "geometryRejected", geometry.rejectedWalks },
@@ -723,6 +740,8 @@ namespace community_shaders::ui
         void logLinearLightingMilestones() noexcept
         {
             const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const auto geometry = render::geometryHookSnapshot();
+            const auto d3d = render::d3d11HookSnapshot();
             const linear_lighting_telemetry::Sample sample{
                 .enabled = runtime.enabled,
                 .gpuResourcesReady = runtime.gpuResourcesReady,
@@ -730,6 +749,7 @@ namespace community_shaders::ui
                 .queuedSettingsRevision = runtime.queuedSettingsRevision,
                 .appliedSettingsRevision = runtime.appliedSettingsRevision,
                 .frameDataUploads = runtime.frameDataUploads,
+                .pixelShaderBindCalls = d3d.pixelShaderBindCalls,
                 .replacementBinds = runtime.replacementBinds,
                 .geometryUpdates = runtime.geometryUpdates,
             };
@@ -746,13 +766,28 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, d3dBindCellOwned={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
                     runtime.frameDataUploads,
                     runtime.matchingShadersCreated,
-                    runtime.trackedOriginalShaders);
+                    runtime.trackedOriginalShaders,
+                    d3d.pixelShaderBindCellOwned,
+                    geometry.vtableCellOwned,
+                    d3d.pixelShaderBindCalls,
+                    geometry.calls);
+            }
+            if (events.firstShaderBind) {
+                logging::info(
+                    "Linear Lighting D3D bind-hook proof: psBindCalls={}, selections={}, contextRejects={}, inactive={}, unmatched={}, replacements={}, cellOwned={}.",
+                    d3d.pixelShaderBindCalls,
+                    runtime.shaderSelectionCalls,
+                    runtime.rejectedShaderContexts,
+                    runtime.inactiveShaderSelections,
+                    runtime.unmatchedShaderSelections,
+                    runtime.replacementBinds,
+                    d3d.pixelShaderBindCellOwned);
             }
             if (events.firstReplacementBind) {
                 logging::info(
@@ -979,7 +1014,8 @@ namespace community_shaders::ui
                     "COMMUNITY SHADERS / LINEAR LIGHTING\n"
                     "enabled %u | gpu %u | geometry %u | candidates %u\n"
                     "replacement binds %llu | geometry updates %llu\n"
-                    "D3D PS binds %llu | hook calls %llu | stage %u",
+                    "D3D PS binds %llu | owned %u | context rejects %llu\n"
+                    "geometry calls %llu | owned %u | stage %u",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
@@ -987,7 +1023,11 @@ namespace community_shaders::ui
                     static_cast<unsigned long long>(runtime.replacementBinds),
                     static_cast<unsigned long long>(runtime.geometryUpdates),
                     static_cast<unsigned long long>(d3d.pixelShaderBindCalls),
+                    d3d.pixelShaderBindCellOwned,
+                    static_cast<unsigned long long>(
+                        runtime.rejectedShaderContexts),
                     static_cast<unsigned long long>(geometry.calls),
+                    geometry.vtableCellOwned,
                     static_cast<std::uint32_t>(geometry.deepestStage));
             }
             RockProviderDebugOverlayPublicationV1 publication{};

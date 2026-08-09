@@ -16,6 +16,7 @@ namespace community_shaders::render
     struct GeometryHookSnapshot
     {
         bool installed{};
+        bool vtableCellOwned{};
         std::uint64_t calls{};
         std::uint64_t acceptedUpdates{};
         std::uint64_t rejectedWalks{};

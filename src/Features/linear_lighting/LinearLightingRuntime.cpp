@@ -767,16 +767,23 @@ namespace community_shaders::linear_lighting
         ID3D11DeviceContext* context,
         ID3D11PixelShader* requested) noexcept
     {
-        if (context == context_.Get() &&
-            currentlyRequestedShader_.Get() != requested) {
+        shaderSelectionCalls_.fetch_add(1, std::memory_order_relaxed);
+        const auto isCapturedContext = context == context_.Get();
+        if (!isCapturedContext) {
+            rejectedShaderContexts_.fetch_add(1, std::memory_order_relaxed);
+            return requested;
+        }
+
+        if (currentlyRequestedShader_.Get() != requested) {
             currentlyRequestedShader_ = requested;
         }
+        applyQueuedSettingsForRenderBoundary();
 
         if (!requested ||
             !enabled_.load(std::memory_order_acquire) ||
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
-            !geometryProviderReady_.load(std::memory_order_acquire) ||
-            context != context_.Get()) {
+            !geometryProviderReady_.load(std::memory_order_acquire)) {
+            inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
             replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
@@ -796,6 +803,7 @@ namespace community_shaders::linear_lighting
             }
         }
         if (!replacement) {
+            unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
             replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
@@ -824,7 +832,7 @@ namespace community_shaders::linear_lighting
         queuedSettingsRevision_.fetch_add(1, std::memory_order_release);
     }
 
-    void Runtime::applyQueuedSettingsForGeometryDraw() noexcept
+    void Runtime::applyQueuedSettingsForRenderBoundary() noexcept
     {
         const auto revision =
             queuedSettingsRevision_.load(std::memory_order_acquire);
@@ -839,17 +847,8 @@ namespace community_shaders::linear_lighting
             next = queuedSettings_;
         }
 
-        const auto wasEnabled = enabled_.load(std::memory_order_acquire);
         applySettings(next);
         appliedSettingsRevision_.store(revision, std::memory_order_release);
-
-        // If the feature changed state while the engine retained the same
-        // pixel-shader binding, explicitly replay the engine-requested shader.
-        // The hooked vtable then chooses vanilla or replacement under the new
-        // state without retaining a borrowed shader pointer.
-        if (wasEnabled != next.enabled && context_ && currentlyRequestedShader_) {
-            context_->PSSetShader(currentlyRequestedShader_.Get(), nullptr, 0);
-        }
     }
 
     bool Runtime::updateGeometryEmissive(float emissiveMultiplier) noexcept
@@ -918,6 +917,14 @@ namespace community_shaders::linear_lighting
             .firstReplacementContractPlusOne =
                 firstReplacementContractPlusOne_.load(
                     std::memory_order_acquire),
+            .shaderSelectionCalls =
+                shaderSelectionCalls_.load(std::memory_order_relaxed),
+            .rejectedShaderContexts =
+                rejectedShaderContexts_.load(std::memory_order_relaxed),
+            .inactiveShaderSelections =
+                inactiveShaderSelections_.load(std::memory_order_relaxed),
+            .unmatchedShaderSelections =
+                unmatchedShaderSelections_.load(std::memory_order_relaxed),
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
             .geometryUpdates = geometryUpdates_.load(std::memory_order_relaxed),
             .rejectedGeometryUpdates = rejectedGeometryUpdates_.load(std::memory_order_relaxed),

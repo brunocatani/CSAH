@@ -27,6 +27,9 @@ namespace community_shaders::render
         constexpr std::size_t kGeometryPropertyOffset = 0x178;
         constexpr std::size_t kPropertyEmissiveMultiplierOffset = 0x1B0;
         constexpr float kMaximumPlausibleEmissiveMultiplier = 1.0e6f;
+        constexpr std::uintptr_t kMinimumPlausibleObjectAddress = 0x10000;
+        constexpr std::uintptr_t kMaximumPlausibleObjectAddress =
+            0x00007FFFFFFFFFFF;
 
         constexpr std::array<std::byte, 39> kGeometrySetupSignature{
             std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
@@ -50,6 +53,7 @@ namespace community_shaders::render
             void* compiledProgram);
 
         GeometrySetupFunction originalGeometrySetup{};
+        void** geometrySetupCell{};
         std::atomic_bool installed{};
         std::atomic_uint64_t calls{};
         std::atomic_uint64_t acceptedUpdates{};
@@ -126,6 +130,22 @@ namespace community_shaders::render
             return (information.Protect & executableProtection) != 0;
         }
 
+        [[nodiscard]] bool isPlausibleObjectPointer(
+            const void* address) noexcept
+        {
+            const auto value = reinterpret_cast<std::uintptr_t>(address);
+            return value >= kMinimumPlausibleObjectAddress &&
+                value <= kMaximumPlausibleObjectAddress &&
+                (value & (alignof(void*) - 1)) == 0;
+        }
+
+        [[nodiscard]] void* readPointerCell(void** cell) noexcept
+        {
+            return cell ? ReadPointerAcquire(
+                              reinterpret_cast<void* const volatile*>(cell)) :
+                          nullptr;
+        }
+
         [[nodiscard]] bool patchPointer(
             void** target,
             void* expected,
@@ -160,18 +180,18 @@ namespace community_shaders::render
             const void* pass,
             float& value) noexcept
         {
-            if (!isReadableRange(
-                    pass,
-                    kPassGeometryOffset + sizeof(void*))) {
+            // The verified engine routine immediately dereferences this same
+            // pass -> geometry -> property chain. Keep the hook's hot path to
+            // bounded pointer plausibility checks; page-query validation is
+            // reserved for the one-time installation identity gate.
+            if (!isPlausibleObjectPointer(pass)) {
                 return false;
             }
             recordStage(GeometryWalkStage::pass);
 
             const auto* geometry = *reinterpret_cast<void* const*>(
                 static_cast<const std::byte*>(pass) + kPassGeometryOffset);
-            if (!isReadableRange(
-                    geometry,
-                    kGeometryPropertyOffset + sizeof(void*))) {
+            if (!isPlausibleObjectPointer(geometry)) {
                 return false;
             }
             recordStage(GeometryWalkStage::geometry);
@@ -179,9 +199,7 @@ namespace community_shaders::render
             const auto* property = *reinterpret_cast<void* const*>(
                 static_cast<const std::byte*>(geometry) +
                 kGeometryPropertyOffset);
-            if (!isReadableRange(
-                    property,
-                    kPropertyEmissiveMultiplierOffset + sizeof(float))) {
+            if (!isPlausibleObjectPointer(property)) {
                 return false;
             }
             recordStage(GeometryWalkStage::property);
@@ -205,9 +223,6 @@ namespace community_shaders::render
             void* compiledProgram) noexcept
         {
             calls.fetch_add(1, std::memory_order_relaxed);
-
-            linear_lighting::Runtime::get()
-                .applyQueuedSettingsForGeometryDraw();
 
             float emissiveMultiplier{};
             const auto validSource =
@@ -291,6 +306,7 @@ namespace community_shaders::render
             return false;
         }
 
+        geometrySetupCell = cell;
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
@@ -300,8 +316,12 @@ namespace community_shaders::render
 
     GeometryHookSnapshot geometryHookSnapshot() noexcept
     {
+        const auto hookInstalled = installed.load(std::memory_order_acquire);
         return {
-            .installed = installed.load(std::memory_order_acquire),
+            .installed = hookInstalled,
+            .vtableCellOwned = hookInstalled &&
+                readPointerCell(geometrySetupCell) ==
+                reinterpret_cast<void*>(&hookGeometrySetup),
             .calls = calls.load(std::memory_order_relaxed),
             .acceptedUpdates = acceptedUpdates.load(std::memory_order_relaxed),
             .rejectedWalks = rejectedWalks.load(std::memory_order_relaxed),

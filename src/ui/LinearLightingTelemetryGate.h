@@ -12,6 +12,7 @@ namespace community_shaders::ui::linear_lighting_telemetry
         std::uint64_t queuedSettingsRevision{};
         std::uint64_t appliedSettingsRevision{};
         std::uint64_t frameDataUploads{};
+        std::uint64_t pixelShaderBindCalls{};
         std::uint64_t replacementBinds{};
         std::uint64_t geometryUpdates{};
     };
@@ -20,6 +21,7 @@ namespace community_shaders::ui::linear_lighting_telemetry
     {
         std::uint64_t reportedAppliedSettingsRevision{};
         bool activationReadyReported{};
+        bool shaderBindReported{};
         bool replacementBindReported{};
         bool geometryUpdateReported{};
     };
@@ -28,6 +30,7 @@ namespace community_shaders::ui::linear_lighting_telemetry
     {
         bool settingsApplied{};
         bool activationReady{};
+        bool firstShaderBind{};
         bool firstReplacementBind{};
         bool firstGeometryUpdate{};
     };
@@ -48,6 +51,10 @@ namespace community_shaders::ui::linear_lighting_telemetry
             sample.frameDataUploads > 0) {
             state.activationReadyReported = true;
             events.activationReady = true;
+        }
+        if (!state.shaderBindReported && sample.pixelShaderBindCalls > 0) {
+            state.shaderBindReported = true;
+            events.firstShaderBind = true;
         }
         if (!state.replacementBindReported && sample.replacementBinds > 0) {
             state.replacementBindReported = true;
