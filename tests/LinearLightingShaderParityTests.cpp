@@ -39,6 +39,7 @@ namespace
         bool isInstanced;
         bool usesTessellatedInputs{};
         bool hasAdditionalAlphaMask{};
+        bool hasLandscapeLod{};
     };
 
     constexpr std::array kShaderContracts{
@@ -100,6 +101,13 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L4_01080102", 6, false, false, true, true },
         ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L3_01080103", 6, true, false, true, true },
         ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_RgbOnlyVertexColor_01080503", 6, true, false, true, true },
+        ShaderContract{ "LandscapeLodSixMrt_L4_00000202", 6, false, false, false, false, true },
+        ShaderContract{ "LandscapeLodSixMrt_L3_00000203", 6, true, false, false, false, true },
+        ShaderContract{ "LandscapeLodAlphaTestSixMrt_L4_00000302", 6, false, false, false, false, true },
+        ShaderContract{ "LandscapeLodAlphaTestSixMrt_L3_00000303", 6, true, false, false, false, true },
+        ShaderContract{ "LandscapeLodModelSpaceNormalsSixMrt_L4_00002202", 6, false, false, false, false, true },
+        ShaderContract{ "LandscapeLodInstancedSixMrt_L4_08000202", 6, false, true, false, false, true },
+        ShaderContract{ "LandscapeLodInstancedSixMrt_L3_08000203", 6, true, true, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -177,6 +185,8 @@ namespace
     constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
     constexpr Pixel kAdditionalAlphaTexture{ 0.0F, 0.0F, 0.0F, 0.35F };
     constexpr Pixel kAdditionalAlphaNoise{ 0.75F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kLandscapeLodDiffuse{ 0.65F, 0.7F, 0.75F, 1.0F };
+    constexpr Pixel kLandscapeLodNormal{ 0.6F, 0.4F, 0.0F, 1.0F };
 
     constexpr std::array<float, 4> kClearColor{
         123.25F,
@@ -273,7 +283,8 @@ namespace
     [[nodiscard]] ComPtr<ID3DBlob> compileVertexShader(
         bool hasVertexColor,
         bool isInstanced,
-        bool usesTessellatedInputs)
+        bool usesTessellatedInputs,
+        bool hasLandscapeLod)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -302,7 +313,13 @@ struct VSOutput
 #if IS_INSTANCED
     nointerpolation uint instanceDataIndex : COLOR2;
 #endif
+#if HAS_LANDSCAPE_LOD && !IS_INSTANCED
+    float2 landscapeLodCoordinates : TEXCOORD9;
+#endif
     nointerpolation uint eyeIndex : EYEINDEX;
+#if HAS_LANDSCAPE_LOD && IS_INSTANCED
+    float2 landscapeLodCoordinates : TEXCOORD9;
+#endif
 };
 
 VSOutput VSMain(uint vertexId : SV_VertexID)
@@ -334,6 +351,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if IS_INSTANCED
     output.instanceDataIndex = 2;
 #endif
+#if HAS_LANDSCAPE_LOD
+    output.landscapeLodCoordinates = float2(128.0, 256.0);
+#endif
     output.eyeIndex = 0;
     return output;
 }
@@ -346,6 +366,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "IS_INSTANCED", isInstanced ? "1" : "0" },
             { "USES_TESSELLATED_INPUTS",
                 usesTessellatedInputs ? "1" : "0" },
+            { "HAS_LANDSCAPE_LOD", hasLandscapeLod ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -604,6 +625,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         std::size_t caseIndex,
         const LinearLightingCase& lightingCase,
         bool hasAdditionalAlphaMask,
+        bool hasLandscapeLod,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -630,6 +652,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto linearGeometryBuffer = createConstantBuffer(
             device,
             linearGeometryData);
+        const std::array<std::array<float, 4>, 1> landscapeLodGlobalsData{
+            std::array<float, 4>{ 0.0F, 0.0F, 64.0F, -32.0F },
+        };
+        const auto landscapeLodGlobalsBuffer = createConstantBuffer(
+            device,
+            landscapeLodGlobalsData);
 
         const std::array<Pixel, 4> texturePixels{
             kDiffuseTexture,
@@ -649,6 +677,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto additionalAlphaNoise = createTexture(
             device,
             kAdditionalAlphaNoise);
+        const auto landscapeLodDiffuse = createTexture(
+            device,
+            kLandscapeLodDiffuse);
+        const auto landscapeLodNormal = createTexture(
+            device,
+            kLandscapeLodNormal);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -707,12 +741,25 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.PSSetShaderResources(15, 1, &rawAdditionalAlphaNoise);
         auto* rawAdditionalAlphaSampler = sampler.Get();
         context.PSSetSamplers(12, 1, &rawAdditionalAlphaSampler);
+        auto* rawLandscapeLodDiffuse = landscapeLodDiffuse.Get();
+        auto* rawLandscapeLodNormal = landscapeLodNormal.Get();
+        auto* rawLandscapeLodSampler = sampler.Get();
+        if (hasLandscapeLod) {
+            context.PSSetShaderResources(13, 1, &rawLandscapeLodDiffuse);
+            context.PSSetShaderResources(15, 1, &rawLandscapeLodNormal);
+            context.PSSetSamplers(13, 1, &rawLandscapeLodSampler);
+            context.PSSetSamplers(15, 1, &rawLandscapeLodSampler);
+        }
 
         auto* rawMaterial = materialBuffer.Get();
         auto* rawGeometry = geometryBuffer.Get();
         auto* rawFrame = frameBuffer.Get();
         auto* rawLinearGeometry = linearGeometryBuffer.Get();
         auto* rawInstance = instanceBuffer.Get();
+        auto* rawLandscapeLodGlobals = landscapeLodGlobalsBuffer.Get();
+        if (hasLandscapeLod) {
+            context.PSSetConstantBuffers(0, 1, &rawLandscapeLodGlobals);
+        }
         context.PSSetConstantBuffers(2, 1, &rawMaterial);
         context.PSSetConstantBuffers(5, 1, &rawFrame);
         context.PSSetConstantBuffers(8, 1, &rawLinearGeometry);
@@ -735,6 +782,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.PSSetShaderResources(15, 1, &nullView);
         ID3D11SamplerState* nullSampler{};
         context.PSSetSamplers(12, 1, &nullSampler);
+        if (hasLandscapeLod) {
+            context.PSSetShaderResources(13, 1, &nullView);
+            context.PSSetSamplers(13, 1, &nullSampler);
+            context.PSSetSamplers(15, 1, &nullSampler);
+            ID3D11Buffer* nullBuffer{};
+            context.PSSetConstantBuffers(0, 1, &nullBuffer);
+        }
         if (isInstanced) {
             ID3D11Buffer* nullBuffer{};
             context.PSSetConstantBuffers(13, 1, &nullBuffer);
@@ -819,6 +873,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             kInstanceEmitColor : kEmitColor;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             auto diffuse = kDiffuseTexture[channel];
+            if (contract.hasLandscapeLod) {
+                diffuse *=
+                    (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
+            }
             if (contract.hasVertexColor) {
                 diffuse *= kVertexColor[channel];
             }
@@ -870,15 +928,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 8> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 16> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
             const auto usesTessellatedInputs = (index & 4u) != 0;
+            const auto hasLandscapeLod = (index & 8u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
-                usesTessellatedInputs);
+                usesTessellatedInputs,
+                hasLandscapeLod);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -889,8 +949,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasVertexColor ? "COLOR0" : "no COLOR0") +
                     (isInstanced ? ", instanced" : ", non-instanced") +
                     (usesTessellatedInputs ?
-                            ", tessellated inputs)" :
-                            ", standard inputs)"));
+                            ", tessellated inputs" :
+                            ", standard inputs") +
+                    (hasLandscapeLod ? ", landscape LOD)" : ")"));
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -929,7 +990,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             auto* vertexShader = vertexShaders[
                 (contract.hasVertexColor ? 1u : 0u) |
                 (contract.isInstanced ? 2u : 0u) |
-                (contract.usesTessellatedInputs ? 4u : 0u)].Get();
+                (contract.usesTessellatedInputs ? 4u : 0u) |
+                (contract.hasLandscapeLod ? 8u : 0u)].Get();
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
                 const auto vanilla = render(
@@ -941,7 +1003,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.isInstanced,
                     caseIndex,
                     kDisabledCase,
-                    contract.hasAdditionalAlphaMask);
+                    contract.hasAdditionalAlphaMask,
+                    contract.hasLandscapeLod);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -951,7 +1014,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.isInstanced,
                     caseIndex,
                     kDisabledCase,
-                    contract.hasAdditionalAlphaMask);
+                    contract.hasAdditionalAlphaMask,
+                    contract.hasLandscapeLod);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -971,7 +1035,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.isInstanced,
                     caseIndex,
                     kIdentityCase,
-                    contract.hasAdditionalAlphaMask);
+                    contract.hasAdditionalAlphaMask,
+                    contract.hasLandscapeLod);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -991,7 +1056,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.isInstanced,
                     caseIndex,
                     kTransformedCase,
-                    contract.hasAdditionalAlphaMask);
+                    contract.hasAdditionalAlphaMask,
+                    contract.hasLandscapeLod);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1038,6 +1104,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
+                        false,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1049,6 +1116,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
+                        false,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

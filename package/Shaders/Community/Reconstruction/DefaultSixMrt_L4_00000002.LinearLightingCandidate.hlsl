@@ -2,6 +2,14 @@
 #define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
 #endif
 
+#ifndef LINEAR_LIGHTING_LANDSCAPE_LOD
+#define LINEAR_LIGHTING_LANDSCAPE_LOD 0
+#endif
+
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
+#error Additional alpha masking and landscape LOD use incompatible t15 contracts.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
@@ -10,6 +18,13 @@ cbuffer PerMaterial : register(b2)
     float4 cb2[6];
 #endif
 };
+
+#if LINEAR_LIGHTING_LANDSCAPE_LOD
+cbuffer LandscapeLodGlobals : register(b0)
+{
+    float4 cb0[1];
+};
+#endif
 
 #include "../LinearLighting/LinearLighting.hlsli"
 
@@ -36,6 +51,10 @@ Texture2D<float4> TexSpecular : register(t2);
 Texture2D<float4> TexAdditionalAlpha : register(t12);
 Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
 #endif
+#if LINEAR_LIGHTING_LANDSCAPE_LOD
+Texture2D<float4> TexLandscapeLodDiffuse : register(t13);
+Texture2D<float4> TexLandscapeLodNormal : register(t15);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -50,6 +69,10 @@ SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 SamplerState SampAdditionalAlpha : register(s12);
+#endif
+#if LINEAR_LIGHTING_LANDSCAPE_LOD
+SamplerState SampLandscapeLodDiffuse : register(s13);
+SamplerState SampLandscapeLodNormal : register(s15);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -111,7 +134,13 @@ struct PSInput
 #if LINEAR_LIGHTING_INSTANCED
     uint instanceDataIndex : COLOR2;
 #endif
+#if LINEAR_LIGHTING_LANDSCAPE_LOD && !LINEAR_LIGHTING_INSTANCED
+    float2 landscapeLodCoordinates : TEXCOORD9;
+#endif
     uint eyeIndex : EYEINDEX;
+#if LINEAR_LIGHTING_LANDSCAPE_LOD && LINEAR_LIGHTING_INSTANCED
+    float2 landscapeLodCoordinates : TEXCOORD9;
+#endif
     bool isFrontFace : SV_IsFrontFace;
 };
 
@@ -167,6 +196,13 @@ PSOutput PSMain(PSInput input)
 #else
     float3 diffuse = TexDiffuse.Sample(SampDiffuse, uv).xyz;
 #endif
+#if LINEAR_LIGHTING_LANDSCAPE_LOD
+    float2 landscapeLodBase = input.landscapeLodCoordinates + cb0[0].zw;
+    float3 landscapeLodDiffuse = TexLandscapeLodDiffuse.Sample(
+        SampLandscapeLodDiffuse, landscapeLodBase * 0.00025).xyz;
+    landscapeLodDiffuse = (landscapeLodDiffuse * 3.777778) - 2.006;
+    diffuse *= landscapeLodDiffuse;
+#endif
 #if LINEAR_LIGHTING_VERTEX_COLOR
     diffuse *= input.vertexColor.xyz;
 #endif
@@ -176,7 +212,33 @@ PSOutput PSMain(PSInput input)
 
     float3 sourceNormal = normalize(input.normal);
     float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
+#if LINEAR_LIGHTING_LANDSCAPE_LOD
+    float2 landscapeLodNormalXY =
+        (TexLandscapeLodNormal.Sample(
+            SampLandscapeLodNormal, landscapeLodBase * 0.00035).xy * 2.0) -
+        1.0;
+    float landscapeLodNormalZ = sqrt(
+        1.0 - min(dot(landscapeLodNormalXY, landscapeLodNormalXY), 1.0));
+    float3 landscapeLodNormal = float3(
+        landscapeLodNormalXY, landscapeLodNormalZ);
 #if LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+    float3 detailNormal =
+        (TexNormal.Sample(SampNormal, uv).xzy * 2.0) - 1.0;
+#else
+    float2 detailNormalXY =
+        (TexNormal.Sample(SampNormal, uv).xy * 2.0) - 1.0;
+    float detailNormalZ = sqrt(
+        1.0 - min(dot(detailNormalXY, detailNormalXY), 1.0));
+    float3 detailNormal = float3(detailNormalXY, detailNormalZ);
+#endif
+    float3 detailBitangent = normalize(cross(float3(1.0, 0.0, 0.0), detailNormal));
+    float3 detailTangent = normalize(cross(detailBitangent, detailNormal));
+    float detailNormalContribution = dot(normalize(detailNormal), landscapeLodNormal);
+    float3 tangentNormal = float3(
+        dot(detailTangent, landscapeLodNormal),
+        dot(detailBitangent, landscapeLodNormal),
+        input.isFrontFace ? detailNormalContribution : -detailNormalContribution);
+#elif LINEAR_LIGHTING_MODEL_SPACE_NORMALS
     float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0;
     float3 tangentNormal = float3(
         modelNormal.x,
