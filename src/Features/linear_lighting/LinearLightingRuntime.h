@@ -30,7 +30,6 @@ namespace community_shaders::linear_lighting
         std::uint64_t rejectedGeometryUpdates{};
         std::uint64_t geometryResourceRejects{};
         std::uint64_t geometryDisabledRejects{};
-        std::uint64_t geometryUnboundRejects{};
         std::uint64_t geometryInvalidSourceRejects{};
         std::uint64_t queuedSettingsRevision{};
         std::uint64_t appliedSettingsRevision{};
@@ -119,7 +118,6 @@ namespace community_shaders::linear_lighting
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
-        std::atomic_bool replacementCurrentlyBound_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};
@@ -131,7 +129,6 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t rejectedGeometryUpdates_{};
         std::atomic_uint64_t geometryResourceRejects_{};
         std::atomic_uint64_t geometryDisabledRejects_{};
-        std::atomic_uint64_t geometryUnboundRejects_{};
         std::atomic_uint64_t geometryInvalidSourceRejects_{};
         std::atomic_uint32_t firstReplacementContractPlusOne_{};
         std::atomic_uint64_t frameDataUploads_{};

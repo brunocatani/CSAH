@@ -627,8 +627,6 @@ namespace community_shaders::ui
                             runtime.geometryResourceRejects },
                         { "geometryDisabledRejects",
                             runtime.geometryDisabledRejects },
-                        { "geometryUnboundRejects",
-                            runtime.geometryUnboundRejects },
                         { "geometryInvalidSourceRejects",
                             runtime.geometryInvalidSourceRejects },
                     } },
@@ -820,7 +818,7 @@ namespace community_shaders::ui
             }
             if (events.firstGeometryCall) {
                 logging::info(
-                    "Linear Lighting geometry-call proof: calls={}, accepted={}, sourceRejects={}, deepestSourceStage={}, updates={}, totalUpdateRejects={}, resourceRejects={}, disabledRejects={}, unboundRejects={}, invalidSourceRejects={}, sourceEmissive={}, enabled={}, gpuReady={}, replacementBinds={}.",
+                    "Linear Lighting geometry-call proof: calls={}, accepted={}, sourceRejects={}, deepestSourceStage={}, updates={}, totalUpdateRejects={}, resourceRejects={}, disabledRejects={}, invalidSourceRejects={}, sourceEmissive={}, enabled={}, gpuReady={}, replacementBinds={}.",
                     geometry.calls,
                     geometry.acceptedUpdates,
                     geometry.rejectedSources,
@@ -829,7 +827,6 @@ namespace community_shaders::ui
                     runtime.rejectedGeometryUpdates,
                     runtime.geometryResourceRejects,
                     runtime.geometryDisabledRejects,
-                    runtime.geometryUnboundRejects,
                     runtime.geometryInvalidSourceRejects,
                     geometry.lastSourceEmissiveMultiplier,
                     runtime.enabled,

@@ -784,7 +784,6 @@ namespace community_shaders::linear_lighting
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
             !geometryProviderReady_.load(std::memory_order_acquire)) {
             inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
 
@@ -804,7 +803,6 @@ namespace community_shaders::linear_lighting
         }
         if (!replacement) {
             unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
 
@@ -812,7 +810,6 @@ namespace community_shaders::linear_lighting
         ID3D11Buffer* geometry = geometryBuffer_.Get();
         context->PSSetConstantBuffers(5, 1, &frame);
         context->PSSetConstantBuffers(8, 1, &geometry);
-        replacementCurrentlyBound_.store(true, std::memory_order_release);
         auto noContractObserved = 0u;
         firstReplacementContractPlusOne_.compare_exchange_strong(
             noContractObserved,
@@ -874,10 +871,11 @@ namespace community_shaders::linear_lighting
         if (!enabled_.load(std::memory_order_acquire)) {
             return reject(geometryDisabledRejects_);
         }
-        if (!replacementCurrentlyBound_.load(std::memory_order_acquire)) {
-            return reject(geometryUnboundRejects_);
-        }
 
+        // FO4VR performs geometry setup while a previous or vanilla pixel
+        // shader can still be active. Publish the independent b8 data at the
+        // geometry boundary; selectPixelShader binds it whenever the matching
+        // replacement is selected for the draw.
         GeometryData data{};
         data.emissiveMultiplier = emissiveMultiplier;
         context->UpdateSubresource(geometryBuffer_.Get(), 0, nullptr, &data, 0, 0);
@@ -899,9 +897,6 @@ namespace community_shaders::linear_lighting
     {
         settings_ = sanitize(settings);
         enabled_.store(settings_.enabled, std::memory_order_release);
-        if (!settings_.enabled) {
-            replacementCurrentlyBound_.store(false, std::memory_order_release);
-        }
         publishFrameData();
     }
 
@@ -944,8 +939,6 @@ namespace community_shaders::linear_lighting
                 geometryResourceRejects_.load(std::memory_order_relaxed),
             .geometryDisabledRejects =
                 geometryDisabledRejects_.load(std::memory_order_relaxed),
-            .geometryUnboundRejects =
-                geometryUnboundRejects_.load(std::memory_order_relaxed),
             .geometryInvalidSourceRejects =
                 geometryInvalidSourceRejects_.load(std::memory_order_relaxed),
             .queuedSettingsRevision =

@@ -57,7 +57,6 @@ foreach(required IN ITEMS
     "firstReplacementContractPlusOne_.compare_exchange_strong"
     "return reject(geometryResourceRejects_)"
     "return reject(geometryDisabledRejects_)"
-    "return reject(geometryUnboundRejects_)"
     "return reject(geometryInvalidSourceRejects_)"
     "applyQueuedSettingsForRenderBoundary();"
     "appliedSettingsRevision_.store")
@@ -65,6 +64,16 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Linear Lighting telemetry regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "replacementCurrentlyBound_"
+    "geometryUnboundRejects_")
+  string(FIND "${runtimeSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting ordering regression: forbidden '${forbidden}'")
   endif()
 endforeach()
 
