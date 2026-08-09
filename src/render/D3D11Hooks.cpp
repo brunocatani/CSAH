@@ -1,6 +1,7 @@
 #include "render/D3D11Hooks.h"
 
 #include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "render/D3D11HookRepairGate.h"
 #include "support/Logger.h"
 
 #include <Windows.h>
@@ -8,6 +9,7 @@
 #include <dxgi.h>
 
 #include <atomic>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -46,7 +48,8 @@ namespace community_shaders::render
 
         D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
         CreatePixelShaderFunction originalCreatePixelShader{};
-        PSSetShaderFunction originalPSSetShader{};
+        PSSetShaderFunction initialPSSetShader{};
+        std::atomic<PSSetShaderFunction> downstreamPSSetShader{};
         void** deviceCreationImportCell{};
         void** createPixelShaderCell{};
         void** pixelShaderBindCell{};
@@ -56,6 +59,31 @@ namespace community_shaders::render
         std::atomic_uint64_t deviceCreationCalls{};
         std::atomic_uint64_t pixelShaderCreationCalls{};
         std::atomic_uint64_t pixelShaderBindCalls{};
+        std::atomic_uint64_t pixelShaderBindRepairs{};
+        std::atomic_uint64_t pixelShaderBindRepairFailures{};
+        std::atomic_uint64_t pixelShaderBindRecursions{};
+        std::atomic_flag pixelShaderBindRepairInProgress = ATOMIC_FLAG_INIT;
+        d3d11_hook_repair::State pixelShaderBindRepairState{};
+        thread_local bool insidePSSetShaderHook{};
+
+        class AtomicFlagClear final
+        {
+        public:
+            explicit AtomicFlagClear(std::atomic_flag& flag) noexcept :
+                flag_(flag)
+            {}
+
+            ~AtomicFlagClear()
+            {
+                flag_.clear(std::memory_order_release);
+            }
+
+            AtomicFlagClear(const AtomicFlagClear&) = delete;
+            AtomicFlagClear& operator=(const AtomicFlagClear&) = delete;
+
+        private:
+            std::atomic_flag& flag_;
+        };
 
         [[nodiscard]] bool isExecutableAddress(const void* address) noexcept
         {
@@ -97,14 +125,31 @@ namespace community_shaders::render
                 target,
                 replacement,
                 expected);
+            auto installed = observed == expected;
             DWORD restoredProtection{};
-            const auto restored = VirtualProtect(
+            auto restored = VirtualProtect(
                 target,
                 sizeof(*target),
                 oldProtection,
                 &restoredProtection);
+            if (installed && restored == FALSE) {
+                // Do not report failure while leaving a live hook whose
+                // caller may clear its downstream target. The page is still
+                // writable here, so atomically roll back before retrying the
+                // original protection.
+                (void)InterlockedCompareExchangePointer(
+                    target,
+                    expected,
+                    replacement);
+                installed = false;
+                restored = VirtualProtect(
+                    target,
+                    sizeof(*target),
+                    oldProtection,
+                    &restoredProtection);
+            }
             FlushInstructionCache(GetCurrentProcess(), target, sizeof(*target));
-            return observed == expected && restored != FALSE;
+            return installed && restored != FALSE;
         }
 
         [[nodiscard]] void* readPointerCell(void** cell) noexcept
@@ -112,6 +157,29 @@ namespace community_shaders::render
             return cell ? ReadPointerAcquire(
                               reinterpret_cast<void* const volatile*>(cell)) :
                           nullptr;
+        }
+
+        [[nodiscard]] std::array<char, MAX_PATH> modulePathForAddress(
+            const void* address) noexcept
+        {
+            std::array<char, MAX_PATH> path{};
+            HMODULE module{};
+            if (!address || !GetModuleHandleExA(
+                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    reinterpret_cast<LPCSTR>(address),
+                    &module)) {
+                std::memcpy(path.data(), "<unknown>", 10);
+                return path;
+            }
+            if (GetModuleFileNameA(
+                    module,
+                    path.data(),
+                    static_cast<DWORD>(path.size())) == 0) {
+                std::memcpy(path.data(), "<unknown>", 10);
+            }
+            path.back() = '\0';
+            return path;
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -203,17 +271,36 @@ namespace community_shaders::render
             UINT classInstanceCount) noexcept
         {
             pixelShaderBindCalls.fetch_add(1, std::memory_order_relaxed);
-            if (!originalPSSetShader) {
+            const auto downstream =
+                downstreamPSSetShader.load(std::memory_order_acquire);
+            if (!downstream) {
                 return;
             }
+            if (insidePSSetShaderHook) {
+                pixelShaderBindRecursions.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                if (initialPSSetShader &&
+                    initialPSSetShader != &hookPSSetShader) {
+                    initialPSSetShader(
+                        context,
+                        shader,
+                        classInstances,
+                        classInstanceCount);
+                }
+                return;
+            }
+
+            insidePSSetShaderHook = true;
             auto* selected = linear_lighting::Runtime::get().selectPixelShader(
                 context,
                 shader);
-            originalPSSetShader(
+            downstream(
                 context,
                 selected,
                 classInstances,
                 classInstanceCount);
+            insidePSSetShaderHook = false;
         }
 
         [[nodiscard]] bool installDeviceVtableHooks(
@@ -240,13 +327,18 @@ namespace community_shaders::render
 
             originalCreatePixelShader =
                 reinterpret_cast<CreatePixelShaderFunction>(createPixelShader);
-            originalPSSetShader = reinterpret_cast<PSSetShaderFunction>(psSetShader);
+            initialPSSetShader =
+                reinterpret_cast<PSSetShaderFunction>(psSetShader);
+            downstreamPSSetShader.store(
+                initialPSSetShader,
+                std::memory_order_release);
             if (!patchPointer(
                     &deviceVtable[kCreatePixelShaderVtableIndex],
                     createPixelShader,
                     reinterpret_cast<void*>(&hookCreatePixelShader))) {
                 originalCreatePixelShader = nullptr;
-                originalPSSetShader = nullptr;
+                initialPSSetShader = nullptr;
+                downstreamPSSetShader.store(nullptr, std::memory_order_release);
                 logging::error("D3D11 CreatePixelShader vtable patch failed.");
                 return false;
             }
@@ -258,11 +350,102 @@ namespace community_shaders::render
                     reinterpret_cast<void*>(&hookPSSetShader))) {
                 // The device hook is safe to leave installed; without a bind
                 // hook it only observes shader creation and changes no draws.
-                originalPSSetShader = nullptr;
+                initialPSSetShader = nullptr;
+                downstreamPSSetShader.store(nullptr, std::memory_order_release);
                 logging::error("D3D11 PSSetShader vtable patch failed.");
                 return false;
             }
             pixelShaderBindCell = &contextVtable[kPSSetShaderVtableIndex];
+            return true;
+        }
+
+        [[nodiscard]] bool maintainPixelShaderBindHook(
+            const char* trigger) noexcept
+        {
+            if (pixelShaderBindRepairInProgress.test_and_set(
+                    std::memory_order_acquire)) {
+                return false;
+            }
+            const AtomicFlagClear clearRepairFlag(
+                pixelShaderBindRepairInProgress);
+
+            const auto hookInstalled =
+                deviceHooksInstalled.load(std::memory_order_acquire);
+            auto* current = readPointerCell(pixelShaderBindCell);
+            const auto hookAddress = reinterpret_cast<void*>(&hookPSSetShader);
+            const auto decision = d3d11_hook_repair::advance(
+                pixelShaderBindRepairState,
+                hookInstalled,
+                current == hookAddress,
+                reinterpret_cast<std::uintptr_t>(current),
+                pixelShaderBindCalls.load(std::memory_order_relaxed));
+            if (decision == d3d11_hook_repair::Decision::noAction) {
+                return hookInstalled && current == hookAddress;
+            }
+
+            const auto path = modulePathForAddress(current);
+            if (decision ==
+                d3d11_hook_repair::Decision::observeDisplacement) {
+                logging::warn(
+                    "Observed displaced D3D11 PSSetShader hook at '{}' (trigger={}, target={}); waiting for a second proof boundary before re-chaining.",
+                    path.data(),
+                    trigger ? trigger : "unknown",
+                    current);
+                return false;
+            }
+            if (decision ==
+                d3d11_hook_repair::Decision::preserveReachableChain) {
+                logging::info(
+                    "Preserving compatible downstream D3D11 PSSetShader chain at '{}' (trigger={}, target={}); bind calls still reach Community Shaders.",
+                    path.data(),
+                    trigger ? trigger : "unknown",
+                    current);
+                return true;
+            }
+            if (!isExecutableAddress(current)) {
+                pixelShaderBindRepairFailures.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                logging::error(
+                    "Rejected displaced D3D11 PSSetShader target at '{}' (trigger={}, target={}): target is not executable.",
+                    path.data(),
+                    trigger ? trigger : "unknown",
+                    current);
+                return false;
+            }
+
+            const auto previousDownstream =
+                downstreamPSSetShader.exchange(
+                    reinterpret_cast<PSSetShaderFunction>(current),
+                    std::memory_order_acq_rel);
+            if (!patchPointer(pixelShaderBindCell, current, hookAddress)) {
+                if (readPointerCell(pixelShaderBindCell) != hookAddress) {
+                    downstreamPSSetShader.store(
+                        previousDownstream,
+                        std::memory_order_release);
+                }
+                pixelShaderBindRepairFailures.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                logging::error(
+                    "Failed to re-chain displaced D3D11 PSSetShader hook at '{}' (trigger={}, target={}).",
+                    path.data(),
+                    trigger ? trigger : "unknown",
+                    current);
+                return false;
+            }
+
+            const auto repairs = pixelShaderBindRepairs.fetch_add(
+                                     1,
+                                     std::memory_order_relaxed) +
+                1;
+            pixelShaderBindRepairState = {};
+            logging::warn(
+                "Re-chained displaced D3D11 PSSetShader hook after '{}' (trigger={}, downstream={}, repairs={}).",
+                path.data(),
+                trigger ? trigger : "unknown",
+                current,
+                repairs);
             return true;
         }
 
@@ -364,6 +547,27 @@ namespace community_shaders::render
         return false;
     }
 
+    bool maintainD3D11ShaderBindHook(const char* trigger) noexcept
+    {
+        try {
+            return maintainPixelShaderBindHook(trigger);
+        } catch (const std::exception& error) {
+            pixelShaderBindRepairFailures.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            logging::error(
+                "D3D11 PSSetShader ownership maintenance failed: {}",
+                error.what());
+        } catch (...) {
+            pixelShaderBindRepairFailures.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            logging::error(
+                "D3D11 PSSetShader ownership maintenance failed with an unknown exception.");
+        }
+        return false;
+    }
+
     HookSnapshot d3d11HookSnapshot() noexcept
     {
         const auto importInstalled =
@@ -383,6 +587,12 @@ namespace community_shaders::render
             .pixelShaderBindCellOwned = hooksInstalled &&
                 readPointerCell(pixelShaderBindCell) ==
                     reinterpret_cast<void*>(&hookPSSetShader),
+            .pixelShaderBindRepairs =
+                pixelShaderBindRepairs.load(std::memory_order_relaxed),
+            .pixelShaderBindRepairFailures =
+                pixelShaderBindRepairFailures.load(std::memory_order_relaxed),
+            .pixelShaderBindRecursions =
+                pixelShaderBindRecursions.load(std::memory_order_relaxed),
             .deviceCreationCalls = deviceCreationCalls.load(std::memory_order_relaxed),
             .pixelShaderCreationCalls =
                 pixelShaderCreationCalls.load(std::memory_order_relaxed),

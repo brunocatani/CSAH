@@ -153,6 +153,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
+  "${SOURCE_DIR}/render/D3D11HookRepairGate.h"
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
@@ -305,6 +306,19 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.PointerClickGate
     COMMAND FO4VRCommunityShadersPointerClickGateTests)
+
+  add_executable(FO4VRCommunityShadersD3D11HookRepairGateTests
+    "${ROOT_DIR}/tests/D3D11HookRepairGateTests.cpp"
+    "${SOURCE_DIR}/render/D3D11HookRepairGate.h")
+  target_compile_features(
+    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.D3D11HookRepairGate
+    COMMAND FO4VRCommunityShadersD3D11HookRepairGateTests)
 
   add_executable(FO4VRCommunityShadersWristProviderRetryTests
     "${ROOT_DIR}/tests/WristProviderRetryTests.cpp"

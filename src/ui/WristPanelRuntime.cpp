@@ -633,6 +633,12 @@ namespace community_shaders::ui
                             d3d.createPixelShaderCellOwned },
                         { "pixelShaderBindCellOwned",
                             d3d.pixelShaderBindCellOwned },
+                        { "pixelShaderBindRepairs",
+                            d3d.pixelShaderBindRepairs },
+                        { "pixelShaderBindRepairFailures",
+                            d3d.pixelShaderBindRepairFailures },
+                        { "pixelShaderBindRecursions",
+                            d3d.pixelShaderBindRecursions },
                         { "pixelShaderCreates",
                             d3d.pixelShaderCreationCalls },
                         { "pixelShaderBinds", d3d.pixelShaderBindCalls },
@@ -957,6 +963,7 @@ namespace community_shaders::ui
                     std::scoped_lock lock(settingsMutex);
                     uiSettings = next;
                 }
+                (void)render::maintainD3D11ShaderBindHook("WristAction");
                 linear_lighting::Runtime::get().queueSettings(next);
                 const auto saved = linear_lighting::saveSettings(next);
                 uiRevision.fetch_add(1, std::memory_order_release);
@@ -1014,7 +1021,8 @@ namespace community_shaders::ui
                     "COMMUNITY SHADERS / LINEAR LIGHTING\n"
                     "enabled %u | gpu %u | geometry %u | candidates %u\n"
                     "replacement binds %llu | geometry updates %llu\n"
-                    "D3D PS binds %llu | owned %u | context rejects %llu\n"
+                    "D3D PS binds %llu | owned %u | repairs %llu/%llu\n"
+                    "context rejects %llu | hook recursions %llu\n"
                     "geometry calls %llu | owned %u | stage %u",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
@@ -1025,7 +1033,13 @@ namespace community_shaders::ui
                     static_cast<unsigned long long>(d3d.pixelShaderBindCalls),
                     d3d.pixelShaderBindCellOwned,
                     static_cast<unsigned long long>(
+                        d3d.pixelShaderBindRepairs),
+                    static_cast<unsigned long long>(
+                        d3d.pixelShaderBindRepairFailures),
+                    static_cast<unsigned long long>(
                         runtime.rejectedShaderContexts),
+                    static_cast<unsigned long long>(
+                        d3d.pixelShaderBindRecursions),
                     static_cast<unsigned long long>(geometry.calls),
                     geometry.vtableCellOwned,
                     static_cast<std::uint32_t>(geometry.deepestStage));
@@ -1197,6 +1211,7 @@ namespace community_shaders::ui
             }
             prisma->Hide(view);
             domReady.store(true, std::memory_order_release);
+            (void)render::maintainD3D11ShaderBindHook("WristDomReady");
             logging::info(
                 "Community Shaders wrist DOM ready (view {}).",
                 view);
@@ -1446,12 +1461,14 @@ namespace community_shaders::ui
         if (gameDataReadyHandled.exchange(true, std::memory_order_acq_rel)) {
             return;
         }
+        (void)render::maintainD3D11ShaderBindHook("GameDataReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameDataReady");
     }
 
     void onGameSessionReady() noexcept
     {
+        (void)render::maintainD3D11ShaderBindHook("GameSessionReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameSessionReady");
     }

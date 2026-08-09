@@ -39,6 +39,10 @@ foreach(required IN ITEMS
     "Linear Lighting D3D bind-hook proof:"
     "Linear Lighting first replacement proof:"
     "Linear Lighting geometry proof:"
+    "maintainD3D11ShaderBindHook(\"GameDataReady\")"
+    "maintainD3D11ShaderBindHook(\"GameSessionReady\")"
+    "maintainD3D11ShaderBindHook(\"WristDomReady\")"
+    "maintainD3D11ShaderBindHook(\"WristAction\")"
     "wrist_provider_retry::Gate"
     "PrismaProbeFailure::SceneDepthPending"
     "attemptPrismaInitialization(\"GameDataReady\")"
@@ -88,6 +92,12 @@ foreach(required IN ITEMS
     "deviceCreationImportOwned"
     "createPixelShaderCellOwned"
     "pixelShaderBindCellOwned"
+    "d3d11_hook_repair::advance"
+    "pixelShaderBindRepairs"
+    "pixelShaderBindRepairFailures"
+    "pixelShaderBindRecursions"
+    "modulePathForAddress"
+    "Re-chained displaced D3D11 PSSetShader hook"
     "readPointerCell")
   string(FIND "${d3dSource}" "${required}" found)
   if(found EQUAL -1)
