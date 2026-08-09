@@ -17,6 +17,7 @@ namespace community_shaders::linear_lighting
         bool enabled{};
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
+        std::uint32_t verifiedShaderContracts{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint64_t replacementBinds{};
@@ -68,7 +69,6 @@ namespace community_shaders::linear_lighting
         // applied at that boundary rather than mutating GPU state in callbacks.
         void applySettings(const Settings& settings) noexcept;
 
-        [[nodiscard]] Settings settings() const noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
@@ -84,17 +84,25 @@ namespace community_shaders::linear_lighting
                 ID3D11PixelShader**)) noexcept;
         void publishFrameData() noexcept;
 
-        static constexpr std::size_t kMaximumTrackedOriginalShaders = 8;
+        static constexpr std::size_t kShaderContractCount = 2;
+        static constexpr std::size_t kMaximumTrackedOriginalShadersPerContract = 8;
 
         Settings settings_{};
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
-        Microsoft::WRL::ComPtr<ID3D11PixelShader> replacementShader_;
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kShaderContractCount>
+            replacementShaders_{};
         Microsoft::WRL::ComPtr<ID3D11PixelShader> currentlyRequestedShader_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> frameBuffer_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> geometryBuffer_;
-        std::array<std::atomic<ID3D11PixelShader*>,
-            kMaximumTrackedOriginalShaders>
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kShaderContractCount>
+            originalShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kShaderContractCount>
             originalShaders_{};
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
@@ -105,6 +113,9 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};
+        std::array<std::atomic_bool, kShaderContractCount>
+            originalCapacityWarningLogged_{};
+        std::mutex shaderRegistryMutex_;
         std::mutex queuedSettingsMutex_;
         Settings queuedSettings_{};
         std::atomic_uint64_t queuedSettingsRevision_{};

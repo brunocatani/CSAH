@@ -580,8 +580,9 @@ namespace community_shaders::ui
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Projected opaque / five MRT" },
-                        { "verifiedShaderContracts", 1 },
+                        { "label", "Projected opaque / five MRT / base + vertex color" },
+                        { "verifiedShaderContracts",
+                            runtime.verifiedShaderContracts },
                         { "fullFeaturePort", false },
                     } },
                 { "runtime",

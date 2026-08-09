@@ -14,21 +14,66 @@ namespace community_shaders::linear_lighting
 {
     namespace
     {
-        constexpr std::array<std::byte, 16> kDefaultProjectedPixelShaderChecksum{
-            std::byte{ 0xDE }, std::byte{ 0x5B }, std::byte{ 0x08 }, std::byte{ 0xB8 },
-            std::byte{ 0xA3 }, std::byte{ 0x77 }, std::byte{ 0x00 }, std::byte{ 0xC6 },
-            std::byte{ 0xF0 }, std::byte{ 0xC1 }, std::byte{ 0x29 }, std::byte{ 0x77 },
-            std::byte{ 0x9F }, std::byte{ 0x1E }, std::byte{ 0x25 }, std::byte{ 0x70 },
+        struct DxbcIdentity
+        {
+            std::size_t size{};
+            std::array<std::byte, 16> checksum{};
         };
-        constexpr std::array<std::byte, 16>
-            kDefaultProjectedReplacementShaderChecksum{
-                std::byte{ 0xE2 }, std::byte{ 0x5F }, std::byte{ 0x7C }, std::byte{ 0x95 },
-                std::byte{ 0xE6 }, std::byte{ 0x1A }, std::byte{ 0xC1 }, std::byte{ 0xCB },
-                std::byte{ 0x3E }, std::byte{ 0xBF }, std::byte{ 0x80 }, std::byte{ 0x0D },
-                std::byte{ 0x25 }, std::byte{ 0xBB }, std::byte{ 0x05 }, std::byte{ 0x2C },
-            };
-        constexpr std::size_t kDefaultProjectedPixelShaderSize = 3052;
-        constexpr std::size_t kDefaultProjectedReplacementShaderSize = 6184;
+
+        struct ShaderContractDefinition
+        {
+            const char* name{};
+            int resourceId{};
+            DxbcIdentity original{};
+            DxbcIdentity replacement{};
+        };
+
+        constexpr std::array<ShaderContractDefinition, 2> kShaderContracts{ {
+            {
+                "DefaultProjectedFiveMrt_L4_00008002",
+                IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
+                {
+                    3052,
+                    {
+                        std::byte{ 0xDE }, std::byte{ 0x5B }, std::byte{ 0x08 }, std::byte{ 0xB8 },
+                        std::byte{ 0xA3 }, std::byte{ 0x77 }, std::byte{ 0x00 }, std::byte{ 0xC6 },
+                        std::byte{ 0xF0 }, std::byte{ 0xC1 }, std::byte{ 0x29 }, std::byte{ 0x77 },
+                        std::byte{ 0x9F }, std::byte{ 0x1E }, std::byte{ 0x25 }, std::byte{ 0x70 },
+                    },
+                },
+                {
+                    6184,
+                    {
+                        std::byte{ 0xE2 }, std::byte{ 0x5F }, std::byte{ 0x7C }, std::byte{ 0x95 },
+                        std::byte{ 0xE6 }, std::byte{ 0x1A }, std::byte{ 0xC1 }, std::byte{ 0xCB },
+                        std::byte{ 0x3E }, std::byte{ 0xBF }, std::byte{ 0x80 }, std::byte{ 0x0D },
+                        std::byte{ 0x25 }, std::byte{ 0xBB }, std::byte{ 0x05 }, std::byte{ 0x2C },
+                    },
+                },
+            },
+            {
+                "DefaultProjectedFiveMrt_L3_00008003",
+                IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS,
+                {
+                    3120,
+                    {
+                        std::byte{ 0xD6 }, std::byte{ 0xAB }, std::byte{ 0xD2 }, std::byte{ 0x0B },
+                        std::byte{ 0x46 }, std::byte{ 0xCC }, std::byte{ 0x60 }, std::byte{ 0x9D },
+                        std::byte{ 0x2B }, std::byte{ 0x64 }, std::byte{ 0xA8 }, std::byte{ 0x8D },
+                        std::byte{ 0xF0 }, std::byte{ 0x23 }, std::byte{ 0x28 }, std::byte{ 0x3A },
+                    },
+                },
+                {
+                    6252,
+                    {
+                        std::byte{ 0xE0 }, std::byte{ 0x3E }, std::byte{ 0x51 }, std::byte{ 0x59 },
+                        std::byte{ 0x45 }, std::byte{ 0x3A }, std::byte{ 0x9D }, std::byte{ 0x4B },
+                        std::byte{ 0x6A }, std::byte{ 0xE5 }, std::byte{ 0x43 }, std::byte{ 0x5C },
+                        std::byte{ 0x21 }, std::byte{ 0xE0 }, std::byte{ 0xE8 }, std::byte{ 0xA9 },
+                    },
+                },
+            },
+        } };
 
         struct EmbeddedShader
         {
@@ -36,7 +81,7 @@ namespace community_shaders::linear_lighting
             std::size_t size{};
         };
 
-        [[nodiscard]] EmbeddedShader loadEmbeddedShader() noexcept
+        [[nodiscard]] EmbeddedShader loadEmbeddedShader(int resourceId) noexcept
         {
             HMODULE module{};
             if (!GetModuleHandleExW(
@@ -49,7 +94,7 @@ namespace community_shaders::linear_lighting
 
             const auto resource = FindResourceW(
                 module,
-                MAKEINTRESOURCEW(IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS),
+                MAKEINTRESOURCEW(resourceId),
                 RT_RCDATA);
             if (!resource) {
                 return {};
@@ -151,29 +196,37 @@ namespace community_shaders::linear_lighting
             ID3D11ClassLinkage*,
             ID3D11PixelShader**)) noexcept
     {
-        const auto embedded = loadEmbeddedShader();
-        if (!matchesDxbcIdentity(
+        static_assert(kShaderContracts.size() == kShaderContractCount);
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kShaderContracts.size()>
+            replacements{};
+        for (std::size_t index = 0; index < kShaderContracts.size(); ++index) {
+            const auto& contract = kShaderContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacement.size,
+                    contract.replacement.checksum)) {
+                logging::error(
+                    "Linear Lighting embedded replacement '{}' is missing or invalid.",
+                    contract.name);
+                return false;
+            }
+
+            const auto result = createPixelShader(
+                device,
                 embedded.data,
                 embedded.size,
-                kDefaultProjectedReplacementShaderSize,
-                kDefaultProjectedReplacementShaderChecksum)) {
-            logging::error(
-                "Linear Lighting embedded replacement shader is missing or invalid.");
-            return false;
-        }
-
-        Microsoft::WRL::ComPtr<ID3D11PixelShader> replacement;
-        auto result = createPixelShader(
-            device,
-            embedded.data,
-            embedded.size,
-            nullptr,
-            replacement.GetAddressOf());
-        if (FAILED(result)) {
-            logging::error(
-                "Linear Lighting replacement CreatePixelShader failed (HRESULT 0x{:08X}).",
-                static_cast<std::uint32_t>(result));
-            return false;
+                nullptr,
+                replacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Linear Lighting replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    contract.name,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
         }
 
         const auto safeSettings = sanitize(settings_);
@@ -188,7 +241,7 @@ namespace community_shaders::linear_lighting
 
         auto frameDescription = makeConstantBufferDescription(sizeof(FrameData));
         Microsoft::WRL::ComPtr<ID3D11Buffer> frameBuffer;
-        result = device->CreateBuffer(
+        auto result = device->CreateBuffer(
             &frameDescription,
             &frameInitial,
             frameBuffer.GetAddressOf());
@@ -213,7 +266,7 @@ namespace community_shaders::linear_lighting
         }
 
         settings_ = safeSettings;
-        replacementShader_ = std::move(replacement);
+        replacementShaders_ = std::move(replacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
         enabled_.store(settings_.enabled, std::memory_order_release);
@@ -228,31 +281,45 @@ namespace community_shaders::linear_lighting
         if (!shader) {
             return;
         }
-        if (!matchesDxbcIdentity(
-                bytecode,
-                bytecodeLength,
-                kDefaultProjectedPixelShaderSize,
-                kDefaultProjectedPixelShaderChecksum)) {
+
+        std::size_t contractIndex = kShaderContracts.size();
+        for (std::size_t index = 0; index < kShaderContracts.size(); ++index) {
+            const auto& identity = kShaderContracts[index].original;
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                contractIndex = index;
+                break;
+            }
+        }
+        if (contractIndex == kShaderContracts.size()) {
             return;
         }
 
         matchingShadersCreated_.fetch_add(1, std::memory_order_relaxed);
-        for (auto& slot : originalShaders_) {
-            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
-            if (slot.compare_exchange_strong(
-                    expected,
-                    shader,
-                    std::memory_order_release,
-                    std::memory_order_relaxed) ||
-                expected == shader) {
-                if (!expected) {
-                    trackedOriginalShaders_.fetch_add(1, std::memory_order_relaxed);
-                }
+        std::scoped_lock lock(shaderRegistryMutex_);
+        auto& owners = originalShaderOwners_[contractIndex];
+        auto& slots = originalShaders_[contractIndex];
+        for (std::size_t index = 0; index < slots.size(); ++index) {
+            if (slots[index].load(std::memory_order_relaxed) == shader) {
+                return;
+            }
+            if (!owners[index]) {
+                owners[index] = shader;
+                slots[index].store(shader, std::memory_order_release);
+                trackedOriginalShaders_.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
         }
-        logging::warn(
-            "Linear Lighting original-shader tracking capacity was exhausted; extra instance remains vanilla.");
+        if (!originalCapacityWarningLogged_[contractIndex].exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::warn(
+                "Linear Lighting original-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                kShaderContracts[contractIndex].name);
+        }
     }
 
     ID3D11PixelShader* Runtime::selectPixelShader(
@@ -268,20 +335,23 @@ namespace community_shaders::linear_lighting
             !enabled_.load(std::memory_order_acquire) ||
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
             !geometryProviderReady_.load(std::memory_order_acquire) ||
-            !replacementShader_ ||
             context != context_.Get()) {
             replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
 
-        bool matches = false;
-        for (const auto& slot : originalShaders_) {
-            if (slot.load(std::memory_order_acquire) == requested) {
-                matches = true;
-                break;
+        ID3D11PixelShader* replacement = nullptr;
+        for (std::size_t contractIndex = 0;
+             contractIndex < originalShaders_.size() && !replacement;
+             ++contractIndex) {
+            for (const auto& slot : originalShaders_[contractIndex]) {
+                if (slot.load(std::memory_order_acquire) == requested) {
+                    replacement = replacementShaders_[contractIndex].Get();
+                    break;
+                }
             }
         }
-        if (!matches) {
+        if (!replacement) {
             replacementCurrentlyBound_.store(false, std::memory_order_release);
             return requested;
         }
@@ -292,7 +362,7 @@ namespace community_shaders::linear_lighting
         context->PSSetConstantBuffers(8, 1, &geometry);
         replacementCurrentlyBound_.store(true, std::memory_order_release);
         replacementBinds_.fetch_add(1, std::memory_order_relaxed);
-        return replacementShader_.Get();
+        return replacement;
     }
 
     void Runtime::queueSettings(const Settings& settings) noexcept
@@ -382,11 +452,6 @@ namespace community_shaders::linear_lighting
         context_->UpdateSubresource(frameBuffer_.Get(), 0, nullptr, &data, 0, 0);
     }
 
-    Settings Runtime::settings() const noexcept
-    {
-        return settings_;
-    }
-
     RuntimeSnapshot Runtime::snapshot() const noexcept
     {
         return {
@@ -394,6 +459,8 @@ namespace community_shaders::linear_lighting
             .gpuResourcesReady = gpuResourcesReady_.load(std::memory_order_acquire),
             .geometryProviderReady =
                 geometryProviderReady_.load(std::memory_order_acquire),
+            .verifiedShaderContracts =
+                static_cast<std::uint32_t>(kShaderContracts.size()),
             .matchingShadersCreated = matchingShadersCreated_.load(std::memory_order_relaxed),
             .trackedOriginalShaders = trackedOriginalShaders_.load(std::memory_order_relaxed),
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),

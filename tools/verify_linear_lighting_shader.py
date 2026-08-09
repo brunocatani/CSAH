@@ -122,16 +122,7 @@ def validate_frame_reflection(assembly: str) -> None:
 
 def verify(root: Path) -> None:
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
-    source = reconstruction / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"
-    packaged = reconstruction / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.dxbc"
-    vanilla = (
-        root
-        / "package"
-        / "Shaders"
-        / "Community"
-        / "VerifiedLinearLighting"
-        / "DefaultProjectedFiveMrt_L4_00008002.dxbc"
-    )
+    verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
     shared = (
         root
         / "package"
@@ -143,101 +134,158 @@ def verify(root: Path) -> None:
     runtime_source = (
         root
         / "src"
-        / "features"
+        / "Features"
         / "linear_lighting"
         / "LinearLightingRuntime.cpp"
     )
+    resources_rc = root / "src" / "resources.rc"
+    contracts = [
+        {
+            "label": "DefaultProjectedFiveMrt_L4_00008002",
+            "source": reconstruction
+            / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultProjectedFiveMrt_L4_00008002.dxbc",
+            "original_size": 3052,
+            "replacement_size": 6184,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS",
+        },
+        {
+            "label": "DefaultProjectedFiveMrt_L3_00008003",
+            "source": reconstruction
+            / "DefaultProjectedFiveMrt_L3_00008003.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultProjectedFiveMrt_L3_00008003.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultProjectedFiveMrt_L3_00008003.dxbc",
+            "original_size": 3120,
+            "replacement_size": 6252,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS",
+        },
+    ]
 
-    for required in (source, packaged, vanilla, shared, runtime_source):
+    required_files = [shared, runtime_source, resources_rc]
+    for contract in contracts:
+        required_files.extend(
+            (contract["source"], contract["packaged"], contract["vanilla"]))
+    for required in required_files:
         if not required.is_file():
             fail(f"required shader artifact is missing: {required}")
 
-    source_text = source.read_text(encoding="utf-8")
+    base_source_text = contracts[0]["source"].read_text(encoding="utf-8")
+    vertex_source_text = contracts[1]["source"].read_text(encoding="utf-8")
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
-    if "enableGammaCorrection" in source_text or "enableGammaCorrection" in shared_text:
+    resources_text = resources_rc.read_text(encoding="utf-8")
+    if "enableGammaCorrection" in base_source_text or "enableGammaCorrection" in shared_text:
         fail("removed upstream setting enableGammaCorrection returned")
     for call in ("LinearLightingDiffuse(diffuse.xyz)", "LinearLightingEmitColor(cb2[1].xyz)"):
-        if call not in source_text:
+        if call not in base_source_text:
             fail(f"active shader is missing transformation: {call}")
+    if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in vertex_source_text:
+        fail("projected L3 shader no longer selects the verified COLOR0 path")
+    if "diffuse *= input.vertexColor" not in base_source_text:
+        fail("projected L3 shader no longer modulates sampled diffuse by COLOR0")
 
-    vanilla_bytes = vanilla.read_bytes()
-    packaged_bytes = packaged.read_bytes()
-    if len(vanilla_bytes) != 3052 or len(packaged_bytes) != 6184:
-        fail("runtime shader byte-length identity constants drifted")
-    for token in (
-        "kDefaultProjectedPixelShaderSize = 3052",
-        "kDefaultProjectedReplacementShaderSize = 6184",
-        "kDefaultProjectedPixelShaderChecksum",
-        "kDefaultProjectedReplacementShaderChecksum",
-        "expectedChecksum.size()) == 0",
-    ):
+    for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
         if token not in runtime_text:
             fail(f"runtime shader identity gate is missing: {token}")
-    for name, artifact in (
-        ("kDefaultProjectedPixelShaderChecksum", vanilla_bytes),
-        ("kDefaultProjectedReplacementShaderChecksum", packaged_bytes),
-    ):
-        match = re.search(
-            rf"{name}\s*\{{(.*?)\}};",
-            runtime_text,
-            re.DOTALL,
-        )
-        if not match:
-            fail(f"runtime checksum initializer is missing: {name}")
+
+    for index, contract in enumerate(contracts):
+        original_bytes = contract["vanilla"].read_bytes()
+        packaged_bytes = contract["packaged"].read_bytes()
+        if len(original_bytes) != contract["original_size"]:
+            fail(f"{contract['label']} vanilla byte length drifted")
+        if len(packaged_bytes) != contract["replacement_size"]:
+            fail(f"{contract['label']} replacement byte length drifted")
+
+        section_start = runtime_text.find(f'"{contract["label"]}"')
+        if section_start < 0:
+            fail(f"runtime shader contract is missing: {contract['label']}")
+        if index + 1 < len(contracts):
+            section_end = runtime_text.find(
+                f'"{contracts[index + 1]["label"]}"', section_start + 1)
+        else:
+            section_end = runtime_text.find("} };", section_start)
+        if section_end <= section_start:
+            fail(f"runtime shader contract boundary is malformed: {contract['label']}")
+        section = runtime_text[section_start:section_end]
+        if contract["resource"] not in section:
+            fail(f"runtime resource mapping is missing for {contract['label']}")
+        expected_resource = (
+            f'{contract["resource"]} RCDATA '
+            f'"../package/Shaders/Community/Reconstruction/'
+            f'{contract["packaged"].name}"')
+        if expected_resource not in resources_text:
+            fail(f"embedded resource path differs for {contract['label']}")
+        sizes = [
+            int(value)
+            for value in re.findall(r"\n\s+(\d+),\s*\n\s+\{", section)
+        ]
+        if sizes[:2] != [contract["original_size"], contract["replacement_size"]]:
+            fail(f"runtime shader lengths differ for {contract['label']}: {sizes!r}")
         encoded = bytes(
             int(value, 16)
             for value in re.findall(
-                r"std::byte\{\s*0x([0-9A-Fa-f]{2})\s*\}",
-                match.group(1),
-            )
+                r"std::byte\{\s*0x([0-9A-Fa-f]{2})\s*\}", section)
         )
-        if encoded != artifact[4:20]:
-            fail(f"runtime checksum differs from packaged DXBC: {name}")
+        expected = original_bytes[4:20] + packaged_bytes[4:20]
+        if encoded != expected:
+            fail(f"runtime checksums differ for {contract['label']}")
 
     fxc = find_fxc()
     with tempfile.TemporaryDirectory(prefix="fo4vr-cs-ll-") as temporary:
         temp = Path(temporary)
-        compiled = temp / "candidate.dxbc"
-        candidate_assembly_path = temp / "candidate.asm"
-        vanilla_assembly_path = temp / "vanilla.asm"
-        run_fxc(
-            fxc,
-            [
-                "/T", "ps_5_0",
-                "/E", "PSMain",
-                "/O3",
-                "/Fo", str(compiled),
-                "/Fc", str(candidate_assembly_path),
-                str(source),
-            ],
-        )
-        run_fxc(fxc, ["/dumpbin", "/Fc", str(vanilla_assembly_path), str(vanilla)])
+        for index, contract in enumerate(contracts):
+            compiled = temp / f"candidate-{index}.dxbc"
+            candidate_assembly_path = temp / f"candidate-{index}.asm"
+            vanilla_assembly_path = temp / f"vanilla-{index}.asm"
+            run_fxc(
+                fxc,
+                [
+                    "/T", "ps_5_0",
+                    "/E", "PSMain",
+                    "/O3",
+                    "/Fo", str(compiled),
+                    "/Fc", str(candidate_assembly_path),
+                    str(contract["source"]),
+                ],
+            )
+            run_fxc(
+                fxc,
+                ["/dumpbin", "/Fc", str(vanilla_assembly_path), str(contract["vanilla"])],
+            )
 
-        if compiled.read_bytes() != packaged.read_bytes():
-            fail("packaged active DXBC is stale relative to its HLSL source")
-        if compiled.read_bytes() == vanilla.read_bytes():
-            fail("active shader unexpectedly matches vanilla bytecode")
+            if compiled.read_bytes() != contract["packaged"].read_bytes():
+                fail(f"{contract['label']} packaged DXBC is stale relative to source")
+            if compiled.read_bytes() == contract["vanilla"].read_bytes():
+                fail(f"{contract['label']} replacement unexpectedly matches vanilla")
 
-        candidate_assembly = candidate_assembly_path.read_text(encoding="utf-8", errors="replace")
-        vanilla_assembly = vanilla_assembly_path.read_text(encoding="utf-8", errors="replace")
-        candidate = parse_dcl_contract(candidate_assembly)
-        original = parse_dcl_contract(vanilla_assembly)
+            candidate_assembly = candidate_assembly_path.read_text(
+                encoding="utf-8", errors="replace")
+            vanilla_assembly = vanilla_assembly_path.read_text(
+                encoding="utf-8", errors="replace")
+            candidate = parse_dcl_contract(candidate_assembly)
+            original = parse_dcl_contract(vanilla_assembly)
 
-        if original["constant_buffers"] != {2: 7, 12: 51}:
-            fail(f"vanilla constant-buffer contract drifted: {original['constant_buffers']!r}")
-        expected_candidate_buffers = {2: 7, 5: 5, 8: 1, 12: 51}
-        if candidate["constant_buffers"] != expected_candidate_buffers:
-            fail(f"candidate constant-buffer contract drifted: {candidate['constant_buffers']!r}")
-        for key in ("samplers", "textures", "inputs", "outputs"):
-            if candidate[key] != original[key]:
-                fail(f"candidate {key} contract differs from vanilla")
-        if candidate["outputs"] != [0, 1, 2, 3, 4]:
-            fail(f"candidate MRT contract drifted: {candidate['outputs']!r}")
+            if original["constant_buffers"] != {2: 7, 12: 51}:
+                fail(
+                    f"{contract['label']} vanilla constant buffers drifted: "
+                    f"{original['constant_buffers']!r}")
+            expected_candidate_buffers = {2: 7, 5: 5, 8: 1, 12: 51}
+            if candidate["constant_buffers"] != expected_candidate_buffers:
+                fail(
+                    f"{contract['label']} replacement constant buffers drifted: "
+                    f"{candidate['constant_buffers']!r}")
+            for key in ("samplers", "textures", "inputs", "outputs"):
+                if candidate[key] != original[key]:
+                    fail(f"{contract['label']} replacement {key} differs from vanilla")
+            if candidate["outputs"] != [0, 1, 2, 3, 4]:
+                fail(f"{contract['label']} MRT contract drifted")
 
-        validate_frame_reflection(candidate_assembly)
+            validate_frame_reflection(candidate_assembly)
 
-    print("Linear Lighting shader contract verified")
+    print(f"Linear Lighting shader contracts verified: {len(contracts)}")
 
 
 def main() -> int:

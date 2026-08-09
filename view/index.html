@@ -511,9 +511,10 @@
       }
 
       document.getElementById("coverageName").textContent = coverage.label || "No verified shader slice";
+      const verifiedContracts = coverage.verifiedShaderContracts || 0;
       document.getElementById("coverageNote").textContent = coverage.fullFeaturePort
-        ? `${coverage.verifiedShaderContracts || 0} shader contracts verified. Linear Lighting coverage is complete.`
-        : `${coverage.verifiedShaderContracts || 0} shader contract verified. This panel exposes only controls active in that slice; staged controls remain locked.`;
+        ? `${verifiedContracts} shader contracts verified. Linear Lighting coverage is complete.`
+        : `${verifiedContracts} shader contract${verifiedContracts === 1 ? "" : "s"} verified. This panel exposes only controls active in that slice; staged controls remain locked.`;
 
       document.getElementById("statusGrid").innerHTML = [
         metric("D3D device", runtime.gpuReady ? "READY" : "WAIT", runtime.gpuReady ? "good" : "wait"),

@@ -18,6 +18,10 @@ SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
 
+#ifndef LINEAR_LIGHTING_VERTEX_COLOR
+#define LINEAR_LIGHTING_VERTEX_COLOR 0
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -26,6 +30,9 @@ struct PSInput
     float3 normal : TEXCOORD2;
     float4 texCoord3 : TEXCOORD3;
     float4 texCoord4 : TEXCOORD4;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    float4 vertexColor : COLOR0;
+#endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
 };
@@ -45,6 +52,9 @@ PSOutput PSMain(PSInput input)
 
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    diffuse *= input.vertexColor;
+#endif
     float alphaMask = (cb2[2].y == 1.0) ? diffuse.w : 1.0;
     float alpha = alphaMask * cb2[2].x;
 
