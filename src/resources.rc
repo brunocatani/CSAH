@@ -2,3 +2,5 @@
 
 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS RCDATA "../package/Shaders/Community/Reconstruction/DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.dxbc"
 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS RCDATA "../package/Shaders/Community/Reconstruction/DefaultProjectedFiveMrt_L3_00008003.LinearLightingCandidate.dxbc"
+IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_PS RCDATA "../package/Shaders/Community/Reconstruction/DefaultSixMrt_L4_00000002.LinearLightingCandidate.dxbc"
+IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_VERTEX_COLOR_PS RCDATA "../package/Shaders/Community/Reconstruction/DefaultSixMrt_L3_00000003.LinearLightingCandidate.dxbc"

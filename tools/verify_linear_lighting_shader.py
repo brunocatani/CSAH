@@ -77,10 +77,15 @@ def parse_dcl_contract(assembly: str) -> dict[str, object]:
     textures: set[int] = set()
     inputs: list[str] = []
     outputs: set[int] = set()
+    global_flags = ""
 
     for raw_line in assembly.splitlines():
         line = raw_line.strip()
-        if match := re.fullmatch(r"dcl_constantbuffer CB(\d+)\[(\d+)\], immediateIndexed", line):
+        if line.startswith("dcl_globalFlags "):
+            global_flags = line
+        elif match := re.fullmatch(
+                r"dcl_constantbuffer CB(\d+)\[(\d+)\], (?:immediate|dynamic)Indexed",
+                line):
             constant_buffers[int(match.group(1))] = int(match.group(2))
         elif match := re.match(r"dcl_sampler s(\d+)", line):
             samplers.add(int(match.group(1)))
@@ -97,6 +102,7 @@ def parse_dcl_contract(assembly: str) -> dict[str, object]:
         "textures": sorted(textures),
         "inputs": inputs,
         "outputs": sorted(outputs),
+        "global_flags": global_flags,
     }
 
 
@@ -150,6 +156,8 @@ def verify(root: Path) -> None:
             "original_size": 3052,
             "replacement_size": 6184,
             "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
         },
         {
             "label": "DefaultProjectedFiveMrt_L3_00008003",
@@ -161,6 +169,34 @@ def verify(root: Path) -> None:
             "original_size": 3120,
             "replacement_size": 6252,
             "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+        },
+        {
+            "label": "DefaultSixMrt_L4_00000002",
+            "source": reconstruction
+            / "DefaultSixMrt_L4_00000002.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultSixMrt_L4_00000002.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultSixMrt_L4_00000002.dxbc",
+            "original_size": 3336,
+            "replacement_size": 6524,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "DefaultSixMrt_L3_00000003",
+            "source": reconstruction
+            / "DefaultSixMrt_L3_00000003.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultSixMrt_L3_00000003.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultSixMrt_L3_00000003.dxbc",
+            "original_size": 3404,
+            "replacement_size": 6592,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
         },
     ]
 
@@ -172,20 +208,29 @@ def verify(root: Path) -> None:
         if not required.is_file():
             fail(f"required shader artifact is missing: {required}")
 
-    base_source_text = contracts[0]["source"].read_text(encoding="utf-8")
-    vertex_source_text = contracts[1]["source"].read_text(encoding="utf-8")
+    base_source_texts = [
+        contracts[index]["source"].read_text(encoding="utf-8")
+        for index in (0, 2)
+    ]
+    vertex_source_texts = [
+        contracts[index]["source"].read_text(encoding="utf-8")
+        for index in (1, 3)
+    ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
     resources_text = resources_rc.read_text(encoding="utf-8")
-    if "enableGammaCorrection" in base_source_text or "enableGammaCorrection" in shared_text:
+    if any("enableGammaCorrection" in text for text in base_source_texts) or \
+            "enableGammaCorrection" in shared_text:
         fail("removed upstream setting enableGammaCorrection returned")
-    for call in ("LinearLightingDiffuse(diffuse.xyz)", "LinearLightingEmitColor(cb2[1].xyz)"):
-        if call not in base_source_text:
-            fail(f"active shader is missing transformation: {call}")
-    if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in vertex_source_text:
-        fail("projected L3 shader no longer selects the verified COLOR0 path")
-    if "diffuse *= input.vertexColor" not in base_source_text:
-        fail("projected L3 shader no longer modulates sampled diffuse by COLOR0")
+    for base_source_text in base_source_texts:
+        for call in ("LinearLightingDiffuse(diffuse", "LinearLightingEmitColor(cb2[1].xyz)"):
+            if call not in base_source_text:
+                fail(f"active shader is missing transformation: {call}")
+        if "diffuse *= input.vertexColor" not in base_source_text:
+            fail("L3 shader no longer modulates sampled diffuse by COLOR0")
+    for vertex_source_text in vertex_source_texts:
+        if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in vertex_source_text:
+            fail("L3 shader no longer selects the verified COLOR0 path")
 
     for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
         if token not in runtime_text:
@@ -268,19 +313,20 @@ def verify(root: Path) -> None:
             candidate = parse_dcl_contract(candidate_assembly)
             original = parse_dcl_contract(vanilla_assembly)
 
-            if original["constant_buffers"] != {2: 7, 12: 51}:
+            if original["constant_buffers"] != contract["original_buffers"]:
                 fail(
                     f"{contract['label']} vanilla constant buffers drifted: "
                     f"{original['constant_buffers']!r}")
-            expected_candidate_buffers = {2: 7, 5: 5, 8: 1, 12: 51}
+            expected_candidate_buffers = dict(contract["original_buffers"])
+            expected_candidate_buffers.update({5: 5, 8: 1})
             if candidate["constant_buffers"] != expected_candidate_buffers:
                 fail(
                     f"{contract['label']} replacement constant buffers drifted: "
                     f"{candidate['constant_buffers']!r}")
-            for key in ("samplers", "textures", "inputs", "outputs"):
+            for key in ("samplers", "textures", "inputs", "outputs", "global_flags"):
                 if candidate[key] != original[key]:
                     fail(f"{contract['label']} replacement {key} differs from vanilla")
-            if candidate["outputs"] != [0, 1, 2, 3, 4]:
+            if candidate["outputs"] != contract["outputs"]:
                 fail(f"{contract['label']} MRT contract drifted")
 
             validate_frame_reflection(candidate_assembly)

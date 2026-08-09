@@ -84,7 +84,7 @@ namespace community_shaders::linear_lighting
                 ID3D11PixelShader**)) noexcept;
         void publishFrameData() noexcept;
 
-        static constexpr std::size_t kShaderContractCount = 2;
+        static constexpr std::size_t kShaderContractCount = 4;
         static constexpr std::size_t kMaximumTrackedOriginalShadersPerContract = 8;
 
         Settings settings_{};

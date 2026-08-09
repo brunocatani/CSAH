@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 2> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 4> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -44,10 +44,10 @@ namespace community_shaders::linear_lighting
                 {
                     6184,
                     {
-                        std::byte{ 0xE2 }, std::byte{ 0x5F }, std::byte{ 0x7C }, std::byte{ 0x95 },
-                        std::byte{ 0xE6 }, std::byte{ 0x1A }, std::byte{ 0xC1 }, std::byte{ 0xCB },
-                        std::byte{ 0x3E }, std::byte{ 0xBF }, std::byte{ 0x80 }, std::byte{ 0x0D },
-                        std::byte{ 0x25 }, std::byte{ 0xBB }, std::byte{ 0x05 }, std::byte{ 0x2C },
+                        std::byte{ 0x66 }, std::byte{ 0xE6 }, std::byte{ 0xA4 }, std::byte{ 0x1D },
+                        std::byte{ 0x00 }, std::byte{ 0x3E }, std::byte{ 0xEF }, std::byte{ 0xFE },
+                        std::byte{ 0xF3 }, std::byte{ 0x0F }, std::byte{ 0x5A }, std::byte{ 0x99 },
+                        std::byte{ 0x0C }, std::byte{ 0xD8 }, std::byte{ 0x10 }, std::byte{ 0x5C },
                     },
                 },
             },
@@ -66,10 +66,54 @@ namespace community_shaders::linear_lighting
                 {
                     6252,
                     {
-                        std::byte{ 0xE0 }, std::byte{ 0x3E }, std::byte{ 0x51 }, std::byte{ 0x59 },
-                        std::byte{ 0x45 }, std::byte{ 0x3A }, std::byte{ 0x9D }, std::byte{ 0x4B },
-                        std::byte{ 0x6A }, std::byte{ 0xE5 }, std::byte{ 0x43 }, std::byte{ 0x5C },
-                        std::byte{ 0x21 }, std::byte{ 0xE0 }, std::byte{ 0xE8 }, std::byte{ 0xA9 },
+                        std::byte{ 0x05 }, std::byte{ 0x28 }, std::byte{ 0x31 }, std::byte{ 0xC5 },
+                        std::byte{ 0x4C }, std::byte{ 0xB2 }, std::byte{ 0x4B }, std::byte{ 0xC1 },
+                        std::byte{ 0xA4 }, std::byte{ 0xFC }, std::byte{ 0x1C }, std::byte{ 0x12 },
+                        std::byte{ 0xA2 }, std::byte{ 0xCF }, std::byte{ 0x09 }, std::byte{ 0xED },
+                    },
+                },
+            },
+            {
+                "DefaultSixMrt_L4_00000002",
+                IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_PS,
+                {
+                    3336,
+                    {
+                        std::byte{ 0x33 }, std::byte{ 0xFA }, std::byte{ 0x39 }, std::byte{ 0x39 },
+                        std::byte{ 0x9B }, std::byte{ 0xC7 }, std::byte{ 0x9E }, std::byte{ 0xC9 },
+                        std::byte{ 0x4B }, std::byte{ 0xD6 }, std::byte{ 0x96 }, std::byte{ 0xE6 },
+                        std::byte{ 0xE7 }, std::byte{ 0x49 }, std::byte{ 0x0B }, std::byte{ 0x2E },
+                    },
+                },
+                {
+                    6524,
+                    {
+                        std::byte{ 0x7C }, std::byte{ 0x59 }, std::byte{ 0xAA }, std::byte{ 0xC5 },
+                        std::byte{ 0x5C }, std::byte{ 0xE0 }, std::byte{ 0x55 }, std::byte{ 0xC8 },
+                        std::byte{ 0x42 }, std::byte{ 0x28 }, std::byte{ 0x68 }, std::byte{ 0xB0 },
+                        std::byte{ 0x18 }, std::byte{ 0x1A }, std::byte{ 0x65 }, std::byte{ 0x82 },
+                    },
+                },
+            },
+            {
+                "DefaultSixMrt_L3_00000003",
+                IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_VERTEX_COLOR_PS,
+                {
+                    3404,
+                    {
+                        std::byte{ 0xD9 }, std::byte{ 0x23 }, std::byte{ 0x89 }, std::byte{ 0x10 },
+                        std::byte{ 0xFE }, std::byte{ 0xF1 }, std::byte{ 0xA3 }, std::byte{ 0x9B },
+                        std::byte{ 0x64 }, std::byte{ 0x83 }, std::byte{ 0x76 }, std::byte{ 0x7F },
+                        std::byte{ 0x3B }, std::byte{ 0x4F }, std::byte{ 0x36 }, std::byte{ 0x07 },
+                    },
+                },
+                {
+                    6592,
+                    {
+                        std::byte{ 0x53 }, std::byte{ 0x00 }, std::byte{ 0x2A }, std::byte{ 0xCD },
+                        std::byte{ 0x8A }, std::byte{ 0xD3 }, std::byte{ 0x2C }, std::byte{ 0x84 },
+                        std::byte{ 0x92 }, std::byte{ 0x58 }, std::byte{ 0x88 }, std::byte{ 0x00 },
+                        std::byte{ 0x79 }, std::byte{ 0xAB }, std::byte{ 0xF2 }, std::byte{ 0x83 },
                     },
                 },
             },
