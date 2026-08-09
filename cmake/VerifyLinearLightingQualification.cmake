@@ -1,0 +1,68 @@
+foreach(variable IN ITEMS
+    PLUGIN_SOURCE
+    D3D11_HOOK_SOURCE
+    QUALIFICATION_SOURCE)
+  if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
+    message(FATAL_ERROR "${variable} is missing")
+  endif()
+endforeach()
+
+file(READ "${PLUGIN_SOURCE}" pluginSource)
+file(READ "${D3D11_HOOK_SOURCE}" d3dSource)
+file(READ "${QUALIFICATION_SOURCE}" qualificationSource)
+
+foreach(required IN ITEMS
+    "startLinearLightingQualificationReporter"
+    "beginLinearLightingQualificationSession(\"PostLoadGame\")"
+    "beginLinearLightingQualificationSession(\"NewGame\")")
+  string(FIND "${pluginSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting qualification regression: plugin lifecycle is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kDrawIndexedVtableIndex = 12"
+    "kDrawVtableIndex = 13"
+    "kDrawIndexedInstancedVtableIndex = 20"
+    "kDrawInstancedVtableIndex = 21"
+    "activatePendingQualificationSession"
+    "recordQualificationBinding"
+    "recordQualificationDraw"
+    "inspectReplacementPipelineState"
+    "qualificationDrawDetoursOwned")
+  string(FIND "${d3dSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting qualification regression: render proof is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "std::ofstream"
+    "MoveFileExW"
+    "nlohmann::json")
+  string(FIND "${d3dSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting qualification hot-path regression: found '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "std::jthread"
+    "kQualificationTimeoutMilliseconds = 20'000"
+    "FO4VRCommunityShaders.LinearLightingQualification.json"
+    "waiting_for_world"
+    "GetCurrentProcessId()"
+    "MoveFileExW"
+    "MOVEFILE_REPLACE_EXISTING"
+    "capture.sample.sessionActivated"
+    "fullyVerifiedContractMask")
+  string(FIND "${qualificationSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting qualification regression: reporter is missing '${required}'")
+  endif()
+endforeach()

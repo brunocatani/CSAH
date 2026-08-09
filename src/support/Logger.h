@@ -11,6 +11,7 @@
 namespace community_shaders::logging
 {
     inline std::shared_ptr<spdlog::logger> instance;
+    inline std::filesystem::path runtimeLogDirectory;
 
     inline void init()
     {
@@ -21,6 +22,7 @@ namespace community_shaders::logging
             directory = directory.value().parent_path().append(expectedGamePath);
         }
         *directory /= "FO4VRCommunityShaders.log";
+        runtimeLogDirectory = directory->parent_path();
         auto sink =
             std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
                 directory->string(),
@@ -34,6 +36,11 @@ namespace community_shaders::logging
         instance->set_level(spdlog::level::info);
         instance->flush_on(spdlog::level::info);
         spdlog::set_default_logger(instance);
+    }
+
+    [[nodiscard]] inline const std::filesystem::path& outputDirectory() noexcept
+    {
+        return runtimeLogDirectory;
     }
 
     template <class... Args>

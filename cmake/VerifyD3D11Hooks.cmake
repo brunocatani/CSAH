@@ -29,9 +29,9 @@ endforeach()
 
 string(REGEX MATCHALL "MH_CreateHook\\(" createHookCalls "${source}")
 list(LENGTH createHookCalls createHookCallCount)
-if(NOT createHookCallCount EQUAL 2)
+if(NOT createHookCallCount EQUAL 3)
   message(FATAL_ERROR
-    "D3D11 detour regression: expected exactly two method detours")
+    "D3D11 detour regression: expected two shader calls and one bounded draw helper")
 endif()
 
 string(FIND "${source}" "Runtime::get().onDeviceCreated" deviceReady)

@@ -13,12 +13,40 @@ namespace community_shaders::render
         bool shaderInterceptionActive{};
         bool createPixelShaderDetourEnabled{};
         bool pixelShaderBindDetourEnabled{};
+        bool qualificationDrawDetoursInstalled{};
+        bool qualificationDrawDetoursOwned{};
         std::uint64_t shaderHookInstallFailures{};
         std::uint64_t shaderHookValidationFailures{};
+        std::uint64_t qualificationDrawHookInstallFailures{};
+        std::uint64_t qualificationDrawHookValidationFailures{};
         std::uint64_t pixelShaderBindRecursions{};
         std::uint64_t deviceCreationCalls{};
         std::uint64_t pixelShaderCreationCalls{};
         std::uint64_t pixelShaderBindCalls{};
+    };
+
+    struct QualificationSnapshot
+    {
+        bool sessionActive{};
+        std::uint64_t sessionId{};
+        std::uint64_t geometryUpdateBaseline{};
+        std::uint64_t replacementShaderBinds{};
+        std::uint64_t drawIndexedCalls{};
+        std::uint64_t drawCalls{};
+        std::uint64_t drawIndexedInstancedCalls{};
+        std::uint64_t drawInstancedCalls{};
+        std::uint64_t replacementDrawCalls{};
+        std::uint64_t bindingStateChecks{};
+        std::uint64_t bindingStateFailures{};
+        std::uint64_t drawStateChecks{};
+        std::uint64_t drawStateFailures{};
+        std::uint64_t bindingsWithoutFreshGeometry{};
+        std::uint64_t drawsWithoutFreshGeometry{};
+        std::uint32_t replacementContractMask{};
+        std::uint32_t bindingVerifiedContractMask{};
+        std::uint32_t drawVerifiedContractMask{};
+        std::uint32_t lastBindingState{};
+        std::uint32_t lastDrawState{};
     };
 
     // Installs before Fallout4VR creates the D3D11 device. The import entry is
@@ -29,4 +57,11 @@ namespace community_shaders::render
     [[nodiscard]] bool validateD3D11ShaderHooks(
         const char* trigger) noexcept;
     [[nodiscard]] HookSnapshot d3d11HookSnapshot() noexcept;
+
+    // A new session invalidates render-thread-local proof state through its
+    // monotonically increasing ID. All counters below are session-local.
+    [[nodiscard]] std::uint64_t beginD3D11QualificationSession(
+        std::uint64_t geometryUpdateBaseline) noexcept;
+    void endD3D11QualificationSession(std::uint64_t sessionId) noexcept;
+    [[nodiscard]] QualificationSnapshot d3d11QualificationSnapshot() noexcept;
 }

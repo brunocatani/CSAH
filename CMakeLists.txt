@@ -77,8 +77,12 @@ set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
+set(QUALIFICATION_SOURCE
+  "${SOURCE_DIR}/diagnostics/LinearLightingQualification.cpp")
+set(PLUGIN_SOURCE "${SOURCE_DIR}/XSEPlugin.cpp")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
+include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
@@ -89,7 +93,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
-  "${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
+  "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
+  "${QUALIFICATION_SOURCE}"
+  "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
+  "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
   COMMAND "${CMAKE_COMMAND}"
@@ -119,6 +126,15 @@ add_custom_target(VerifyD3D11Hooks ALL
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   COMMENT "Verifying D3D11 method-detour ownership contract"
+  VERBATIM)
+
+add_custom_target(VerifyLinearLightingQualification ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPLUGIN_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DQUALIFICATION_SOURCE=${QUALIFICATION_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake"
+  COMMENT "Verifying unattended Linear Lighting qualification contract"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -155,6 +171,9 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/exports.def"
   "${SOURCE_DIR}/resources.h"
   "${SOURCE_DIR}/resources.rc"
+  "${QUALIFICATION_SOURCE}"
+  "${SOURCE_DIR}/diagnostics/LinearLightingQualification.h"
+  "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
@@ -175,6 +194,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyLinearLightingQualification
   VerifyWristPanel)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -308,6 +328,10 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
 
+  add_test(NAME FO4VRCommunityShaders.LinearLightingQualificationSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DPLUGIN_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DQUALIFICATION_SOURCE=${QUALIFICATION_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake'")
+
   add_executable(FO4VRCommunityShadersD3D11MethodDetourSmokeTests
     "${ROOT_DIR}/tests/D3D11MethodDetourSmokeTests.cpp")
   target_compile_features(
@@ -376,6 +400,20 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.LinearLightingTelemetryGate
     COMMAND FO4VRCommunityShadersLinearLightingTelemetryGateTests)
+
+  add_executable(FO4VRCommunityShadersLinearLightingQualificationTests
+    "${ROOT_DIR}/tests/LinearLightingQualificationTests.cpp"
+    "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h")
+  target_compile_features(
+    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.LinearLightingQualification
+    COMMAND FO4VRCommunityShadersLinearLightingQualificationTests)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"

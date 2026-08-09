@@ -18,6 +18,7 @@ namespace community_shaders::linear_lighting
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
         std::uint32_t verifiedShaderContracts{};
+        std::uint32_t matchingShaderContractMask{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint32_t firstReplacementContractPlusOne{};
@@ -36,9 +37,26 @@ namespace community_shaders::linear_lighting
         std::uint64_t frameDataUploads{};
     };
 
+    enum PipelineBindingStateFlag : std::uint32_t
+    {
+        PipelineBinding_SelectedReplacement = 1u << 0,
+        PipelineBinding_FrameBuffer = 1u << 1,
+        PipelineBinding_GeometryBuffer = 1u << 2,
+        PipelineBinding_All = PipelineBinding_SelectedReplacement |
+            PipelineBinding_FrameBuffer | PipelineBinding_GeometryBuffer,
+    };
+
+    struct PixelShaderSelection
+    {
+        ID3D11PixelShader* shader{};
+        std::uint32_t contractPlusOne{};
+    };
+
     class Runtime final
     {
     public:
+        static constexpr std::size_t kShaderContractCount = 22;
+
         static Runtime& get() noexcept;
 
         Runtime(const Runtime&) = delete;
@@ -61,9 +79,19 @@ namespace community_shaders::linear_lighting
             SIZE_T bytecodeLength,
             ID3D11PixelShader* shader) noexcept;
 
-        [[nodiscard]] ID3D11PixelShader* selectPixelShader(
+        [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
+
+        // Sampled by the qualification hooks only. D3D11 Get calls retain the
+        // observed interfaces, which this method releases before returning.
+        [[nodiscard]] std::uint32_t inspectReplacementPipelineState(
+            ID3D11DeviceContext* context,
+            std::uint32_t contractPlusOne) const noexcept;
+
+        [[nodiscard]] std::uint64_t geometryUpdateGeneration() const noexcept;
+        [[nodiscard]] static const char* shaderContractName(
+            std::size_t contractIndex) noexcept;
 
         [[nodiscard]] bool updateGeometryEmissive(
             float emissiveMultiplier) noexcept;
@@ -95,7 +123,6 @@ namespace community_shaders::linear_lighting
         void applyQueuedSettingsForRenderBoundary() noexcept;
         void publishFrameData() noexcept;
 
-        static constexpr std::size_t kShaderContractCount = 22;
         static constexpr std::size_t kMaximumTrackedOriginalShadersPerContract = 8;
 
         Settings settings_{};
@@ -118,6 +145,7 @@ namespace community_shaders::linear_lighting
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
+        std::atomic_uint32_t matchingShaderContractMask_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};

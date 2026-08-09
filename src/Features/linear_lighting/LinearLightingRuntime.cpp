@@ -739,6 +739,9 @@ namespace community_shaders::linear_lighting
             return;
         }
 
+        matchingShaderContractMask_.fetch_or(
+            1u << contractIndex,
+            std::memory_order_relaxed);
         matchingShadersCreated_.fetch_add(1, std::memory_order_relaxed);
         std::scoped_lock lock(shaderRegistryMutex_);
         auto& owners = originalShaderOwners_[contractIndex];
@@ -763,7 +766,7 @@ namespace community_shaders::linear_lighting
         }
     }
 
-    ID3D11PixelShader* Runtime::selectPixelShader(
+    PixelShaderSelection Runtime::selectPixelShader(
         ID3D11DeviceContext* context,
         ID3D11PixelShader* requested) noexcept
     {
@@ -771,7 +774,7 @@ namespace community_shaders::linear_lighting
         const auto isCapturedContext = context == context_.Get();
         if (!isCapturedContext) {
             rejectedShaderContexts_.fetch_add(1, std::memory_order_relaxed);
-            return requested;
+            return { requested, 0 };
         }
 
         if (currentlyRequestedShader_.Get() != requested) {
@@ -784,7 +787,7 @@ namespace community_shaders::linear_lighting
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
             !geometryProviderReady_.load(std::memory_order_acquire)) {
             inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            return requested;
+            return { requested, 0 };
         }
 
         ID3D11PixelShader* replacement = nullptr;
@@ -803,7 +806,7 @@ namespace community_shaders::linear_lighting
         }
         if (!replacement) {
             unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            return requested;
+            return { requested, 0 };
         }
 
         ID3D11Buffer* frame = frameBuffer_.Get();
@@ -817,7 +820,59 @@ namespace community_shaders::linear_lighting
             std::memory_order_release,
             std::memory_order_relaxed);
         replacementBinds_.fetch_add(1, std::memory_order_relaxed);
-        return replacement;
+        return { replacement, replacementContractPlusOne };
+    }
+
+    std::uint32_t Runtime::inspectReplacementPipelineState(
+        ID3D11DeviceContext* context,
+        std::uint32_t contractPlusOne) const noexcept
+    {
+        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+            contractPlusOne > replacementShaders_.size()) {
+            return 0;
+        }
+
+        ID3D11PixelShader* observedShader{};
+        ID3D11Buffer* observedFrame{};
+        ID3D11Buffer* observedGeometry{};
+        context->PSGetShader(&observedShader, nullptr, nullptr);
+        context->PSGetConstantBuffers(5, 1, &observedFrame);
+        context->PSGetConstantBuffers(8, 1, &observedGeometry);
+
+        std::uint32_t state{};
+        if (observedShader == replacementShaders_[contractPlusOne - 1].Get()) {
+            state |= PipelineBinding_SelectedReplacement;
+        }
+        if (observedFrame == frameBuffer_.Get()) {
+            state |= PipelineBinding_FrameBuffer;
+        }
+        if (observedGeometry == geometryBuffer_.Get()) {
+            state |= PipelineBinding_GeometryBuffer;
+        }
+
+        if (observedGeometry) {
+            observedGeometry->Release();
+        }
+        if (observedFrame) {
+            observedFrame->Release();
+        }
+        if (observedShader) {
+            observedShader->Release();
+        }
+        return state;
+    }
+
+    std::uint64_t Runtime::geometryUpdateGeneration() const noexcept
+    {
+        return geometryUpdates_.load(std::memory_order_acquire);
+    }
+
+    const char* Runtime::shaderContractName(
+        std::size_t contractIndex) noexcept
+    {
+        return contractIndex < kShaderContracts.size() ?
+            kShaderContracts[contractIndex].name :
+            "<invalid>";
     }
 
     void Runtime::queueSettings(const Settings& settings) noexcept
@@ -919,6 +974,8 @@ namespace community_shaders::linear_lighting
                 geometryProviderReady_.load(std::memory_order_acquire),
             .verifiedShaderContracts =
                 static_cast<std::uint32_t>(kShaderContracts.size()),
+            .matchingShaderContractMask =
+                matchingShaderContractMask_.load(std::memory_order_relaxed),
             .matchingShadersCreated = matchingShadersCreated_.load(std::memory_order_relaxed),
             .trackedOriginalShaders = trackedOriginalShaders_.load(std::memory_order_relaxed),
             .firstReplacementContractPlusOne =

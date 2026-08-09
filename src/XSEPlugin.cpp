@@ -2,6 +2,7 @@
 
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "diagnostics/LinearLightingQualification.h"
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
@@ -87,8 +88,14 @@ namespace
             break;
         }
         case F4SE::MessagingInterface::kPostLoadGame:
+            community_shaders::ui::onGameSessionReady();
+            community_shaders::diagnostics::
+                beginLinearLightingQualificationSession("PostLoadGame");
+            break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::ui::onGameSessionReady();
+            community_shaders::diagnostics::
+                beginLinearLightingQualificationSession("NewGame");
             break;
         default:
             break;
@@ -188,6 +195,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
                 "F4SE messaging registration failed.");
             return false;
         }
+        community_shaders::diagnostics::
+            startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
             "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, and replacement remains fail-closed until both verified render providers are ready.",

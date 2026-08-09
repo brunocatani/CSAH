@@ -78,7 +78,7 @@ foreach(forbidden IN ITEMS
 endforeach()
 
 string(FIND "${runtimeSource}"
-  "ID3D11PixelShader* Runtime::selectPixelShader" selectStart)
+  "PixelShaderSelection Runtime::selectPixelShader" selectStart)
 string(FIND "${runtimeSource}"
   "void Runtime::queueSettings" queueStart)
 if(selectStart EQUAL -1 OR queueStart EQUAL -1 OR
