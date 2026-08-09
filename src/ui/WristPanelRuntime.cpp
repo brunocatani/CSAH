@@ -9,6 +9,7 @@
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
 #include "ui/PointerClickGate.h"
+#include "ui/WristPanelPose.h"
 #include "ui/WristProviderRetry.h"
 
 #include <F4SE/API.h>
@@ -56,9 +57,6 @@ namespace community_shaders::ui
         constexpr float kPanelPhysicalHeight =
             kPanelPhysicalWidth * static_cast<float>(kPanelHeightPixels) /
             static_cast<float>(kPanelWidthPixels);
-        constexpr float kPanelForward = 9.0f;
-        constexpr float kPanelLateral = 0.0f;
-        constexpr float kPanelUp = 7.0f;
         constexpr float kPointerMaxDistance = 500.0f;
         constexpr std::uint32_t kLeftTriggerButtonId = 33;
         constexpr std::uint32_t kLeftXButtonId = 7;
@@ -320,16 +318,24 @@ namespace community_shaders::ui
             if (!up) {
                 return std::nullopt;
             }
-            const auto orientation = quaternionFromBasis(
+            const auto inheritedOrientation = quaternionFromBasis(
                 *handLateral * -1.0f,
                 *up,
                 *forward * -1.0f);
+            if (!inheritedOrientation) {
+                return std::nullopt;
+            }
+            const auto orientation =
+                wrist_panel_pose::composePanelOrientation(
+                    *inheritedOrientation);
             if (!orientation) {
                 return std::nullopt;
             }
             PanelPose result{};
-            result.position = origin + *forward * kPanelForward +
-                              *handLateral * kPanelLateral + *up * kPanelUp;
+            result.position = origin +
+                *forward * wrist_panel_pose::kProberPanelPose.positionX +
+                *handLateral * wrist_panel_pose::kProberPanelPose.positionY +
+                *up * wrist_panel_pose::kProberPanelPose.positionZ;
             result.orientation = *orientation;
             return finite(result.position) ?
                 std::optional<PanelPose>{ result } : std::nullopt;

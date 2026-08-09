@@ -73,6 +73,7 @@ set(RENDERER_HOOK_SOURCE
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp")
 include("${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake")
 set(WRIST_PANEL_SOURCE "${SOURCE_DIR}/ui/WristPanelRuntime.cpp")
+set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
@@ -80,6 +81,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${RENDERER_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
   "${WRIST_PANEL_SOURCE}"
+  "${WRIST_PANEL_POSE_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
@@ -99,6 +101,7 @@ add_custom_target(VerifyFo4VrRendererHook ALL
 add_custom_target(VerifyWristPanel ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
+    "-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   COMMENT "Verifying optional wrist-panel provider contracts"
   VERBATIM)
@@ -147,6 +150,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
   "${SOURCE_DIR}/ui/PointerClickGate.h"
+  "${SOURCE_DIR}/ui/WristPanelPose.h"
   "${SOURCE_DIR}/ui/WristPanelRuntime.cpp"
   "${SOURCE_DIR}/ui/WristPanelRuntime.h"
   "${SOURCE_DIR}/ui/WristProviderRetry.h"
@@ -279,7 +283,7 @@ if(BUILD_FO4VR_CS_TESTS)
       "& '${CMAKE_COMMAND}' '-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake'")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
-      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"
@@ -306,6 +310,19 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.WristProviderRetry
     COMMAND FO4VRCommunityShadersWristProviderRetryTests)
+
+  add_executable(FO4VRCommunityShadersWristPanelPoseTests
+    "${ROOT_DIR}/tests/WristPanelPoseTests.cpp"
+    "${SOURCE_DIR}/ui/WristPanelPose.h")
+  target_compile_features(
+    FO4VRCommunityShadersWristPanelPoseTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersWristPanelPoseTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersWristPanelPoseTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.WristPanelPose
+    COMMAND FO4VRCommunityShadersWristPanelPoseTests)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"
