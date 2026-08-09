@@ -33,6 +33,10 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_VERTEX_COLOR 0
 #endif
 
+#ifndef LINEAR_LIGHTING_VERTEX_ALPHA
+#define LINEAR_LIGHTING_VERTEX_ALPHA LINEAR_LIGHTING_VERTEX_COLOR
+#endif
+
 #ifndef LINEAR_LIGHTING_FORCE_EARLY_DEPTH
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
@@ -50,7 +54,11 @@ struct PSInput
     float4 currentPosition : TEXCOORD3;
     float4 previousPosition : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_VERTEX_ALPHA
     float4 vertexColor : COLOR0;
+#else
+    float3 vertexColor : COLOR0;
+#endif
 #endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
@@ -77,7 +85,7 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_ALPHA_TEST
     float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
     float alpha = diffuseSample.w;
-#if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_VERTEX_ALPHA
     alpha *= input.vertexColor.w;
 #endif
     clip(alpha - cb2[1].w);

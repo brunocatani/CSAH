@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 17> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 18> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -400,6 +400,28 @@ namespace community_shaders::linear_lighting
                         std::byte{ 0x28 }, std::byte{ 0x1C }, std::byte{ 0xC0 }, std::byte{ 0x21 },
                         std::byte{ 0xD5 }, std::byte{ 0x78 }, std::byte{ 0x46 }, std::byte{ 0x2A },
                         std::byte{ 0x7E }, std::byte{ 0x4D }, std::byte{ 0x1F }, std::byte{ 0xE1 },
+                    },
+                },
+            },
+            {
+                "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016",
+                IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_RGB_ONLY_ALPHA_TEST_PS,
+                {
+                    3452,
+                    {
+                        std::byte{ 0x54 }, std::byte{ 0xF5 }, std::byte{ 0x30 }, std::byte{ 0x16 },
+                        std::byte{ 0xEB }, std::byte{ 0x2D }, std::byte{ 0xA3 }, std::byte{ 0x6E },
+                        std::byte{ 0xEA }, std::byte{ 0x5F }, std::byte{ 0x5A }, std::byte{ 0xC3 },
+                        std::byte{ 0xBF }, std::byte{ 0x10 }, std::byte{ 0xED }, std::byte{ 0x7B },
+                    },
+                },
+                {
+                    6640,
+                    {
+                        std::byte{ 0xFC }, std::byte{ 0xB0 }, std::byte{ 0x8A }, std::byte{ 0x96 },
+                        std::byte{ 0xCE }, std::byte{ 0x2B }, std::byte{ 0xBD }, std::byte{ 0xBC },
+                        std::byte{ 0xBF }, std::byte{ 0x40 }, std::byte{ 0x81 }, std::byte{ 0xF9 },
+                        std::byte{ 0xCC }, std::byte{ 0x6C }, std::byte{ 0x1C }, std::byte{ 0xEF },
                     },
                 },
             },
