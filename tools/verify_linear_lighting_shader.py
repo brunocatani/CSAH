@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 102:
-        fail("Linear Lighting manifest must contain exactly 102 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 114:
+        fail("Linear Lighting manifest must contain exactly 114 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -269,6 +269,19 @@ def verify_source_contracts(
                 f"{token}"
             )
     for token in (
+        "TexBoneTintLookup.Sample",
+        "TexBoneTintPalette.Sample",
+        "frac(LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW.x)",
+        "LinearLightingDiffuse(boneTintPalette.xyz)",
+        "boneTintPalette.w * boneTintLookup.w * input.boneTintColor.w * 4.0",
+        "output.target0.xyz += boneTint",
+    ):
+        if token not in base_source_texts[0]:
+            fail(
+                "projected shader is missing bone-tint contract: "
+                f"{token}"
+            )
+    for token in (
         "TexLandscapeLodDiffuse.Sample",
         "TexLandscapeLodNormal.Sample",
         "diffuse *= landscapeLodDiffuse",
@@ -329,6 +342,7 @@ def verify_source_contracts(
     gradient_remap_contracts = 0
     gradient_hair_contracts = 0
     lod_object_alpha_contracts = 0
+    bone_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -353,8 +367,10 @@ def verify_source_contracts(
             gradient_hair_contracts += 1
         if "#define LINEAR_LIGHTING_LOD_OBJECT_ALPHA 1" in source_text:
             lod_object_alpha_contracts += 1
-    if vertex_contracts != 53:
-        fail(f"expected 53 COLOR0 contracts, found {vertex_contracts}")
+        if "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text:
+            bone_tint_contracts += 1
+    if vertex_contracts != 60:
+        fail(f"expected 60 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 14:
         fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 6:
@@ -376,14 +392,14 @@ def verify_source_contracts(
             "expected 7 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 31:
+    if gradient_remap_contracts != 43:
         fail(
-            "expected 31 gradient-remap contracts, "
+            "expected 43 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
-    if gradient_hair_contracts != 9:
+    if gradient_hair_contracts != 15:
         fail(
-            "expected 9 gradient-hair contracts, "
+            "expected 15 gradient-hair contracts, "
             f"found {gradient_hair_contracts}"
         )
     if lod_object_alpha_contracts != 1:
@@ -391,6 +407,8 @@ def verify_source_contracts(
             "expected 1 projected LOD-object-alpha contract, "
             f"found {lod_object_alpha_contracts}"
         )
+    if bone_tint_contracts != 12:
+        fail(f"expected 12 bone-tint contracts, found {bone_tint_contracts}")
 
 
 def verify(root: Path) -> None:
@@ -446,11 +464,11 @@ def verify(root: Path) -> None:
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
         r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
-        str, tuple[int, bool, bool, bool, bool, bool, bool, bool]
+        str, tuple[int, bool, bool, bool, bool, bool, bool, bool, bool]
     ] = {}
     for (
         name,
@@ -462,6 +480,7 @@ def verify(root: Path) -> None:
         has_landscape_lod,
         has_gradient_remap,
         has_gradient_hair,
+        has_bone_tint,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -474,6 +493,7 @@ def verify(root: Path) -> None:
             has_landscape_lod == "true",
             has_gradient_remap == "true",
             has_gradient_hair == "true",
+            has_bone_tint == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -585,6 +605,15 @@ def verify(root: Path) -> None:
                 and 5 in original["samplers"]
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,
+                original["constant_buffers"].get(2) == 9
+                and 13 in original["samplers"]
+                and 14 in original["samplers"]
+                and 13 in original["textures"]
+                and 14 in original["textures"]
+                and any(
+                    semantic[0] == "COLOR" and semantic[1] == 1
+                    for semantic in original["input_signature"]
+                ),
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(

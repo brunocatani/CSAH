@@ -42,6 +42,7 @@ namespace
         bool hasLandscapeLod{};
         bool hasGradientRemap{};
         bool hasGradientHair{};
+        bool hasBoneTint{};
     };
 
     constexpr std::array kShaderContracts{
@@ -147,6 +148,18 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskGradientRemapHairProjectedFiveMrt_L4_05028002", 5, false, false, false, true, false, true, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapHairProjectedFiveMrt_L3_05028003", 5, true, false, false, true, false, true, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapHairAlphaTestProjectedFiveMrt_L3_05028103", 5, true, false, false, true, false, true, true },
+        ShaderContract{ "BoneTintGradientRemapProjectedFiveMrt_L4_44008002", 5, false, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapProjectedFiveMrt_L3_44008003", 5, true, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestProjectedFiveMrt_L3_44008103", 5, true, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapHairProjectedFiveMrt_L4_44028002", 5, false, false, false, false, false, true, true, true },
+        ShaderContract{ "BoneTintGradientRemapHairProjectedFiveMrt_L3_44028003", 5, true, false, false, false, false, true, true, true },
+        ShaderContract{ "BoneTintGradientRemapHairAlphaTestProjectedFiveMrt_L3_44028103", 5, true, false, false, false, false, true, true, true },
+        ShaderContract{ "BoneTintGradientRemapProjectedFiveMrt_L4NoEarlyDepth_44008006", 5, false, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapProjectedFiveMrt_L3NoEarlyDepth_44008007", 5, true, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestProjectedFiveMrt_L4NoEarlyDepth_44008106", 5, false, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapHairProjectedFiveMrt_L4NoEarlyDepth_44028006", 5, false, false, false, false, false, true, true, true },
+        ShaderContract{ "BoneTintGradientRemapHairProjectedFiveMrt_L3NoEarlyDepth_44028007", 5, true, false, false, false, false, true, true, true },
+        ShaderContract{ "BoneTintGradientRemapHairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_44028107", 5, true, false, false, false, false, true, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -226,6 +239,14 @@ namespace
     constexpr Pixel kAdditionalAlphaNoise{ 0.75F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kLandscapeLodDiffuse{ 0.65F, 0.7F, 0.75F, 1.0F };
     constexpr Pixel kLandscapeLodNormal{ 0.6F, 0.4F, 0.0F, 1.0F };
+    constexpr Pixel kBoneTintLookup{ 0.1F, 0.75F, 0.2F, 0.6F };
+    constexpr Pixel kBoneTintVertexColor{ 0.2F, 0.3F, 0.4F, 0.625F };
+    constexpr std::array<Pixel, 4> kBoneTintPalette{
+        Pixel{ 0.15F, 0.25F, 0.35F, 0.45F },
+        Pixel{ 0.75F, 0.2F, 0.4F, 0.5F },
+        Pixel{ 0.6F, 0.8F, 0.3F, 0.65F },
+        Pixel{ 0.35F, 0.65F, 0.85F, 0.55F },
+    };
     constexpr std::array<Pixel, 4> kGradientRemapTexture{
         Pixel{ 0.1F, 0.15F, 0.2F, 0.25F },
         Pixel{ 0.25F, 0.4F, 0.65F, 0.45F },
@@ -329,7 +350,8 @@ namespace
         bool hasVertexColor,
         bool isInstanced,
         bool usesTessellatedInputs,
-        bool hasLandscapeLod)
+        bool hasLandscapeLod,
+        bool hasBoneTint)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -354,6 +376,9 @@ struct VSOutput
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
+#endif
+#if HAS_BONE_TINT
+    float4 boneTintColor : COLOR1;
 #endif
 #if IS_INSTANCED
     nointerpolation uint instanceDataIndex : COLOR2;
@@ -393,6 +418,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
+#if HAS_BONE_TINT
+    output.boneTintColor = float4(0.2, 0.3, 0.4, 0.625);
+#endif
 #if IS_INSTANCED
     output.instanceDataIndex = 2;
 #endif
@@ -412,6 +440,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "USES_TESSELLATED_INPUTS",
                 usesTessellatedInputs ? "1" : "0" },
             { "HAS_LANDSCAPE_LOD", hasLandscapeLod ? "1" : "0" },
+            { "HAS_BONE_TINT", hasBoneTint ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -580,6 +609,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasAdditionalAlphaMask,
         bool hasGradientRemap,
         bool hasGradientHair,
+        bool hasBoneTint,
         AdditionalAlphaCase additionalAlphaCase)
     {
         std::array<std::array<float, 4>, 9> values{};
@@ -634,6 +664,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 };
                 if (hasAdditionalAlphaMask) {
                     values[7] = maskParameters;
+                    values[8] = depthParameters;
+                } else if (hasBoneTint) {
+                    values[7] = { 1.25F, 0.0F, 0.0F, 0.0F };
                     values[8] = depthParameters;
                 } else {
                     values[7] = depthParameters;
@@ -752,6 +785,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasLandscapeLod,
         bool hasGradientRemap,
         bool hasGradientHair,
+        bool hasBoneTint,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -761,6 +795,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasAdditionalAlphaMask,
             hasGradientRemap,
             hasGradientHair,
+            hasBoneTint,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -814,6 +849,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto gradientRemapTexture = createTexture2x2(
             device,
             kGradientRemapTexture);
+        const auto boneTintLookup = createTexture(device, kBoneTintLookup);
+        const auto boneTintPalette = createTexture2x2(
+            device,
+            kBoneTintPalette);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -887,6 +926,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetShaderResources(5, 1, &rawGradientRemapTexture);
             context.PSSetSamplers(5, 1, &rawGradientRemapSampler);
         }
+        auto* rawBoneTintLookup = boneTintLookup.Get();
+        auto* rawBoneTintPalette = boneTintPalette.Get();
+        auto* rawBoneTintSampler = sampler.Get();
+        if (hasBoneTint) {
+            context.PSSetShaderResources(13, 1, &rawBoneTintLookup);
+            context.PSSetShaderResources(14, 1, &rawBoneTintPalette);
+            context.PSSetSamplers(13, 1, &rawBoneTintSampler);
+            context.PSSetSamplers(14, 1, &rawBoneTintSampler);
+        }
 
         auto* rawMaterial = materialBuffer.Get();
         auto* rawGeometry = geometryBuffer.Get();
@@ -922,6 +970,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (hasGradientRemap) {
             context.PSSetShaderResources(5, 1, &nullView);
             context.PSSetSamplers(5, 1, &nullSampler);
+        }
+        if (hasBoneTint) {
+            context.PSSetShaderResources(13, 1, &nullView);
+            context.PSSetShaderResources(14, 1, &nullView);
+            context.PSSetSamplers(13, 1, &nullSampler);
+            context.PSSetSamplers(14, 1, &nullSampler);
         }
         if (hasLandscapeLod) {
             context.PSSetShaderResources(13, 1, &nullView);
@@ -1034,6 +1088,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 diffuse,
                 lightingCase.colorGamma,
                 lightingCase.vanillaDiffuseColorMult);
+            if (contract.hasBoneTint) {
+                constexpr auto boneTintPaletteTexel = 1u;
+                expected[0][channel] += transformedValue(
+                    kBoneTintPalette[boneTintPaletteTexel][channel],
+                    lightingCase.colorGamma,
+                    lightingCase.vanillaDiffuseColorMult) *
+                    kBoneTintPalette[boneTintPaletteTexel][3] *
+                    kBoneTintLookup[3] * kBoneTintVertexColor[3] * 4.0F;
+            }
 
             const auto safeEmissiveMult = (std::max)(
                 lightingCase.emissiveMult,
@@ -1078,17 +1141,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 16> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 32> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
             const auto usesTessellatedInputs = (index & 4u) != 0;
             const auto hasLandscapeLod = (index & 8u) != 0;
+            const auto hasBoneTint = (index & 16u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
                 usesTessellatedInputs,
-                hasLandscapeLod);
+                hasLandscapeLod,
+                hasBoneTint);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -1101,7 +1166,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (usesTessellatedInputs ?
                             ", tessellated inputs" :
                             ", standard inputs") +
-                    (hasLandscapeLod ? ", landscape LOD)" : ")"));
+                    (hasLandscapeLod ? ", landscape LOD" : "") +
+                    (hasBoneTint ? ", COLOR1)" : ")"));
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -1141,7 +1207,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (contract.hasVertexColor ? 1u : 0u) |
                 (contract.isInstanced ? 2u : 0u) |
                 (contract.usesTessellatedInputs ? 4u : 0u) |
-                (contract.hasLandscapeLod ? 8u : 0u)].Get();
+                (contract.hasLandscapeLod ? 8u : 0u) |
+                (contract.hasBoneTint ? 16u : 0u)].Get();
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
                 const auto vanilla = render(
@@ -1156,7 +1223,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
-                    contract.hasGradientHair);
+                    contract.hasGradientHair,
+                    contract.hasBoneTint);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1169,7 +1237,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
-                    contract.hasGradientHair);
+                    contract.hasGradientHair,
+                    contract.hasBoneTint);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1192,7 +1261,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
-                    contract.hasGradientHair);
+                    contract.hasGradientHair,
+                    contract.hasBoneTint);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1215,7 +1285,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
-                    contract.hasGradientHair);
+                    contract.hasGradientHair,
+                    contract.hasBoneTint);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1265,6 +1336,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasLandscapeLod,
                         contract.hasGradientRemap,
                         contract.hasGradientHair,
+                        contract.hasBoneTint,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1279,6 +1351,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasLandscapeLod,
                         contract.hasGradientRemap,
                         contract.hasGradientHair,
+                        contract.hasBoneTint,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

@@ -14,8 +14,20 @@
 #define LINEAR_LIGHTING_GRADIENT_HAIR 0
 #endif
 
+#ifndef LINEAR_LIGHTING_BONE_TINTING
+#define LINEAR_LIGHTING_BONE_TINTING 0
+#endif
+
 #if LINEAR_LIGHTING_GRADIENT_HAIR && !LINEAR_LIGHTING_GRADIENT_REMAP
 #error Gradient hair requires the verified gradient-remap material layout.
+#endif
+
+#if LINEAR_LIGHTING_BONE_TINTING && !LINEAR_LIGHTING_GRADIENT_REMAP
+#error Bone tinting requires the verified gradient-remap material layout.
+#endif
+
+#if LINEAR_LIGHTING_BONE_TINTING && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#error Combined bone tinting and additional alpha require a separately verified contract.
 #endif
 
 #if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && !LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
@@ -28,7 +40,7 @@
 
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if LINEAR_LIGHTING_GRADIENT_REMAP && (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_BONE_TINTING)
     float4 cb2[9];
 #elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[8];
@@ -54,6 +66,10 @@ Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 Texture2D<float4> TexGradientRemap : register(t5);
 #endif
+#if LINEAR_LIGHTING_BONE_TINTING
+Texture2D<float4> TexBoneTintLookup : register(t13);
+Texture2D<float4> TexBoneTintPalette : register(t14);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -71,6 +87,10 @@ SamplerState SampAdditionalAlpha : register(s12);
 #endif
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 SamplerState SampGradientRemap : register(s5);
+#endif
+#if LINEAR_LIGHTING_BONE_TINTING
+SamplerState SampBoneTintLookup : register(s13);
+SamplerState SampBoneTintPalette : register(s14);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -100,7 +120,12 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_BONE_TINTING
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW cb2[7]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]
+#elif LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]
@@ -130,6 +155,9 @@ struct PSInput
     float4 texCoord4 : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
     float4 vertexColor : COLOR0;
+#endif
+#if LINEAR_LIGHTING_BONE_TINTING
+    float4 boneTintColor : COLOR1;
 #endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
@@ -211,10 +239,24 @@ PSOutput PSMain(PSInput input)
     float3 mappedDiffuse = diffuse.xyz;
 #endif
 
+#if LINEAR_LIGHTING_BONE_TINTING
+    float4 boneTintLookup = TexBoneTintLookup.Sample(SampBoneTintLookup, uv);
+    float4 boneTintPalette = TexBoneTintPalette.Sample(
+        SampBoneTintPalette,
+        float2(
+            boneTintLookup.y,
+            frac(LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW.x)));
+    float3 boneTint = LinearLightingDiffuse(boneTintPalette.xyz) *
+        boneTintPalette.w * boneTintLookup.w * input.boneTintColor.w * 4.0;
+#endif
+
     float fade = (LINEAR_LIGHTING_PROJECTED_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_PROJECTED_PROPERTIES.w * cb12[50].x) + 1.0);
     output.target0.xyz = fade * LinearLightingDiffuse(mappedDiffuse);
+#if LINEAR_LIGHTING_BONE_TINTING
+    output.target0.xyz += boneTint;
+#endif
     output.target0.w = alpha;
 
     float3 sourceNormal = normalize(input.normal);
