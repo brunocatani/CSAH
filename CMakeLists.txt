@@ -296,4 +296,13 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/verify_linear_lighting_shader.py"
       --root "${ROOT_DIR}")
+  add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
+    COMMAND "${Python3_EXECUTABLE}"
+      "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
+      --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
+      --known-dir "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
+      --expect-total 15
+      --expect-unique 15
+      --expect-bslighting-shape 15
+      --expect-known 15)
 endif()
