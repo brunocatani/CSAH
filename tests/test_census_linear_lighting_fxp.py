@@ -195,5 +195,129 @@ class FxpParserTests(unittest.TestCase):
             CENSUS.parse_fxp(bytes(data))
 
 
+class DescriptorDecoderTests(unittest.TestCase):
+    def test_decodes_verified_common_macros(self) -> None:
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(0x00000002),
+            ("TEXTURE",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(0x00000102),
+            ("TEXTURE", "ALPHA_TEST"),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(0x00004102),
+            ("TEXTURE", "ALPHA_TEST", "GLOWMAP"),
+        )
+
+    def test_decodes_grass_and_macro_value(self) -> None:
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 7),
+            ("GRASS", "MAX_ACTOR_VEGETATION_COLLISION=4"),
+        )
+
+    def test_decodes_tree_and_pipboy_exclusivity(self) -> None:
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 10),
+            ("SPLINE",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros((1 << 10) | (1 << 23)),
+            ("TREE_ANIM",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 23),
+            ("PIPBOY_SCREEN",),
+        )
+
+    def test_decodes_lod_and_menu_exclusivity(self) -> None:
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 11),
+            ("SKEW_SPECULAR_ALPHA",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros((1 << 11) | (1 << 16)),
+            ("LOD_OBJECT_INSTANCED",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 16),
+            ("MENU_SCREEN",),
+        )
+
+    def test_decodes_instancing_modes(self) -> None:
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 27),
+            ("INSTANCED",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(1 << 28),
+            ("COMBINED",),
+        )
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros((1 << 27) | (1 << 28)),
+            ("MERGE_INSTANCED",),
+        )
+
+    def test_preserves_verified_high_bit_emission_order(self) -> None:
+        descriptor = sum(1 << bit for bit in (17, 26, 29, 30, 31))
+        self.assertEqual(
+            CENSUS.decode_lighting_descriptor_macros(descriptor),
+            (
+                "GRADIENT_REMAP",
+                "CLIP_VOLUME",
+                "BONE_TINTING",
+                "FACE",
+                "HAIR",
+            ),
+        )
+
+    def test_normalizes_dfprepass_keys_with_verified_masks(self) -> None:
+        self.assertEqual(CENSUS.normalize_dfprepass_pixel_key(0x00000018), 0)
+        self.assertEqual(CENSUS.normalize_dfprepass_pixel_key(0x00001000), 0)
+        self.assertEqual(
+            CENSUS.normalize_dfprepass_pixel_key(0x00004102),
+            0x00004102,
+        )
+        self.assertEqual(
+            CENSUS.normalize_dfprepass_pixel_key(0x00008102),
+            0x00008102,
+        )
+        self.assertEqual(
+            CENSUS.normalize_dfprepass_pixel_key(0xFFFFFFFF),
+            CENSUS.DFPREPASS_PS_MASK,
+        )
+
+    def test_dfprepass_normalization_is_idempotent(self) -> None:
+        for descriptor in (
+            0,
+            0x00000080,
+            0x00004102,
+            0x00008102,
+            0x00280042,
+            0xFFFFFFFF,
+        ):
+            with self.subTest(descriptor=f"0x{descriptor:08X}"):
+                normalized = CENSUS.normalize_dfprepass_pixel_key(descriptor)
+                self.assertEqual(
+                    CENSUS.normalize_dfprepass_pixel_key(normalized),
+                    normalized,
+                )
+
+    def test_rejects_out_of_range_descriptors(self) -> None:
+        for descriptor in (-1, 0x1_0000_0000):
+            with self.subTest(descriptor=descriptor):
+                with self.assertRaisesRegex(CENSUS.CensusError, "outside uint32"):
+                    CENSUS.normalize_dfprepass_pixel_key(descriptor)
+                with self.assertRaisesRegex(CENSUS.CensusError, "outside uint32"):
+                    CENSUS.decode_lighting_descriptor_macros(descriptor)
+
+    def test_macro_signature_is_order_independent(self) -> None:
+        self.assertEqual(
+            CENSUS.macro_signature(("TEXTURE", "VC")),
+            CENSUS.macro_signature(("VC", "TEXTURE")),
+        )
+        self.assertEqual(CENSUS.macro_signature(()), "<none>")
+
+
 if __name__ == "__main__":
     unittest.main()

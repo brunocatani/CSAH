@@ -9,7 +9,7 @@ import struct
 import subprocess
 import tempfile
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -55,6 +55,17 @@ FXP_FINAL_COMPUTE_FAMILIES = (
     "DismemberCS",
     "SkinnedDecalCS",
 )
+
+# Fallout4VR.exe 1.2.72 raw assembly authority:
+#   0x142937A80 normalizes the DFPrepass pixel-shader descriptor.
+#   0x142937540 emits the macro list for the same descriptor domain and is
+#   immediately followed by DFPrepass's four stage-key canonicalizers.
+DFPREPASS_PS_MASK = 0xFFFFEFE7
+LIGHTING_FIXED_MACROS = (
+    "RGBEMIT",
+    "MOTION_VECTORS",
+    "VR_SUPPORT",
+)
 FXP_STAGE_LAYOUT = (
     ("VS", 56),
     ("HS", 56),
@@ -74,6 +85,90 @@ PROGRAM_TYPES = {
 
 class CensusError(RuntimeError):
     pass
+
+
+def normalize_dfprepass_pixel_key(descriptor: int) -> int:
+    if descriptor < 0 or descriptor > 0xFFFFFFFF:
+        raise CensusError(f"descriptor is outside uint32: {descriptor}")
+    return descriptor & DFPREPASS_PS_MASK
+
+
+def decode_lighting_descriptor_macros(descriptor: int) -> tuple[str, ...]:
+    if descriptor < 0 or descriptor > 0xFFFFFFFF:
+        raise CensusError(f"descriptor is outside uint32: {descriptor}")
+
+    macros: list[str] = []
+    for bit, macro in (
+        (0, "VC"),
+        (1, "TEXTURE"),
+        (2, "SKINNED"),
+        (3, "NORMALS"),
+        (4, "BINORMAL_TANGENT"),
+        (5, "LANDSCAPE"),
+        (6, "EYE"),
+    ):
+        if descriptor & (1 << bit):
+            macros.append(macro)
+    if descriptor & (1 << 7):
+        macros.extend(("GRASS", "MAX_ACTOR_VEGETATION_COLLISION=4"))
+    for bit, macro in ((8, "ALPHA_TEST"), (9, "LOD_LANDSCAPE")):
+        if descriptor & (1 << bit):
+            macros.append(macro)
+    if descriptor & (1 << 10):
+        macros.append(
+            "TREE_ANIM" if descriptor & (1 << 23) else "SPLINE"
+        )
+    for bit, macro in (
+        (12, "CHARACTER_LIGHT_MASK"),
+        (13, "MODELSPACENORMALS"),
+        (14, "GLOWMAP"),
+        (15, "BLEND"),
+    ):
+        if descriptor & (1 << bit):
+            macros.append(macro)
+    if descriptor & (1 << 11):
+        macros.append(
+            "LOD_OBJECT_INSTANCED"
+            if descriptor & (1 << 16)
+            else "SKEW_SPECULAR_ALPHA"
+        )
+    elif descriptor & (1 << 16):
+        macros.append("MENU_SCREEN")
+    if descriptor & (1 << 23) and not descriptor & (1 << 10):
+        macros.append("PIPBOY_SCREEN")
+    for bit, macro in (
+        (18, "SKIN_TINT"),
+        (19, "TESSELLATE_DISP_HEIGHT"),
+        (20, "TESSELLATE_DISP_NORMALS"),
+        (21, "DISMEMBERMENT"),
+        (22, "DISMEMBERMENT_MEATCUFF"),
+        (24, "ADDITIONAL_ALPHA_MASK"),
+        (25, "LAND_LOD_BLEND"),
+    ):
+        if descriptor & (1 << bit):
+            macros.append(macro)
+    instancing = descriptor & ((1 << 27) | (1 << 28))
+    if instancing == ((1 << 27) | (1 << 28)):
+        macros.append("MERGE_INSTANCED")
+    elif instancing == (1 << 27):
+        macros.append("INSTANCED")
+    elif instancing == (1 << 28):
+        macros.append("COMBINED")
+    for bit, macro in (
+        (26, "GRADIENT_REMAP"),
+        (29, "CLIP_VOLUME"),
+        (30, "BONE_TINTING"),
+        (31, "FACE"),
+        (17, "HAIR"),
+    ):
+        if descriptor & (1 << bit):
+            macros.append(macro)
+    return tuple(macros)
+
+
+def macro_signature(macros: Iterable[str]) -> str:
+    values = tuple(sorted(macros))
+    return "+".join(values) if values else "<none>"
 
 
 @dataclass(frozen=True)
@@ -129,6 +224,16 @@ class ShaderDeclarations:
             and 12 in buffers
             and self.outputs in ((0, 1, 2, 3, 4), (0, 1, 2, 3, 4, 5))
         )
+
+
+@dataclass
+class MacroCoverageState:
+    signature: str
+    macros: tuple[str, ...]
+    records: int = 0
+    identities: set[tuple[int, str]] = field(default_factory=set)
+    known_identities: set[tuple[int, str]] = field(default_factory=set)
+    keys: set[int] = field(default_factory=set)
 
 
 def read_u32(data: bytes, offset: int) -> int:
@@ -568,6 +673,44 @@ def declaration_key(declarations: ShaderDeclarations) -> tuple[object, ...]:
     )
 
 
+def build_macro_coverage_rows(
+    occurrences: Iterable[DxbcContainer],
+    known: dict[tuple[int, str], str],
+) -> list[dict[str, object]]:
+    coverage_by_signature: dict[str, MacroCoverageState] = {}
+    for item in occurrences:
+        if item.key is None:
+            raise CensusError(
+                "decoded DFPrepass PS container is missing its descriptor key"
+            )
+        macros = decode_lighting_descriptor_macros(item.key)
+        signature = macro_signature(macros)
+        coverage = coverage_by_signature.setdefault(
+            signature,
+            MacroCoverageState(signature=signature, macros=macros),
+        )
+        coverage.records += 1
+        coverage.identities.add(item.identity)
+        coverage.keys.add(item.key)
+        if item.identity in known:
+            coverage.known_identities.add(item.identity)
+
+    return [
+        {
+            "signature": coverage.signature,
+            "macros": list(coverage.macros),
+            "records": coverage.records,
+            "uniqueShaders": len(coverage.identities),
+            "knownWitnesses": len(coverage.known_identities),
+            "keys": [f"0x{key:08X}" for key in sorted(coverage.keys)],
+        }
+        for coverage in sorted(
+            coverage_by_signature.values(),
+            key=lambda item: (-item.records, item.signature),
+        )
+    ]
+
+
 def build_report(
     source: Path,
     source_sha256: str,
@@ -621,10 +764,67 @@ def build_report(
             for container in target_pixel_shaders
             if declarations[container.identity].is_linear_lighting_gbuffer_shape()
         ]
+
+        target_stored_keys = {
+            container.key
+            for container in target_occurrences
+            if container.key is not None
+        }
+        lookup_canonical_occurrences = []
+        normalization_sources: dict[int, set[int]] = {}
+        for container in target_occurrences:
+            if container.key is None:
+                raise CensusError(
+                    "decoded DFPrepass PS container is missing its descriptor key"
+                )
+            normalized_key = normalize_dfprepass_pixel_key(container.key)
+            if normalize_dfprepass_pixel_key(normalized_key) != normalized_key:
+                raise CensusError(
+                    "DFPrepass PS key normalization is not idempotent for "
+                    f"0x{container.key:08X}"
+                )
+            normalization_sources.setdefault(normalized_key, set()).add(container.key)
+            if normalized_key == container.key:
+                lookup_canonical_occurrences.append(container)
+
+        lookup_canonical_by_identity: dict[
+            tuple[int, str], DxbcContainer
+        ] = {}
+        for container in lookup_canonical_occurrences:
+            lookup_canonical_by_identity.setdefault(container.identity, container)
+        lookup_canonical_shaders = sorted(
+            lookup_canonical_by_identity.values(),
+            key=lambda item: (item.checksum, item.size),
+        )
+        lookup_canonical_gbuffer_shaders = [
+            container
+            for container in lookup_canonical_shaders
+            if declarations[container.identity].is_linear_lighting_gbuffer_shape()
+        ]
+        missing_normalized_target_keys = sorted(
+            key for key in normalization_sources if key not in target_stored_keys
+        )
+        normalization_rows = [
+            {
+                "lookupKey": f"0x{normalized_key:08X}",
+                "storedKeyPresent": normalized_key in target_stored_keys,
+                "sourceStoredKeys": [
+                    f"0x{key:08X}"
+                    for key in sorted(normalization_sources[normalized_key])
+                ],
+            }
+            for normalized_key in sorted(normalization_sources)
+            if normalization_sources[normalized_key] != {normalized_key}
+        ]
     else:
         target_occurrences = []
         target_pixel_shaders = gbuffer_shape
         target_gbuffer_shaders = gbuffer_shape
+        lookup_canonical_occurrences = []
+        lookup_canonical_shaders = []
+        lookup_canonical_gbuffer_shaders = []
+        missing_normalized_target_keys = []
+        normalization_rows = []
 
     missing_known = sorted(
         name for identity, name in known.items() if identity not in declarations
@@ -677,6 +877,15 @@ def build_report(
             }
         )
 
+    stored_macro_coverage_rows = build_macro_coverage_rows(
+        target_occurrences,
+        known,
+    )
+    lookup_canonical_macro_coverage_rows = build_macro_coverage_rows(
+        lookup_canonical_occurrences,
+        known,
+    )
+
     relevant_occurrences = (
         target_occurrences if family_ownership_decoded else containers
     )
@@ -685,31 +894,60 @@ def build_report(
     occurrence_records: dict[tuple[int, str], list[dict[str, object]]] = {}
     for item in relevant_occurrences:
         occurrence_offsets.setdefault(item.identity, []).append(f"0x{item.offset:08X}")
-        occurrence_records.setdefault(item.identity, []).append(
-            {
-                "key": item.key,
-                "recordOffset": (
-                    f"0x{item.record_offset:08X}"
-                    if item.record_offset is not None
-                    else None
-                ),
-                "dxbcOffset": f"0x{item.offset:08X}",
-            }
-        )
+        record: dict[str, object] = {
+            "key": item.key,
+            "keyHex": f"0x{item.key:08X}" if item.key is not None else None,
+            "recordOffset": (
+                f"0x{item.record_offset:08X}"
+                if item.record_offset is not None
+                else None
+            ),
+            "dxbcOffset": f"0x{item.offset:08X}",
+        }
+        if (
+            item.family == LINEAR_LIGHTING_TARGET_FAMILY
+            and item.stage == "PS"
+            and item.key is not None
+        ):
+            macros = decode_lighting_descriptor_macros(item.key)
+            record.update(
+                {
+                    "normalizedKeyHex": (
+                        f"0x{normalize_dfprepass_pixel_key(item.key):08X}"
+                    ),
+                    "lookupCanonicalKey": (
+                        normalize_dfprepass_pixel_key(item.key) == item.key
+                    ),
+                    "descriptorMacros": list(macros),
+                    "macroSignature": macro_signature(macros),
+                }
+            )
+        occurrence_records.setdefault(item.identity, []).append(record)
     shader_rows = []
     for item in sorted(
         target_gbuffer_shaders,
         key=lambda shader: (shader.checksum, shader.size),
     ):
+        records = occurrence_records[item.identity]
         shader_rows.append(
             {
                 "checksum": item.checksum,
                 "size": item.size,
                 "occurrences": occurrence_counts[item.identity],
                 "offsets": occurrence_offsets[item.identity],
-                "records": occurrence_records[item.identity],
+                "records": records,
                 "knownWitness": known.get(item.identity),
                 "groupId": group_ids[declaration_key(declarations[item.identity])],
+                "descriptorMacroSignatures": sorted(
+                    {
+                        str(record["macroSignature"])
+                        for record in records
+                        if "macroSignature" in record
+                    }
+                ),
+                "lookupCanonical": any(
+                    bool(record.get("lookupCanonicalKey")) for record in records
+                ),
             }
         )
 
@@ -718,26 +956,48 @@ def build_report(
         identity_occurrences = [
             item for item in containers if item.identity == identity
         ]
+        known_occurrences = []
+        for item in identity_occurrences:
+            occurrence: dict[str, object] = {
+                "family": item.family,
+                "stage": item.stage,
+                "key": item.key,
+                "keyHex": (
+                    f"0x{item.key:08X}" if item.key is not None else None
+                ),
+                "recordOffset": (
+                    f"0x{item.record_offset:08X}"
+                    if item.record_offset is not None
+                    else None
+                ),
+                "dxbcOffset": f"0x{item.offset:08X}",
+            }
+            if (
+                item.family == LINEAR_LIGHTING_TARGET_FAMILY
+                and item.stage == "PS"
+                and item.key is not None
+            ):
+                macros = decode_lighting_descriptor_macros(item.key)
+                occurrence.update(
+                    {
+                        "normalizedKeyHex": (
+                            f"0x{normalize_dfprepass_pixel_key(item.key):08X}"
+                        ),
+                        "lookupCanonicalKey": (
+                            normalize_dfprepass_pixel_key(item.key) == item.key
+                        ),
+                        "descriptorMacros": list(macros),
+                        "macroSignature": macro_signature(macros),
+                    }
+                )
+            known_occurrences.append(occurrence)
         known_rows.append(
             {
                 "name": name,
                 "size": identity[0],
                 "checksum": identity[1],
                 "inExactTargetGBufferSet": identity in target_gbuffer_identities,
-                "occurrences": [
-                    {
-                        "family": item.family,
-                        "stage": item.stage,
-                        "key": item.key,
-                        "recordOffset": (
-                            f"0x{item.record_offset:08X}"
-                            if item.record_offset is not None
-                            else None
-                        ),
-                        "dxbcOffset": f"0x{item.offset:08X}",
-                    }
-                    for item in identity_occurrences
-                ],
+                "occurrences": known_occurrences,
             }
         )
 
@@ -776,7 +1036,7 @@ def build_report(
     ]
 
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "source": str(source.resolve()),
         "sourceSha256": source_sha256,
         "fxc": str(fxc),
@@ -797,6 +1057,21 @@ def build_report(
         "targetPixelShaderOccurrences": len(target_occurrences),
         "targetPixelShaderCount": len(target_pixel_shaders),
         "targetGBufferShapeCount": len(target_gbuffer_shaders),
+        "dfPrepassPixelKeyMask": f"0x{DFPREPASS_PS_MASK:08X}",
+        "lookupCanonicalPixelShaderOccurrences": len(
+            lookup_canonical_occurrences
+        ),
+        "lookupCanonicalPixelShaderCount": len(lookup_canonical_shaders),
+        "lookupCanonicalGBufferShapeCount": len(
+            lookup_canonical_gbuffer_shaders
+        ),
+        "missingNormalizedTargetKeys": [
+            f"0x{key:08X}" for key in missing_normalized_target_keys
+        ],
+        "normalizationGroups": normalization_rows,
+        "lightingFixedMacros": list(LIGHTING_FIXED_MACROS),
+        "descriptorMacroCoverage": lookup_canonical_macro_coverage_rows,
+        "storedDescriptorMacroCoverage": stored_macro_coverage_rows,
         "knownWitnessCount": len(known),
         "knownOutsideExactTargetSet": known_outside_shape,
         "knownWitnesses": known_rows,
@@ -824,6 +1099,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expect-unique", type=int)
     parser.add_argument("--expect-target-pixel", type=int)
     parser.add_argument("--expect-target-shape", type=int)
+    parser.add_argument("--expect-canonical-occurrences", type=int)
+    parser.add_argument("--expect-canonical-shaders", type=int)
     parser.add_argument("--expect-known", type=int)
     return parser.parse_args()
 
@@ -858,6 +1135,16 @@ def main() -> int:
             args.expect_target_shape,
         )
         require_count(
+            "DFPrepass canonical pixel-shader occurrence count",
+            report["lookupCanonicalPixelShaderOccurrences"],
+            args.expect_canonical_occurrences,
+        )
+        require_count(
+            "DFPrepass canonical unique pixel-shader count",
+            report["lookupCanonicalPixelShaderCount"],
+            args.expect_canonical_shaders,
+        )
+        require_count(
             "known witness count",
             report["knownWitnessCount"],
             args.expect_known,
@@ -872,6 +1159,9 @@ def main() -> int:
             f"unique={report['uniqueContainerCount']} "
             f"target_pixel={report['targetPixelShaderCount']} "
             f"target_shape={report['targetGBufferShapeCount']} "
+            f"canonical_occurrences="
+            f"{report['lookupCanonicalPixelShaderOccurrences']} "
+            f"canonical_shaders={report['lookupCanonicalPixelShaderCount']} "
             f"known={report['knownWitnessCount']}"
         )
         return 0
