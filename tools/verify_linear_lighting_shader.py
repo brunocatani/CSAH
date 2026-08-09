@@ -343,6 +343,55 @@ def verify(root: Path) -> None:
             "original_buffers": {2: 7, 12: 51},
             "outputs": [0, 1, 2, 3, 4],
         },
+        {
+            "label": "TexturedEmissionAlphaTestSixMrt_L4_00004102",
+            "source": reconstruction
+            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.LinearLightingCandidate.dxbc",
+            "vanilla": verified
+            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.dxbc",
+            "original_size": 3464,
+            "replacement_size": 6904,
+            "resource": "IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "frame_registers": 6,
+            "outputs": [0, 1, 2, 3, 4, 5],
+            "required_source_tokens": (
+                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
+                "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1",
+            ),
+            "required_vanilla_tokens": (
+                "add r0.z, r1.w, -cb2[1].w",
+                "discard_nz r0.z",
+                "mul o4.xyz, r1.xyzx, cb2[1].xyzx",
+            ),
+        },
+        {
+            "label": "TexturedEmissionAlphaTestSixMrt_L3_00004103",
+            "source": reconstruction
+            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.LinearLightingCandidate.dxbc",
+            "vanilla": verified
+            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.dxbc",
+            "original_size": 3540,
+            "replacement_size": 6980,
+            "resource": "IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "frame_registers": 6,
+            "outputs": [0, 1, 2, 3, 4, 5],
+            "required_source_tokens": (
+                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
+                "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1",
+                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
+            ),
+            "required_vanilla_tokens": (
+                "mad r0.z, r1.w, v6.w, -cb2[1].w",
+                "discard_nz r0.z",
+                "mul o4.xyz, r1.xyzx, cb2[1].xyzx",
+            ),
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -359,7 +408,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5, 7, 9, 11, 13)
+        for index in (1, 3, 5, 7, 9, 11, 13, 16)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
@@ -383,6 +432,11 @@ def verify(root: Path) -> None:
         fail("six-MRT envmap shaders no longer preserve alpha-reference testing")
     if "clip(diffuse.w - cb2[1].w)" not in base_source_texts[0]:
         fail("projected envmap shaders no longer preserve alpha-reference testing")
+    for contract in contracts:
+        source_text = contract["source"].read_text(encoding="utf-8")
+        for token in contract.get("required_source_tokens", ()):
+            if token not in source_text:
+                fail(f"{contract['label']} is missing source contract: {token}")
 
     for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
         if token not in runtime_text:
@@ -481,6 +535,9 @@ def verify(root: Path) -> None:
                     fail(f"{contract['label']} replacement {key} differs from vanilla")
             if candidate["outputs"] != contract["outputs"]:
                 fail(f"{contract['label']} MRT contract drifted")
+            for token in contract.get("required_vanilla_tokens", ()):
+                if token not in vanilla_assembly:
+                    fail(f"{contract['label']} vanilla semantic witness drifted: {token}")
 
             validate_frame_reflection(candidate_assembly)
 

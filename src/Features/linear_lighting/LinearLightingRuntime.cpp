@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 15> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 17> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -356,6 +356,50 @@ namespace community_shaders::linear_lighting
                         std::byte{ 0x9B }, std::byte{ 0x84 }, std::byte{ 0x2F }, std::byte{ 0xE2 },
                         std::byte{ 0xC9 }, std::byte{ 0xCD }, std::byte{ 0x27 }, std::byte{ 0xEF },
                         std::byte{ 0xF6 }, std::byte{ 0x32 }, std::byte{ 0x88 }, std::byte{ 0x8F },
+                    },
+                },
+            },
+            {
+                "TexturedEmissionAlphaTestSixMrt_L4_00004102",
+                IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_PS,
+                {
+                    3464,
+                    {
+                        std::byte{ 0x17 }, std::byte{ 0xD4 }, std::byte{ 0x08 }, std::byte{ 0xB7 },
+                        std::byte{ 0xDE }, std::byte{ 0xEB }, std::byte{ 0x31 }, std::byte{ 0x28 },
+                        std::byte{ 0xB0 }, std::byte{ 0xF7 }, std::byte{ 0xFD }, std::byte{ 0x7A },
+                        std::byte{ 0x7B }, std::byte{ 0xA3 }, std::byte{ 0xE1 }, std::byte{ 0x95 },
+                    },
+                },
+                {
+                    6904,
+                    {
+                        std::byte{ 0x55 }, std::byte{ 0x90 }, std::byte{ 0x02 }, std::byte{ 0x91 },
+                        std::byte{ 0x95 }, std::byte{ 0x85 }, std::byte{ 0x38 }, std::byte{ 0x08 },
+                        std::byte{ 0x62 }, std::byte{ 0xD7 }, std::byte{ 0xB4 }, std::byte{ 0xB8 },
+                        std::byte{ 0x73 }, std::byte{ 0xC1 }, std::byte{ 0x74 }, std::byte{ 0xEC },
+                    },
+                },
+            },
+            {
+                "TexturedEmissionAlphaTestSixMrt_L3_00004103",
+                IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS,
+                {
+                    3540,
+                    {
+                        std::byte{ 0xB3 }, std::byte{ 0xCE }, std::byte{ 0x48 }, std::byte{ 0xD5 },
+                        std::byte{ 0x43 }, std::byte{ 0x81 }, std::byte{ 0x71 }, std::byte{ 0x69 },
+                        std::byte{ 0x2D }, std::byte{ 0xE2 }, std::byte{ 0x57 }, std::byte{ 0xA5 },
+                        std::byte{ 0xEB }, std::byte{ 0x1C }, std::byte{ 0x3D }, std::byte{ 0x94 },
+                    },
+                },
+                {
+                    6980,
+                    {
+                        std::byte{ 0x02 }, std::byte{ 0xC8 }, std::byte{ 0x46 }, std::byte{ 0x29 },
+                        std::byte{ 0x28 }, std::byte{ 0x1C }, std::byte{ 0xC0 }, std::byte{ 0x21 },
+                        std::byte{ 0xD5 }, std::byte{ 0x78 }, std::byte{ 0x46 }, std::byte{ 0x2A },
+                        std::byte{ 0x7E }, std::byte{ 0x4D }, std::byte{ 0x1F }, std::byte{ 0xE1 },
                     },
                 },
             },

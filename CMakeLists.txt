@@ -301,8 +301,8 @@ if(BUILD_FO4VR_CS_TESTS)
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
       --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
       --known-dir "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
-      --expect-total 15
-      --expect-unique 15
-      --expect-bslighting-shape 15
-      --expect-known 15)
+      --expect-total 17
+      --expect-unique 17
+      --expect-bslighting-shape 17
+      --expect-known 17)
 endif()
