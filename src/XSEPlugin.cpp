@@ -1,127 +1,196 @@
-﻿#include "PCH.h"
-#include "Globals.h"
-#include "EngineFixes.h"
-#include "Hooks.h"
-#include "State.h"
-#include "ShaderCache.h"
-#include "ShaderReplacer.h"
-#include "Feature.h"
-#include "Menu.h"
-#include "Features/LinearLighting.h"
-#include "Features/ExtendedMaterials.h"
+#include "PCH.h"
 
-// Global feature instances
-static LinearLighting g_linearLighting;
-static ExtendedMaterials g_extendedMaterials;
+#include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "render/BSLightingGeometryHook.h"
+#include "render/D3D11Hooks.h"
+#include "support/Logger.h"
+#include "ui/WristPanelRuntime.h"
 
-namespace {
-    void InitializeLog() {
-        // Build log path relative to the DLL's own directory
-        wchar_t dllPath[MAX_PATH]{};
-        HMODULE hModule = nullptr;
-        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           reinterpret_cast<LPCWSTR>(&InitializeLog), &hModule);
-        GetModuleFileNameW(hModule, dllPath, MAX_PATH);
+extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
+    F4SE::PluginVersionData version{};
+    version.PluginName("FO4VR Community Shaders");
+    version.PluginVersion(REL::Version(0, 2, 0));
+    version.AuthorName("FO4VR Community Shaders Port");
+    return version;
+}();
 
-        // Use Data/F4SE/Plugins/ path for the log file (standard F4SE location)
-        auto path = std::filesystem::path(dllPath).parent_path() / "fo4vr-community-shaders.log";
-
-        // Create our own named logger — NOT the global default (which other plugins share)
-        auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
-        auto log = std::make_shared<spdlog::logger>("CS", std::move(sink));
-        log->set_level(spdlog::level::info);
-        log->flush_on(spdlog::level::info);
-        spdlog::set_default_logger(std::move(log));
+namespace
+{
+    void reportPluginBoundaryFailure(
+        const char* boundary,
+        const char* detail) noexcept
+    {
+        char message[1024]{};
+        if (detail) {
+            std::snprintf(
+                message,
+                sizeof(message),
+                "FO4VR Community Shaders: %s failed: %s\n",
+                boundary,
+                detail);
+        } else {
+            std::snprintf(
+                message,
+                sizeof(message),
+                "FO4VR Community Shaders: %s failed with an unknown exception.\n",
+                boundary);
+        }
+        OutputDebugStringA(message);
+        community_shaders::logging::critical("{}", message);
     }
 
-    void F4SEAPI OnF4SEMessage(F4SE::MessagingInterface::Message* msg) {
-        switch (msg->type) {
-            case F4SE::MessagingInterface::kPostPostLoad:
-            {
-                spdlog::info("=== PostPostLoad: Early init (no D3D yet) ===");
+    void F4SEAPI onF4SEMessage(
+        F4SE::MessagingInterface::Message* message) noexcept
+    {
+        if (!message) {
+            return;
+        }
 
-                // Detour hooks target code addresses, safe to install before D3D
-                Hooks::InstallShaderHooks();
-
-                // Register features (no GPU resources yet)
-                Feature::RegisterFeature(&g_linearLighting);
-                Feature::RegisterFeature(&g_extendedMaterials);
-
-                // Load settings from disk
-                Feature::LoadAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
-
-                spdlog::info("=== PostPostLoad complete ===");
-                break;
-            }
-            case F4SE::MessagingInterface::kGameDataReady:
-            {
-                spdlog::info("=== GameDataReady ===");
-
-                // Probe globals — D3D may or may not be ready yet
-                Globals::Initialize();
-
-                // Non-D3D init: shader cache directory setup
-                ShaderCache::GetSingleton().Initialize();
-
-                // D3D-dependent init is DEFERRED because kGameDataReady fires before
-                // D3D device is fully initialized (Device=0x0 observed in logs).
-                // The deferred init runs from Hook_LoadShaders when the device becomes
-                // available, or from Hook_LightingBeginTechnique as a fallback.
-                if (Globals::GetDevice()) {
-                    spdlog::info("D3D device available at GameDataReady, initializing now");
-                    Hooks::MarkDeferredInitDone();  // Prevent deferred path from running again
-                    State::GetSingleton().Initialize();
-                    Feature::InitializeAll();
-                    Hooks::InstallRenderHooks();
-                    Hooks::InstallD3DHooks();
-                    EngineFixes::ApplyPostLoadFixes();
-                    EngineFixes::StartCascadeRuntime();
-                } else {
-                    spdlog::warn("D3D device NOT ready at GameDataReady — will defer init to LoadShaders hook");
-                }
-
-                // Save settings (captures any defaults)
-                Feature::SaveAllSettings("Data/CommunityShaders/Settings/CommunityShaders.json");
-
-                spdlog::info("=== GameDataReady init complete ===");
-                break;
-            }
+        switch (message->type) {
+        case F4SE::MessagingInterface::kPostPostLoad:
+        {
+            const auto d3d = community_shaders::render::d3d11HookSnapshot();
+            community_shaders::logging::info(
+                "F4SE PostPostLoad: D3D importHook={}, deviceCaptured={}, deviceHooks={}, createCalls={}.",
+                d3d.deviceCreationImportInstalled,
+                d3d.deviceCaptured,
+                d3d.deviceHooksInstalled,
+                d3d.deviceCreationCalls);
+            break;
+        }
+        case F4SE::MessagingInterface::kGameDataReady:
+        {
+            community_shaders::ui::onGameDataReady();
+            const auto linearLighting =
+                community_shaders::linear_lighting::Runtime::get().snapshot();
+            const auto geometry =
+                community_shaders::render::geometryHookSnapshot();
+            community_shaders::logging::info(
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, replacementBinds={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
+                linearLighting.enabled,
+                linearLighting.gpuResourcesReady,
+                linearLighting.geometryProviderReady,
+                linearLighting.matchingShadersCreated,
+                linearLighting.trackedOriginalShaders,
+                linearLighting.replacementBinds,
+                geometry.calls,
+                geometry.acceptedUpdates,
+                geometry.rejectedWalks,
+                static_cast<std::uint32_t>(geometry.deepestStage));
+            break;
+        }
+        case F4SE::MessagingInterface::kPostLoadGame:
+        case F4SE::MessagingInterface::kNewGame:
+            community_shaders::ui::onGameSessionReady();
+            break;
+        default:
+            break;
         }
     }
 }
 
-extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info) {
-    a_info->infoVersion = F4SE::PluginInfo::kVersion;
-    a_info->name = "FO4VR Community Shaders";
-    a_info->version = 1;
-    return true;
-}
+extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
+    const F4SE::QueryInterface* a_f4se,
+    F4SE::PluginInfo* a_info) noexcept
+{
+    try {
+        if (!a_f4se || !a_info) {
+            return false;
+        }
 
-extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f4se) {
-    InitializeLog();
-    F4SE::Init(a_f4se);
+        community_shaders::logging::init();
+        community_shaders::logging::info(
+            "=== FO4VR Community Shaders v0.2.0 query ===");
 
-    spdlog::info("FO4VR Community Shaders v0.1.0 loading");
+        a_info->infoVersion = F4SE::PluginInfo::kVersion;
+        a_info->name = "FO4VR Community Shaders";
+        a_info->version = 200;
 
-    // Phase 0: Hook CreatePixelShader ASAP (before FXP loading creates shaders)
-    Hooks::InstallEarlyD3DHook();
+        if (a_f4se->IsEditor()) {
+            community_shaders::logging::critical(
+                "Editor runtime is unsupported.");
+            return false;
+        }
+        if (!REL::Module::IsVR()) {
+            community_shaders::logging::critical(
+                "Fallout 4 VR runtime is required.");
+            return false;
+        }
 
-    // Phase 0b: Engine fixes (before game shader system init)
-    if (!EngineFixes::ApplyAll()) {
-        spdlog::warn("Some engine fixes failed - continuing with partial fixes");
-    }
+        // F4SEVR exposes its flat-compatible loader API version here. This is
+        // a different version domain from Fallout4VR.exe itself.
+        const auto requiredRuntime = F4SE::RUNTIME_1_10_138;
+        if (a_f4se->RuntimeVersion() < requiredRuntime) {
+            community_shaders::logging::critical(
+                "Unsupported F4SE compatibility runtime {} (need >= {}).",
+                a_f4se->RuntimeVersion().string(),
+                requiredRuntime.string());
+            return false;
+        }
 
-    // Register F4SE message handler
-    auto* messaging = F4SE::GetMessagingInterface();
-    if (messaging) {
-        messaging->RegisterListener(OnF4SEMessage);
-        spdlog::info("Registered F4SE message listener");
-    } else {
-        spdlog::error("Failed to get F4SE messaging interface");
+        const auto executableVersion = REL::Module::get().version();
+        if (executableVersion != F4SE::RUNTIME_VR_1_2_72) {
+            community_shaders::logging::critical(
+                "Only Fallout4VR.exe 1.2.72 is supported; executable={}, F4SE compatibility runtime={}.",
+                executableVersion.string(),
+                a_f4se->RuntimeVersion().string());
+            return false;
+        }
+
+        community_shaders::logging::info(
+            "Runtime gate passed: Fallout4VR.exe {}, F4SE compatibility runtime {}.",
+            executableVersion.string(),
+            a_f4se->RuntimeVersion().string());
+        return true;
+    } catch (const std::exception& error) {
+        reportPluginBoundaryFailure("F4SEPlugin_Query", error.what());
+        return false;
+    } catch (...) {
+        reportPluginBoundaryFailure("F4SEPlugin_Query", nullptr);
         return false;
     }
+}
 
-    spdlog::info("FO4VR Community Shaders v0.1.0 loaded successfully");
-    return true;
+extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
+    const F4SE::LoadInterface* a_f4se) noexcept
+{
+    try {
+        if (!a_f4se) {
+            return false;
+        }
+        F4SE::Init(a_f4se, false);
+
+        const auto settings =
+            community_shaders::linear_lighting::loadSettings();
+        community_shaders::linear_lighting::Runtime::get().applySettings(
+            settings);
+        community_shaders::ui::setInitialSettings(settings);
+
+        if (!community_shaders::render::installEarlyD3D11Hooks()) {
+            community_shaders::logging::warn(
+                "Verified D3D11 bootstrap was not installed; plugin remains loaded but all rendering stays vanilla.");
+        }
+        if (!community_shaders::render::installBSLightingGeometryHook()) {
+            community_shaders::logging::warn(
+                "Verified BSLighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
+        }
+
+        const auto* messaging = F4SE::GetMessagingInterface();
+        if (!messaging || !messaging->RegisterListener(onF4SEMessage)) {
+            community_shaders::logging::critical(
+                "F4SE messaging registration failed.");
+            return false;
+        }
+
+        community_shaders::logging::info(
+            "FO4VR Community Shaders loaded; Linear Lighting defaults disabled and preserves vanilla shader binding until explicitly enabled.");
+        return true;
+    } catch (const std::exception& error) {
+        reportPluginBoundaryFailure("F4SEPlugin_Load", error.what());
+        return false;
+    } catch (...) {
+        reportPluginBoundaryFailure("F4SEPlugin_Load", nullptr);
+        return false;
+    }
 }

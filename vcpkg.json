@@ -1,25 +1,23 @@
 {
-  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "fo4vr-community-shaders",
-  "version-semver": "0.1.0",
-  "description": "Community Shaders port for Fallout 4 VR",
-  "supports": "windows & x64",
+  "version-string": "0.2.0",
+  "description": "Verified Community Shaders runtime for Fallout 4 VR",
   "dependencies": [
-    {
-      "name": "vcpkg-cmake-config",
-      "host": true
-    },
+    "nlohmann-json",
     "rapidcsv",
     "rsm-mmio",
     "spdlog",
-    "xbyak",
-    "nlohmann-json",
-    {
-      "name": "imgui",
-      "features": ["dx11-binding", "win32-binding"]
-    },
-    "directxtk",
-    "detours"
+    "xbyak"
   ],
-  "builtin-baseline": "4b77da7fed37817f124936239197833469f1b9a8"
+  "builtin-baseline": "b4a3d89125e45bc8f80fb94bef9761d4f4e14fb9",
+  "overrides": [
+    {
+      "name": "fmt",
+      "version": "10.2.1"
+    },
+    {
+      "name": "spdlog",
+      "version": "1.13.0"
+    }
+  ]
 }

@@ -1,0 +1,3 @@
+#include "resources.h"
+
+IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS RCDATA "../package/Shaders/Community/Reconstruction/DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.dxbc"

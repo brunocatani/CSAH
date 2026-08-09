@@ -1,0 +1,3 @@
+#pragma once
+
+#define IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS 101

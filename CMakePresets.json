@@ -5,14 +5,22 @@
       "name": "cmake-dev",
       "hidden": true,
       "binaryDir": "${sourceDir}/build",
-      "errors": { "deprecated": true },
-      "warnings": { "deprecated": true, "dev": true }
+      "warnings": {
+        "dev": true,
+        "deprecated": true
+      },
+      "errors": {
+        "deprecated": true
+      }
     },
     {
       "name": "vcpkg",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      },
+      "environment": {
+        "VCPKG_ROOT": "C:/vcpkg"
       }
     },
     {
@@ -28,29 +36,30 @@
       "hidden": true,
       "generator": "Visual Studio 17 2022",
       "toolset": "v143",
-      "architecture": { "value": "x64" },
+      "architecture": {
+        "value": "x64"
+      },
       "cacheVariables": {
         "CMAKE_CXX_FLAGS": "/EHsc /MP /W4 /external:anglebrackets /external:W0 $penv{CXXFLAGS}"
       }
     },
     {
-      "name": "default",
+      "name": "fast",
       "inherits": ["cmake-dev", "vcpkg", "windows", "vs2022"],
+      "binaryDir": "${sourceDir}/build-fast",
       "cacheVariables": {
-        "COMMON_LIB_F4VR_PATH": "${sourceDir}/extern/CommonLibF4VR"
+        "BUILD_FO4VR_CS_TESTS": false,
+        "POST_BUILD_COPY_PLUGIN": false
       }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "release",
-      "configurePreset": "default",
-      "configuration": "Release"
     },
     {
-      "name": "debug",
-      "configurePreset": "default",
-      "configuration": "Debug"
+      "name": "tests",
+      "inherits": ["cmake-dev", "vcpkg", "windows", "vs2022"],
+      "binaryDir": "${sourceDir}/build-tests",
+      "cacheVariables": {
+        "BUILD_FO4VR_CS_TESTS": true,
+        "POST_BUILD_COPY_PLUGIN": false
+      }
     }
   ]
 }

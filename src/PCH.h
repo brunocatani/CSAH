@@ -2,39 +2,24 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#define NOMMNOSOUND
 #define UNICODE
 #define _UNICODE
 
-// CommonLibF4VR — MUST come before any Windows API includes
-#include "RE/Fallout.h"
-#include "F4SE/F4SE.h"
+#include <F4SE/F4SE.h>
+#include <REL/Relocation.h>
 
-// Windows / DirectX — after CommonLib
-#include <d3d11.h>
-#include <d3d11_1.h>
-#include <d3dcompiler.h>
-#include <dxgi.h>
-#include <wrl/client.h>
+#include <Windows.h>
 
-// C++ standard library
-#include <algorithm>
-#include <array>
 #include <atomic>
-#include <chrono>
+#include <cstdio>
+#include <cstdint>
+#include <exception>
 #include <filesystem>
-#include <format>
-#include <fstream>
-#include <functional>
 #include <memory>
-#include <mutex>
+#include <optional>
 #include <string>
-#include <thread>
-#include <unordered_map>
-#include <vector>
+#include <string_view>
+#include <utility>
 
-// Third-party
 #include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <nlohmann/json.hpp>
-
-#include <detours/detours.h>

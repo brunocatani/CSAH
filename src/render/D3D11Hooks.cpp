@@ -1,0 +1,367 @@
+#include "render/D3D11Hooks.h"
+
+#include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "support/Logger.h"
+
+#include <Windows.h>
+#include <d3d11.h>
+#include <dxgi.h>
+
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+
+namespace community_shaders::render
+{
+    namespace
+    {
+        using D3D11CreateDeviceAndSwapChainFunction = HRESULT(WINAPI*)(
+            IDXGIAdapter*,
+            D3D_DRIVER_TYPE,
+            HMODULE,
+            UINT,
+            const D3D_FEATURE_LEVEL*,
+            UINT,
+            UINT,
+            const DXGI_SWAP_CHAIN_DESC*,
+            IDXGISwapChain**,
+            ID3D11Device**,
+            D3D_FEATURE_LEVEL*,
+            ID3D11DeviceContext**);
+        using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11PixelShader**);
+        using PSSetShaderFunction = void(STDMETHODCALLTYPE*)(
+            ID3D11DeviceContext*,
+            ID3D11PixelShader*,
+            ID3D11ClassInstance* const*,
+            UINT);
+
+        constexpr std::size_t kCreatePixelShaderVtableIndex = 15;
+        constexpr std::size_t kPSSetShaderVtableIndex = 9;
+
+        D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
+        CreatePixelShaderFunction originalCreatePixelShader{};
+        PSSetShaderFunction originalPSSetShader{};
+        std::atomic_bool deviceCreationImportInstalled{};
+        std::atomic_bool deviceCaptured{};
+        std::atomic_bool deviceHooksInstalled{};
+        std::atomic_uint64_t deviceCreationCalls{};
+        std::atomic_uint64_t pixelShaderCreationCalls{};
+        std::atomic_uint64_t pixelShaderBindCalls{};
+
+        [[nodiscard]] bool isExecutableAddress(const void* address) noexcept
+        {
+            if (!address) {
+                return false;
+            }
+            MEMORY_BASIC_INFORMATION information{};
+            if (VirtualQuery(address, &information, sizeof(information)) !=
+                sizeof(information)) {
+                return false;
+            }
+            if (information.State != MEM_COMMIT ||
+                (information.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+                return false;
+            }
+            constexpr DWORD executableProtection =
+                PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                PAGE_EXECUTE_WRITECOPY;
+            return (information.Protect & executableProtection) != 0;
+        }
+
+        [[nodiscard]] bool patchPointer(
+            void** target,
+            void* expected,
+            void* replacement) noexcept
+        {
+            if (!target || !expected || !replacement || *target != expected) {
+                return false;
+            }
+            DWORD oldProtection{};
+            if (!VirtualProtect(
+                    target,
+                    sizeof(*target),
+                    PAGE_READWRITE,
+                    &oldProtection)) {
+                return false;
+            }
+            const auto* observed = InterlockedCompareExchangePointer(
+                target,
+                replacement,
+                expected);
+            DWORD restoredProtection{};
+            const auto restored = VirtualProtect(
+                target,
+                sizeof(*target),
+                oldProtection,
+                &restoredProtection);
+            FlushInstructionCache(GetCurrentProcess(), target, sizeof(*target));
+            return observed == expected && restored != FALSE;
+        }
+
+        [[nodiscard]] void** findMainModuleImport(
+            const char* importedModule,
+            const char* importedFunction) noexcept
+        {
+            auto* image = reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr));
+            if (!image) {
+                return nullptr;
+            }
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+            if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) {
+                return nullptr;
+            }
+            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
+                image + dos->e_lfanew);
+            if (nt->Signature != IMAGE_NT_SIGNATURE ||
+                nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+                return nullptr;
+            }
+            const auto& importDirectory =
+                nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+            if (!importDirectory.VirtualAddress || !importDirectory.Size) {
+                return nullptr;
+            }
+
+            auto* descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
+                image + importDirectory.VirtualAddress);
+            for (; descriptor->Name; ++descriptor) {
+                const auto* moduleName = reinterpret_cast<const char*>(
+                    image + descriptor->Name);
+                if (_stricmp(moduleName, importedModule) != 0 ||
+                    !descriptor->OriginalFirstThunk ||
+                    !descriptor->FirstThunk) {
+                    continue;
+                }
+
+                auto* nameThunk = reinterpret_cast<IMAGE_THUNK_DATA64*>(
+                    image + descriptor->OriginalFirstThunk);
+                auto* addressThunk = reinterpret_cast<IMAGE_THUNK_DATA64*>(
+                    image + descriptor->FirstThunk);
+                for (; nameThunk->u1.AddressOfData;
+                     ++nameThunk, ++addressThunk) {
+                    if (IMAGE_SNAP_BY_ORDINAL64(nameThunk->u1.Ordinal)) {
+                        continue;
+                    }
+                    const auto* imported = reinterpret_cast<const IMAGE_IMPORT_BY_NAME*>(
+                        image + nameThunk->u1.AddressOfData);
+                    if (std::strcmp(
+                            reinterpret_cast<const char*>(imported->Name),
+                            importedFunction) == 0) {
+                        return reinterpret_cast<void**>(&addressThunk->u1.Function);
+                    }
+                }
+            }
+            return nullptr;
+        }
+
+        HRESULT STDMETHODCALLTYPE hookCreatePixelShader(
+            ID3D11Device* device,
+            const void* bytecode,
+            SIZE_T bytecodeLength,
+            ID3D11ClassLinkage* classLinkage,
+            ID3D11PixelShader** shader) noexcept
+        {
+            pixelShaderCreationCalls.fetch_add(1, std::memory_order_relaxed);
+            if (!originalCreatePixelShader) {
+                return E_UNEXPECTED;
+            }
+            const auto result = originalCreatePixelShader(
+                device,
+                bytecode,
+                bytecodeLength,
+                classLinkage,
+                shader);
+            if (SUCCEEDED(result) && shader && *shader) {
+                linear_lighting::Runtime::get().onPixelShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
+            }
+            return result;
+        }
+
+        void STDMETHODCALLTYPE hookPSSetShader(
+            ID3D11DeviceContext* context,
+            ID3D11PixelShader* shader,
+            ID3D11ClassInstance* const* classInstances,
+            UINT classInstanceCount) noexcept
+        {
+            pixelShaderBindCalls.fetch_add(1, std::memory_order_relaxed);
+            if (!originalPSSetShader) {
+                return;
+            }
+            auto* selected = linear_lighting::Runtime::get().selectPixelShader(
+                context,
+                shader);
+            originalPSSetShader(
+                context,
+                selected,
+                classInstances,
+                classInstanceCount);
+        }
+
+        [[nodiscard]] bool installDeviceVtableHooks(
+            ID3D11Device* device,
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (!device || !context) {
+                return false;
+            }
+            auto** deviceVtable = *reinterpret_cast<void***>(device);
+            auto** contextVtable = *reinterpret_cast<void***>(context);
+            if (!deviceVtable || !contextVtable) {
+                return false;
+            }
+
+            auto* createPixelShader = deviceVtable[kCreatePixelShaderVtableIndex];
+            auto* psSetShader = contextVtable[kPSSetShaderVtableIndex];
+            if (!isExecutableAddress(createPixelShader) ||
+                !isExecutableAddress(psSetShader)) {
+                logging::error(
+                    "D3D11 vtable identity gate rejected non-executable hook targets.");
+                return false;
+            }
+
+            originalCreatePixelShader =
+                reinterpret_cast<CreatePixelShaderFunction>(createPixelShader);
+            originalPSSetShader = reinterpret_cast<PSSetShaderFunction>(psSetShader);
+            if (!patchPointer(
+                    &deviceVtable[kCreatePixelShaderVtableIndex],
+                    createPixelShader,
+                    reinterpret_cast<void*>(&hookCreatePixelShader))) {
+                originalCreatePixelShader = nullptr;
+                originalPSSetShader = nullptr;
+                logging::error("D3D11 CreatePixelShader vtable patch failed.");
+                return false;
+            }
+            if (!patchPointer(
+                    &contextVtable[kPSSetShaderVtableIndex],
+                    psSetShader,
+                    reinterpret_cast<void*>(&hookPSSetShader))) {
+                // The device hook is safe to leave installed; without a bind
+                // hook it only observes shader creation and changes no draws.
+                originalPSSetShader = nullptr;
+                logging::error("D3D11 PSSetShader vtable patch failed.");
+                return false;
+            }
+            return true;
+        }
+
+        HRESULT WINAPI hookCreateDeviceAndSwapChain(
+            IDXGIAdapter* adapter,
+            D3D_DRIVER_TYPE driverType,
+            HMODULE software,
+            UINT flags,
+            const D3D_FEATURE_LEVEL* featureLevels,
+            UINT featureLevelCount,
+            UINT sdkVersion,
+            const DXGI_SWAP_CHAIN_DESC* swapChainDescription,
+            IDXGISwapChain** swapChain,
+            ID3D11Device** device,
+            D3D_FEATURE_LEVEL* selectedFeatureLevel,
+            ID3D11DeviceContext** immediateContext) noexcept
+        {
+            deviceCreationCalls.fetch_add(1, std::memory_order_relaxed);
+            if (!originalCreateDeviceAndSwapChain) {
+                return E_UNEXPECTED;
+            }
+            const auto result = originalCreateDeviceAndSwapChain(
+                adapter,
+                driverType,
+                software,
+                flags,
+                featureLevels,
+                featureLevelCount,
+                sdkVersion,
+                swapChainDescription,
+                swapChain,
+                device,
+                selectedFeatureLevel,
+                immediateContext);
+            if (FAILED(result) || !device || !*device ||
+                !immediateContext || !*immediateContext) {
+                return result;
+            }
+
+            deviceCaptured.store(true, std::memory_order_release);
+            if (!installDeviceVtableHooks(*device, *immediateContext)) {
+                logging::error(
+                    "D3D11 device captured, but shader hooks remain fail-closed.");
+                return result;
+            }
+            deviceHooksInstalled.store(true, std::memory_order_release);
+            linear_lighting::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext,
+                originalCreatePixelShader);
+            logging::info(
+                "D3D11 device captured through Fallout4VR's verified creation import; shader hooks installed.");
+            return result;
+        }
+    }
+
+    bool installEarlyD3D11Hooks() noexcept
+    {
+        try {
+            if (deviceCreationImportInstalled.load(std::memory_order_acquire)) {
+                return true;
+            }
+            auto** import = findMainModuleImport(
+                "d3d11.dll",
+                "D3D11CreateDeviceAndSwapChain");
+            const auto d3d11 = GetModuleHandleW(L"d3d11.dll");
+            const auto exported = d3d11 ? GetProcAddress(
+                d3d11,
+                "D3D11CreateDeviceAndSwapChain") : nullptr;
+            if (!import || !exported || *import != exported ||
+                !isExecutableAddress(exported)) {
+                logging::error(
+                    "Fallout4VR D3D11 creation import identity gate failed; rendering remains vanilla.");
+                return false;
+            }
+
+            originalCreateDeviceAndSwapChain =
+                reinterpret_cast<D3D11CreateDeviceAndSwapChainFunction>(exported);
+            if (!patchPointer(
+                    import,
+                    exported,
+                    reinterpret_cast<void*>(&hookCreateDeviceAndSwapChain))) {
+                originalCreateDeviceAndSwapChain = nullptr;
+                logging::error(
+                    "Fallout4VR D3D11 creation import patch failed; rendering remains vanilla.");
+                return false;
+            }
+            deviceCreationImportInstalled.store(true, std::memory_order_release);
+            logging::info(
+                "Installed exact D3D11CreateDeviceAndSwapChain import hook.");
+            return true;
+        } catch (const std::exception& error) {
+            logging::error("D3D11 hook installation failed: {}", error.what());
+        } catch (...) {
+            logging::error(
+                "D3D11 hook installation failed with an unknown exception.");
+        }
+        return false;
+    }
+
+    HookSnapshot d3d11HookSnapshot() noexcept
+    {
+        return {
+            .deviceCreationImportInstalled =
+                deviceCreationImportInstalled.load(std::memory_order_acquire),
+            .deviceCaptured = deviceCaptured.load(std::memory_order_acquire),
+            .deviceHooksInstalled = deviceHooksInstalled.load(std::memory_order_acquire),
+            .deviceCreationCalls = deviceCreationCalls.load(std::memory_order_relaxed),
+            .pixelShaderCreationCalls =
+                pixelShaderCreationCalls.load(std::memory_order_relaxed),
+            .pixelShaderBindCalls =
+                pixelShaderBindCalls.load(std::memory_order_relaxed),
+        };
+    }
+}

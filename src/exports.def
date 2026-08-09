@@ -1,4 +1,5 @@
 LIBRARY fo4vr-community-shaders
 EXPORTS
+    F4SEPlugin_Version DATA
     F4SEPlugin_Query
     F4SEPlugin_Load
