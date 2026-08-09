@@ -580,7 +580,7 @@ namespace community_shaders::ui
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Opaque default / five + six MRT / base + vertex color" },
+                        { "label", "Opaque default + model-space / five + six MRT" },
                         { "verifiedShaderContracts",
                             runtime.verifiedShaderContracts },
                         { "fullFeaturePort", false },

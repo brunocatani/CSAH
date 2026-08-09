@@ -198,6 +198,32 @@ def verify(root: Path) -> None:
             "original_buffers": {2: 6, 12: 71},
             "outputs": [0, 1, 2, 3, 4, 5],
         },
+        {
+            "label": "DefaultModelSpaceSixMrt_L4_00000006",
+            "source": reconstruction
+            / "DefaultModelSpaceSixMrt_L4_00000006.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultModelSpaceSixMrt_L4_00000006.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultModelSpaceSixMrt_L4_00000006.dxbc",
+            "original_size": 3336,
+            "replacement_size": 6524,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_MODEL_SPACE_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "DefaultModelSpaceSixMrt_L3_00000007",
+            "source": reconstruction
+            / "DefaultModelSpaceSixMrt_L3_00000007.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultModelSpaceSixMrt_L3_00000007.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultModelSpaceSixMrt_L3_00000007.dxbc",
+            "original_size": 3404,
+            "replacement_size": 6592,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_MODEL_SPACE_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -214,7 +240,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3)
+        for index in (1, 3, 5)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")

@@ -22,6 +22,10 @@ SamplerState SampSpecular : register(s2);
 #define LINEAR_LIGHTING_VERTEX_COLOR 0
 #endif
 
+#ifndef LINEAR_LIGHTING_FORCE_EARLY_DEPTH
+#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -47,7 +51,9 @@ struct PSOutput
     float2 target5 : SV_Target5;
 };
 
+#if LINEAR_LIGHTING_FORCE_EARLY_DEPTH
 [earlydepthstencil]
+#endif
 PSOutput PSMain(PSInput input)
 {
     PSOutput output;
