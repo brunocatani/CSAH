@@ -659,8 +659,8 @@ namespace community_shaders::ui
                             geometry.vtableCellOwned },
                         { "geometryCalls", geometry.calls },
                         { "geometryAccepted", geometry.acceptedUpdates },
-                        { "geometryRejected", geometry.rejectedWalks },
-                        { "deepestGeometryStage",
+                        { "geometrySourceRejected", geometry.rejectedSources },
+                        { "deepestGeometrySourceStage",
                             static_cast<std::uint32_t>(geometry.deepestStage) },
                         { "lastSourceEmissive",
                             geometry.lastSourceEmissiveMultiplier },
@@ -820,10 +820,10 @@ namespace community_shaders::ui
             }
             if (events.firstGeometryCall) {
                 logging::info(
-                    "Linear Lighting geometry-call proof: calls={}, accepted={}, walkRejects={}, deepestStage={}, updates={}, totalUpdateRejects={}, resourceRejects={}, disabledRejects={}, unboundRejects={}, invalidSourceRejects={}, sourceEmissive={}, enabled={}, gpuReady={}, replacementBinds={}.",
+                    "Linear Lighting geometry-call proof: calls={}, accepted={}, sourceRejects={}, deepestSourceStage={}, updates={}, totalUpdateRejects={}, resourceRejects={}, disabledRejects={}, unboundRejects={}, invalidSourceRejects={}, sourceEmissive={}, enabled={}, gpuReady={}, replacementBinds={}.",
                     geometry.calls,
                     geometry.acceptedUpdates,
-                    geometry.rejectedWalks,
+                    geometry.rejectedSources,
                     static_cast<std::uint32_t>(geometry.deepestStage),
                     runtime.geometryUpdates,
                     runtime.rejectedGeometryUpdates,
@@ -838,10 +838,10 @@ namespace community_shaders::ui
             }
             if (events.firstGeometryUpdate) {
                 logging::info(
-                    "Linear Lighting geometry proof: calls={}, accepted={}, walkRejects={}, deepestStage={}, updates={}, updateRejects={}, sourceEmissive={}, replacementBinds={}.",
+                    "Linear Lighting geometry proof: calls={}, accepted={}, sourceRejects={}, deepestSourceStage={}, updates={}, updateRejects={}, sourceEmissive={}, replacementBinds={}.",
                     geometry.calls,
                     geometry.acceptedUpdates,
-                    geometry.rejectedWalks,
+                    geometry.rejectedSources,
                     static_cast<std::uint32_t>(geometry.deepestStage),
                     runtime.geometryUpdates,
                     runtime.rejectedGeometryUpdates,

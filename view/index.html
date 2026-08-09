@@ -522,7 +522,7 @@
         metric("Shader matches", String(runtime.matchingShaders || 0), runtime.matchingShaders ? "good" : "wait"),
         metric("Replacement binds", String(runtime.replacementBinds || 0), runtime.replacementBinds ? "good" : "wait"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
-        metric("Deepest walk", `${hooks.deepestGeometryStage || 0} / 4`, hooks.deepestGeometryStage === 4 ? "good" : "wait")
+        metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
       ].join("");
 
       const diagnosticButton = document.getElementById("diagnosticsButton");

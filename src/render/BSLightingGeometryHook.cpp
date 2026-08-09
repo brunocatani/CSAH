@@ -27,14 +27,11 @@ namespace community_shaders::render
         constexpr std::uintptr_t kBSDFLightShaderVtableRva = 0x030BF3C8;
         constexpr std::size_t kGeometrySetupSlot = 9;
         constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0291DCA0;
-        constexpr std::size_t kRenderPassGeometryLinkOffset = 0x38;
-        constexpr std::size_t kGeometryLinkGeometryOffset = 0x0;
-        constexpr std::size_t kGeometryPropertyOffset = 0xB8;
-        constexpr std::size_t kPropertyEmissiveMultiplierOffset = 0x1BC;
+        constexpr std::uintptr_t kLightingStateAccessorRva = 0x027AEEB0;
+        constexpr std::uintptr_t kLightingStateRva = 0x068787F0;
+        constexpr std::size_t kLightingStateEmissiveMultiplierOffset = 0x1BC;
+        constexpr std::size_t kLightingStateLeaInstructionBytes = 7;
         constexpr float kMaximumPlausibleEmissiveMultiplier = 1.0e6f;
-        constexpr std::uintptr_t kMinimumPlausibleObjectAddress = 0x10000;
-        constexpr std::uintptr_t kMaximumPlausibleObjectAddress =
-            0x00007FFFFFFFFFFF;
 
         constexpr std::array<std::byte, 41> kGeometrySetupSignature{
             std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
@@ -50,6 +47,11 @@ namespace community_shaders::render
             std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x70 }, std::byte{ 0x08 },
             std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x78 }, std::byte{ 0xE0 },
         };
+        constexpr std::array<std::byte, 8> kLightingStateAccessorSignature{
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0x05 },
+            std::byte{ 0x39 }, std::byte{ 0x99 }, std::byte{ 0x0C }, std::byte{ 0x04 },
+            std::byte{ 0xC3 },
+        };
 
         using GeometrySetupFunction = void(__fastcall*)(
             void* receiver,
@@ -58,14 +60,15 @@ namespace community_shaders::render
 
         GeometrySetupFunction originalGeometrySetup{};
         void** geometrySetupCell{};
+        const std::byte* lightingState{};
         std::atomic_bool installed{};
         std::atomic_uint64_t calls{};
         std::atomic_uint64_t acceptedUpdates{};
-        std::atomic_uint64_t rejectedWalks{};
+        std::atomic_uint64_t rejectedSources{};
         std::atomic_uint32_t deepestStage{};
         std::atomic_uint32_t lastSourceEmissiveMultiplierBits{};
 
-        void recordStage(GeometryWalkStage stage) noexcept
+        void recordStage(GeometrySourceStage stage) noexcept
         {
             auto observed = deepestStage.load(std::memory_order_relaxed);
             const auto value = static_cast<std::uint32_t>(stage);
@@ -135,15 +138,6 @@ namespace community_shaders::render
             return (information.Protect & executableProtection) != 0;
         }
 
-        [[nodiscard]] bool isPlausibleObjectPointer(
-            const void* address) noexcept
-        {
-            const auto value = reinterpret_cast<std::uintptr_t>(address);
-            return value >= kMinimumPlausibleObjectAddress &&
-                value <= kMaximumPlausibleObjectAddress &&
-                (value & (alignof(void*) - 1)) == 0;
-        }
-
         [[nodiscard]] void* readPointerCell(void** cell) noexcept
         {
             return cell ? ReadPointerAcquire(
@@ -181,53 +175,27 @@ namespace community_shaders::render
             return observed == expected && restored != FALSE;
         }
 
-        [[nodiscard]] bool readEmissiveMultiplier(
-            const void* renderPass,
-            float& value) noexcept
+        [[nodiscard]] bool readEmissiveMultiplier(float& value) noexcept
         {
-            // The verified VR-extended routine immediately dereferences this
-            // same pass -> geometry link -> geometry -> property chain. Keep
-            // the hot path to bounded pointer plausibility checks; page-query
-            // validation is reserved for the one-time installation gate.
-            if (!isPlausibleObjectPointer(renderPass)) {
+            // Fallout4VR's active geometry routine obtains this exact
+            // process-lifetime renderer state through the signature-gated
+            // accessor at RVA 0x027AEEB0, then uploads state +0x1BC. The range
+            // is validated once before the hook is installed; the render hot
+            // path performs only the scalar copy and plausibility check.
+            if (!lightingState) {
                 return false;
             }
-            recordStage(GeometryWalkStage::renderPass);
-
-            const auto* geometryLink = *reinterpret_cast<void* const*>(
-                static_cast<const std::byte*>(renderPass) +
-                kRenderPassGeometryLinkOffset);
-            if (!isPlausibleObjectPointer(geometryLink)) {
-                return false;
-            }
-            recordStage(GeometryWalkStage::geometryLink);
-
-            const auto* geometry = *reinterpret_cast<void* const*>(
-                static_cast<const std::byte*>(geometryLink) +
-                kGeometryLinkGeometryOffset);
-            if (!isPlausibleObjectPointer(geometry)) {
-                return false;
-            }
-            recordStage(GeometryWalkStage::geometry);
-
-            const auto* property = *reinterpret_cast<void* const*>(
-                static_cast<const std::byte*>(geometry) +
-                kGeometryPropertyOffset);
-            if (!isPlausibleObjectPointer(property)) {
-                return false;
-            }
-            recordStage(GeometryWalkStage::property);
+            recordStage(GeometrySourceStage::lightingState);
 
             std::memcpy(
                 &value,
-                static_cast<const std::byte*>(property) +
-                    kPropertyEmissiveMultiplierOffset,
+                lightingState + kLightingStateEmissiveMultiplierOffset,
                 sizeof(value));
             if (!std::isfinite(value) || value < 0.0f ||
                 value > kMaximumPlausibleEmissiveMultiplier) {
                 return false;
             }
-            recordStage(GeometryWalkStage::emissiveMultiplier);
+            recordStage(GeometrySourceStage::emissiveMultiplier);
             return true;
         }
 
@@ -236,17 +204,15 @@ namespace community_shaders::render
             void* pass,
             void* compiledProgram) noexcept
         {
-            float emissiveMultiplier{};
-            const auto validSource =
-                readEmissiveMultiplier(pass, emissiveMultiplier);
-
             // Preserve the engine's complete selector-2 map/write/unmap/bind
             // transaction exactly once. Our independent b8 is published after
             // it returns so the engine cannot overwrite that slot afterward.
             originalGeometrySetup(receiver, pass, compiledProgram);
 
+            float emissiveMultiplier{};
+            const auto validSource = readEmissiveMultiplier(emissiveMultiplier);
             if (!validSource) {
-                rejectedWalks.fetch_add(1, std::memory_order_relaxed);
+                rejectedSources.fetch_add(1, std::memory_order_relaxed);
                 calls.fetch_add(1, std::memory_order_release);
                 return;
             }
@@ -293,6 +259,12 @@ namespace community_shaders::render
                     (kGeometrySetupSlot + 1) * sizeof(void*) >
                 nt->OptionalHeader.SizeOfImage ||
             kGeometrySetupFunctionRva + kGeometrySetupSignature.size() >
+                nt->OptionalHeader.SizeOfImage ||
+            kLightingStateAccessorRva +
+                    kLightingStateAccessorSignature.size() >
+                nt->OptionalHeader.SizeOfImage ||
+            kLightingStateRva + kLightingStateEmissiveMultiplierOffset +
+                    sizeof(float) >
                 nt->OptionalHeader.SizeOfImage) {
             logging::error(
                 "BSDF lighting geometry hook rejected invalid PE image bounds.");
@@ -303,24 +275,50 @@ namespace community_shaders::render
             image + kBSDFLightShaderVtableRva +
             kGeometrySetupSlot * sizeof(void*));
         auto* expected = image + kGeometrySetupFunctionRva;
+        const auto* accessor = image + kLightingStateAccessorRva;
+        const auto* state = image + kLightingStateRva;
         if (!isReadableRange(cell, sizeof(*cell)) || *cell != expected ||
             !isExecutableRange(expected, kGeometrySetupSignature.size()) ||
             std::memcmp(
                 expected,
                 kGeometrySetupSignature.data(),
-                kGeometrySetupSignature.size()) != 0) {
+                kGeometrySetupSignature.size()) != 0 ||
+            !isExecutableRange(
+                accessor,
+                kLightingStateAccessorSignature.size()) ||
+            std::memcmp(
+                accessor,
+                kLightingStateAccessorSignature.data(),
+                kLightingStateAccessorSignature.size()) != 0 ||
+            !isReadableRange(
+                state + kLightingStateEmissiveMultiplierOffset,
+                sizeof(float))) {
             logging::error(
                 "BSDF lighting geometry hook live identity/signature gate failed; Linear Lighting remains vanilla.");
+            return false;
+        }
+        std::int32_t stateDisplacement{};
+        std::memcpy(
+            &stateDisplacement,
+            accessor + 3,
+            sizeof(stateDisplacement));
+        const auto* resolvedLightingState =
+            accessor + kLightingStateLeaInstructionBytes + stateDisplacement;
+        if (resolvedLightingState != state) {
+            logging::error(
+                "BSDF lighting geometry hook accessor target gate failed; Linear Lighting remains vanilla.");
             return false;
         }
 
         originalGeometrySetup =
             reinterpret_cast<GeometrySetupFunction>(expected);
+        lightingState = state;
         if (!patchPointer(
                 cell,
                 expected,
                 reinterpret_cast<void*>(&hookGeometrySetup))) {
             originalGeometrySetup = nullptr;
+            lightingState = nullptr;
             logging::error(
                 "BSDF lighting geometry vtable patch failed; Linear Lighting remains vanilla.");
             return false;
@@ -330,7 +328,7 @@ namespace community_shaders::render
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
-            "Installed verified Fallout4VR BSDF lighting geometry hook (vtable slot 9, pass +0x38, geometry property +0xB8, emissive multiplier +0x1BC).");
+            "Installed verified Fallout4VR BSDF lighting geometry hook (vtable slot 9, renderer state RVA 0x068787F0, emissive multiplier +0x1BC).");
         return true;
     }
 
@@ -344,8 +342,8 @@ namespace community_shaders::render
                 reinterpret_cast<void*>(&hookGeometrySetup),
             .calls = calls.load(std::memory_order_acquire),
             .acceptedUpdates = acceptedUpdates.load(std::memory_order_relaxed),
-            .rejectedWalks = rejectedWalks.load(std::memory_order_relaxed),
-            .deepestStage = static_cast<GeometryWalkStage>(
+            .rejectedSources = rejectedSources.load(std::memory_order_relaxed),
+            .deepestStage = static_cast<GeometrySourceStage>(
                 deepestStage.load(std::memory_order_relaxed)),
             .lastSourceEmissiveMultiplier = std::bit_cast<float>(
                 lastSourceEmissiveMultiplierBits.load(

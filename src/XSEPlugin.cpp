@@ -69,7 +69,7 @@ namespace
             const auto d3d =
                 community_shaders::render::d3d11HookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
@@ -82,7 +82,7 @@ namespace
                 geometry.vtableCellOwned,
                 geometry.calls,
                 geometry.acceptedUpdates,
-                geometry.rejectedWalks,
+                geometry.rejectedSources,
                 static_cast<std::uint32_t>(geometry.deepestStage));
             break;
         }

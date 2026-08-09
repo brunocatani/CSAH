@@ -4,14 +4,11 @@
 
 namespace community_shaders::render
 {
-    enum class GeometryWalkStage : std::uint32_t
+    enum class GeometrySourceStage : std::uint32_t
     {
         none = 0,
-        renderPass = 1,
-        geometryLink = 2,
-        geometry = 3,
-        property = 4,
-        emissiveMultiplier = 5,
+        lightingState = 1,
+        emissiveMultiplier = 2,
     };
 
     struct GeometryHookSnapshot
@@ -20,8 +17,8 @@ namespace community_shaders::render
         bool vtableCellOwned{};
         std::uint64_t calls{};
         std::uint64_t acceptedUpdates{};
-        std::uint64_t rejectedWalks{};
-        GeometryWalkStage deepestStage{};
+        std::uint64_t rejectedSources{};
+        GeometrySourceStage deepestStage{};
         float lastSourceEmissiveMultiplier{};
     };
 
