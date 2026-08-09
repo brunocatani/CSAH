@@ -21,8 +21,8 @@ namespace
         Sample sample{};
         auto events = advance(state, sample);
         expect(!events.activationReady && !events.firstShaderBind &&
-                !events.firstReplacementBind && !events.firstGeometryUpdate &&
-                !events.settingsApplied,
+                !events.firstReplacementBind && !events.firstGeometryCall &&
+                !events.firstGeometryUpdate && !events.settingsApplied,
             "empty runtime does not produce proof events");
 
         sample.enabled = true;
@@ -35,10 +35,11 @@ namespace
 
         sample.pixelShaderBindCalls = 4;
         sample.replacementBinds = 1;
+        sample.geometryCalls = 1;
         sample.geometryUpdates = 1;
         events = advance(state, sample);
         expect(events.firstShaderBind && events.firstReplacementBind &&
-                events.firstGeometryUpdate,
+                events.firstGeometryCall && events.firstGeometryUpdate,
             "observed hook, replacement, and geometry work produce proof events");
     }
 
@@ -53,13 +54,30 @@ namespace
             .frameDataUploads = 1,
             .pixelShaderBindCalls = 5,
             .replacementBinds = 3,
+            .geometryCalls = 2,
             .geometryUpdates = 2,
         };
         (void)advance(state, sample);
         const auto events = advance(state, sample);
         expect(!events.activationReady && !events.firstShaderBind &&
-                !events.firstReplacementBind && !events.firstGeometryUpdate,
+                !events.firstReplacementBind && !events.firstGeometryCall &&
+                !events.firstGeometryUpdate,
             "steady runtime does not repeat milestone logs");
+    }
+
+    void testGeometryCallDoesNotClaimUpdate()
+    {
+        using namespace community_shaders::ui::linear_lighting_telemetry;
+        State state{};
+        Sample sample{
+            .geometryCalls = 3,
+        };
+        auto events = advance(state, sample);
+        expect(events.firstGeometryCall && !events.firstGeometryUpdate,
+            "observed geometry call reports classification without claiming an update");
+        events = advance(state, sample);
+        expect(!events.firstGeometryCall && !events.firstGeometryUpdate,
+            "geometry-call classification milestone is not repeated");
     }
 
     void testAppliedRevisionAdvancesMonotonically()
@@ -87,6 +105,7 @@ int main()
 {
     testMilestonesAppearOnlyWhenProven();
     testMilestonesAreNotRepeated();
+    testGeometryCallDoesNotClaimUpdate();
     testAppliedRevisionAdvancesMonotonically();
     if (failures) {
         return 1;

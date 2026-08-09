@@ -28,6 +28,10 @@ namespace community_shaders::linear_lighting
         std::uint64_t replacementBinds{};
         std::uint64_t geometryUpdates{};
         std::uint64_t rejectedGeometryUpdates{};
+        std::uint64_t geometryResourceRejects{};
+        std::uint64_t geometryDisabledRejects{};
+        std::uint64_t geometryUnboundRejects{};
+        std::uint64_t geometryInvalidSourceRejects{};
         std::uint64_t queuedSettingsRevision{};
         std::uint64_t appliedSettingsRevision{};
         std::uint64_t frameDataUploads{};
@@ -125,6 +129,10 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};
+        std::atomic_uint64_t geometryResourceRejects_{};
+        std::atomic_uint64_t geometryDisabledRejects_{};
+        std::atomic_uint64_t geometryUnboundRejects_{};
+        std::atomic_uint64_t geometryInvalidSourceRejects_{};
         std::atomic_uint32_t firstReplacementContractPlusOne_{};
         std::atomic_uint64_t frameDataUploads_{};
         std::array<std::atomic_bool, kShaderContractCount>

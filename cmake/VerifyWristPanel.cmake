@@ -32,6 +32,7 @@ foreach(required IN ITEMS
     "Linear Lighting runtime activation proof:"
     "Linear Lighting D3D bind-hook proof:"
     "Linear Lighting first replacement proof:"
+    "Linear Lighting geometry-call proof:"
     "Linear Lighting geometry proof:"
     "validateD3D11ShaderHooks(\"GameDataReady\")"
     "validateD3D11ShaderHooks(\"GameSessionReady\")"
@@ -54,6 +55,10 @@ endforeach()
 foreach(required IN ITEMS
     "frameDataUploads_.fetch_add"
     "firstReplacementContractPlusOne_.compare_exchange_strong"
+    "return reject(geometryResourceRejects_)"
+    "return reject(geometryDisabledRejects_)"
+    "return reject(geometryUnboundRejects_)"
+    "return reject(geometryInvalidSourceRejects_)"
     "applyQueuedSettingsForRenderBoundary();"
     "appliedSettingsRevision_.store")
   string(FIND "${runtimeSource}" "${required}" found)

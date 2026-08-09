@@ -623,6 +623,14 @@ namespace community_shaders::ui
                         { "geometryUpdates", runtime.geometryUpdates },
                         { "geometryRejects",
                             runtime.rejectedGeometryUpdates },
+                        { "geometryResourceRejects",
+                            runtime.geometryResourceRejects },
+                        { "geometryDisabledRejects",
+                            runtime.geometryDisabledRejects },
+                        { "geometryUnboundRejects",
+                            runtime.geometryUnboundRejects },
+                        { "geometryInvalidSourceRejects",
+                            runtime.geometryInvalidSourceRejects },
                     } },
                 { "hooks",
                     {
@@ -654,6 +662,8 @@ namespace community_shaders::ui
                         { "geometryRejected", geometry.rejectedWalks },
                         { "deepestGeometryStage",
                             static_cast<std::uint32_t>(geometry.deepestStage) },
+                        { "lastSourceEmissive",
+                            geometry.lastSourceEmissiveMultiplier },
                     } },
                 { "wrist",
                     {
@@ -761,6 +771,7 @@ namespace community_shaders::ui
                 .frameDataUploads = runtime.frameDataUploads,
                 .pixelShaderBindCalls = d3d.pixelShaderBindCalls,
                 .replacementBinds = runtime.replacementBinds,
+                .geometryCalls = geometry.calls,
                 .geometryUpdates = runtime.geometryUpdates,
             };
             const auto events = linear_lighting_telemetry::advance(
@@ -807,6 +818,24 @@ namespace community_shaders::ui
                     runtime.replacementBinds,
                     runtime.frameDataUploads);
             }
+            if (events.firstGeometryCall) {
+                logging::info(
+                    "Linear Lighting geometry-call proof: calls={}, accepted={}, walkRejects={}, deepestStage={}, updates={}, totalUpdateRejects={}, resourceRejects={}, disabledRejects={}, unboundRejects={}, invalidSourceRejects={}, sourceEmissive={}, enabled={}, gpuReady={}, replacementBinds={}.",
+                    geometry.calls,
+                    geometry.acceptedUpdates,
+                    geometry.rejectedWalks,
+                    static_cast<std::uint32_t>(geometry.deepestStage),
+                    runtime.geometryUpdates,
+                    runtime.rejectedGeometryUpdates,
+                    runtime.geometryResourceRejects,
+                    runtime.geometryDisabledRejects,
+                    runtime.geometryUnboundRejects,
+                    runtime.geometryInvalidSourceRejects,
+                    geometry.lastSourceEmissiveMultiplier,
+                    runtime.enabled,
+                    runtime.gpuResourcesReady,
+                    runtime.replacementBinds);
+            }
             if (events.firstGeometryUpdate) {
                 logging::info(
                     "Linear Lighting geometry proof: calls={}, accepted={}, walkRejects={}, deepestStage={}, updates={}, updateRejects={}, sourceEmissive={}, replacementBinds={}.",
@@ -816,7 +845,7 @@ namespace community_shaders::ui
                     static_cast<std::uint32_t>(geometry.deepestStage),
                     runtime.geometryUpdates,
                     runtime.rejectedGeometryUpdates,
-                    geometry.lastAcceptedEmissiveMultiplier,
+                    geometry.lastSourceEmissiveMultiplier,
                     runtime.replacementBinds);
             }
         }

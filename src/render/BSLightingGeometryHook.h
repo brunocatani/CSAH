@@ -22,7 +22,7 @@ namespace community_shaders::render
         std::uint64_t acceptedUpdates{};
         std::uint64_t rejectedWalks{};
         GeometryWalkStage deepestStage{};
-        float lastAcceptedEmissiveMultiplier{};
+        float lastSourceEmissiveMultiplier{};
     };
 
     // Installs a process-lifetime patch on the verified Fallout4VR.exe 1.2.72

@@ -63,7 +63,7 @@ namespace community_shaders::render
         std::atomic_uint64_t acceptedUpdates{};
         std::atomic_uint64_t rejectedWalks{};
         std::atomic_uint32_t deepestStage{};
-        std::atomic_uint32_t lastAcceptedEmissiveMultiplierBits{};
+        std::atomic_uint32_t lastSourceEmissiveMultiplierBits{};
 
         void recordStage(GeometryWalkStage stage) noexcept
         {
@@ -236,8 +236,6 @@ namespace community_shaders::render
             void* pass,
             void* compiledProgram) noexcept
         {
-            calls.fetch_add(1, std::memory_order_relaxed);
-
             float emissiveMultiplier{};
             const auto validSource =
                 readEmissiveMultiplier(pass, emissiveMultiplier);
@@ -249,15 +247,20 @@ namespace community_shaders::render
 
             if (!validSource) {
                 rejectedWalks.fetch_add(1, std::memory_order_relaxed);
+                calls.fetch_add(1, std::memory_order_release);
                 return;
             }
+            lastSourceEmissiveMultiplierBits.store(
+                std::bit_cast<std::uint32_t>(emissiveMultiplier),
+                std::memory_order_relaxed);
             if (linear_lighting::Runtime::get().updateGeometryEmissive(
                     emissiveMultiplier)) {
-                lastAcceptedEmissiveMultiplierBits.store(
-                    std::bit_cast<std::uint32_t>(emissiveMultiplier),
-                    std::memory_order_relaxed);
                 acceptedUpdates.fetch_add(1, std::memory_order_relaxed);
             }
+            // Publish a completed call only after every classification counter
+            // and sample is final, allowing the telemetry acquire to report a
+            // coherent first-call outcome from another thread.
+            calls.fetch_add(1, std::memory_order_release);
         }
     }
 
@@ -339,13 +342,13 @@ namespace community_shaders::render
             .vtableCellOwned = hookInstalled &&
                 readPointerCell(geometrySetupCell) ==
                 reinterpret_cast<void*>(&hookGeometrySetup),
-            .calls = calls.load(std::memory_order_relaxed),
+            .calls = calls.load(std::memory_order_acquire),
             .acceptedUpdates = acceptedUpdates.load(std::memory_order_relaxed),
             .rejectedWalks = rejectedWalks.load(std::memory_order_relaxed),
             .deepestStage = static_cast<GeometryWalkStage>(
                 deepestStage.load(std::memory_order_relaxed)),
-            .lastAcceptedEmissiveMultiplier = std::bit_cast<float>(
-                lastAcceptedEmissiveMultiplierBits.load(
+            .lastSourceEmissiveMultiplier = std::bit_cast<float>(
+                lastSourceEmissiveMultiplierBits.load(
                     std::memory_order_relaxed)),
         };
     }

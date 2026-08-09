@@ -853,17 +853,29 @@ namespace community_shaders::linear_lighting
 
     bool Runtime::updateGeometryEmissive(float emissiveMultiplier) noexcept
     {
+        const auto reject = [this](std::atomic_uint64_t& reason) noexcept {
+            reason.fetch_add(1, std::memory_order_relaxed);
+            rejectedGeometryUpdates_.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        };
+
+        if (!std::isfinite(emissiveMultiplier) ||
+            emissiveMultiplier < 0.0f ||
+            emissiveMultiplier > 1.0e6f) {
+            return reject(geometryInvalidSourceRejects_);
+        }
+
         auto* context = context_.Get();
         if (!context ||
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
-            !enabled_.load(std::memory_order_acquire) ||
-            !replacementCurrentlyBound_.load(std::memory_order_acquire) ||
-            !geometryBuffer_ ||
-            !std::isfinite(emissiveMultiplier) ||
-            emissiveMultiplier < 0.0f ||
-            emissiveMultiplier > 1.0e6f) {
-            rejectedGeometryUpdates_.fetch_add(1, std::memory_order_relaxed);
-            return false;
+            !geometryBuffer_) {
+            return reject(geometryResourceRejects_);
+        }
+        if (!enabled_.load(std::memory_order_acquire)) {
+            return reject(geometryDisabledRejects_);
+        }
+        if (!replacementCurrentlyBound_.load(std::memory_order_acquire)) {
+            return reject(geometryUnboundRejects_);
         }
 
         GeometryData data{};
@@ -928,6 +940,14 @@ namespace community_shaders::linear_lighting
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
             .geometryUpdates = geometryUpdates_.load(std::memory_order_relaxed),
             .rejectedGeometryUpdates = rejectedGeometryUpdates_.load(std::memory_order_relaxed),
+            .geometryResourceRejects =
+                geometryResourceRejects_.load(std::memory_order_relaxed),
+            .geometryDisabledRejects =
+                geometryDisabledRejects_.load(std::memory_order_relaxed),
+            .geometryUnboundRejects =
+                geometryUnboundRejects_.load(std::memory_order_relaxed),
+            .geometryInvalidSourceRejects =
+                geometryInvalidSourceRejects_.load(std::memory_order_relaxed),
             .queuedSettingsRevision =
                 queuedSettingsRevision_.load(std::memory_order_acquire),
             .appliedSettingsRevision =
