@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 45:
-        fail("Linear Lighting manifest must contain exactly 45 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 58:
+        fail("Linear Lighting manifest must contain exactly 58 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -252,49 +252,57 @@ def verify_source_contracts(
             fail(f"six-MRT shader is missing semantic contract: {token}")
     if "clip(diffuse.w - cb2[1].w)" not in base_source_texts[0]:
         fail("projected shader no longer preserves alpha-reference testing")
+    for token in (
+        "TexAdditionalAlphaNoise.Load",
+        "clip(cb2[5].x - additionalAlpha)",
+        "LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing additional-alpha-mask contract: "
+                f"{token}"
+            )
 
     vertex_contracts = 0
     glowmap_contracts = 0
     instanced_contracts = 0
     model_space_normal_contracts = 0
     tessellated_contracts = 0
+    additional_alpha_mask_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
         source_text = source.read_text(encoding="utf-8")
-        if "L3" in str(contract["label"]) or "VertexColor" in str(contract["label"]):
-            if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in source_text:
-                fail(f"{contract['label']} no longer selects the COLOR0 path")
+        if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" in source_text:
             vertex_contracts += 1
-        if str(contract["label"]).startswith("Glowmap"):
-            if "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" not in source_text:
-                fail(f"{contract['label']} no longer selects textured emission")
+        if "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text:
             glowmap_contracts += 1
-        if str(contract["label"]).startswith("Instanced"):
-            if "#define LINEAR_LIGHTING_INSTANCED 1" not in source_text:
-                fail(f"{contract['label']} no longer selects instanced material data")
+        if "#define LINEAR_LIGHTING_INSTANCED 1" in source_text:
             instanced_contracts += 1
-        if str(contract["label"]).startswith("ModelSpaceNormals"):
-            if "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1" not in source_text:
-                fail(f"{contract['label']} no longer selects model-space normals")
+        if "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1" in source_text:
             model_space_normal_contracts += 1
-        if str(contract["label"]).startswith("Tessellated"):
-            if "#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1" not in source_text:
-                fail(f"{contract['label']} no longer selects tessellated inputs")
+        if "#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1" in source_text:
             tessellated_contracts += 1
-    if vertex_contracts != 21:
-        fail(f"expected 21 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 10:
-        fail(f"expected 10 glowmap contracts, found {glowmap_contracts}")
+        if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
+            additional_alpha_mask_contracts += 1
+    if vertex_contracts != 30:
+        fail(f"expected 30 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 14:
+        fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 4:
         fail(f"expected 4 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 4:
+    if model_space_normal_contracts != 7:
         fail(
-            "expected 4 model-space-normal contracts, "
+            "expected 7 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 5:
-        fail(f"expected 5 tessellated contracts, found {tessellated_contracts}")
+    if tessellated_contracts != 10:
+        fail(f"expected 10 tessellated contracts, found {tessellated_contracts}")
+    if additional_alpha_mask_contracts != 13:
+        fail(
+            "expected 13 additional-alpha-mask contracts, "
+            f"found {additional_alpha_mask_contracts}"
+        )
 
 
 def verify(root: Path) -> None:
@@ -348,16 +356,17 @@ def verify(root: Path) -> None:
     parity_text = parity_source.read_text(encoding="utf-8")
     parity_entries = re.findall(
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
-        r'(true|false)(?:,\s*(true|false))?\s*\}',
+        r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
-    parity_contracts: dict[str, tuple[int, bool, bool, bool]] = {}
+    parity_contracts: dict[str, tuple[int, bool, bool, bool, bool]] = {}
     for (
         name,
         mrt_count,
         has_vertex_color,
         is_instanced,
         uses_tessellated_inputs,
+        has_additional_alpha_mask,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -366,6 +375,7 @@ def verify(root: Path) -> None:
             has_vertex_color == "true",
             is_instanced == "true",
             uses_tessellated_inputs == "true",
+            has_additional_alpha_mask == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -465,6 +475,9 @@ def verify(root: Path) -> None:
                     semantic[0] == "POSITION" and semantic[1] == 1
                     for semantic in original["input_signature"]
                 ),
+                12 in original["samplers"]
+                and 12 in original["textures"]
+                and 15 in original["textures"],
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(

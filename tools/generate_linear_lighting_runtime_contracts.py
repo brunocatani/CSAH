@@ -41,8 +41,8 @@ def render(root: Path) -> str:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or not 0 < len(manifest) <= 64:
-        fail("Linear Lighting manifest must contain between 1 and 64 contracts")
+    if not isinstance(manifest, list) or not 0 < len(manifest) <= 320:
+        fail("Linear Lighting manifest must contain between 1 and 320 contracts")
 
     verified = (
         root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"

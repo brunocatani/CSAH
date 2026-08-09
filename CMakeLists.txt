@@ -97,6 +97,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   "${QUALIFICATION_SOURCE}"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
+  "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
   "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
@@ -190,6 +191,7 @@ add_library(${PROJECT_NAME} SHARED
   "${QUALIFICATION_SOURCE}"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.h"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
+  "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
@@ -464,10 +466,10 @@ if(BUILD_FO4VR_CS_TESTS)
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
       --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
       --known-dir "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
-      --expect-total 45
-      --expect-unique 45
-      --expect-target-shape 45
-      --expect-known 45)
+      --expect-total 58
+      --expect-unique 58
+      --expect-target-shape 58
+      --expect-known 58)
   add_test(NAME FO4VRCommunityShaders.LinearLightingFxpParser
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_census_linear_lighting_fxp.py")

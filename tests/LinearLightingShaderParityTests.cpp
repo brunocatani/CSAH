@@ -38,6 +38,7 @@ namespace
         bool hasVertexColor;
         bool isInstanced;
         bool usesTessellatedInputs{};
+        bool hasAdditionalAlphaMask{};
     };
 
     constexpr std::array kShaderContracts{
@@ -86,6 +87,28 @@ namespace
         ShaderContract{ "InstancedLandLodBlendSixMrt_L4_0A000002", 6, false, true },
         ShaderContract{ "InstancedLandLodBlendSixMrt_L3_0A000003", 6, true, true },
         ShaderContract{ "ModelSpaceNormalsSkinnedSixMrt_L4_00002006", 6, false, false },
+        ShaderContract{ "AdditionalAlphaMaskSixMrt_L4_01000002", 6, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskSixMrt_L3_01000003", 6, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskAlphaTestSixMrt_L4_01000102", 6, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskAlphaTestSixMrt_L3_01000103", 6, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskAlphaTestSixMrt_RgbOnlyVertexColor_01000503", 6, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskModelSpaceNormalsSixMrt_L4_01002002", 6, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskModelSpaceNormalsSixMrt_L3_01002003", 6, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskModelSpaceNormalsAlphaTestSixMrt_L4_01002102", 6, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskTessellatedSixMrt_L4_01080002", 6, false, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskTessellatedSixMrt_L3_01080003", 6, true, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L4_01080102", 6, false, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L3_01080103", 6, true, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_RgbOnlyVertexColor_01080503", 6, true, false, true, true },
+    };
+
+    enum class AdditionalAlphaCase : std::uint8_t
+    {
+        disabled,
+        texturePass,
+        textureReject,
+        noisePass,
+        noiseReject,
     };
 
     struct RenderTargets
@@ -152,6 +175,8 @@ namespace
     constexpr Pixel kVertexColor{ 0.8F, 0.7F, 0.6F, 0.9F };
     constexpr Pixel kEmitColor{ 0.3F, 0.45F, 0.6F, 0.2F };
     constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
+    constexpr Pixel kAdditionalAlphaTexture{ 0.0F, 0.0F, 0.0F, 0.35F };
+    constexpr Pixel kAdditionalAlphaNoise{ 0.75F, 0.0F, 0.0F, 0.0F };
 
     constexpr std::array<float, 4> kClearColor{
         123.25F,
@@ -458,7 +483,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
     [[nodiscard]] std::array<std::array<float, 4>, 7> makeMaterialData(
         UINT mrtCount,
-        std::size_t caseIndex)
+        std::size_t caseIndex,
+        bool hasAdditionalAlphaMask,
+        AdditionalAlphaCase additionalAlphaCase)
     {
         std::array<std::array<float, 4>, 7> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
@@ -469,14 +496,35 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             std::array<float, 4>{ 0.9F, 0.6F, 0.0F, 0.0F };
         values[3] = { 0.85F, 0.55F, -1.0F, 0.0F };
         values[4] = { 1.0F, 1.0F, 0.4F, caseIndex == 2 ? -1.0F : 0.6F };
-        values[5] = mrtCount == 5 ?
-            values[4] : std::array<float, 4>{
-                0.65F,
-                switchValue,
-                0.2F,
-                0.9F,
-            };
-        values[6] = { 0.65F, switchValue, 0.2F, 0.9F };
+        const std::array<float, 4> depthParameters{
+            0.65F,
+            switchValue,
+            0.2F,
+            0.9F,
+        };
+        if (hasAdditionalAlphaMask) {
+            switch (additionalAlphaCase) {
+            case AdditionalAlphaCase::disabled:
+                values[5] = {};
+                break;
+            case AdditionalAlphaCase::texturePass:
+                values[5] = { 0.8F, 0.0F, 0.0F, 1.0F };
+                break;
+            case AdditionalAlphaCase::textureReject:
+                values[5] = { 0.2F, 0.0F, 0.0F, 1.0F };
+                break;
+            case AdditionalAlphaCase::noisePass:
+                values[5] = { 0.0F, 1.0F, 1.0F, 0.0F };
+                break;
+            case AdditionalAlphaCase::noiseReject:
+                values[5] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                break;
+            }
+            values[6] = depthParameters;
+        } else {
+            values[5] = mrtCount == 5 ? values[4] : depthParameters;
+            values[6] = depthParameters;
+        }
         return values;
     }
 
@@ -554,9 +602,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         UINT mrtCount,
         bool isInstanced,
         std::size_t caseIndex,
-        const LinearLightingCase& lightingCase)
+        const LinearLightingCase& lightingCase,
+        bool hasAdditionalAlphaMask,
+        AdditionalAlphaCase additionalAlphaCase =
+            AdditionalAlphaCase::disabled)
     {
-        const auto materialData = makeMaterialData(mrtCount, caseIndex);
+        const auto materialData = makeMaterialData(
+            mrtCount,
+            caseIndex,
+            hasAdditionalAlphaMask,
+            additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
         const auto frameData = makeFrameData(lightingCase);
@@ -588,6 +643,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             textureViews[index] = createTexture(device, texturePixels[index]);
             rawTextureViews[index] = textureViews[index].Get();
         }
+        const auto additionalAlphaTexture = createTexture(
+            device,
+            kAdditionalAlphaTexture);
+        const auto additionalAlphaNoise = createTexture(
+            device,
+            kAdditionalAlphaNoise);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -640,6 +701,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0,
             static_cast<UINT>(samplers.size()),
             samplers.data());
+        auto* rawAdditionalAlphaTexture = additionalAlphaTexture.Get();
+        auto* rawAdditionalAlphaNoise = additionalAlphaNoise.Get();
+        context.PSSetShaderResources(12, 1, &rawAdditionalAlphaTexture);
+        context.PSSetShaderResources(15, 1, &rawAdditionalAlphaNoise);
+        auto* rawAdditionalAlphaSampler = sampler.Get();
+        context.PSSetSamplers(12, 1, &rawAdditionalAlphaSampler);
 
         auto* rawMaterial = materialBuffer.Get();
         auto* rawGeometry = geometryBuffer.Get();
@@ -663,6 +730,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0,
             static_cast<UINT>(nullViews.size()),
             nullViews.data());
+        ID3D11ShaderResourceView* nullView{};
+        context.PSSetShaderResources(12, 1, &nullView);
+        context.PSSetShaderResources(15, 1, &nullView);
+        ID3D11SamplerState* nullSampler{};
+        context.PSSetSamplers(12, 1, &nullSampler);
         if (isInstanced) {
             ID3D11Buffer* nullBuffer{};
             context.PSSetConstantBuffers(13, 1, &nullBuffer);
@@ -682,6 +754,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto difference = std::abs(lhs - rhs);
         const auto scale = (std::max)(std::abs(lhs), std::abs(rhs));
         return difference <= kAbsoluteTolerance + kRelativeTolerance * scale;
+    }
+
+    [[nodiscard]] bool isClearResult(const RenderResult& result)
+    {
+        for (const auto& target : result) {
+            for (std::size_t channel = 0; channel < target.size(); ++channel) {
+                if (!approximatelyEqual(target[channel], kClearColor[channel])) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     [[nodiscard]] std::string compare(
@@ -842,12 +926,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::string("CreatePixelShader(replacement ") +
                     std::string(contract.name) + ")");
 
+            auto* vertexShader = vertexShaders[
+                (contract.hasVertexColor ? 1u : 0u) |
+                (contract.isInstanced ? 2u : 0u) |
+                (contract.usesTessellatedInputs ? 4u : 0u)].Get();
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
-                auto* vertexShader = vertexShaders[
-                    (contract.hasVertexColor ? 1u : 0u) |
-                    (contract.isInstanced ? 2u : 0u) |
-                    (contract.usesTessellatedInputs ? 4u : 0u)].Get();
                 const auto vanilla = render(
                     *device.Get(),
                     *context.Get(),
@@ -856,7 +940,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.mrtCount,
                     contract.isInstanced,
                     caseIndex,
-                    kDisabledCase);
+                    kDisabledCase,
+                    contract.hasAdditionalAlphaMask);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -865,7 +950,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.mrtCount,
                     contract.isInstanced,
                     caseIndex,
-                    kDisabledCase);
+                    kDisabledCase,
+                    contract.hasAdditionalAlphaMask);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -884,7 +970,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.mrtCount,
                     contract.isInstanced,
                     caseIndex,
-                    kIdentityCase);
+                    kIdentityCase,
+                    contract.hasAdditionalAlphaMask);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -903,7 +990,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.mrtCount,
                     contract.isInstanced,
                     caseIndex,
-                    kTransformedCase);
+                    kTransformedCase,
+                    contract.hasAdditionalAlphaMask);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -918,6 +1006,65 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     transformed);
                 if (!mismatch.empty()) {
                     failures.push_back(std::move(mismatch));
+                }
+            }
+
+            if (contract.hasAdditionalAlphaMask) {
+                struct MaskProofCase
+                {
+                    AdditionalAlphaCase value;
+                    std::string_view name;
+                    bool expectsDiscard;
+                };
+                constexpr std::array maskProofCases{
+                    MaskProofCase{ AdditionalAlphaCase::texturePass,
+                        "additional-alpha-texture-pass", false },
+                    MaskProofCase{ AdditionalAlphaCase::textureReject,
+                        "additional-alpha-texture-reject", true },
+                    MaskProofCase{ AdditionalAlphaCase::noisePass,
+                        "additional-alpha-noise-pass", false },
+                    MaskProofCase{ AdditionalAlphaCase::noiseReject,
+                        "additional-alpha-noise-reject", true },
+                };
+                constexpr std::size_t maskCaseIndex = 1;
+                for (const auto& maskCase : maskProofCases) {
+                    const auto vanilla = render(
+                        *device.Get(),
+                        *context.Get(),
+                        *vertexShader,
+                        *vanillaShader.Get(),
+                        contract.mrtCount,
+                        contract.isInstanced,
+                        maskCaseIndex,
+                        kDisabledCase,
+                        true,
+                        maskCase.value);
+                    const auto replacement = render(
+                        *device.Get(),
+                        *context.Get(),
+                        *vertexShader,
+                        *replacementShader.Get(),
+                        contract.mrtCount,
+                        contract.isInstanced,
+                        maskCaseIndex,
+                        kDisabledCase,
+                        true,
+                        maskCase.value);
+                    auto mismatch = compare(
+                        contract,
+                        maskCase.name,
+                        maskCaseIndex,
+                        vanilla,
+                        replacement);
+                    if (!mismatch.empty()) {
+                        failures.push_back(std::move(mismatch));
+                    }
+                    if (isClearResult(vanilla) != maskCase.expectsDiscard) {
+                        failures.push_back(
+                            std::string(contract.name) + " " +
+                            std::string(maskCase.name) +
+                            " did not exercise the expected discard state");
+                    }
                 }
             }
         }

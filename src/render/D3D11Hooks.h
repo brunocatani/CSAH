@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Features/linear_lighting/LinearLightingContractMask.h"
+
 #include <cstdint>
 
 namespace community_shaders::render
@@ -42,9 +44,9 @@ namespace community_shaders::render
         std::uint64_t drawStateFailures{};
         std::uint64_t bindingsWithoutFreshGeometry{};
         std::uint64_t drawsWithoutFreshGeometry{};
-        std::uint64_t replacementContractMask{};
-        std::uint64_t bindingVerifiedContractMask{};
-        std::uint64_t drawVerifiedContractMask{};
+        linear_lighting::ContractMask replacementContractMask{};
+        linear_lighting::ContractMask bindingVerifiedContractMask{};
+        linear_lighting::ContractMask drawVerifiedContractMask{};
         std::uint32_t lastBindingState{};
         std::uint32_t lastDrawState{};
     };

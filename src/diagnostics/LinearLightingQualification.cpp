@@ -148,7 +148,20 @@ namespace community_shaders::diagnostics
             appendReason(reasons, mask,
                 qualification_model::Failure_NoCommonVerifiedContract,
                 "no_contract_completed_the_full_chain");
+            appendReason(reasons, mask,
+                qualification_model::Failure_ShaderContractCapacityExceeded,
+                "shader_contract_capacity_exceeded");
             return reasons;
+        }
+
+        [[nodiscard]] nlohmann::json contractMaskWords(
+            const linear_lighting::ContractMask& mask)
+        {
+            auto words = nlohmann::json::array();
+            for (const auto word : mask) {
+                words.push_back(word);
+            }
+            return words;
         }
 
         [[nodiscard]] Capture captureSession(const Session& session) noexcept
@@ -218,19 +231,26 @@ namespace community_shaders::diagnostics
             for (std::size_t index = 0;
                  index < linear_lighting::Runtime::kShaderContractCount;
                  ++index) {
-                const auto bit = 1ull << index;
                 contracts.push_back({
                     { "index", index },
                     { "name",
                         linear_lighting::Runtime::shaderContractName(index) },
                     { "originalObserved",
-                        (capture.runtime.matchingShaderContractMask & bit) != 0 },
+                        linear_lighting::contractBitSet(
+                            capture.runtime.matchingShaderContractMask,
+                            index) },
                     { "replacementBound",
-                        (capture.d3d.replacementContractMask & bit) != 0 },
+                        linear_lighting::contractBitSet(
+                            capture.d3d.replacementContractMask,
+                            index) },
                     { "bindingVerified",
-                        (capture.d3d.bindingVerifiedContractMask & bit) != 0 },
+                        linear_lighting::contractBitSet(
+                            capture.d3d.bindingVerifiedContractMask,
+                            index) },
                     { "drawVerified",
-                        (capture.d3d.drawVerifiedContractMask & bit) != 0 },
+                        linear_lighting::contractBitSet(
+                            capture.d3d.drawVerifiedContractMask,
+                            index) },
                 });
             }
             return contracts;
@@ -253,8 +273,18 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 1 },
+                    { "schemaVersion", 2 },
                     { "feature", "LinearLighting" },
+                    { "contractMaskEncoding",
+                        {
+                            { "wordBits",
+                                linear_lighting::kContractMaskWordBits },
+                            { "wordCount",
+                                linear_lighting::kContractMaskWordCount },
+                            { "capacity",
+                                linear_lighting::kContractMaskCapacity },
+                            { "wordOrder", "least-significant-first" },
+                        } },
                     { "status", statusOverride ? statusOverride :
                                                   statusName(evaluation.status) },
                     { "failureReasons",
@@ -281,8 +311,9 @@ namespace community_shaders::diagnostics
                                 capture.runtime.geometryProviderReady },
                             { "verifiedShaderContracts",
                                 capture.runtime.verifiedShaderContracts },
-                            { "matchingShaderContractMask",
-                                capture.runtime.matchingShaderContractMask },
+                            { "matchingShaderContractMaskWords",
+                                contractMaskWords(capture.runtime
+                                                      .matchingShaderContractMask) },
                             { "matchingShadersCreated",
                                 capture.runtime.matchingShadersCreated },
                             { "trackedOriginalShaders",
@@ -344,15 +375,18 @@ namespace community_shaders::diagnostics
                                     .bindingsWithoutFreshGeometry },
                             { "drawsWithoutFreshGeometry",
                                 capture.d3d.drawsWithoutFreshGeometry },
-                            { "replacementContractMask",
-                                capture.d3d.replacementContractMask },
-                            { "bindingVerifiedContractMask",
-                                capture.d3d
-                                    .bindingVerifiedContractMask },
-                            { "drawVerifiedContractMask",
-                                capture.d3d.drawVerifiedContractMask },
-                            { "fullyVerifiedContractMask",
-                                evaluation.fullyVerifiedContractMask },
+                            { "replacementContractMaskWords",
+                                contractMaskWords(
+                                    capture.d3d.replacementContractMask) },
+                            { "bindingVerifiedContractMaskWords",
+                                contractMaskWords(capture.d3d
+                                                      .bindingVerifiedContractMask) },
+                            { "drawVerifiedContractMaskWords",
+                                contractMaskWords(
+                                    capture.d3d.drawVerifiedContractMask) },
+                            { "fullyVerifiedContractMaskWords",
+                                contractMaskWords(
+                                    evaluation.fullyVerifiedContractMask) },
                             { "lastBindingState",
                                 capture.d3d.lastBindingState },
                             { "lastDrawState",
@@ -525,12 +559,16 @@ namespace community_shaders::diagnostics
                                 "Linear Lighting qualification final report could not be written.");
                         } else {
                             logging::info(
-                                "Linear Lighting automated qualification {} for session {} after {} ms (reasonMask=0x{:X}, fullyVerifiedContractMask=0x{:X}).",
+                                "Linear Lighting automated qualification {} for session {} after {} ms (reasonMask=0x{:X}, fullyVerifiedContractMaskWords=[0x{:016X},0x{:016X},0x{:016X},0x{:016X},0x{:016X}]).",
                                 statusName(evaluation.status),
                                 session.generation,
                                 capture.elapsedMilliseconds,
                                 evaluation.reasonMask,
-                                evaluation.fullyVerifiedContractMask);
+                                evaluation.fullyVerifiedContractMask[0],
+                                evaluation.fullyVerifiedContractMask[1],
+                                evaluation.fullyVerifiedContractMask[2],
+                                evaluation.fullyVerifiedContractMask[3],
+                                evaluation.fullyVerifiedContractMask[4]);
                         }
                         render::endD3D11QualificationSession(
                             session.d3dSessionId);

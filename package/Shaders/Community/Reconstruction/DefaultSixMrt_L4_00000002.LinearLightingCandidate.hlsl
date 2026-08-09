@@ -1,6 +1,14 @@
+#ifndef LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    float4 cb2[7];
+#else
     float4 cb2[6];
+#endif
 };
 
 #include "../LinearLighting/LinearLighting.hlsli"
@@ -24,6 +32,10 @@ cbuffer PerInstance : register(b13)
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+Texture2D<float4> TexAdditionalAlpha : register(t12);
+Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -36,6 +48,9 @@ Texture2D<float4> TexGlow : register(t3);
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+SamplerState SampAdditionalAlpha : register(s12);
+#endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
 #endif
@@ -62,6 +77,12 @@ SamplerState SampGlow : register(s3);
 
 #ifndef LINEAR_LIGHTING_TESSELLATED_INPUTS
 #define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
+#endif
+
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
+#else
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[5]
 #endif
 
 struct PSInput
@@ -116,6 +137,25 @@ PSOutput PSMain(PSInput input)
 #else
     float2 uv = float2(input.currentPosition.w, input.previousPosition.w);
 #endif
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    if (cb2[5].y != 0.0)
+    {
+        float2 coordinateSign = (input.position.xy >= -input.position.xy) ?
+            float2(1.0, 1.0) : float2(-1.0, -1.0);
+        int2 noiseCoordinate = int2(
+            frac(input.position.xy * coordinateSign * 0.25) *
+            coordinateSign * 4.0);
+        float noise = TexAdditionalAlphaNoise.Load(
+            int3(noiseCoordinate, 0)).x;
+        clip((cb2[5].y * (0.5 - noise)) + cb2[5].z - 0.5);
+    }
+    if (cb2[5].w != 0.0)
+    {
+        float additionalAlpha = TexAdditionalAlpha.Sample(
+            SampAdditionalAlpha, uv).w;
+        clip(cb2[5].x - additionalAlpha);
+    }
+#endif
 #if LINEAR_LIGHTING_ALPHA_TEST
     float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
     float alpha = diffuseSample.w;
@@ -158,17 +198,21 @@ PSOutput PSMain(PSInput input)
     float normalPackScale = sqrt((projectedNormal.z * -8.0) + 8.0);
     output.target1.xy = (projectedNormal.xy / normalPackScale) + 0.5;
 
-    float depthRange = cb2[5].w - cb2[5].z;
-    float depthSwitch = (cb2[5].w < 0.0) ? 0.0 : cb12[50].x;
-    float depthValue = (depthSwitch * depthRange) + cb2[5].z;
-    float depthAlt = depthSwitch * cb2[5].w;
-    depthValue = (cb2[5].y != 0.0) ? depthValue : depthAlt;
+    float depthRange = LINEAR_LIGHTING_DEPTH_PARAMETERS.w -
+        LINEAR_LIGHTING_DEPTH_PARAMETERS.z;
+    float depthSwitch = (LINEAR_LIGHTING_DEPTH_PARAMETERS.w < 0.0) ?
+        0.0 : cb12[50].x;
+    float depthValue = (depthSwitch * depthRange) +
+        LINEAR_LIGHTING_DEPTH_PARAMETERS.z;
+    float depthAlt = depthSwitch * LINEAR_LIGHTING_DEPTH_PARAMETERS.w;
+    depthValue = (LINEAR_LIGHTING_DEPTH_PARAMETERS.y != 0.0) ?
+        depthValue : depthAlt;
     output.target2.z = sqrt(depthValue * 0.02);
 
     bool materialFlag = (cb12[50].x != 0.0 && cb2[4].y != 0.0) || cb2[4].x != 0.0;
     output.target2.x = materialFlag ? 1.0 : 0.0;
-    output.target2.y = cb2[5].x * 0.003922;
-    output.target2.w = saturate(cb2[5].x);
+    output.target2.y = LINEAR_LIGHTING_DEPTH_PARAMETERS.x * 0.003922;
+    output.target2.w = saturate(LINEAR_LIGHTING_DEPTH_PARAMETERS.x);
 
     float specBlendA = cb12[50].x * cb2[4].z;
     float specBlendB = (-cb2[4].z * cb12[50].x) + 1.0;

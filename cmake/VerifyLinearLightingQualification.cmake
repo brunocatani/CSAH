@@ -31,6 +31,7 @@ foreach(required IN ITEMS
     "recordQualificationBinding"
     "recordQualificationDraw"
     "inspectReplacementPipelineState"
+    "AtomicContractMask"
     "qualificationDrawDetoursOwned")
   string(FIND "${d3dSource}" "${required}" found)
   if(found EQUAL -1)
@@ -59,7 +60,10 @@ foreach(required IN ITEMS
     "MoveFileExW"
     "MOVEFILE_REPLACE_EXISTING"
     "capture.sample.sessionActivated"
-    "fullyVerifiedContractMask")
+    "{ \"schemaVersion\", 2 }"
+    "least-significant-first"
+    "matchingShaderContractMaskWords"
+    "fullyVerifiedContractMaskWords")
   string(FIND "${qualificationSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR

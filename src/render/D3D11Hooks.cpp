@@ -119,9 +119,12 @@ namespace community_shaders::render
         std::atomic_uint64_t qualificationDrawStateFailures{};
         std::atomic_uint64_t qualificationBindingsWithoutFreshGeometry{};
         std::atomic_uint64_t qualificationDrawsWithoutFreshGeometry{};
-        std::atomic_uint64_t qualificationReplacementContractMask{};
-        std::atomic_uint64_t qualificationBindingVerifiedContractMask{};
-        std::atomic_uint64_t qualificationDrawVerifiedContractMask{};
+        linear_lighting::AtomicContractMask
+            qualificationReplacementContractMask{};
+        linear_lighting::AtomicContractMask
+            qualificationBindingVerifiedContractMask{};
+        linear_lighting::AtomicContractMask
+            qualificationDrawVerifiedContractMask{};
         std::atomic_uint32_t qualificationLastBindingState{};
         std::atomic_uint32_t qualificationLastDrawState{};
         thread_local bool insidePSSetShaderHook{};
@@ -465,9 +468,12 @@ namespace community_shaders::render
             qualificationDrawStateFailures.store(0, std::memory_order_relaxed);
             qualificationBindingsWithoutFreshGeometry.store(0, std::memory_order_relaxed);
             qualificationDrawsWithoutFreshGeometry.store(0, std::memory_order_relaxed);
-            qualificationReplacementContractMask.store(0, std::memory_order_relaxed);
-            qualificationBindingVerifiedContractMask.store(0, std::memory_order_relaxed);
-            qualificationDrawVerifiedContractMask.store(0, std::memory_order_relaxed);
+            qualificationReplacementContractMask.clear(
+                std::memory_order_relaxed);
+            qualificationBindingVerifiedContractMask.clear(
+                std::memory_order_relaxed);
+            qualificationDrawVerifiedContractMask.clear(
+                std::memory_order_relaxed);
             qualificationLastBindingState.store(0, std::memory_order_relaxed);
             qualificationLastDrawState.store(0, std::memory_order_relaxed);
         }
@@ -504,14 +510,14 @@ namespace community_shaders::render
             qualificationActivationGate.clear(std::memory_order_release);
         }
 
-        [[nodiscard]] std::uint64_t contractBit(
+        [[nodiscard]] linear_lighting::ContractBit qualificationContractBit(
             std::uint32_t contractPlusOne) noexcept
         {
             return contractPlusOne > 0 &&
                     contractPlusOne <=
                         linear_lighting::Runtime::kShaderContractCount ?
-                1ull << (contractPlusOne - 1) :
-                0;
+                linear_lighting::contractBit(contractPlusOne - 1) :
+                linear_lighting::ContractBit{};
         }
 
         void recordQualificationBinding(
@@ -521,7 +527,7 @@ namespace community_shaders::render
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
                 return;
             }
-            const auto bit = contractBit(contractPlusOne);
+            const auto bit = qualificationContractBit(contractPlusOne);
             if (!bit) {
                 return;
             }
@@ -529,8 +535,8 @@ namespace community_shaders::render
             qualificationReplacementShaderBinds.fetch_add(
                 1,
                 std::memory_order_relaxed);
-            qualificationReplacementContractMask.fetch_or(
-                bit,
+            qualificationReplacementContractMask.set(
+                contractPlusOne - 1,
                 std::memory_order_relaxed);
             const auto geometryGeneration =
                 linear_lighting::Runtime::get().geometryUpdateGeneration();
@@ -541,9 +547,9 @@ namespace community_shaders::render
                     std::memory_order_relaxed);
                 return;
             }
-            if ((qualificationBindingVerifiedContractMask.load(
-                     std::memory_order_relaxed) &
-                    bit) != 0) {
+            if (qualificationBindingVerifiedContractMask.test(
+                    contractPlusOne - 1,
+                    std::memory_order_relaxed)) {
                 return;
             }
 
@@ -554,8 +560,8 @@ namespace community_shaders::render
             qualificationLastBindingState.store(state, std::memory_order_relaxed);
             qualificationBindingStateChecks.fetch_add(1, std::memory_order_relaxed);
             if (state == linear_lighting::PipelineBinding_All) {
-                qualificationBindingVerifiedContractMask.fetch_or(
-                    bit,
+                qualificationBindingVerifiedContractMask.set(
+                    contractPlusOne - 1,
                     std::memory_order_release);
             } else {
                 qualificationBindingStateFailures.fetch_add(
@@ -574,7 +580,8 @@ namespace community_shaders::render
             if (activeQualificationSessionId != sessionId) {
                 return;
             }
-            const auto bit = contractBit(activeReplacementContractPlusOne);
+            const auto bit = qualificationContractBit(
+                activeReplacementContractPlusOne);
             if (!bit) {
                 return;
             }
@@ -591,9 +598,9 @@ namespace community_shaders::render
                     std::memory_order_relaxed);
                 return;
             }
-            if ((qualificationDrawVerifiedContractMask.load(
-                     std::memory_order_relaxed) &
-                    bit) != 0) {
+            if (qualificationDrawVerifiedContractMask.test(
+                    activeReplacementContractPlusOne - 1,
+                    std::memory_order_relaxed)) {
                 return;
             }
 
@@ -604,8 +611,8 @@ namespace community_shaders::render
             qualificationLastDrawState.store(state, std::memory_order_relaxed);
             qualificationDrawStateChecks.fetch_add(1, std::memory_order_relaxed);
             if (state == linear_lighting::PipelineBinding_All) {
-                qualificationDrawVerifiedContractMask.fetch_or(
-                    bit,
+                qualificationDrawVerifiedContractMask.set(
+                    activeReplacementContractPlusOne - 1,
                     std::memory_order_release);
             } else {
                 qualificationDrawStateFailures.fetch_add(

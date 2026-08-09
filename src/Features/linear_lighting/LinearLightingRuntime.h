@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Features/linear_lighting/LinearLightingContractMask.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
 #include <d3d11.h>
@@ -18,7 +19,7 @@ namespace community_shaders::linear_lighting
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
         std::uint32_t verifiedShaderContracts{};
-        std::uint64_t matchingShaderContractMask{};
+        ContractMask matchingShaderContractMask{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint32_t firstReplacementContractPlusOne{};
@@ -55,8 +56,8 @@ namespace community_shaders::linear_lighting
     class Runtime final
     {
     public:
-        static constexpr std::size_t kShaderContractCount = 45;
-        static_assert(kShaderContractCount <= 64);
+        static constexpr std::size_t kShaderContractCount = 58;
+        static_assert(kShaderContractCount <= kContractMaskCapacity);
 
         static Runtime& get() noexcept;
 
@@ -146,7 +147,7 @@ namespace community_shaders::linear_lighting
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
-        std::atomic_uint64_t matchingShaderContractMask_{};
+        AtomicContractMask matchingShaderContractMask_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};

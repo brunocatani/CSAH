@@ -43,5 +43,18 @@
   { "name": "TessellatedAlphaTestSixMrt_RgbOnlyVertexColor_00080503", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_ALPHA_TEST_RGB_ONLY_VERTEX_COLOR_PS" },
   { "name": "InstancedLandLodBlendSixMrt_L4_0A000002", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_LAND_LOD_BLEND_SIX_MRT_PS" },
   { "name": "InstancedLandLodBlendSixMrt_L3_0A000003", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_LAND_LOD_BLEND_SIX_MRT_VERTEX_COLOR_PS" },
-  { "name": "ModelSpaceNormalsSkinnedSixMrt_L4_00002006", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SKINNED_SIX_MRT_PS" }
+  { "name": "ModelSpaceNormalsSkinnedSixMrt_L4_00002006", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SKINNED_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskSixMrt_L4_01000002", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskSixMrt_L3_01000003", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskAlphaTestSixMrt_L4_01000102", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskAlphaTestSixMrt_L3_01000103", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskAlphaTestSixMrt_RgbOnlyVertexColor_01000503", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_ALPHA_TEST_RGB_ONLY_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskModelSpaceNormalsSixMrt_L4_01002002", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskModelSpaceNormalsSixMrt_L3_01002003", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_MODEL_SPACE_NORMALS_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskModelSpaceNormalsAlphaTestSixMrt_L4_01002102", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskTessellatedSixMrt_L4_01080002", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_TESSELLATED_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskTessellatedSixMrt_L3_01080003", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L4_01080102", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_TESSELLATED_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_L3_01080103", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_TESSELLATED_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskTessellatedAlphaTestSixMrt_RgbOnlyVertexColor_01080503", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_TESSELLATED_ALPHA_TEST_RGB_ONLY_VERTEX_COLOR_PS" }
 ]

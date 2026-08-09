@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Features/linear_lighting/LinearLightingContractMask.h"
+
 #include <cstdint>
 
 namespace community_shaders::diagnostics::qualification_model
@@ -34,6 +36,7 @@ namespace community_shaders::diagnostics::qualification_model
         Failure_DrawStateMismatch = 1ull << 17,
         Failure_NoVerifiedDraw = 1ull << 18,
         Failure_NoCommonVerifiedContract = 1ull << 19,
+        Failure_ShaderContractCapacityExceeded = 1ull << 20,
     };
 
     struct Sample
@@ -47,7 +50,7 @@ namespace community_shaders::diagnostics::qualification_model
         bool geometryHookOwned{};
         std::uint32_t expectedShaderContracts{};
         std::uint32_t verifiedShaderContracts{};
-        std::uint64_t matchingShaderContractMask{};
+        linear_lighting::ContractMask matchingShaderContractMask{};
         std::uint64_t geometryCalls{};
         std::uint64_t geometryAccepted{};
         std::uint64_t geometrySourceRejected{};
@@ -58,36 +61,30 @@ namespace community_shaders::diagnostics::qualification_model
         std::uint64_t replacementDrawCalls{};
         std::uint64_t bindingStateFailures{};
         std::uint64_t drawStateFailures{};
-        std::uint64_t replacementContractMask{};
-        std::uint64_t bindingVerifiedContractMask{};
-        std::uint64_t drawVerifiedContractMask{};
+        linear_lighting::ContractMask replacementContractMask{};
+        linear_lighting::ContractMask bindingVerifiedContractMask{};
+        linear_lighting::ContractMask drawVerifiedContractMask{};
     };
 
     struct Evaluation
     {
         Status status{ Status::waiting };
         std::uint64_t reasonMask{};
-        std::uint64_t fullyVerifiedContractMask{};
+        linear_lighting::ContractMask fullyVerifiedContractMask{};
     };
-
-    [[nodiscard]] inline std::uint64_t expectedContractMask(
-        std::uint32_t count) noexcept
-    {
-        return count == 0 ? 0 :
-            count >= 64 ? UINT64_MAX :
-                          (1ull << count) - 1ull;
-    }
 
     [[nodiscard]] inline Evaluation evaluate(
         const Sample& sample,
         bool timedOut) noexcept
     {
         Evaluation result{};
-        const auto expectedMask = expectedContractMask(
+        const auto expectedMask = linear_lighting::expectedContractMask(
             sample.expectedShaderContracts);
-        result.fullyVerifiedContractMask = sample.replacementContractMask &
-            sample.bindingVerifiedContractMask &
-            sample.drawVerifiedContractMask;
+        result.fullyVerifiedContractMask =
+            linear_lighting::intersectContractMasks(
+                sample.replacementContractMask,
+                sample.bindingVerifiedContractMask,
+                sample.drawVerifiedContractMask);
 
         if (!sample.sessionActivated) {
             result.reasonMask |= Failure_SessionNotActivated;
@@ -113,8 +110,14 @@ namespace community_shaders::diagnostics::qualification_model
         if (sample.verifiedShaderContracts != sample.expectedShaderContracts) {
             result.reasonMask |= Failure_ShaderContractsIncomplete;
         }
-        if (expectedMask == 0 ||
-            (sample.matchingShaderContractMask & expectedMask) != expectedMask) {
+        if (sample.expectedShaderContracts >
+            linear_lighting::kContractMaskCapacity) {
+            result.reasonMask |= Failure_ShaderContractCapacityExceeded;
+        }
+        if (!linear_lighting::anyContractBit(expectedMask) ||
+            !linear_lighting::containsContractMask(
+                sample.matchingShaderContractMask,
+                expectedMask)) {
             result.reasonMask |= Failure_OriginalContractsIncomplete;
         }
         if (sample.geometryCalls == 0) {
@@ -132,13 +135,15 @@ namespace community_shaders::diagnostics::qualification_model
             result.reasonMask |= Failure_GeometryUpdateRejected;
         }
         if (sample.replacementShaderBinds == 0 ||
-            sample.replacementContractMask == 0) {
+            !linear_lighting::anyContractBit(
+                sample.replacementContractMask)) {
             result.reasonMask |= Failure_NoReplacementBind;
         }
         if (sample.bindingStateFailures > 0) {
             result.reasonMask |= Failure_BindingStateMismatch;
         }
-        if (sample.bindingVerifiedContractMask == 0) {
+        if (!linear_lighting::anyContractBit(
+                sample.bindingVerifiedContractMask)) {
             result.reasonMask |= Failure_NoVerifiedBinding;
         }
         if (sample.replacementDrawCalls == 0) {
@@ -147,10 +152,12 @@ namespace community_shaders::diagnostics::qualification_model
         if (sample.drawStateFailures > 0) {
             result.reasonMask |= Failure_DrawStateMismatch;
         }
-        if (sample.drawVerifiedContractMask == 0) {
+        if (!linear_lighting::anyContractBit(
+                sample.drawVerifiedContractMask)) {
             result.reasonMask |= Failure_NoVerifiedDraw;
         }
-        if (result.fullyVerifiedContractMask == 0) {
+        if (!linear_lighting::anyContractBit(
+                result.fullyVerifiedContractMask)) {
             result.reasonMask |= Failure_NoCommonVerifiedContract;
         }
 
@@ -158,7 +165,8 @@ namespace community_shaders::diagnostics::qualification_model
             Failure_GpuResourcesUnavailable |
             Failure_ShaderDetoursUnowned | Failure_DrawDetoursUnowned |
             Failure_GeometryHookUnowned | Failure_ShaderContractsIncomplete |
-            Failure_GeometryProviderUnavailable;
+            Failure_GeometryProviderUnavailable |
+            Failure_ShaderContractCapacityExceeded;
         if ((result.reasonMask & hardFailures) != 0) {
             result.status = Status::failed;
         } else if (result.reasonMask == Failure_None) {
