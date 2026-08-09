@@ -809,9 +809,14 @@ namespace community_shaders::ui
             }
             if (events.firstGeometryUpdate) {
                 logging::info(
-                    "Linear Lighting geometry proof: updates={}, rejects={}, replacementBinds={}.",
+                    "Linear Lighting geometry proof: calls={}, accepted={}, walkRejects={}, deepestStage={}, updates={}, updateRejects={}, sourceEmissive={}, replacementBinds={}.",
+                    geometry.calls,
+                    geometry.acceptedUpdates,
+                    geometry.rejectedWalks,
+                    static_cast<std::uint32_t>(geometry.deepestStage),
                     runtime.geometryUpdates,
                     runtime.rejectedGeometryUpdates,
+                    geometry.lastAcceptedEmissiveMultiplier,
                     runtime.replacementBinds);
             }
         }

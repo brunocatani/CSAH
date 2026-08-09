@@ -6,17 +6,20 @@ endif()
 file(READ "${RENDERER_HOOK_SOURCE}" source)
 
 foreach(required IN ITEMS
-    "kBSLightingShaderVtableRva = 0x030BBDB8"
+    "kBSDFLightShaderVtableRva = 0x030BF3C8"
     "kGeometrySetupSlot = 9"
-    "kGeometrySetupFunctionRva = 0x028B6B70"
-    "kPassGeometryOffset = 0x18"
-    "kGeometryPropertyOffset = 0x178"
-    "kPropertyEmissiveMultiplierOffset = 0x1B0"
+    "kGeometrySetupFunctionRva = 0x0291DCA0"
+    "kRenderPassGeometryLinkOffset = 0x38"
+    "kGeometryLinkGeometryOffset = 0x0"
+    "kGeometryPropertyOffset = 0xB8"
+    "kPropertyEmissiveMultiplierOffset = 0x1BC"
     "kGeometrySetupSignature"
     "isReadableRange"
     "isPlausibleObjectPointer"
     "vtableCellOwned"
-    "recordStage(GeometryWalkStage::pass)"
+    "lastAcceptedEmissiveMultiplierBits"
+    "recordStage(GeometryWalkStage::renderPass)"
+    "recordStage(GeometryWalkStage::geometryLink)"
     "recordStage(GeometryWalkStage::geometry)"
     "recordStage(GeometryWalkStage::property)"
     "recordStage(GeometryWalkStage::emissiveMultiplier)"
@@ -59,6 +62,11 @@ if(original_call GREATER update_call)
 endif()
 
 foreach(forbidden IN ITEMS
+    "kBSLightingShaderVtableRva = 0x030BBDB8"
+    "kGeometrySetupFunctionRva = 0x028B6B70"
+    "kPassGeometryOffset = 0x18"
+    "kGeometryPropertyOffset = 0x178"
+    "kPropertyEmissiveMultiplierOffset = 0x1B0"
     "kGeometrySetupSlot = 6"
     "kPropertyEmissiveMultiplierOffset = 0xC8"
     "kPropertyEmissiveMultiplierOffset = 0xB8"

@@ -179,7 +179,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
         if (!community_shaders::render::installBSLightingGeometryHook()) {
             community_shaders::logging::warn(
-                "Verified BSLighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
+                "Verified BSDF lighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
         }
 
         const auto* messaging = F4SE::GetMessagingInterface();
@@ -190,7 +190,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; Linear Lighting defaults disabled and preserves vanilla shader binding until explicitly enabled.");
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, and replacement remains fail-closed until both verified render providers are ready.",
+            settings.enabled);
         return true;
     } catch (const std::exception& error) {
         reportPluginBoundaryFailure("F4SEPlugin_Load", error.what());

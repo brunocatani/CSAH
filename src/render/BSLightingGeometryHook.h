@@ -7,10 +7,11 @@ namespace community_shaders::render
     enum class GeometryWalkStage : std::uint32_t
     {
         none = 0,
-        pass = 1,
-        geometry = 2,
-        property = 3,
-        emissiveMultiplier = 4,
+        renderPass = 1,
+        geometryLink = 2,
+        geometry = 3,
+        property = 4,
+        emissiveMultiplier = 5,
     };
 
     struct GeometryHookSnapshot
@@ -21,12 +22,13 @@ namespace community_shaders::render
         std::uint64_t acceptedUpdates{};
         std::uint64_t rejectedWalks{};
         GeometryWalkStage deepestStage{};
+        float lastAcceptedEmissiveMultiplier{};
     };
 
     // Installs a process-lifetime patch on the verified Fallout4VR.exe 1.2.72
-    // surface-lighting vtable. The exact cell target and function bytes are
-    // checked before the write. No flat-FO4 address or CommonLib relocation is
-    // used here.
+    // active VR-extended surface-lighting vtable. The exact cell target and
+    // function bytes are checked before the write. No flat-FO4 address or
+    // CommonLib relocation is used here.
     [[nodiscard]] bool installBSLightingGeometryHook() noexcept;
     [[nodiscard]] GeometryHookSnapshot geometryHookSnapshot() noexcept;
 }

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -19,32 +20,35 @@ namespace community_shaders::render
     namespace
     {
         // Independently derived from raw Fallout4VR.exe 1.2.72 disassembly.
-        // The flat executable uses a different virtual slot for this phase.
-        constexpr std::uintptr_t kBSLightingShaderVtableRva = 0x030BBDB8;
+        // The active VR renderer constructs the BSDF lighting object at
+        // 0x14291D6B0 and publishes this vtable. The legacy BSLightingShader
+        // vtable at RVA 0x030BBDB8 is constructed too, but its slot 9 receives
+        // no world-rendering calls in the VR-extended pipeline.
+        constexpr std::uintptr_t kBSDFLightShaderVtableRva = 0x030BF3C8;
         constexpr std::size_t kGeometrySetupSlot = 9;
-        constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x028B6B70;
-        constexpr std::size_t kPassGeometryOffset = 0x18;
-        constexpr std::size_t kGeometryPropertyOffset = 0x178;
-        constexpr std::size_t kPropertyEmissiveMultiplierOffset = 0x1B0;
+        constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0291DCA0;
+        constexpr std::size_t kRenderPassGeometryLinkOffset = 0x38;
+        constexpr std::size_t kGeometryLinkGeometryOffset = 0x0;
+        constexpr std::size_t kGeometryPropertyOffset = 0xB8;
+        constexpr std::size_t kPropertyEmissiveMultiplierOffset = 0x1BC;
         constexpr float kMaximumPlausibleEmissiveMultiplier = 1.0e6f;
         constexpr std::uintptr_t kMinimumPlausibleObjectAddress = 0x10000;
         constexpr std::uintptr_t kMaximumPlausibleObjectAddress =
             0x00007FFFFFFFFFFF;
 
-        constexpr std::array<std::byte, 39> kGeometrySetupSignature{
+        constexpr std::array<std::byte, 41> kGeometrySetupSignature{
             std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
-            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x58 }, std::byte{ 0x08 },
-            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x68 }, std::byte{ 0x18 },
-            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x70 }, std::byte{ 0x20 },
+            std::byte{ 0x4C }, std::byte{ 0x89 }, std::byte{ 0x40 }, std::byte{ 0x18 },
             std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x50 }, std::byte{ 0x10 },
-            std::byte{ 0x57 },
+            std::byte{ 0x55 }, std::byte{ 0x53 },
             std::byte{ 0x41 }, std::byte{ 0x54 },
-            std::byte{ 0x41 }, std::byte{ 0x55 },
-            std::byte{ 0x41 }, std::byte{ 0x56 },
-            std::byte{ 0x41 }, std::byte{ 0x57 },
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0xA8 },
+            std::byte{ 0x98 }, std::byte{ 0xFD }, std::byte{ 0xFF }, std::byte{ 0xFF },
             std::byte{ 0x48 }, std::byte{ 0x81 }, std::byte{ 0xEC },
-            std::byte{ 0x30 }, std::byte{ 0x01 }, std::byte{ 0x00 }, std::byte{ 0x00 },
-            std::byte{ 0x45 }, std::byte{ 0x8B }, std::byte{ 0x60 }, std::byte{ 0x40 },
+            std::byte{ 0x50 }, std::byte{ 0x03 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+            std::byte{ 0x49 }, std::byte{ 0x8B }, std::byte{ 0x58 }, std::byte{ 0x08 },
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x70 }, std::byte{ 0x08 },
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x78 }, std::byte{ 0xE0 },
         };
 
         using GeometrySetupFunction = void(__fastcall*)(
@@ -59,6 +63,7 @@ namespace community_shaders::render
         std::atomic_uint64_t acceptedUpdates{};
         std::atomic_uint64_t rejectedWalks{};
         std::atomic_uint32_t deepestStage{};
+        std::atomic_uint32_t lastAcceptedEmissiveMultiplierBits{};
 
         void recordStage(GeometryWalkStage stage) noexcept
         {
@@ -177,20 +182,29 @@ namespace community_shaders::render
         }
 
         [[nodiscard]] bool readEmissiveMultiplier(
-            const void* pass,
+            const void* renderPass,
             float& value) noexcept
         {
-            // The verified engine routine immediately dereferences this same
-            // pass -> geometry -> property chain. Keep the hook's hot path to
-            // bounded pointer plausibility checks; page-query validation is
-            // reserved for the one-time installation identity gate.
-            if (!isPlausibleObjectPointer(pass)) {
+            // The verified VR-extended routine immediately dereferences this
+            // same pass -> geometry link -> geometry -> property chain. Keep
+            // the hot path to bounded pointer plausibility checks; page-query
+            // validation is reserved for the one-time installation gate.
+            if (!isPlausibleObjectPointer(renderPass)) {
                 return false;
             }
-            recordStage(GeometryWalkStage::pass);
+            recordStage(GeometryWalkStage::renderPass);
+
+            const auto* geometryLink = *reinterpret_cast<void* const*>(
+                static_cast<const std::byte*>(renderPass) +
+                kRenderPassGeometryLinkOffset);
+            if (!isPlausibleObjectPointer(geometryLink)) {
+                return false;
+            }
+            recordStage(GeometryWalkStage::geometryLink);
 
             const auto* geometry = *reinterpret_cast<void* const*>(
-                static_cast<const std::byte*>(pass) + kPassGeometryOffset);
+                static_cast<const std::byte*>(geometryLink) +
+                kGeometryLinkGeometryOffset);
             if (!isPlausibleObjectPointer(geometry)) {
                 return false;
             }
@@ -239,6 +253,9 @@ namespace community_shaders::render
             }
             if (linear_lighting::Runtime::get().updateGeometryEmissive(
                     emissiveMultiplier)) {
+                lastAcceptedEmissiveMultiplierBits.store(
+                    std::bit_cast<std::uint32_t>(emissiveMultiplier),
+                    std::memory_order_relaxed);
                 acceptedUpdates.fetch_add(1, std::memory_order_relaxed);
             }
         }
@@ -253,7 +270,7 @@ namespace community_shaders::render
         auto* image = reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr));
         if (!image) {
             logging::error(
-                "BSLighting geometry hook rejected a missing executable image.");
+                "BSDF lighting geometry hook rejected a missing executable image.");
             return false;
         }
 
@@ -261,7 +278,7 @@ namespace community_shaders::render
         if (!isReadableRange(dos, sizeof(*dos)) ||
             dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) {
             logging::error(
-                "BSLighting geometry hook rejected invalid DOS metadata.");
+                "BSDF lighting geometry hook rejected invalid DOS metadata.");
             return false;
         }
         const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(
@@ -269,18 +286,18 @@ namespace community_shaders::render
         if (!isReadableRange(nt, sizeof(*nt)) ||
             nt->Signature != IMAGE_NT_SIGNATURE ||
             nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
-            kBSLightingShaderVtableRva +
+            kBSDFLightShaderVtableRva +
                     (kGeometrySetupSlot + 1) * sizeof(void*) >
                 nt->OptionalHeader.SizeOfImage ||
             kGeometrySetupFunctionRva + kGeometrySetupSignature.size() >
                 nt->OptionalHeader.SizeOfImage) {
             logging::error(
-                "BSLighting geometry hook rejected invalid PE image bounds.");
+                "BSDF lighting geometry hook rejected invalid PE image bounds.");
             return false;
         }
 
         auto** cell = reinterpret_cast<void**>(
-            image + kBSLightingShaderVtableRva +
+            image + kBSDFLightShaderVtableRva +
             kGeometrySetupSlot * sizeof(void*));
         auto* expected = image + kGeometrySetupFunctionRva;
         if (!isReadableRange(cell, sizeof(*cell)) || *cell != expected ||
@@ -290,7 +307,7 @@ namespace community_shaders::render
                 kGeometrySetupSignature.data(),
                 kGeometrySetupSignature.size()) != 0) {
             logging::error(
-                "BSLighting geometry hook live identity/signature gate failed; Linear Lighting remains vanilla.");
+                "BSDF lighting geometry hook live identity/signature gate failed; Linear Lighting remains vanilla.");
             return false;
         }
 
@@ -302,7 +319,7 @@ namespace community_shaders::render
                 reinterpret_cast<void*>(&hookGeometrySetup))) {
             originalGeometrySetup = nullptr;
             logging::error(
-                "BSLighting geometry vtable patch failed; Linear Lighting remains vanilla.");
+                "BSDF lighting geometry vtable patch failed; Linear Lighting remains vanilla.");
             return false;
         }
 
@@ -310,7 +327,7 @@ namespace community_shaders::render
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
-            "Installed verified Fallout4VR BSLighting geometry hook (vtable slot 9, emissive property +0x1B0).");
+            "Installed verified Fallout4VR BSDF lighting geometry hook (vtable slot 9, pass +0x38, geometry property +0xB8, emissive multiplier +0x1BC).");
         return true;
     }
 
@@ -327,6 +344,9 @@ namespace community_shaders::render
             .rejectedWalks = rejectedWalks.load(std::memory_order_relaxed),
             .deepestStage = static_cast<GeometryWalkStage>(
                 deepestStage.load(std::memory_order_relaxed)),
+            .lastAcceptedEmissiveMultiplier = std::bit_cast<float>(
+                lastAcceptedEmissiveMultiplierBits.load(
+                    std::memory_order_relaxed)),
         };
     }
 }
