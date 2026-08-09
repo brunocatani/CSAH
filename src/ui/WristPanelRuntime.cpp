@@ -580,7 +580,9 @@ namespace community_shaders::ui
             return runtime.replacementBinds ^ (runtime.geometryUpdates << 1) ^
                 (geometry.calls << 2) ^ (d3d.pixelShaderBindCalls << 3) ^
                 (static_cast<std::uint64_t>(geometry.vtableCellOwned) << 4) ^
-                (static_cast<std::uint64_t>(d3d.pixelShaderBindCellOwned) << 5);
+                (static_cast<std::uint64_t>(
+                     d3d.pixelShaderBindDetourEnabled) << 5) ^
+                (d3d.shaderHookValidationFailures << 6);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -629,14 +631,16 @@ namespace community_shaders::ui
                             d3d.deviceCreationImportOwned },
                         { "deviceCaptured", d3d.deviceCaptured },
                         { "deviceHooks", d3d.deviceHooksInstalled },
-                        { "createPixelShaderCellOwned",
-                            d3d.createPixelShaderCellOwned },
-                        { "pixelShaderBindCellOwned",
-                            d3d.pixelShaderBindCellOwned },
-                        { "pixelShaderBindRepairs",
-                            d3d.pixelShaderBindRepairs },
-                        { "pixelShaderBindRepairFailures",
-                            d3d.pixelShaderBindRepairFailures },
+                        { "shaderInterceptionActive",
+                            d3d.shaderInterceptionActive },
+                        { "createPixelShaderDetourEnabled",
+                            d3d.createPixelShaderDetourEnabled },
+                        { "pixelShaderBindDetourEnabled",
+                            d3d.pixelShaderBindDetourEnabled },
+                        { "shaderHookInstallFailures",
+                            d3d.shaderHookInstallFailures },
+                        { "shaderHookValidationFailures",
+                            d3d.shaderHookValidationFailures },
                         { "pixelShaderBindRecursions",
                             d3d.pixelShaderBindRecursions },
                         { "pixelShaderCreates",
@@ -772,28 +776,28 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, d3dBindCellOwned={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
                     runtime.frameDataUploads,
                     runtime.matchingShadersCreated,
                     runtime.trackedOriginalShaders,
-                    d3d.pixelShaderBindCellOwned,
+                    d3d.pixelShaderBindDetourEnabled,
                     geometry.vtableCellOwned,
                     d3d.pixelShaderBindCalls,
                     geometry.calls);
             }
             if (events.firstShaderBind) {
                 logging::info(
-                    "Linear Lighting D3D bind-hook proof: psBindCalls={}, selections={}, contextRejects={}, inactive={}, unmatched={}, replacements={}, cellOwned={}.",
+                    "Linear Lighting D3D bind-hook proof: psBindCalls={}, selections={}, contextRejects={}, inactive={}, unmatched={}, replacements={}, detourEnabled={}.",
                     d3d.pixelShaderBindCalls,
                     runtime.shaderSelectionCalls,
                     runtime.rejectedShaderContexts,
                     runtime.inactiveShaderSelections,
                     runtime.unmatchedShaderSelections,
                     runtime.replacementBinds,
-                    d3d.pixelShaderBindCellOwned);
+                    d3d.pixelShaderBindDetourEnabled);
             }
             if (events.firstReplacementBind) {
                 logging::info(
@@ -963,7 +967,7 @@ namespace community_shaders::ui
                     std::scoped_lock lock(settingsMutex);
                     uiSettings = next;
                 }
-                (void)render::maintainD3D11ShaderBindHook("WristAction");
+                (void)render::validateD3D11ShaderHooks("WristAction");
                 linear_lighting::Runtime::get().queueSettings(next);
                 const auto saved = linear_lighting::saveSettings(next);
                 uiRevision.fetch_add(1, std::memory_order_release);
@@ -1021,8 +1025,8 @@ namespace community_shaders::ui
                     "COMMUNITY SHADERS / LINEAR LIGHTING\n"
                     "enabled %u | gpu %u | geometry %u | candidates %u\n"
                     "replacement binds %llu | geometry updates %llu\n"
-                    "D3D PS binds %llu | owned %u | repairs %llu/%llu\n"
-                    "context rejects %llu | hook recursions %llu\n"
+                    "D3D PS binds %llu | detour %u | validation failures %llu\n"
+                    "install failures %llu | context rejects %llu | hook recursions %llu\n"
                     "geometry calls %llu | owned %u | stage %u",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
@@ -1031,11 +1035,11 @@ namespace community_shaders::ui
                     static_cast<unsigned long long>(runtime.replacementBinds),
                     static_cast<unsigned long long>(runtime.geometryUpdates),
                     static_cast<unsigned long long>(d3d.pixelShaderBindCalls),
-                    d3d.pixelShaderBindCellOwned,
+                    d3d.pixelShaderBindDetourEnabled,
                     static_cast<unsigned long long>(
-                        d3d.pixelShaderBindRepairs),
+                        d3d.shaderHookValidationFailures),
                     static_cast<unsigned long long>(
-                        d3d.pixelShaderBindRepairFailures),
+                        d3d.shaderHookInstallFailures),
                     static_cast<unsigned long long>(
                         runtime.rejectedShaderContexts),
                     static_cast<unsigned long long>(
@@ -1211,7 +1215,7 @@ namespace community_shaders::ui
             }
             prisma->Hide(view);
             domReady.store(true, std::memory_order_release);
-            (void)render::maintainD3D11ShaderBindHook("WristDomReady");
+            (void)render::validateD3D11ShaderHooks("WristDomReady");
             logging::info(
                 "Community Shaders wrist DOM ready (view {}).",
                 view);
@@ -1461,14 +1465,14 @@ namespace community_shaders::ui
         if (gameDataReadyHandled.exchange(true, std::memory_order_acq_rel)) {
             return;
         }
-        (void)render::maintainD3D11ShaderBindHook("GameDataReady");
+        (void)render::validateD3D11ShaderHooks("GameDataReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameDataReady");
     }
 
     void onGameSessionReady() noexcept
     {
-        (void)render::maintainD3D11ShaderBindHook("GameSessionReady");
+        (void)render::validateD3D11ShaderHooks("GameSessionReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameSessionReady");
     }

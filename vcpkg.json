@@ -3,6 +3,7 @@
   "version-string": "0.2.0",
   "description": "Verified Community Shaders runtime for Fallout 4 VR",
   "dependencies": [
+    "minhook",
     "nlohmann-json",
     "rapidcsv",
     "rsm-mmio",
@@ -11,6 +12,10 @@
   ],
   "builtin-baseline": "b4a3d89125e45bc8f80fb94bef9761d4f4e14fb9",
   "overrides": [
+    {
+      "name": "minhook",
+      "version": "1.3.4"
+    },
     {
       "name": "fmt",
       "version": "10.2.1"

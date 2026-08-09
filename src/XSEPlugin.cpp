@@ -69,7 +69,7 @@ namespace
             const auto d3d =
                 community_shaders::render::d3d11HookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindCellOwned={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometryRejects={}, deepestGeometryStage={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
@@ -78,7 +78,7 @@ namespace
                 d3d.pixelShaderBindCalls,
                 linearLighting.shaderSelectionCalls,
                 linearLighting.replacementBinds,
-                d3d.pixelShaderBindCellOwned,
+                d3d.pixelShaderBindDetourEnabled,
                 geometry.vtableCellOwned,
                 geometry.calls,
                 geometry.acceptedUpdates,

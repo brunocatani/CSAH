@@ -9,15 +9,9 @@ if(NOT DEFINED LINEAR_LIGHTING_RUNTIME_SOURCE OR
     NOT EXISTS "${LINEAR_LIGHTING_RUNTIME_SOURCE}")
   message(FATAL_ERROR "LINEAR_LIGHTING_RUNTIME_SOURCE is missing")
 endif()
-if(NOT DEFINED D3D11_HOOK_SOURCE OR
-    NOT EXISTS "${D3D11_HOOK_SOURCE}")
-  message(FATAL_ERROR "D3D11_HOOK_SOURCE is missing")
-endif()
-
 file(READ "${WRIST_PANEL_SOURCE}" source)
 file(READ "${WRIST_PANEL_POSE_SOURCE}" poseSource)
 file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
-file(READ "${D3D11_HOOK_SOURCE}" d3dSource)
 
 foreach(required IN ITEMS
     "NetworkAccessPolicy::LocalOnly"
@@ -39,10 +33,10 @@ foreach(required IN ITEMS
     "Linear Lighting D3D bind-hook proof:"
     "Linear Lighting first replacement proof:"
     "Linear Lighting geometry proof:"
-    "maintainD3D11ShaderBindHook(\"GameDataReady\")"
-    "maintainD3D11ShaderBindHook(\"GameSessionReady\")"
-    "maintainD3D11ShaderBindHook(\"WristDomReady\")"
-    "maintainD3D11ShaderBindHook(\"WristAction\")"
+    "validateD3D11ShaderHooks(\"GameDataReady\")"
+    "validateD3D11ShaderHooks(\"GameSessionReady\")"
+    "validateD3D11ShaderHooks(\"WristDomReady\")"
+    "validateD3D11ShaderHooks(\"WristAction\")"
     "wrist_provider_retry::Gate"
     "PrismaProbeFailure::SceneDepthPending"
     "attemptPrismaInitialization(\"GameDataReady\")"
@@ -87,30 +81,6 @@ if(boundaryApply EQUAL -1)
   message(FATAL_ERROR
     "Linear Lighting settings must be consumed by shader selection")
 endif()
-
-foreach(required IN ITEMS
-    "deviceCreationImportOwned"
-    "createPixelShaderCellOwned"
-    "pixelShaderBindCellOwned"
-    "d3d11_hook_repair::advance"
-    "pixelShaderBindRepairs"
-    "pixelShaderBindRepairFailures"
-    "pixelShaderBindRecursions"
-    "kDeviceContextVtableEntryCount = 115"
-    "immediateContextVtableShadow"
-    "deviceCaptured.compare_exchange_strong"
-    "Ignored additional Fallout4VR D3D11 device creation"
-    "InterlockedCompareExchangePointer"
-    "modulePathForAddress"
-    "Installed isolated D3D11 immediate-context vtable shadow"
-    "Restored D3D11 immediate-context vtable shadow"
-    "readPointerCell")
-  string(FIND "${d3dSource}" "${required}" found)
-  if(found EQUAL -1)
-    message(FATAL_ERROR
-      "D3D11 hook-ownership regression: missing '${required}'")
-  endif()
-endforeach()
 
 foreach(required IN ITEMS
     ".positionX = 7.75f"

@@ -77,6 +77,7 @@ set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
+include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
@@ -86,6 +87,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_SOURCE}"
   "${WRIST_PANEL_POSE_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
+  "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 
@@ -107,10 +109,16 @@ add_custom_target(VerifyWristPanel ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
     "-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}"
-    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   COMMENT "Verifying optional wrist-panel provider contracts"
+  VERBATIM)
+
+add_custom_target(VerifyD3D11Hooks ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
+  COMMENT "Verifying D3D11 method-detour ownership contract"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -153,7 +161,6 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
-  "${SOURCE_DIR}/render/D3D11HookRepairGate.h"
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
@@ -167,6 +174,7 @@ add_library(${PROJECT_NAME} SHARED
 add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
+  VerifyD3D11Hooks
   VerifyWristPanel)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -184,10 +192,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(minhook CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE
   FO4VRCommunityShadersCore
   CommonLibF4::CommonLibF4
+  minhook::minhook
   nlohmann_json::nlohmann_json
   spdlog::spdlog
 )
@@ -292,7 +302,27 @@ if(BUILD_FO4VR_CS_TESTS)
       "& '${CMAKE_COMMAND}' '-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake'")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
-      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+
+  add_test(NAME FO4VRCommunityShaders.D3D11HookSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
+
+  add_executable(FO4VRCommunityShadersD3D11MethodDetourSmokeTests
+    "${ROOT_DIR}/tests/D3D11MethodDetourSmokeTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    minhook::minhook d3d11)
+  add_test(NAME FO4VRCommunityShaders.D3D11MethodDetourSmoke
+    COMMAND FO4VRCommunityShadersD3D11MethodDetourSmokeTests)
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"
@@ -306,19 +336,6 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.PointerClickGate
     COMMAND FO4VRCommunityShadersPointerClickGateTests)
-
-  add_executable(FO4VRCommunityShadersD3D11HookRepairGateTests
-    "${ROOT_DIR}/tests/D3D11HookRepairGateTests.cpp"
-    "${SOURCE_DIR}/render/D3D11HookRepairGate.h")
-  target_compile_features(
-    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE cxx_std_23)
-  target_include_directories(
-    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE "${SOURCE_DIR}")
-  target_compile_options(
-    FO4VRCommunityShadersD3D11HookRepairGateTests PRIVATE
-    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.D3D11HookRepairGate
-    COMMAND FO4VRCommunityShadersD3D11HookRepairGateTests)
 
   add_executable(FO4VRCommunityShadersWristProviderRetryTests
     "${ROOT_DIR}/tests/WristProviderRetryTests.cpp"
