@@ -135,6 +135,18 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskAlphaTestProjectedFiveMrt_L3_01008103", 5, true, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskModelSpaceNormalsProjectedFiveMrt_L4_0100A002", 5, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskLodObjectProjectedFiveMrt_L4_01018802", 5, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapSixMrt_L4_05000002", 6, false, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapSixMrt_L3_05000003", 6, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapAlphaTestSixMrt_L4_05000102", 6, false, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapAlphaTestSixMrt_L3_05000103", 6, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapTessellatedSixMrt_L4_05080002", 6, false, false, true, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapTessellatedSixMrt_L3_05080003", 6, true, false, true, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapProjectedFiveMrt_L4_05008002", 5, false, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapProjectedFiveMrt_L3_05008003", 5, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapAlphaTestProjectedFiveMrt_L3_05008103", 5, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapHairProjectedFiveMrt_L4_05028002", 5, false, false, false, true, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapHairProjectedFiveMrt_L3_05028003", 5, true, false, false, true, false, true, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapHairAlphaTestProjectedFiveMrt_L3_05028103", 5, true, false, false, true, false, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -562,7 +574,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return result;
     }
 
-    [[nodiscard]] std::array<std::array<float, 4>, 8> makeMaterialData(
+    [[nodiscard]] std::array<std::array<float, 4>, 9> makeMaterialData(
         UINT mrtCount,
         std::size_t caseIndex,
         bool hasAdditionalAlphaMask,
@@ -570,7 +582,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasGradientHair,
         AdditionalAlphaCase additionalAlphaCase)
     {
-        std::array<std::array<float, 4>, 8> values{};
+        std::array<std::array<float, 4>, 9> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
         values[0] = { 0.4F, 0.7F, 0.25F, 0.8F };
         values[1] = { 0.3F, 0.45F, 0.6F, 0.2F };
@@ -585,39 +597,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0.2F,
             0.9F,
         };
-        if (hasGradientRemap) {
-            if (mrtCount == 5) {
-                values[2] = {
-                    hasGradientHair ? 0.022F : 0.75F,
-                    1.0F,
-                    0.0F,
-                    0.0F,
-                };
-                values[3] = { 0.55F, 0.0F, 0.0F, 0.0F };
-                values[4] = { 0.9F, 0.6F, 0.0F, 0.0F };
-                values[6] = {
-                    1.0F,
-                    1.0F,
-                    0.4F,
-                    caseIndex == 2 ? -1.0F : 0.6F,
-                };
-                values[7] = depthParameters;
-                return values;
-            }
-            values[2] = { 0.55F, 0.0F, 0.0F, 0.0F };
-            values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
-            values[4] = {};
-            values[5] = {
-                1.0F,
-                1.0F,
-                0.4F,
-                caseIndex == 2 ? -1.0F : 0.6F,
-            };
-            values[6] = depthParameters;
-            return values;
-        }
+        std::array<float, 4> maskParameters{};
         if (hasAdditionalAlphaMask) {
-            std::array<float, 4> maskParameters{};
             switch (additionalAlphaCase) {
             case AdditionalAlphaCase::disabled:
                 break;
@@ -634,6 +615,49 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 maskParameters = { 0.0F, 1.0F, 0.0F, 0.0F };
                 break;
             }
+        }
+        if (hasGradientRemap) {
+            if (mrtCount == 5) {
+                values[2] = {
+                    hasGradientHair ? 0.022F : 0.75F,
+                    1.0F,
+                    0.0F,
+                    0.0F,
+                };
+                values[3] = { 0.55F, 0.0F, 0.0F, 0.0F };
+                values[4] = { 0.9F, 0.6F, 0.0F, 0.0F };
+                values[6] = {
+                    1.0F,
+                    1.0F,
+                    0.4F,
+                    caseIndex == 2 ? -1.0F : 0.6F,
+                };
+                if (hasAdditionalAlphaMask) {
+                    values[7] = maskParameters;
+                    values[8] = depthParameters;
+                } else {
+                    values[7] = depthParameters;
+                }
+                return values;
+            }
+            values[2] = { 0.55F, 0.0F, 0.0F, 0.0F };
+            values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
+            values[4] = {};
+            values[5] = {
+                1.0F,
+                1.0F,
+                0.4F,
+                caseIndex == 2 ? -1.0F : 0.6F,
+            };
+            if (hasAdditionalAlphaMask) {
+                values[6] = maskParameters;
+                values[7] = depthParameters;
+            } else {
+                values[6] = depthParameters;
+            }
+            return values;
+        }
+        if (hasAdditionalAlphaMask) {
             if (mrtCount == 5) {
                 values[5] = values[4];
                 values[6] = maskParameters;
@@ -1238,9 +1262,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
-                        false,
-                        false,
-                        false,
+                        contract.hasLandscapeLod,
+                        contract.hasGradientRemap,
+                        contract.hasGradientHair,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1252,9 +1276,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
-                        false,
-                        false,
-                        false,
+                        contract.hasLandscapeLod,
+                        contract.hasGradientRemap,
+                        contract.hasGradientHair,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 90:
-        fail("Linear Lighting manifest must contain exactly 90 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 102:
+        fail("Linear Lighting manifest must contain exactly 102 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -257,8 +257,11 @@ def verify_source_contracts(
         fail("projected shader no longer preserves alpha-reference testing")
     for token in (
         "TexAdditionalAlphaNoise.Load",
-        "clip(cb2[5].x - additionalAlpha)",
+        "#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[5]",
+        "#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[6]",
+        "clip(LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.x - additionalAlpha)",
         "LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]",
+        "LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[7]",
     ):
         if token not in base_source_texts[1]:
             fail(
@@ -302,8 +305,11 @@ def verify_source_contracts(
             )
     for token in (
         "TexAdditionalAlphaNoise.Load",
-        "clip(cb2[6].x - additionalAlpha)",
+        "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[6]",
+        "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]",
+        "clip(LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.x - additionalAlpha)",
         "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]",
+        "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]",
         "float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0",
         "output.target3.w = pow(alpha, 0.1)",
     ):
@@ -347,8 +353,8 @@ def verify_source_contracts(
             gradient_hair_contracts += 1
         if "#define LINEAR_LIGHTING_LOD_OBJECT_ALPHA 1" in source_text:
             lod_object_alpha_contracts += 1
-    if vertex_contracts != 46:
-        fail(f"expected 46 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 53:
+        fail(f"expected 53 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 14:
         fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 6:
@@ -358,11 +364,11 @@ def verify_source_contracts(
             "expected 9 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 12:
-        fail(f"expected 12 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 19:
+    if tessellated_contracts != 14:
+        fail(f"expected 14 tessellated contracts, found {tessellated_contracts}")
+    if additional_alpha_mask_contracts != 31:
         fail(
-            "expected 19 additional-alpha-mask contracts, "
+            "expected 31 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 7:
@@ -370,14 +376,14 @@ def verify_source_contracts(
             "expected 7 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 19:
+    if gradient_remap_contracts != 31:
         fail(
-            "expected 19 gradient-remap contracts, "
+            "expected 31 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
-    if gradient_hair_contracts != 6:
+    if gradient_hair_contracts != 9:
         fail(
-            "expected 6 gradient-hair contracts, "
+            "expected 9 gradient-hair contracts, "
             f"found {gradient_hair_contracts}"
         )
     if lod_object_alpha_contracts != 1:
@@ -575,7 +581,7 @@ def verify(root: Path) -> None:
                 and 15 in original["samplers"]
                 and 13 in original["textures"]
                 and 15 in original["textures"],
-                original["constant_buffers"].get(2) in (7, 8)
+                original["constant_buffers"].get(2) in (7, 8, 9)
                 and 5 in original["samplers"]
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,

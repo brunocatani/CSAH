@@ -18,17 +18,19 @@
 #error Gradient hair requires the verified gradient-remap material layout.
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
-#error Combined gradient remap and additional alpha masking require a separately verified layout.
-#endif
-
 #if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && !LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #error LOD-object alpha requires the verified projected additional-alpha layout.
 #endif
 
+#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && LINEAR_LIGHTING_GRADIENT_REMAP
+#error Combined LOD-object alpha and gradient remap require a separately verified contract.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    float4 cb2[9];
+#elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[8];
 #else
     float4 cb2[7];
@@ -98,13 +100,19 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]
+#elif LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
 #elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
 #else
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
@@ -145,7 +153,7 @@ PSOutput PSMain(PSInput input)
 
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
-    if (cb2[6].y != 0.0)
+    if (LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.y != 0.0)
     {
         float2 coordinateSign = (input.position.xy >= -input.position.xy) ?
             float2(1.0, 1.0) : float2(-1.0, -1.0);
@@ -154,13 +162,14 @@ PSOutput PSMain(PSInput input)
             coordinateSign * 4.0);
         float noise = TexAdditionalAlphaNoise.Load(
             int3(noiseCoordinate, 0)).x;
-        clip((cb2[6].y * (0.5 - noise)) + cb2[6].z - 0.5);
+        clip((LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.y * (0.5 - noise)) +
+            LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.z - 0.5);
     }
-    if (cb2[6].w != 0.0)
+    if (LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.w != 0.0)
     {
         float additionalAlpha = TexAdditionalAlpha.Sample(
             SampAdditionalAlpha, uv).w;
-        clip(cb2[6].x - additionalAlpha);
+        clip(LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.x - additionalAlpha);
     }
 #endif
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);

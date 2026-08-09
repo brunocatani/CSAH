@@ -14,13 +14,15 @@
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP && (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_LANDSCAPE_LOD)
-#error Combined gradient-remap material layouts require separate verified contracts.
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_LANDSCAPE_LOD
+#error Combined gradient-remap and landscape-LOD layouts require separate verified contracts.
 #endif
 
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_GRADIENT_REMAP
+    float4 cb2[8];
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP
     float4 cb2[7];
 #else
     float4 cb2[6];
@@ -116,13 +118,19 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[6]
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[7]
+#elif LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
 #elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[2]
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[4]
+#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[5]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
 #else
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[2]
@@ -189,7 +197,7 @@ PSOutput PSMain(PSInput input)
     float2 uv = float2(input.currentPosition.w, input.previousPosition.w);
 #endif
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
-    if (cb2[5].y != 0.0)
+    if (LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.y != 0.0)
     {
         float2 coordinateSign = (input.position.xy >= -input.position.xy) ?
             float2(1.0, 1.0) : float2(-1.0, -1.0);
@@ -198,13 +206,14 @@ PSOutput PSMain(PSInput input)
             coordinateSign * 4.0);
         float noise = TexAdditionalAlphaNoise.Load(
             int3(noiseCoordinate, 0)).x;
-        clip((cb2[5].y * (0.5 - noise)) + cb2[5].z - 0.5);
+        clip((LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.y * (0.5 - noise)) +
+            LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.z - 0.5);
     }
-    if (cb2[5].w != 0.0)
+    if (LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.w != 0.0)
     {
         float additionalAlpha = TexAdditionalAlpha.Sample(
             SampAdditionalAlpha, uv).w;
-        clip(cb2[5].x - additionalAlpha);
+        clip(LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS.x - additionalAlpha);
     }
 #endif
 #if LINEAR_LIGHTING_ALPHA_TEST
