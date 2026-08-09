@@ -417,6 +417,34 @@ def verify(root: Path) -> None:
                 "mul r1.xyz, r1.xyzx, v6.xyzx",
             ),
         },
+        {
+            "label": "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5",
+            "source": reconstruction
+            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.LinearLightingCandidate.dxbc",
+            "vanilla": verified
+            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.dxbc",
+            "original_size": 3168,
+            "replacement_size": 6300,
+            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_RGB_ONLY_ALPHA_TEST_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+            "required_source_tokens": (
+                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
+                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
+                "#define LINEAR_LIGHTING_NORMAL_XY 1",
+                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
+                "#define LINEAR_LIGHTING_VERTEX_ALPHA 0",
+            ),
+            "required_vanilla_tokens": (
+                "dcl_globalFlags refactoringAllowed",
+                "dcl_input_ps linear v6.xyz",
+                "add r0.z, r1.w, -cb2[1].w",
+                "discard_nz r0.z",
+                "mul r1.xyz, r1.xyzx, v6.xyzx",
+            ),
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -433,7 +461,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5, 7, 9, 11, 13, 16, 17)
+        for index in (1, 3, 5, 7, 9, 11, 13, 16, 17, 18)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")

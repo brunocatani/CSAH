@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 18> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 19> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -422,6 +422,28 @@ namespace community_shaders::linear_lighting
                         std::byte{ 0xCE }, std::byte{ 0x2B }, std::byte{ 0xBD }, std::byte{ 0xBC },
                         std::byte{ 0xBF }, std::byte{ 0x40 }, std::byte{ 0x81 }, std::byte{ 0xF9 },
                         std::byte{ 0xCC }, std::byte{ 0x6C }, std::byte{ 0x1C }, std::byte{ 0xEF },
+                    },
+                },
+            },
+            {
+                "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5",
+                IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_RGB_ONLY_ALPHA_TEST_PS,
+                {
+                    3168,
+                    {
+                        std::byte{ 0x5A }, std::byte{ 0x5E }, std::byte{ 0x1A }, std::byte{ 0xD5 },
+                        std::byte{ 0xAF }, std::byte{ 0xE0 }, std::byte{ 0x49 }, std::byte{ 0xC3 },
+                        std::byte{ 0x02 }, std::byte{ 0x08 }, std::byte{ 0x9B }, std::byte{ 0x9A },
+                        std::byte{ 0xBB }, std::byte{ 0xC4 }, std::byte{ 0x68 }, std::byte{ 0xB8 },
+                    },
+                },
+                {
+                    6300,
+                    {
+                        std::byte{ 0x1F }, std::byte{ 0x1D }, std::byte{ 0xE1 }, std::byte{ 0xB5 },
+                        std::byte{ 0xBC }, std::byte{ 0x34 }, std::byte{ 0x40 }, std::byte{ 0x5C },
+                        std::byte{ 0xCA }, std::byte{ 0x51 }, std::byte{ 0xDB }, std::byte{ 0xF0 },
+                        std::byte{ 0xAD }, std::byte{ 0x29 }, std::byte{ 0x60 }, std::byte{ 0x2E },
                     },
                 },
             },

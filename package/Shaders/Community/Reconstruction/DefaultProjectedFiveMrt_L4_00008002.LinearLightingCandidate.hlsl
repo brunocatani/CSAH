@@ -22,6 +22,10 @@ SamplerState SampSpecular : register(s2);
 #define LINEAR_LIGHTING_VERTEX_COLOR 0
 #endif
 
+#ifndef LINEAR_LIGHTING_VERTEX_ALPHA
+#define LINEAR_LIGHTING_VERTEX_ALPHA LINEAR_LIGHTING_VERTEX_COLOR
+#endif
+
 #ifndef LINEAR_LIGHTING_ALPHA_TEST
 #define LINEAR_LIGHTING_ALPHA_TEST 0
 #endif
@@ -43,7 +47,11 @@ struct PSInput
     float4 texCoord3 : TEXCOORD3;
     float4 texCoord4 : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_VERTEX_ALPHA
     float4 vertexColor : COLOR0;
+#else
+    float3 vertexColor : COLOR0;
+#endif
 #endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
@@ -68,7 +76,11 @@ PSOutput PSMain(PSInput input)
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 #if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_VERTEX_ALPHA
     diffuse *= input.vertexColor;
+#else
+    diffuse.xyz *= input.vertexColor.xyz;
+#endif
 #endif
 #if LINEAR_LIGHTING_ALPHA_TEST
     clip(diffuse.w - cb2[1].w);
