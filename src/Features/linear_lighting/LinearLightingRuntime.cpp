@@ -255,7 +255,7 @@ namespace community_shaders::linear_lighting
         }
 
         matchingShaderContractMask_.fetch_or(
-            1u << contractIndex,
+            1ull << contractIndex,
             std::memory_order_relaxed);
         matchingShadersCreated_.fetch_add(1, std::memory_order_relaxed);
         std::scoped_lock lock(shaderRegistryMutex_);

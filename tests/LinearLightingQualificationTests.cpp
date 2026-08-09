@@ -9,7 +9,7 @@ namespace
 
     [[nodiscard]] Sample completeSample() noexcept
     {
-        constexpr std::uint32_t contract = 1u << 3;
+        constexpr std::uint64_t contract = 1ull << 35;
         return {
             .sessionActivated = true,
             .enabled = true,
@@ -18,9 +18,9 @@ namespace
             .shaderDetoursOwned = true,
             .drawDetoursOwned = true,
             .geometryHookOwned = true,
-            .expectedShaderContracts = 32,
-            .verifiedShaderContracts = 32,
-            .matchingShaderContractMask = expectedContractMask(32),
+            .expectedShaderContracts = 37,
+            .verifiedShaderContracts = 37,
+            .matchingShaderContractMask = expectedContractMask(37),
             .geometryCalls = 2,
             .geometryAccepted = 2,
             .deepestGeometrySourceStage = 2,
@@ -54,7 +54,7 @@ int main()
         "complete render proof did not pass");
     passed &= expect(complete.reasonMask == Failure_None,
         "complete render proof retained blockers");
-    passed &= expect(complete.fullyVerifiedContractMask == (1u << 3),
+    passed &= expect(complete.fullyVerifiedContractMask == (1ull << 35),
         "complete render proof lost the common contract");
 
     auto waiting = completeSample();
@@ -75,7 +75,7 @@ int main()
         "disabled feature did not fail immediately");
 
     auto incompleteContracts = completeSample();
-    incompleteContracts.matchingShaderContractMask &= ~(1u << 7);
+    incompleteContracts.matchingShaderContractMask &= ~(1ull << 35);
     const auto contractEvaluation = evaluate(incompleteContracts, false);
     passed &= expect(contractEvaluation.status == Status::waiting,
         "live contract discovery did not remain observable until timeout");
@@ -84,9 +84,9 @@ int main()
         "incomplete live contract discovery passed after timeout");
 
     auto disjoint = completeSample();
-    disjoint.replacementContractMask = 1u << 1;
-    disjoint.bindingVerifiedContractMask = 1u << 2;
-    disjoint.drawVerifiedContractMask = 1u << 3;
+    disjoint.replacementContractMask = 1ull << 33;
+    disjoint.bindingVerifiedContractMask = 1ull << 34;
+    disjoint.drawVerifiedContractMask = 1ull << 35;
     const auto disjointEvaluation = evaluate(disjoint, true);
     passed &= expect(disjointEvaluation.status == Status::failed,
         "disjoint proof masks passed");
@@ -97,9 +97,11 @@ int main()
 
     passed &= expect(expectedContractMask(0) == 0,
         "zero contract mask is invalid");
-    passed &= expect(expectedContractMask(22) == 0x003FFFFFu,
+    passed &= expect(expectedContractMask(22) == 0x003FFFFFull,
         "22-contract mask is invalid");
-    passed &= expect(expectedContractMask(32) == UINT32_MAX,
+    passed &= expect(expectedContractMask(37) == 0x0000001FFFFFFFFFull,
+        "37-contract mask is invalid");
+    passed &= expect(expectedContractMask(64) == UINT64_MAX,
         "full contract mask is invalid");
 
     return passed ? EXIT_SUCCESS : EXIT_FAILURE;

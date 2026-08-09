@@ -10,6 +10,17 @@ cbuffer PerGeometry : register(b12)
     float4 cb12[71];
 };
 
+#ifndef LINEAR_LIGHTING_INSTANCED
+#define LINEAR_LIGHTING_INSTANCED 0
+#endif
+
+#if LINEAR_LIGHTING_INSTANCED
+cbuffer PerInstance : register(b13)
+{
+    float4 cb13[900];
+};
+#endif
+
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
@@ -45,6 +56,10 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_ALPHA_TEST 0
 #endif
 
+#ifndef LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 0
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
@@ -59,6 +74,9 @@ struct PSInput
 #else
     float3 vertexColor : COLOR0;
 #endif
+#endif
+#if LINEAR_LIGHTING_INSTANCED
+    uint instanceDataIndex : COLOR2;
 #endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
@@ -101,11 +119,19 @@ PSOutput PSMain(PSInput input)
     output.target0.w = cb2[0].z;
 
     float3 sourceNormal = normalize(input.normal);
-    float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
     float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
+#if LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+    float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0;
+    float3 tangentNormal = float3(
+        modelNormal.x,
+        modelNormal.z,
+        input.isFrontFace ? modelNormal.y : -modelNormal.y);
+#else
+    float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));
     float3 tangentNormal = float3(tangentNormalXY, input.isFrontFace ? tangentNormalZ : -tangentNormalZ);
+#endif
 
     float3 projectedNormal;
     projectedNormal.z = min(dot(sourceNormal, tangentNormal), 0.0);
@@ -132,6 +158,16 @@ PSOutput PSMain(PSInput input)
     float specBlendB = (-cb2[4].z * cb12[50].x) + 1.0;
     float specBlend = (specularSample.x * specBlendB) + specBlendA;
 
+    float3 emitColor;
+#if LINEAR_LIGHTING_INSTANCED
+    uint instanceBase = input.instanceDataIndex * 6u;
+    float4 instanceMaterial = cb13[instanceBase + 4u];
+    output.target0.w = instanceMaterial.z;
+    output.target3.x = instanceMaterial.x * specularSample.y;
+    output.target3.y = instanceMaterial.y * specBlend;
+    output.target3.z = instanceMaterial.w * 0.01;
+    emitColor = cb13[instanceBase + 5u].xyz;
+#else
     float2 materialXY = ((cb2[2].xy - cb2[0].xy) * cb12[50].xx) + cb2[0].xy;
     materialXY *= cb2[0].xy;
     materialXY = (cb2[2].xy >= 0.0) ? materialXY : cb2[0].xy;
@@ -139,12 +175,14 @@ PSOutput PSMain(PSInput input)
     output.target3.y = materialXY.y * specBlend;
     output.target3.x = materialXY.x * specularSample.y;
     output.target3.z = cb2[0].w * 0.01;
+    emitColor = cb2[1].xyz;
+#endif
     output.target3.w = 1.0;
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
     float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);
-    output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz) * glow;
+    output.target4.xyz = LinearLightingEmitColor(emitColor) * glow;
 #else
-    output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
+    output.target4.xyz = LinearLightingEmitColor(emitColor);
 #endif
 
     uint matrixBase = input.eyeIndex * 4u;

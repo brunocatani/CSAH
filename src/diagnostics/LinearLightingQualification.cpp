@@ -218,7 +218,7 @@ namespace community_shaders::diagnostics
             for (std::size_t index = 0;
                  index < linear_lighting::Runtime::kShaderContractCount;
                  ++index) {
-                const auto bit = 1u << index;
+                const auto bit = 1ull << index;
                 contracts.push_back({
                     { "index", index },
                     { "name",

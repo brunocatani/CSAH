@@ -18,7 +18,7 @@ namespace community_shaders::linear_lighting
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
         std::uint32_t verifiedShaderContracts{};
-        std::uint32_t matchingShaderContractMask{};
+        std::uint64_t matchingShaderContractMask{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint32_t firstReplacementContractPlusOne{};
@@ -55,8 +55,8 @@ namespace community_shaders::linear_lighting
     class Runtime final
     {
     public:
-        static constexpr std::size_t kShaderContractCount = 32;
-        static_assert(kShaderContractCount <= 32);
+        static constexpr std::size_t kShaderContractCount = 37;
+        static_assert(kShaderContractCount <= 64);
 
         static Runtime& get() noexcept;
 
@@ -146,7 +146,7 @@ namespace community_shaders::linear_lighting
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
-        std::atomic_uint32_t matchingShaderContractMask_{};
+        std::atomic_uint64_t matchingShaderContractMask_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};

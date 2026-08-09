@@ -42,9 +42,9 @@ namespace community_shaders::render
         std::uint64_t drawStateFailures{};
         std::uint64_t bindingsWithoutFreshGeometry{};
         std::uint64_t drawsWithoutFreshGeometry{};
-        std::uint32_t replacementContractMask{};
-        std::uint32_t bindingVerifiedContractMask{};
-        std::uint32_t drawVerifiedContractMask{};
+        std::uint64_t replacementContractMask{};
+        std::uint64_t bindingVerifiedContractMask{};
+        std::uint64_t drawVerifiedContractMask{};
         std::uint32_t lastBindingState{};
         std::uint32_t lastDrawState{};
     };

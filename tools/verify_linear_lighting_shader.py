@@ -141,8 +141,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 32:
-        fail("Linear Lighting manifest must contain exactly 32 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 37:
+        fail("Linear Lighting manifest must contain exactly 37 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -210,11 +210,14 @@ def verify_source_contracts(
     for base_source_text in base_source_texts:
         for token in (
             "LinearLightingDiffuse(diffuse",
-            "LinearLightingEmitColor(cb2[1].xyz)",
             "float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;",
         ):
             if token not in base_source_text:
                 fail(f"active shader is missing transformation contract: {token}")
+    if "LinearLightingEmitColor(cb2[1].xyz)" not in base_source_texts[0]:
+        fail("projected shader is missing emission transformation")
+    if "LinearLightingEmitColor(emitColor)" not in base_source_texts[1]:
+        fail("six-MRT shader is missing emission transformation")
     for token in (
         "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)",
         "clip(alpha - cb2[1].w)",
@@ -226,6 +229,8 @@ def verify_source_contracts(
 
     vertex_contracts = 0
     glowmap_contracts = 0
+    instanced_contracts = 0
+    model_space_normal_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -238,10 +243,25 @@ def verify_source_contracts(
             if "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" not in source_text:
                 fail(f"{contract['label']} no longer selects textured emission")
             glowmap_contracts += 1
-    if vertex_contracts != 15:
-        fail(f"expected 15 COLOR0 contracts, found {vertex_contracts}")
+        if str(contract["label"]).startswith("Instanced"):
+            if "#define LINEAR_LIGHTING_INSTANCED 1" not in source_text:
+                fail(f"{contract['label']} no longer selects instanced material data")
+            instanced_contracts += 1
+        if str(contract["label"]).startswith("ModelSpaceNormals"):
+            if "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1" not in source_text:
+                fail(f"{contract['label']} no longer selects model-space normals")
+            model_space_normal_contracts += 1
+    if vertex_contracts != 17:
+        fail(f"expected 17 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 10:
         fail(f"expected 10 glowmap contracts, found {glowmap_contracts}")
+    if instanced_contracts != 2:
+        fail(f"expected 2 instanced contracts, found {instanced_contracts}")
+    if model_space_normal_contracts != 3:
+        fail(
+            "expected 3 model-space-normal contracts, "
+            f"found {model_space_normal_contracts}"
+        )
 
 
 def verify(root: Path) -> None:
@@ -294,14 +314,19 @@ def verify(root: Path) -> None:
     resources_text = resources_rc.read_text(encoding="utf-8")
     parity_text = parity_source.read_text(encoding="utf-8")
     parity_entries = re.findall(
-        r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false)\s*\}',
+        r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
+        r'(true|false)\s*\}',
         parity_text,
     )
-    parity_contracts: dict[str, tuple[int, bool]] = {}
-    for name, mrt_count, has_vertex_color in parity_entries:
+    parity_contracts: dict[str, tuple[int, bool, bool]] = {}
+    for name, mrt_count, has_vertex_color, is_instanced in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
-        parity_contracts[name] = (int(mrt_count), has_vertex_color == "true")
+        parity_contracts[name] = (
+            int(mrt_count),
+            has_vertex_color == "true",
+            is_instanced == "true",
+        )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
         missing = sorted(expected_names - set(parity_contracts))
@@ -395,6 +420,7 @@ def verify(root: Path) -> None:
             expected_parity_metadata = (
                 len(original["outputs"]),
                 "#define LINEAR_LIGHTING_VERTEX_COLOR 1" in source_text,
+                13 in original["constant_buffers"],
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(

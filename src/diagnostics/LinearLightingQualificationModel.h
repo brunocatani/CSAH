@@ -47,7 +47,7 @@ namespace community_shaders::diagnostics::qualification_model
         bool geometryHookOwned{};
         std::uint32_t expectedShaderContracts{};
         std::uint32_t verifiedShaderContracts{};
-        std::uint32_t matchingShaderContractMask{};
+        std::uint64_t matchingShaderContractMask{};
         std::uint64_t geometryCalls{};
         std::uint64_t geometryAccepted{};
         std::uint64_t geometrySourceRejected{};
@@ -58,24 +58,24 @@ namespace community_shaders::diagnostics::qualification_model
         std::uint64_t replacementDrawCalls{};
         std::uint64_t bindingStateFailures{};
         std::uint64_t drawStateFailures{};
-        std::uint32_t replacementContractMask{};
-        std::uint32_t bindingVerifiedContractMask{};
-        std::uint32_t drawVerifiedContractMask{};
+        std::uint64_t replacementContractMask{};
+        std::uint64_t bindingVerifiedContractMask{};
+        std::uint64_t drawVerifiedContractMask{};
     };
 
     struct Evaluation
     {
         Status status{ Status::waiting };
         std::uint64_t reasonMask{};
-        std::uint32_t fullyVerifiedContractMask{};
+        std::uint64_t fullyVerifiedContractMask{};
     };
 
-    [[nodiscard]] inline std::uint32_t expectedContractMask(
+    [[nodiscard]] inline std::uint64_t expectedContractMask(
         std::uint32_t count) noexcept
     {
         return count == 0 ? 0 :
-            count >= 32 ? UINT32_MAX :
-                          (1u << count) - 1u;
+            count >= 64 ? UINT64_MAX :
+                          (1ull << count) - 1ull;
     }
 
     [[nodiscard]] inline Evaluation evaluate(

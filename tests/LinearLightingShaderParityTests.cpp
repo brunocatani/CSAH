@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -35,41 +36,47 @@ namespace
         std::string_view name;
         UINT mrtCount;
         bool hasVertexColor;
+        bool isInstanced;
     };
 
     constexpr std::array kShaderContracts{
-        ShaderContract{ "DefaultProjectedFiveMrt_L4_00008002", 5, false },
-        ShaderContract{ "DefaultProjectedFiveMrt_L3_00008003", 5, true },
-        ShaderContract{ "DefaultSixMrt_L4_00000002", 6, false },
-        ShaderContract{ "DefaultSixMrt_L3_00000003", 6, true },
-        ShaderContract{ "DefaultModelSpaceSixMrt_L4_00000006", 6, false },
-        ShaderContract{ "DefaultModelSpaceSixMrt_L3_00000007", 6, true },
-        ShaderContract{ "DefaultDefShadowSixMrt_L4_00004002", 6, false },
-        ShaderContract{ "DefaultDefShadowSixMrt_L3_00004003", 6, true },
-        ShaderContract{ "EnvmapSixMrt_L4_00000102", 6, false },
-        ShaderContract{ "EnvmapSixMrt_L3_00000103", 6, true },
-        ShaderContract{ "EnvmapModelSpaceSixMrt_L4_00000106", 6, false },
-        ShaderContract{ "EnvmapModelSpaceSixMrt_L3_00000107", 6, true },
-        ShaderContract{ "EnvmapProjectedFiveMrt_L4_00008102", 5, false },
-        ShaderContract{ "EnvmapProjectedFiveMrt_L3_00008103", 5, true },
-        ShaderContract{ "EnvmapProjectedFiveMrt_L4_00008106", 5, false },
-        ShaderContract{ "TexturedEmissionAlphaTestSixMrt_L4_00004102", 6, false },
-        ShaderContract{ "TexturedEmissionAlphaTestSixMrt_L3_00004103", 6, true },
-        ShaderContract{ "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016", 6, true },
-        ShaderContract{ "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5", 5, true },
-        ShaderContract{ "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98", 5, true },
-        ShaderContract{ "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C", 5, false },
-        ShaderContract{ "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A", 5, true },
-        ShaderContract{ "GlowmapSixMrt_L4NoEarlyDepth_00004006", 6, false },
-        ShaderContract{ "GlowmapSixMrt_L3NoEarlyDepth_00004007", 6, true },
-        ShaderContract{ "GlowmapAlphaTestSixMrt_L4NoEarlyDepth_00004106", 6, false },
-        ShaderContract{ "GlowmapAlphaTestSixMrt_L3NoEarlyDepth_00004107", 6, true },
-        ShaderContract{ "GlowmapBlendFiveMrt_L4_0000C002", 5, false },
-        ShaderContract{ "GlowmapBlendFiveMrt_L3_0000C003", 5, true },
-        ShaderContract{ "GlowmapBlendFiveMrt_L4NoEarlyDepth_0000C006", 5, false },
-        ShaderContract{ "GlowmapBlendFiveMrt_L3NoEarlyDepth_0000C007", 5, true },
-        ShaderContract{ "GlowmapAlphaTestBlendFiveMrt_L4_0000C102", 5, false },
-        ShaderContract{ "GlowmapAlphaTestBlendFiveMrt_L3_0000C103", 5, true },
+        ShaderContract{ "DefaultProjectedFiveMrt_L4_00008002", 5, false, false },
+        ShaderContract{ "DefaultProjectedFiveMrt_L3_00008003", 5, true, false },
+        ShaderContract{ "DefaultSixMrt_L4_00000002", 6, false, false },
+        ShaderContract{ "DefaultSixMrt_L3_00000003", 6, true, false },
+        ShaderContract{ "DefaultModelSpaceSixMrt_L4_00000006", 6, false, false },
+        ShaderContract{ "DefaultModelSpaceSixMrt_L3_00000007", 6, true, false },
+        ShaderContract{ "DefaultDefShadowSixMrt_L4_00004002", 6, false, false },
+        ShaderContract{ "DefaultDefShadowSixMrt_L3_00004003", 6, true, false },
+        ShaderContract{ "EnvmapSixMrt_L4_00000102", 6, false, false },
+        ShaderContract{ "EnvmapSixMrt_L3_00000103", 6, true, false },
+        ShaderContract{ "EnvmapModelSpaceSixMrt_L4_00000106", 6, false, false },
+        ShaderContract{ "EnvmapModelSpaceSixMrt_L3_00000107", 6, true, false },
+        ShaderContract{ "EnvmapProjectedFiveMrt_L4_00008102", 5, false, false },
+        ShaderContract{ "EnvmapProjectedFiveMrt_L3_00008103", 5, true, false },
+        ShaderContract{ "EnvmapProjectedFiveMrt_L4_00008106", 5, false, false },
+        ShaderContract{ "TexturedEmissionAlphaTestSixMrt_L4_00004102", 6, false, false },
+        ShaderContract{ "TexturedEmissionAlphaTestSixMrt_L3_00004103", 6, true, false },
+        ShaderContract{ "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016", 6, true, false },
+        ShaderContract{ "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5", 5, true, false },
+        ShaderContract{ "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98", 5, true, false },
+        ShaderContract{ "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C", 5, false, false },
+        ShaderContract{ "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A", 5, true, false },
+        ShaderContract{ "GlowmapSixMrt_L4NoEarlyDepth_00004006", 6, false, false },
+        ShaderContract{ "GlowmapSixMrt_L3NoEarlyDepth_00004007", 6, true, false },
+        ShaderContract{ "GlowmapAlphaTestSixMrt_L4NoEarlyDepth_00004106", 6, false, false },
+        ShaderContract{ "GlowmapAlphaTestSixMrt_L3NoEarlyDepth_00004107", 6, true, false },
+        ShaderContract{ "GlowmapBlendFiveMrt_L4_0000C002", 5, false, false },
+        ShaderContract{ "GlowmapBlendFiveMrt_L3_0000C003", 5, true, false },
+        ShaderContract{ "GlowmapBlendFiveMrt_L4NoEarlyDepth_0000C006", 5, false, false },
+        ShaderContract{ "GlowmapBlendFiveMrt_L3NoEarlyDepth_0000C007", 5, true, false },
+        ShaderContract{ "GlowmapAlphaTestBlendFiveMrt_L4_0000C102", 5, false, false },
+        ShaderContract{ "GlowmapAlphaTestBlendFiveMrt_L3_0000C103", 5, true, false },
+        ShaderContract{ "InstancedSixMrt_L4_08000002", 6, false, true },
+        ShaderContract{ "InstancedSixMrt_L3_08000003", 6, true, true },
+        ShaderContract{ "ModelSpaceNormalsSixMrt_L4_00002002", 6, false, false },
+        ShaderContract{ "ModelSpaceNormalsSixMrt_L3_00002003", 6, true, false },
+        ShaderContract{ "ModelSpaceNormalsAlphaTestSixMrt_L4_00002102", 6, false, false },
     };
 
     struct RenderTargets
@@ -81,6 +88,61 @@ namespace
 
     using Pixel = std::array<float, 4>;
     using RenderResult = std::array<Pixel, kRenderTargetCount>;
+
+    struct LinearLightingCase
+    {
+        std::string_view name;
+        bool enabled;
+        float colorGamma;
+        float emitColorGamma;
+        float glowmapGamma;
+        float vanillaDiffuseColorMult;
+        float emitColorMult;
+        float glowmapMult;
+        float emissiveMult;
+    };
+
+    constexpr LinearLightingCase kDisabledCase{
+        "disabled",
+        false,
+        2.2F,
+        1.8F,
+        1.6F,
+        1.3F,
+        0.75F,
+        1.4F,
+        3.0F,
+    };
+    constexpr LinearLightingCase kIdentityCase{
+        "enabled-identity",
+        true,
+        1.0F,
+        1.0F,
+        1.0F,
+        1.0F,
+        1.0F,
+        1.0F,
+        3.0F,
+    };
+    constexpr LinearLightingCase kTransformedCase{
+        "enabled-transformed",
+        true,
+        2.2F,
+        1.8F,
+        1.6F,
+        1.3F,
+        0.75F,
+        1.4F,
+        3.0F,
+    };
+
+    constexpr Pixel kDiffuseTexture{ 0.25F, 0.5F, 0.75F, 0.8F };
+    constexpr Pixel kNormalTexture{ 0.35F, 0.65F, 0.2F, 0.8F };
+    constexpr Pixel kSpecularTexture{ 0.45F, 0.7F, 0.15F, 0.9F };
+    constexpr Pixel kGlowTexture{ 0.6F, 0.4F, 0.2F, 1.0F };
+    constexpr Pixel kVertexColor{ 0.8F, 0.7F, 0.6F, 0.9F };
+    constexpr Pixel kEmitColor{ 0.3F, 0.45F, 0.6F, 0.2F };
+    constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
 
     constexpr std::array<float, 4> kClearColor{
         123.25F,
@@ -132,7 +194,51 @@ namespace
         return bytes;
     }
 
-    [[nodiscard]] ComPtr<ID3DBlob> compileVertexShader(bool hasVertexColor)
+    [[nodiscard]] bool usesTextureSlot(
+        std::span<const std::byte> bytecode,
+        UINT slot)
+    {
+        ComPtr<ID3DBlob> assembly;
+        require(
+            D3DDisassemble(
+                bytecode.data(),
+                bytecode.size_bytes(),
+                0,
+                nullptr,
+                &assembly),
+            "D3DDisassemble(pixel shader)");
+        const std::string_view text{
+            static_cast<const char*>(assembly->GetBufferPointer()),
+            assembly->GetBufferSize(),
+        };
+        const auto expectedRegister = "t" + std::to_string(slot);
+        std::size_t lineStart = 0;
+        while (lineStart < text.size()) {
+            const auto lineEnd = text.find('\n', lineStart);
+            auto line = text.substr(
+                lineStart,
+                lineEnd == std::string_view::npos ?
+                    text.size() - lineStart : lineEnd - lineStart);
+            if (!line.empty() && line.back() == '\r') {
+                line.remove_suffix(1);
+            }
+            const auto lastSpace = line.find_last_of(' ');
+            if (line.find("dcl_resource_") != std::string_view::npos &&
+                lastSpace != std::string_view::npos &&
+                line.substr(lastSpace + 1) == expectedRegister) {
+                return true;
+            }
+            if (lineEnd == std::string_view::npos) {
+                break;
+            }
+            lineStart = lineEnd + 1;
+        }
+        return false;
+    }
+
+    [[nodiscard]] ComPtr<ID3DBlob> compileVertexShader(
+        bool hasVertexColor,
+        bool isInstanced)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -145,6 +251,9 @@ struct VSOutput
     float4 previousPosition : TEXCOORD4;
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
+#endif
+#if IS_INSTANCED
+    nointerpolation uint instanceDataIndex : COLOR2;
 #endif
     nointerpolation uint eyeIndex : EYEINDEX;
 };
@@ -166,6 +275,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
+#if IS_INSTANCED
+    output.instanceDataIndex = 2;
+#endif
     output.eyeIndex = 0;
     return output;
 }
@@ -175,6 +287,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ComPtr<ID3DBlob> errors;
         const D3D_SHADER_MACRO macros[]{
             { "HAS_VERTEX_COLOR", hasVertexColor ? "1" : "0" },
+            { "IS_INSTANCED", isInstanced ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -349,40 +462,92 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return values;
     }
 
+    [[nodiscard]] std::array<std::array<float, 4>, 900> makeInstanceData()
+    {
+        std::array<std::array<float, 4>, 900> values{};
+        constexpr std::size_t instanceBase = 2 * 6;
+        values[instanceBase + 4] = { 0.4F, 0.7F, 0.65F, 0.8F };
+        values[instanceBase + 5] = kInstanceEmitColor;
+        return values;
+    }
+
+    [[nodiscard]] std::array<std::array<float, 4>, 7> makeFrameData(
+        const LinearLightingCase& lightingCase)
+    {
+        const auto uintAsFloat = [] (std::uint32_t value) {
+            return std::bit_cast<float>(value);
+        };
+        return {
+            std::array<float, 4>{
+                uintAsFloat(lightingCase.enabled ? 1u : 0u),
+                uintAsFloat(1u),
+                2.5F,
+                1.9F,
+            },
+            std::array<float, 4>{
+                lightingCase.colorGamma,
+                lightingCase.emitColorGamma,
+                lightingCase.glowmapGamma,
+                1.7F,
+            },
+            std::array<float, 4>{ 1.6F, 1.5F, 1.4F, 1.3F },
+            std::array<float, 4>{
+                1.2F,
+                1.1F,
+                1.05F,
+                lightingCase.vanillaDiffuseColorMult,
+            },
+            std::array<float, 4>{
+                0.85F,
+                0.75F,
+                0.65F,
+                lightingCase.emitColorMult,
+            },
+            std::array<float, 4>{
+                lightingCase.glowmapMult,
+                0.35F,
+                0.25F,
+                0.15F,
+            },
+            std::array<float, 4>{ 0.05F, 0.0F, 0.0F, 0.0F },
+        };
+    }
+
     [[nodiscard]] RenderResult render(
         ID3D11Device& device,
         ID3D11DeviceContext& context,
         ID3D11VertexShader& vertexShader,
         ID3D11PixelShader& pixelShader,
         UINT mrtCount,
-        std::size_t caseIndex)
+        bool isInstanced,
+        std::size_t caseIndex,
+        const LinearLightingCase& lightingCase)
     {
         const auto materialData = makeMaterialData(mrtCount, caseIndex);
         const auto geometryData = makeGeometryData(caseIndex);
-        const std::array<std::array<float, 4>, 7> frameData{
-            std::array<float, 4>{ 0.0F, 1.0F, 2.5F, 1.9F },
-            std::array<float, 4>{ 2.2F, 2.0F, 1.8F, 1.7F },
-            std::array<float, 4>{ 1.6F, 1.5F, 1.4F, 1.3F },
-            std::array<float, 4>{ 1.2F, 1.1F, 1.05F, 0.95F },
-            std::array<float, 4>{ 0.85F, 0.75F, 0.65F, 0.55F },
-            std::array<float, 4>{ 0.45F, 0.35F, 0.25F, 0.15F },
-            std::array<float, 4>{ 0.05F, 0.0F, 0.0F, 0.0F },
-        };
+        const auto instanceData = makeInstanceData();
+        const auto frameData = makeFrameData(lightingCase);
         const std::array<std::array<float, 4>, 1> linearGeometryData{
-            std::array<float, 4>{ 3.0F, 0.0F, 0.0F, 0.0F },
+            std::array<float, 4>{
+                lightingCase.emissiveMult,
+                0.0F,
+                0.0F,
+                0.0F,
+            },
         };
         const auto materialBuffer = createConstantBuffer(device, materialData);
         const auto geometryBuffer = createConstantBuffer(device, geometryData);
+        const auto instanceBuffer = createConstantBuffer(device, instanceData);
         const auto frameBuffer = createConstantBuffer(device, frameData);
         const auto linearGeometryBuffer = createConstantBuffer(
             device,
             linearGeometryData);
 
         const std::array<Pixel, 4> texturePixels{
-            Pixel{ 0.25F, 0.5F, 0.75F, 0.8F },
-            Pixel{ 0.35F, 0.65F, 0.2F, 0.8F },
-            Pixel{ 0.45F, 0.7F, 0.15F, 0.9F },
-            Pixel{ 0.6F, 0.4F, 0.2F, 1.0F },
+            kDiffuseTexture,
+            kNormalTexture,
+            kSpecularTexture,
+            kGlowTexture,
         };
         std::array<ComPtr<ID3D11ShaderResourceView>, 4> textureViews;
         std::array<ID3D11ShaderResourceView*, 4> rawTextureViews{};
@@ -447,10 +612,14 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         auto* rawGeometry = geometryBuffer.Get();
         auto* rawFrame = frameBuffer.Get();
         auto* rawLinearGeometry = linearGeometryBuffer.Get();
+        auto* rawInstance = instanceBuffer.Get();
         context.PSSetConstantBuffers(2, 1, &rawMaterial);
         context.PSSetConstantBuffers(5, 1, &rawFrame);
         context.PSSetConstantBuffers(8, 1, &rawLinearGeometry);
         context.PSSetConstantBuffers(12, 1, &rawGeometry);
+        if (isInstanced) {
+            context.PSSetConstantBuffers(13, 1, &rawInstance);
+        }
         context.Draw(3, 0);
 
         const auto result = readRenderTargets(context, targets);
@@ -461,6 +630,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0,
             static_cast<UINT>(nullViews.size()),
             nullViews.data());
+        if (isInstanced) {
+            ID3D11Buffer* nullBuffer{};
+            context.PSSetConstantBuffers(13, 1, &nullBuffer);
+        }
         context.OMSetRenderTargets(
             kRenderTargetCount,
             nullTargets.data(),
@@ -480,27 +653,79 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
     [[nodiscard]] std::string compare(
         const ShaderContract& contract,
+        std::string_view scenario,
         std::size_t caseIndex,
-        const RenderResult& vanilla,
-        const RenderResult& replacement)
+        const RenderResult& expected,
+        const RenderResult& actual)
     {
         for (UINT target = 0; target < kRenderTargetCount; ++target) {
             for (UINT channel = 0; channel < 4; ++channel) {
                 if (approximatelyEqual(
-                        vanilla[target][channel],
-                        replacement[target][channel])) {
+                        expected[target][channel],
+                        actual[target][channel])) {
                     continue;
                 }
-                return std::string(contract.name) + " case " +
+                return std::string(contract.name) + " " +
+                    std::string(scenario) + " case " +
                     std::to_string(caseIndex) + " differs at target " +
                     std::to_string(target) + " channel " +
-                    std::to_string(channel) + ": vanilla=" +
-                    std::to_string(vanilla[target][channel]) +
-                    " replacement=" +
-                    std::to_string(replacement[target][channel]);
+                    std::to_string(channel) + ": expected=" +
+                    std::to_string(expected[target][channel]) +
+                    " actual=" + std::to_string(actual[target][channel]);
             }
         }
         return {};
+    }
+
+    [[nodiscard]] float transformedValue(
+        float value,
+        float gamma,
+        float multiplier)
+    {
+        return std::pow(std::abs(value), gamma) * multiplier;
+    }
+
+    [[nodiscard]] RenderResult makeEnabledExpected(
+        const ShaderContract& contract,
+        std::size_t caseIndex,
+        bool usesGlowmap,
+        const RenderResult& vanilla,
+        const LinearLightingCase& lightingCase)
+    {
+        auto expected = vanilla;
+        const auto geometrySwitch = caseIndex == 0 ? 0.0F :
+            (caseIndex == 1 ? 0.35F : 0.8F);
+        const auto fadeControl = caseIndex == 2 ? -1.0F : 0.6F;
+        const auto fade = fadeControl == -1.0F ? 1.0F :
+            (-fadeControl * geometrySwitch) + 1.0F;
+        const auto& emitColor = contract.isInstanced ?
+            kInstanceEmitColor : kEmitColor;
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            auto diffuse = kDiffuseTexture[channel];
+            if (contract.hasVertexColor) {
+                diffuse *= kVertexColor[channel];
+            }
+            expected[0][channel] = fade * transformedValue(
+                diffuse,
+                lightingCase.colorGamma,
+                lightingCase.vanillaDiffuseColorMult);
+
+            const auto safeEmissiveMult = (std::max)(
+                lightingCase.emissiveMult,
+                1.0e-5F);
+            auto emission = transformedValue(
+                emitColor[channel] / safeEmissiveMult,
+                lightingCase.emitColorGamma,
+                lightingCase.emissiveMult * lightingCase.emitColorMult);
+            if (usesGlowmap) {
+                emission *= transformedValue(
+                    kGlowTexture[channel],
+                    lightingCase.glowmapGamma,
+                    lightingCase.glowmapMult);
+            }
+            expected[4][channel] = emission;
+        }
+        return expected;
     }
 
     void run(const std::filesystem::path& root)
@@ -528,23 +753,23 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        const auto vertexBytecodeWithoutColor = compileVertexShader(false);
-        const auto vertexBytecodeWithColor = compileVertexShader(true);
-        std::array<ComPtr<ID3D11VertexShader>, 2> vertexShaders;
-        require(
-            device->CreateVertexShader(
-                vertexBytecodeWithoutColor->GetBufferPointer(),
-                vertexBytecodeWithoutColor->GetBufferSize(),
-                nullptr,
-                &vertexShaders[0]),
-            "CreateVertexShader(without COLOR0)");
-        require(
-            device->CreateVertexShader(
-                vertexBytecodeWithColor->GetBufferPointer(),
-                vertexBytecodeWithColor->GetBufferSize(),
-                nullptr,
-                &vertexShaders[1]),
-            "CreateVertexShader(with COLOR0)");
+        std::array<ComPtr<ID3D11VertexShader>, 4> vertexShaders;
+        for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
+            const auto hasVertexColor = (index & 1u) != 0;
+            const auto isInstanced = (index & 2u) != 0;
+            const auto bytecode = compileVertexShader(
+                hasVertexColor,
+                isInstanced);
+            require(
+                device->CreateVertexShader(
+                    bytecode->GetBufferPointer(),
+                    bytecode->GetBufferSize(),
+                    nullptr,
+                    &vertexShaders[index]),
+                std::string("CreateVertexShader(") +
+                    (hasVertexColor ? "COLOR0" : "no COLOR0") +
+                    (isInstanced ? ", instanced)" : ", non-instanced)"));
+        }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
             "VerifiedLinearLighting";
@@ -559,6 +784,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 reconstruction /
                 (std::string(contract.name) +
                     ".LinearLightingCandidate.dxbc"));
+            const auto usesGlowmap = usesTextureSlot(vanillaBytes, 3);
             ComPtr<ID3D11PixelShader> vanillaShader;
             ComPtr<ID3D11PixelShader> replacementShader;
             require(
@@ -581,33 +807,83 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
                 auto* vertexShader = vertexShaders[
-                    contract.hasVertexColor ? 1 : 0].Get();
+                    (contract.hasVertexColor ? 1u : 0u) |
+                    (contract.isInstanced ? 2u : 0u)].Get();
                 const auto vanilla = render(
                     *device.Get(),
                     *context.Get(),
                     *vertexShader,
                     *vanillaShader.Get(),
                     contract.mrtCount,
-                    caseIndex);
-                const auto replacement = render(
+                    contract.isInstanced,
+                    caseIndex,
+                    kDisabledCase);
+                const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
                     *vertexShader,
                     *replacementShader.Get(),
                     contract.mrtCount,
-                    caseIndex);
+                    contract.isInstanced,
+                    caseIndex,
+                    kDisabledCase);
                 auto mismatch = compare(
                     contract,
+                    kDisabledCase.name,
                     caseIndex,
                     vanilla,
-                    replacement);
+                    disabled);
+                if (!mismatch.empty()) {
+                    failures.push_back(std::move(mismatch));
+                }
+
+                const auto identity = render(
+                    *device.Get(),
+                    *context.Get(),
+                    *vertexShader,
+                    *replacementShader.Get(),
+                    contract.mrtCount,
+                    contract.isInstanced,
+                    caseIndex,
+                    kIdentityCase);
+                mismatch = compare(
+                    contract,
+                    kIdentityCase.name,
+                    caseIndex,
+                    vanilla,
+                    identity);
+                if (!mismatch.empty()) {
+                    failures.push_back(std::move(mismatch));
+                }
+
+                const auto transformed = render(
+                    *device.Get(),
+                    *context.Get(),
+                    *vertexShader,
+                    *replacementShader.Get(),
+                    contract.mrtCount,
+                    contract.isInstanced,
+                    caseIndex,
+                    kTransformedCase);
+                const auto expected = makeEnabledExpected(
+                    contract,
+                    caseIndex,
+                    usesGlowmap,
+                    vanilla,
+                    kTransformedCase);
+                mismatch = compare(
+                    contract,
+                    kTransformedCase.name,
+                    caseIndex,
+                    expected,
+                    transformed);
                 if (!mismatch.empty()) {
                     failures.push_back(std::move(mismatch));
                 }
             }
         }
         if (!failures.empty()) {
-            std::string message = "disabled-path mismatches:";
+            std::string message = "shader parity/oracle mismatches:";
             for (const auto& failure : failures) {
                 message += "\n  " + failure;
             }
@@ -624,7 +900,7 @@ int main(int argumentCount, char** arguments)
     }
     try {
         run(std::filesystem::absolute(arguments[1]));
-        std::cout << "Linear Lighting disabled-path shader parity verified: "
+        std::cout << "Linear Lighting disabled and enabled shader paths verified: "
                   << kShaderContracts.size() << " contracts\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

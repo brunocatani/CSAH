@@ -119,9 +119,9 @@ namespace community_shaders::render
         std::atomic_uint64_t qualificationDrawStateFailures{};
         std::atomic_uint64_t qualificationBindingsWithoutFreshGeometry{};
         std::atomic_uint64_t qualificationDrawsWithoutFreshGeometry{};
-        std::atomic_uint32_t qualificationReplacementContractMask{};
-        std::atomic_uint32_t qualificationBindingVerifiedContractMask{};
-        std::atomic_uint32_t qualificationDrawVerifiedContractMask{};
+        std::atomic_uint64_t qualificationReplacementContractMask{};
+        std::atomic_uint64_t qualificationBindingVerifiedContractMask{};
+        std::atomic_uint64_t qualificationDrawVerifiedContractMask{};
         std::atomic_uint32_t qualificationLastBindingState{};
         std::atomic_uint32_t qualificationLastDrawState{};
         thread_local bool insidePSSetShaderHook{};
@@ -504,13 +504,13 @@ namespace community_shaders::render
             qualificationActivationGate.clear(std::memory_order_release);
         }
 
-        [[nodiscard]] std::uint32_t contractBit(
+        [[nodiscard]] std::uint64_t contractBit(
             std::uint32_t contractPlusOne) noexcept
         {
             return contractPlusOne > 0 &&
                     contractPlusOne <=
                         linear_lighting::Runtime::kShaderContractCount ?
-                1u << (contractPlusOne - 1) :
+                1ull << (contractPlusOne - 1) :
                 0;
         }
 

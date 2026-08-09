@@ -30,5 +30,10 @@
   { "name": "GlowmapBlendFiveMrt_L4NoEarlyDepth_0000C006", "resource": "IDR_LINEAR_LIGHTING_GLOWMAP_BLEND_FIVE_MRT_NO_EARLY_DEPTH_PS" },
   { "name": "GlowmapBlendFiveMrt_L3NoEarlyDepth_0000C007", "resource": "IDR_LINEAR_LIGHTING_GLOWMAP_BLEND_FIVE_MRT_VERTEX_COLOR_NO_EARLY_DEPTH_PS" },
   { "name": "GlowmapAlphaTestBlendFiveMrt_L4_0000C102", "resource": "IDR_LINEAR_LIGHTING_GLOWMAP_ALPHA_TEST_BLEND_FIVE_MRT_PS" },
-  { "name": "GlowmapAlphaTestBlendFiveMrt_L3_0000C103", "resource": "IDR_LINEAR_LIGHTING_GLOWMAP_ALPHA_TEST_BLEND_FIVE_MRT_VERTEX_COLOR_PS" }
+  { "name": "GlowmapAlphaTestBlendFiveMrt_L3_0000C103", "resource": "IDR_LINEAR_LIGHTING_GLOWMAP_ALPHA_TEST_BLEND_FIVE_MRT_VERTEX_COLOR_PS" },
+  { "name": "InstancedSixMrt_L4_08000002", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_SIX_MRT_PS" },
+  { "name": "InstancedSixMrt_L3_08000003", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "ModelSpaceNormalsSixMrt_L4_00002002", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "ModelSpaceNormalsSixMrt_L3_00002003", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "ModelSpaceNormalsAlphaTestSixMrt_L4_00002102", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" }
 ]
