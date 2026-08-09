@@ -15,6 +15,10 @@ foreach(required IN ITEMS
     "setHandInputSuppressionV1"
     "clearHandInputSuppressionV1"
     "publishDebugOverlayV1"
+    "wrist_provider_retry::Gate"
+    "PrismaProbeFailure::SceneDepthPending"
+    "attemptPrismaInitialization(\"GameDataReady\")"
+    "attemptPrismaInitialization(\"GameSessionReady\")"
     "F4SE::GetTaskInterface()"
     "tasks->Version() < F4SE::TaskInterface::kVersion"
     "Runtime::get().queueSettings(next)")

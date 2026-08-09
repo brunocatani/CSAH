@@ -149,6 +149,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/ui/PointerClickGate.h"
   "${SOURCE_DIR}/ui/WristPanelRuntime.cpp"
   "${SOURCE_DIR}/ui/WristPanelRuntime.h"
+  "${SOURCE_DIR}/ui/WristProviderRetry.h"
 )
 add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
@@ -292,6 +293,20 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.PointerClickGate
     COMMAND FO4VRCommunityShadersPointerClickGateTests)
+
+  add_executable(FO4VRCommunityShadersWristProviderRetryTests
+    "${ROOT_DIR}/tests/WristProviderRetryTests.cpp"
+    "${SOURCE_DIR}/ui/WristProviderRetry.h")
+  target_compile_features(
+    FO4VRCommunityShadersWristProviderRetryTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersWristProviderRetryTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersWristProviderRetryTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.WristProviderRetry
+    COMMAND FO4VRCommunityShadersWristProviderRetryTests)
+
   add_test(NAME FO4VRCommunityShaders.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/verify_linear_lighting_shader.py"

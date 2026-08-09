@@ -9,6 +9,7 @@
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
 #include "ui/PointerClickGate.h"
+#include "ui/WristProviderRetry.h"
 
 #include <F4SE/API.h>
 #include <F4SE/Interfaces.h>
@@ -64,16 +65,16 @@ namespace community_shaders::ui
         constexpr std::uint32_t kSuppressionLeaseFrames = 3;
         constexpr std::uint64_t kRouteFreshnessFrames = 8;
         constexpr std::uint32_t kF4VrApiFlavor = 0x52563446u;
-        constexpr std::uint64_t kRequiredSpatialFeatures =
+        constexpr std::uint64_t kRequiredCoreSpatialFeatures =
             PRISMA_UI_VR_API::SpatialFeature_FullPose |
             PRISMA_UI_VR_API::SpatialFeature_IndependentDimensions |
             PRISMA_UI_VR_API::SpatialFeature_LatestOnlyUpdates |
             PRISMA_UI_VR_API::SpatialFeature_AppliedSequenceQuery |
             PRISMA_UI_VR_API::SpatialFeature_GpuRendering |
             PRISMA_UI_VR_API::SpatialFeature_NativeNetworkPolicy |
-            PRISMA_UI_VR_API::SpatialFeature_SceneDepthOcclusion |
             PRISMA_UI_VR_API::SpatialFeature_WorldPointerInput |
             PRISMA_UI_VR_API::SpatialFeature_CentralPointerRouting;
+        constexpr std::uint32_t kMaximumPrismaInitializationAttempts = 4;
         constexpr auto kModelPublishInterval =
             std::chrono::milliseconds(100);
 
@@ -156,7 +157,7 @@ namespace community_shaders::ui
         PRISMA_UI_VR_API::IVPrismaUIVR1* prismaVr{};
         PRISMA_UI_VR_API::SpatialCapabilitiesV1 spatialCapabilities{};
         PrismaView view{};
-        std::atomic_bool initialized{};
+        std::atomic_bool gameDataReadyHandled{};
         std::atomic_bool domReady{};
         std::atomic_bool viewRequested{};
         std::atomic_bool panelVisible{};
@@ -164,6 +165,12 @@ namespace community_shaders::ui
         std::atomic_bool pushScheduled{};
         std::atomic_bool discoveryStarted{};
         std::jthread discoveryThread;
+        // F4SE lifecycle messages are the sole owner of this gate and of
+        // Prisma view creation. A later PostLoadGame/NewGame message retries
+        // the transient capability set published before Prisma finishes its
+        // graphics integration.
+        wrist_provider_retry::Gate prismaRetryGate{
+            kMaximumPrismaInitializationAttempts };
 
         std::atomic_uint64_t ownerToken{};
         std::atomic_uint64_t frameCallbackToken{};
@@ -190,6 +197,7 @@ namespace community_shaders::ui
         std::uint64_t lastPublishedDiagnosticsRevision{};
 
         void pushLatestSnapshot() noexcept;
+        void ensureView() noexcept;
 
         [[nodiscard]] std::optional<std::array<float, 4>>
         quaternionFromBasis(
@@ -1095,43 +1103,181 @@ namespace community_shaders::ui
             schedulePush();
         }
 
-        [[nodiscard]] bool acquireSpatialCapabilities() noexcept
+        enum class PrismaProbeFailure : std::uint8_t
         {
-            if (!prismaVr) {
-                return false;
+            None,
+            BaseInterfaceUnavailable,
+            VrInterfaceUnavailable,
+            CapabilityQueryRetryable,
+            CapabilityQueryRejected,
+            CoreContractMismatch,
+            SceneDepthPending
+        };
+
+        struct PrismaProbeResult
+        {
+            wrist_provider_retry::Outcome outcome{
+                wrist_provider_retry::Outcome::TerminalFailure };
+            PrismaProbeFailure failure{ PrismaProbeFailure::None };
+            PRISMA_UI_VR_API::SpatialResult spatialResult{
+                PRISMA_UI_VR_API::SpatialResult::Ok };
+            PRISMA_UI_API::IVPrismaUI4* base{};
+            PRISMA_UI_VR_API::IVPrismaUIVR1* vr{};
+            PRISMA_UI_VR_API::SpatialCapabilitiesV1 capabilities{};
+        };
+
+        [[nodiscard]] constexpr std::string_view probeFailureName(
+            PrismaProbeFailure failure) noexcept
+        {
+            switch (failure) {
+            case PrismaProbeFailure::None:
+                return "none";
+            case PrismaProbeFailure::BaseInterfaceUnavailable:
+                return "base-interface-unavailable";
+            case PrismaProbeFailure::VrInterfaceUnavailable:
+                return "vr-interface-unavailable";
+            case PrismaProbeFailure::CapabilityQueryRetryable:
+                return "capability-query-retryable";
+            case PrismaProbeFailure::CapabilityQueryRejected:
+                return "capability-query-rejected";
+            case PrismaProbeFailure::CoreContractMismatch:
+                return "core-contract-mismatch";
+            case PrismaProbeFailure::SceneDepthPending:
+                return "scene-depth-pending";
             }
-            spatialCapabilities = {};
-            spatialCapabilities.structSize = sizeof(spatialCapabilities);
-            if (prismaVr->GetSpatialCapabilities(&spatialCapabilities) !=
+            return "unknown";
+        }
+
+        [[nodiscard]] PrismaProbeResult probePrisma() noexcept
+        {
+            PrismaProbeResult probe{};
+            probe.base =
+                PRISMA_UI_API::RequestPluginAPI<PRISMA_UI_API::IVPrismaUI4>();
+            if (!probe.base) {
+                probe.outcome =
+                    wrist_provider_retry::Outcome::RetryableFailure;
+                probe.failure = PrismaProbeFailure::BaseInterfaceUnavailable;
+                return probe;
+            }
+            probe.vr = PRISMA_UI_VR_API::
+                RequestPluginVRAPI<PRISMA_UI_VR_API::IVPrismaUIVR1>();
+            if (!probe.vr) {
+                probe.outcome =
+                    wrist_provider_retry::Outcome::RetryableFailure;
+                probe.failure = PrismaProbeFailure::VrInterfaceUnavailable;
+                return probe;
+            }
+
+            probe.capabilities.structSize = sizeof(probe.capabilities);
+            probe.spatialResult =
+                probe.vr->GetSpatialCapabilities(&probe.capabilities);
+            if (probe.spatialResult !=
                 PRISMA_UI_VR_API::SpatialResult::Ok) {
-                return false;
+                const auto retryable = probe.spatialResult ==
+                        PRISMA_UI_VR_API::SpatialResult::NotReady ||
+                    probe.spatialResult ==
+                        PRISMA_UI_VR_API::SpatialResult::InternalError;
+                probe.outcome = retryable ?
+                    wrist_provider_retry::Outcome::RetryableFailure :
+                    wrist_provider_retry::Outcome::TerminalFailure;
+                probe.failure = retryable ?
+                    PrismaProbeFailure::CapabilityQueryRetryable :
+                    PrismaProbeFailure::CapabilityQueryRejected;
+                return probe;
             }
+
             const auto worldMask = 1ull << static_cast<std::uint32_t>(
                 PRISMA_UI_VR_API::SpatialCoordinateSpace::GameWorld);
             const auto quadMask = 1ull << static_cast<std::uint32_t>(
                 PRISMA_UI_VR_API::SpatialPresentationMode::WorldQuad);
-            return spatialCapabilities.structSize >=
-                       sizeof(spatialCapabilities) &&
-                spatialCapabilities.apiFlavor == kF4VrApiFlavor &&
-                (spatialCapabilities.featureBits & kRequiredSpatialFeatures) ==
-                    kRequiredSpatialFeatures &&
-                (spatialCapabilities.coordinateSpaceMask & worldMask) != 0 &&
-                (spatialCapabilities.presentationModeMask & quadMask) != 0 &&
-                (spatialCapabilities.supportedUpdateFlags &
-                    PRISMA_UI_VR_API::
-                        SpatialUpdate_SceneDepthOcclusion) != 0 &&
-                spatialCapabilities.maxPixelWidth >= kPanelWidthPixels &&
-                spatialCapabilities.maxPixelHeight >= kPanelHeightPixels &&
-                spatialCapabilities.maxSpatialViews > 0 &&
-                spatialCapabilities.maxAggregateSpatialPixels >=
+            const auto& capabilities = probe.capabilities;
+            const auto coreContractAccepted = capabilities.structSize >=
+                    sizeof(capabilities) &&
+                capabilities.apiFlavor == kF4VrApiFlavor &&
+                (capabilities.featureBits & kRequiredCoreSpatialFeatures) ==
+                    kRequiredCoreSpatialFeatures &&
+                (capabilities.coordinateSpaceMask & worldMask) != 0 &&
+                (capabilities.presentationModeMask & quadMask) != 0 &&
+                capabilities.maxPixelWidth >= kPanelWidthPixels &&
+                capabilities.maxPixelHeight >= kPanelHeightPixels &&
+                capabilities.maxSpatialViews > 0 &&
+                capabilities.maxAggregateSpatialPixels >=
                     static_cast<std::uint64_t>(kPanelWidthPixels) *
                         kPanelHeightPixels &&
-                std::isfinite(spatialCapabilities.maxAbsoluteWorldPosition) &&
-                spatialCapabilities.maxAbsoluteWorldPosition > 0.0f &&
-                std::isfinite(spatialCapabilities.maxPhysicalDimension) &&
-                spatialCapabilities.maxPhysicalDimension >= kPanelPhysicalWidth &&
-                std::isfinite(spatialCapabilities.minQuaternionNormSquared) &&
-                spatialCapabilities.minQuaternionNormSquared > 0.0f;
+                std::isfinite(capabilities.maxAbsoluteWorldPosition) &&
+                capabilities.maxAbsoluteWorldPosition > 0.0f &&
+                std::isfinite(capabilities.maxPhysicalDimension) &&
+                capabilities.maxPhysicalDimension >= kPanelPhysicalWidth &&
+                std::isfinite(capabilities.minQuaternionNormSquared) &&
+                capabilities.minQuaternionNormSquared > 0.0f;
+            if (!coreContractAccepted) {
+                probe.failure = PrismaProbeFailure::CoreContractMismatch;
+                return probe;
+            }
+
+            const auto sceneDepthFeature =
+                PRISMA_UI_VR_API::SpatialFeature_SceneDepthOcclusion;
+            const auto sceneDepthReady =
+                (capabilities.featureBits & sceneDepthFeature) != 0 &&
+                (capabilities.supportedUpdateFlags &
+                    PRISMA_UI_VR_API::
+                        SpatialUpdate_SceneDepthOcclusion) != 0;
+            if (!sceneDepthReady) {
+                probe.outcome =
+                    wrist_provider_retry::Outcome::RetryableFailure;
+                probe.failure = PrismaProbeFailure::SceneDepthPending;
+                return probe;
+            }
+
+            probe.outcome = wrist_provider_retry::Outcome::Ready;
+            return probe;
+        }
+
+        void attemptPrismaInitialization(std::string_view trigger) noexcept
+        {
+            if (prisma && prismaVr) {
+                ensureView();
+                return;
+            }
+            if (!prismaRetryGate.beginAttempt()) {
+                return;
+            }
+
+            auto probe = probePrisma();
+            const auto state = prismaRetryGate.complete(probe.outcome);
+            if (state == wrist_provider_retry::State::Ready) {
+                prisma = probe.base;
+                prismaVr = probe.vr;
+                spatialCapabilities = probe.capabilities;
+                ensureView();
+                logging::info(
+                    "Community Shaders acquired optional Prisma FO4VR WorldQuad, scene-depth, and central-pointer contracts on attempt {} (trigger={}).",
+                    prismaRetryGate.attempts(),
+                    trigger);
+                return;
+            }
+
+            const auto resultCode =
+                static_cast<std::int32_t>(probe.spatialResult);
+            if (state == wrist_provider_retry::State::AwaitingAttempt) {
+                logging::warn(
+                    "Community Shaders deferred Prisma wrist initialization at stage '{}' (attempt {}/{}, trigger={}, spatialResult={}); the next game lifecycle event will retry.",
+                    probeFailureName(probe.failure),
+                    prismaRetryGate.attempts(),
+                    prismaRetryGate.maximumAttempts(),
+                    trigger,
+                    resultCode);
+                return;
+            }
+
+            logging::warn(
+                "Community Shaders wrist UI is unavailable after stage '{}' (attempt {}/{}, trigger={}, spatialResult={}, terminal={}); core rendering and INI settings remain active.",
+                probeFailureName(probe.failure),
+                prismaRetryGate.attempts(),
+                prismaRetryGate.maximumAttempts(),
+                trigger,
+                resultCode,
+                state == wrist_provider_retry::State::TerminalFailure);
         }
 
         void ensureView() noexcept
@@ -1197,31 +1343,17 @@ namespace community_shaders::ui
 
     void onGameDataReady() noexcept
     {
-        if (initialized.exchange(true, std::memory_order_acq_rel)) {
+        if (gameDataReadyHandled.exchange(true, std::memory_order_acq_rel)) {
             return;
         }
-        prisma =
-            PRISMA_UI_API::RequestPluginAPI<PRISMA_UI_API::IVPrismaUI4>();
-        prismaVr = PRISMA_UI_VR_API::
-            RequestPluginVRAPI<PRISMA_UI_VR_API::IVPrismaUIVR1>();
-        if (!prisma || !prismaVr || !acquireSpatialCapabilities()) {
-            prisma = nullptr;
-            prismaVr = nullptr;
-            logging::warn(
-                "Community Shaders wrist UI is unavailable; core rendering and INI settings remain active.");
-            return;
-        }
-        ensureView();
         startRockDiscovery();
-        logging::info(
-            "Community Shaders acquired optional Prisma FO4VR WorldQuad, scene-depth, and central-pointer contracts.");
+        attemptPrismaInitialization("GameDataReady");
     }
 
     void onGameSessionReady() noexcept
     {
-        if (prisma && prismaVr) {
-            ensureView();
-        }
+        startRockDiscovery();
+        attemptPrismaInitialization("GameSessionReady");
     }
 
     void shutdown() noexcept
