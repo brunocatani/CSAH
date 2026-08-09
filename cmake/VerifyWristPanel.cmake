@@ -96,8 +96,14 @@ foreach(required IN ITEMS
     "pixelShaderBindRepairs"
     "pixelShaderBindRepairFailures"
     "pixelShaderBindRecursions"
+    "kDeviceContextVtableEntryCount = 115"
+    "immediateContextVtableShadow"
+    "deviceCaptured.compare_exchange_strong"
+    "Ignored additional Fallout4VR D3D11 device creation"
+    "InterlockedCompareExchangePointer"
     "modulePathForAddress"
-    "Re-chained displaced D3D11 PSSetShader hook"
+    "Installed isolated D3D11 immediate-context vtable shadow"
+    "Restored D3D11 immediate-context vtable shadow"
     "readPointerCell")
   string(FIND "${d3dSource}" "${required}" found)
   if(found EQUAL -1)

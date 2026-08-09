@@ -8,6 +8,7 @@
 #include <d3d11.h>
 #include <dxgi.h>
 
+#include <algorithm>
 #include <atomic>
 #include <array>
 #include <cstddef>
@@ -45,6 +46,9 @@ namespace community_shaders::render
 
         constexpr std::size_t kCreatePixelShaderVtableIndex = 15;
         constexpr std::size_t kPSSetShaderVtableIndex = 9;
+        // Windows SDK 10.0.22621.0 d3d11.h declares 115 entries from
+        // IUnknown::QueryInterface through FinishCommandList.
+        constexpr std::size_t kDeviceContextVtableEntryCount = 115;
 
         D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
         CreatePixelShaderFunction originalCreatePixelShader{};
@@ -52,7 +56,10 @@ namespace community_shaders::render
         std::atomic<PSSetShaderFunction> downstreamPSSetShader{};
         void** deviceCreationImportCell{};
         void** createPixelShaderCell{};
-        void** pixelShaderBindCell{};
+        void** immediateContextVtableCell{};
+        void** initialContextVtable{};
+        alignas(void*) std::array<void*, kDeviceContextVtableEntryCount>
+            immediateContextVtableShadow{};
         std::atomic_bool deviceCreationImportInstalled{};
         std::atomic_bool deviceCaptured{};
         std::atomic_bool deviceHooksInstalled{};
@@ -103,6 +110,32 @@ namespace community_shaders::render
                 PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
                 PAGE_EXECUTE_WRITECOPY;
             return (information.Protect & executableProtection) != 0;
+        }
+
+        [[nodiscard]] bool isReadableRange(
+            const void* address,
+            std::size_t size) noexcept
+        {
+            if (!address || size == 0) {
+                return false;
+            }
+            MEMORY_BASIC_INFORMATION information{};
+            if (VirtualQuery(address, &information, sizeof(information)) !=
+                sizeof(information)) {
+                return false;
+            }
+            if (information.State != MEM_COMMIT ||
+                (information.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+                return false;
+            }
+            const auto begin = reinterpret_cast<std::uintptr_t>(address);
+            const auto regionBegin =
+                reinterpret_cast<std::uintptr_t>(information.BaseAddress);
+            if (begin < regionBegin || size > UINTPTR_MAX - begin ||
+                information.RegionSize > UINTPTR_MAX - regionBegin) {
+                return false;
+            }
+            return begin + size <= regionBegin + information.RegionSize;
         }
 
         [[nodiscard]] bool patchPointer(
@@ -157,6 +190,12 @@ namespace community_shaders::render
             return cell ? ReadPointerAcquire(
                               reinterpret_cast<void* const volatile*>(cell)) :
                           nullptr;
+        }
+
+        [[nodiscard]] void** readImmediateContextVtable() noexcept
+        {
+            return reinterpret_cast<void**>(
+                readPointerCell(immediateContextVtableCell));
         }
 
         [[nodiscard]] std::array<char, MAX_PATH> modulePathForAddress(
@@ -315,6 +354,13 @@ namespace community_shaders::render
             if (!deviceVtable || !contextVtable) {
                 return false;
             }
+            if (!isReadableRange(
+                    contextVtable,
+                    immediateContextVtableShadow.size() * sizeof(void*))) {
+                logging::error(
+                    "D3D11 immediate-context vtable range is not readable; shader hooks remain fail-closed.");
+                return false;
+            }
 
             auto* createPixelShader = deviceVtable[kCreatePixelShaderVtableIndex];
             auto* psSetShader = contextVtable[kPSSetShaderVtableIndex];
@@ -344,18 +390,30 @@ namespace community_shaders::render
             }
             createPixelShaderCell =
                 &deviceVtable[kCreatePixelShaderVtableIndex];
-            if (!patchPointer(
-                    &contextVtable[kPSSetShaderVtableIndex],
-                    psSetShader,
-                    reinterpret_cast<void*>(&hookPSSetShader))) {
-                // The device hook is safe to leave installed; without a bind
-                // hook it only observes shader creation and changes no draws.
+
+            std::copy_n(
+                contextVtable,
+                immediateContextVtableShadow.size(),
+                immediateContextVtableShadow.begin());
+            immediateContextVtableShadow[kPSSetShaderVtableIndex] =
+                reinterpret_cast<void*>(&hookPSSetShader);
+            initialContextVtable = contextVtable;
+            immediateContextVtableCell = reinterpret_cast<void**>(context);
+            const auto* observed = InterlockedCompareExchangePointer(
+                immediateContextVtableCell,
+                immediateContextVtableShadow.data(),
+                contextVtable);
+            if (observed != contextVtable) {
                 initialPSSetShader = nullptr;
                 downstreamPSSetShader.store(nullptr, std::memory_order_release);
-                logging::error("D3D11 PSSetShader vtable patch failed.");
+                initialContextVtable = nullptr;
+                immediateContextVtableCell = nullptr;
+                logging::error(
+                    "D3D11 immediate-context vtable shadow installation raced another writer; bind hook remains fail-closed.");
                 return false;
             }
-            pixelShaderBindCell = &contextVtable[kPSSetShaderVtableIndex];
+            logging::info(
+                "Installed isolated D3D11 immediate-context vtable shadow (115 entries, PSSetShader slot 9).");
             return true;
         }
 
@@ -371,23 +429,34 @@ namespace community_shaders::render
 
             const auto hookInstalled =
                 deviceHooksInstalled.load(std::memory_order_acquire);
-            auto* current = readPointerCell(pixelShaderBindCell);
+            auto** currentVtable = readImmediateContextVtable();
             const auto hookAddress = reinterpret_cast<void*>(&hookPSSetShader);
+            const auto shadowOwned =
+                currentVtable == immediateContextVtableShadow.data() &&
+                readPointerCell(
+                    &immediateContextVtableShadow[kPSSetShaderVtableIndex]) ==
+                    hookAddress;
+            auto* current = isReadableRange(
+                                    currentVtable,
+                                    (kPSSetShaderVtableIndex + 1) *
+                                        sizeof(void*)) ?
+                currentVtable[kPSSetShaderVtableIndex] :
+                nullptr;
             const auto decision = d3d11_hook_repair::advance(
                 pixelShaderBindRepairState,
                 hookInstalled,
-                current == hookAddress,
+                shadowOwned,
                 reinterpret_cast<std::uintptr_t>(current),
                 pixelShaderBindCalls.load(std::memory_order_relaxed));
             if (decision == d3d11_hook_repair::Decision::noAction) {
-                return hookInstalled && current == hookAddress;
+                return hookInstalled && shadowOwned;
             }
 
             const auto path = modulePathForAddress(current);
             if (decision ==
                 d3d11_hook_repair::Decision::observeDisplacement) {
                 logging::warn(
-                    "Observed displaced D3D11 PSSetShader hook at '{}' (trigger={}, target={}); waiting for a second proof boundary before re-chaining.",
+                    "Observed displaced D3D11 immediate-context vtable with PSSetShader at '{}' (trigger={}, target={}); waiting for a second proof boundary before restoring the shadow.",
                     path.data(),
                     trigger ? trigger : "unknown",
                     current);
@@ -396,20 +465,22 @@ namespace community_shaders::render
             if (decision ==
                 d3d11_hook_repair::Decision::preserveReachableChain) {
                 logging::info(
-                    "Preserving compatible downstream D3D11 PSSetShader chain at '{}' (trigger={}, target={}); bind calls still reach Community Shaders.",
+                    "Preserving compatible downstream D3D11 immediate-context chain at '{}' (trigger={}, target={}); bind calls still reach Community Shaders.",
                     path.data(),
                     trigger ? trigger : "unknown",
                     current);
                 return true;
             }
-            if (!isExecutableAddress(current)) {
+            if (currentVtable != initialContextVtable ||
+                !isExecutableAddress(current)) {
                 pixelShaderBindRepairFailures.fetch_add(
                     1,
                     std::memory_order_relaxed);
                 logging::error(
-                    "Rejected displaced D3D11 PSSetShader target at '{}' (trigger={}, target={}): target is not executable.",
+                    "Rejected displaced D3D11 immediate-context vtable at '{}' (trigger={}, vtable={}, target={}): only the verified initial table can be restored.",
                     path.data(),
                     trigger ? trigger : "unknown",
+                    reinterpret_cast<void*>(currentVtable),
                     current);
                 return false;
             }
@@ -418,20 +489,23 @@ namespace community_shaders::render
                 downstreamPSSetShader.exchange(
                     reinterpret_cast<PSSetShaderFunction>(current),
                     std::memory_order_acq_rel);
-            if (!patchPointer(pixelShaderBindCell, current, hookAddress)) {
-                if (readPointerCell(pixelShaderBindCell) != hookAddress) {
-                    downstreamPSSetShader.store(
-                        previousDownstream,
-                        std::memory_order_release);
-                }
+            const auto* observed = InterlockedCompareExchangePointer(
+                immediateContextVtableCell,
+                immediateContextVtableShadow.data(),
+                currentVtable);
+            if (observed != currentVtable) {
+                downstreamPSSetShader.store(
+                    previousDownstream,
+                    std::memory_order_release);
                 pixelShaderBindRepairFailures.fetch_add(
                     1,
                     std::memory_order_relaxed);
                 logging::error(
-                    "Failed to re-chain displaced D3D11 PSSetShader hook at '{}' (trigger={}, target={}).",
+                    "Failed to restore D3D11 immediate-context vtable shadow at '{}' (trigger={}, observed={}, expected={}).",
                     path.data(),
                     trigger ? trigger : "unknown",
-                    current);
+                    observed,
+                    reinterpret_cast<void*>(currentVtable));
                 return false;
             }
 
@@ -441,7 +515,7 @@ namespace community_shaders::render
                 1;
             pixelShaderBindRepairState = {};
             logging::warn(
-                "Re-chained displaced D3D11 PSSetShader hook after '{}' (trigger={}, downstream={}, repairs={}).",
+                "Restored D3D11 immediate-context vtable shadow over '{}' (trigger={}, downstream={}, repairs={}).",
                 path.data(),
                 trigger ? trigger : "unknown",
                 current,
@@ -485,7 +559,15 @@ namespace community_shaders::render
                 return result;
             }
 
-            deviceCaptured.store(true, std::memory_order_release);
+            auto expectedCapture = false;
+            if (!deviceCaptured.compare_exchange_strong(
+                    expectedCapture,
+                    true,
+                    std::memory_order_acq_rel)) {
+                logging::info(
+                    "Ignored additional Fallout4VR D3D11 device creation; the first captured immediate context retains shader-hook ownership.");
+                return result;
+            }
             if (!installDeviceVtableHooks(*device, *immediateContext)) {
                 logging::error(
                     "D3D11 device captured, but shader hooks remain fail-closed.");
@@ -585,7 +667,10 @@ namespace community_shaders::render
                 readPointerCell(createPixelShaderCell) ==
                     reinterpret_cast<void*>(&hookCreatePixelShader),
             .pixelShaderBindCellOwned = hooksInstalled &&
-                readPointerCell(pixelShaderBindCell) ==
+                readImmediateContextVtable() ==
+                    immediateContextVtableShadow.data() &&
+                readPointerCell(
+                    &immediateContextVtableShadow[kPSSetShaderVtableIndex]) ==
                     reinterpret_cast<void*>(&hookPSSetShader),
             .pixelShaderBindRepairs =
                 pixelShaderBindRepairs.load(std::memory_order_relaxed),
