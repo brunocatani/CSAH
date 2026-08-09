@@ -580,7 +580,7 @@ namespace community_shaders::ui
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Opaque default + model-space / five + six MRT" },
+                        { "label", "Opaque base + textured emission / five + six MRT" },
                         { "verifiedShaderContracts",
                             runtime.verifiedShaderContracts },
                         { "fullFeaturePort", false },

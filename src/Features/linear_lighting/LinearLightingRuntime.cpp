@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 6> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 8> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -158,6 +158,50 @@ namespace community_shaders::linear_lighting
                         std::byte{ 0x7A }, std::byte{ 0xB2 }, std::byte{ 0xBD }, std::byte{ 0x94 },
                         std::byte{ 0x69 }, std::byte{ 0xF3 }, std::byte{ 0x50 }, std::byte{ 0xC7 },
                         std::byte{ 0x9A }, std::byte{ 0x01 }, std::byte{ 0x0E }, std::byte{ 0x01 },
+                    },
+                },
+            },
+            {
+                "DefaultDefShadowSixMrt_L4_00004002",
+                IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_PS,
+                {
+                    3388,
+                    {
+                        std::byte{ 0xAE }, std::byte{ 0xD6 }, std::byte{ 0x70 }, std::byte{ 0xE5 },
+                        std::byte{ 0x73 }, std::byte{ 0x0D }, std::byte{ 0x65 }, std::byte{ 0x6A },
+                        std::byte{ 0xC7 }, std::byte{ 0xDC }, std::byte{ 0x56 }, std::byte{ 0xAA },
+                        std::byte{ 0x30 }, std::byte{ 0x61 }, std::byte{ 0x67 }, std::byte{ 0x19 },
+                    },
+                },
+                {
+                    6828,
+                    {
+                        std::byte{ 0x27 }, std::byte{ 0xCF }, std::byte{ 0xD5 }, std::byte{ 0xD1 },
+                        std::byte{ 0xF2 }, std::byte{ 0x3B }, std::byte{ 0x10 }, std::byte{ 0x31 },
+                        std::byte{ 0x54 }, std::byte{ 0x79 }, std::byte{ 0x98 }, std::byte{ 0x19 },
+                        std::byte{ 0xCA }, std::byte{ 0x3B }, std::byte{ 0x4B }, std::byte{ 0xAC },
+                    },
+                },
+            },
+            {
+                "DefaultDefShadowSixMrt_L3_00004003",
+                IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_VERTEX_COLOR_PS,
+                {
+                    3456,
+                    {
+                        std::byte{ 0x09 }, std::byte{ 0xC3 }, std::byte{ 0x95 }, std::byte{ 0x9B },
+                        std::byte{ 0xF0 }, std::byte{ 0x9D }, std::byte{ 0x71 }, std::byte{ 0xBF },
+                        std::byte{ 0x9B }, std::byte{ 0x8C }, std::byte{ 0x9B }, std::byte{ 0x27 },
+                        std::byte{ 0xF8 }, std::byte{ 0x97 }, std::byte{ 0xF7 }, std::byte{ 0xAC },
+                    },
+                },
+                {
+                    6896,
+                    {
+                        std::byte{ 0xFE }, std::byte{ 0x84 }, std::byte{ 0x1C }, std::byte{ 0x4A },
+                        std::byte{ 0x7E }, std::byte{ 0x36 }, std::byte{ 0x14 }, std::byte{ 0x49 },
+                        std::byte{ 0x32 }, std::byte{ 0x32 }, std::byte{ 0x0B }, std::byte{ 0x1A },
+                        std::byte{ 0x99 }, std::byte{ 0x76 }, std::byte{ 0xB4 }, std::byte{ 0xF2 },
                     },
                 },
             },

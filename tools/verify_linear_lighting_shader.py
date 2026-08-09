@@ -224,6 +224,34 @@ def verify(root: Path) -> None:
             "original_buffers": {2: 6, 12: 71},
             "outputs": [0, 1, 2, 3, 4, 5],
         },
+        {
+            "label": "DefaultDefShadowSixMrt_L4_00004002",
+            "source": reconstruction
+            / "DefaultDefShadowSixMrt_L4_00004002.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultDefShadowSixMrt_L4_00004002.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultDefShadowSixMrt_L4_00004002.dxbc",
+            "original_size": 3388,
+            "replacement_size": 6828,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "frame_registers": 6,
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
+        {
+            "label": "DefaultDefShadowSixMrt_L3_00004003",
+            "source": reconstruction
+            / "DefaultDefShadowSixMrt_L3_00004003.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultDefShadowSixMrt_L3_00004003.LinearLightingCandidate.dxbc",
+            "vanilla": verified / "DefaultDefShadowSixMrt_L3_00004003.dxbc",
+            "original_size": 3456,
+            "replacement_size": 6896,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_VERTEX_COLOR_PS",
+            "original_buffers": {2: 6, 12: 71},
+            "frame_registers": 6,
+            "outputs": [0, 1, 2, 3, 4, 5],
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -240,7 +268,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5)
+        for index in (1, 3, 5, 7)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
@@ -257,6 +285,9 @@ def verify(root: Path) -> None:
     for vertex_source_text in vertex_source_texts:
         if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in vertex_source_text:
             fail("L3 shader no longer selects the verified COLOR0 path")
+    if "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)" not in \
+            base_source_texts[1]:
+        fail("textured-emission shaders no longer transform the glow texture")
 
     for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
         if token not in runtime_text:
@@ -344,7 +375,8 @@ def verify(root: Path) -> None:
                     f"{contract['label']} vanilla constant buffers drifted: "
                     f"{original['constant_buffers']!r}")
             expected_candidate_buffers = dict(contract["original_buffers"])
-            expected_candidate_buffers.update({5: 5, 8: 1})
+            expected_candidate_buffers.update(
+                {5: contract.get("frame_registers", 5), 8: 1})
             if candidate["constant_buffers"] != expected_candidate_buffers:
                 fail(
                     f"{contract['label']} replacement constant buffers drifted: "

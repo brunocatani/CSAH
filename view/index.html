@@ -444,7 +444,7 @@
       { key: "emitColorGamma", label: "Emission gamma", hint: "Linearizes authored emissive colour.", min: 1, max: 3, step: .01 },
       { key: "vanillaDiffuseColorMultiplier", label: "Diffuse level", hint: "Preserves calibrated vanilla diffuse energy.", min: 0, max: 3, step: .01 },
       { key: "emitColorMultiplier", label: "Emission level", hint: "Scales geometry emission before output.", min: 0, max: 3, step: .01 },
-      { key: "glowmapMultiplier", label: "Glow level", hint: "Staged upstream control; retained in the INI.", min: 0, max: 3, step: .01, staged: true }
+      { key: "glowmapMultiplier", label: "Glow level", hint: "Scales textured emissive energy.", min: 0, max: 3, step: .01 }
     ];
 
     const state = { model: null, timers: new Map() };

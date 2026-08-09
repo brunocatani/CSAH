@@ -14,9 +14,20 @@ Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
 
+#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
+#endif
+
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+Texture2D<float4> TexGlow : register(t3);
+#endif
+
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+SamplerState SampGlow : register(s3);
+#endif
 
 #ifndef LINEAR_LIGHTING_VERTEX_COLOR
 #define LINEAR_LIGHTING_VERTEX_COLOR 0
@@ -107,7 +118,12 @@ PSOutput PSMain(PSInput input)
     output.target3.x = materialXY.x * specularSample.y;
     output.target3.z = cb2[0].w * 0.01;
     output.target3.w = 1.0;
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+    float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);
+    output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz) * glow;
+#else
     output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
+#endif
 
     uint matrixBase = input.eyeIndex * 4u;
     float4 currentPosition = float4(input.currentPosition.xyz, 1.0);
