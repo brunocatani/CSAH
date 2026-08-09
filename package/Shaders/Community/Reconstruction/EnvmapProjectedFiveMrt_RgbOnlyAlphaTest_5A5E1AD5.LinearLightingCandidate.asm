@@ -88,7 +88,7 @@
 // TEXCOORD                 2   xyz         3     NONE   float   xyz
 // TEXCOORD                 3   xyzw        4     NONE   float      w
 // TEXCOORD                 4   xyzw        5     NONE   float      w
-// COLOR                    0   xyz         6     NONE   float   xyz
+// COLOR                    0   xyzw        6     NONE   float   xyz
 // EYEINDEX                 0   x           7     NONE    uint
 // SV_IsFrontFace           0   x           8    FFACE    uint   x
 //

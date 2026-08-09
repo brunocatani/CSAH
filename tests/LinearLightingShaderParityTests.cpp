@@ -37,6 +37,7 @@ namespace
         UINT mrtCount;
         bool hasVertexColor;
         bool isInstanced;
+        bool usesTessellatedInputs{};
     };
 
     constexpr std::array kShaderContracts{
@@ -77,6 +78,14 @@ namespace
         ShaderContract{ "ModelSpaceNormalsSixMrt_L4_00002002", 6, false, false },
         ShaderContract{ "ModelSpaceNormalsSixMrt_L3_00002003", 6, true, false },
         ShaderContract{ "ModelSpaceNormalsAlphaTestSixMrt_L4_00002102", 6, false, false },
+        ShaderContract{ "TessellatedSixMrt_L4_00080002", 6, false, false, true },
+        ShaderContract{ "TessellatedSixMrt_L3_00080003", 6, true, false, true },
+        ShaderContract{ "TessellatedAlphaTestSixMrt_L4_00080102", 6, false, false, true },
+        ShaderContract{ "TessellatedAlphaTestSixMrt_L3_00080103", 6, true, false, true },
+        ShaderContract{ "TessellatedAlphaTestSixMrt_RgbOnlyVertexColor_00080503", 6, true, false, true },
+        ShaderContract{ "InstancedLandLodBlendSixMrt_L4_0A000002", 6, false, true },
+        ShaderContract{ "InstancedLandLodBlendSixMrt_L3_0A000003", 6, true, true },
+        ShaderContract{ "ModelSpaceNormalsSkinnedSixMrt_L4_00002006", 6, false, false },
     };
 
     struct RenderTargets
@@ -238,12 +247,24 @@ namespace
 
     [[nodiscard]] ComPtr<ID3DBlob> compileVertexShader(
         bool hasVertexColor,
-        bool isInstanced)
+        bool isInstanced,
+        bool usesTessellatedInputs)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
 {
     float4 position : SV_POSITION;
+#if USES_TESSELLATED_INPUTS
+    float2 uv : TEXCOORD0;
+#if HAS_VERTEX_COLOR
+    float4 vertexColor : COLOR0;
+#endif
+    float3 tangent : TEXCOORD1;
+    float3 bitangent : TEXCOORD2;
+    float3 normal : TEXCOORD3;
+    float4 currentPosition : POSITION1;
+    float4 previousPosition : POSITION2;
+#else
     float3 tangent : TEXCOORD0;
     float3 bitangent : TEXCOORD1;
     float3 normal : TEXCOORD2;
@@ -251,6 +272,7 @@ struct VSOutput
     float4 previousPosition : TEXCOORD4;
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
+#endif
 #endif
 #if IS_INSTANCED
     nointerpolation uint instanceDataIndex : COLOR2;
@@ -267,11 +289,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         float2(3.0, -1.0)
     };
     output.position = float4(positions[vertexId], 0.5, 1.0);
+#if USES_TESSELLATED_INPUTS
+    output.uv = float2(0.25, 0.75);
+    output.tangent = float3(1.0, 0.0, 0.0);
+    output.bitangent = float3(0.0, 1.0, 0.0);
+    output.normal = float3(0.0, 0.0, -1.0);
+    output.currentPosition = float4(0.2, -0.3, 0.4, 1.0);
+    output.previousPosition = float4(0.15, -0.2, 0.35, 1.0);
+#else
     output.tangent = float3(1.0, 0.0, 0.0);
     output.bitangent = float3(0.0, 1.0, 0.0);
     output.normal = float3(0.0, 0.0, -1.0);
     output.currentPosition = float4(0.2, -0.3, 0.4, 0.25);
     output.previousPosition = float4(0.15, -0.2, 0.35, 0.75);
+#endif
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
@@ -288,6 +319,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const D3D_SHADER_MACRO macros[]{
             { "HAS_VERTEX_COLOR", hasVertexColor ? "1" : "0" },
             { "IS_INSTANCED", isInstanced ? "1" : "0" },
+            { "USES_TESSELLATED_INPUTS",
+                usesTessellatedInputs ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -753,13 +786,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 4> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 8> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
+            const auto usesTessellatedInputs = (index & 4u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
-                isInstanced);
+                isInstanced,
+                usesTessellatedInputs);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -768,7 +803,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     &vertexShaders[index]),
                 std::string("CreateVertexShader(") +
                     (hasVertexColor ? "COLOR0" : "no COLOR0") +
-                    (isInstanced ? ", instanced)" : ", non-instanced)"));
+                    (isInstanced ? ", instanced" : ", non-instanced") +
+                    (usesTessellatedInputs ?
+                            ", tessellated inputs)" :
+                            ", standard inputs)"));
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -808,7 +846,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                  ++caseIndex) {
                 auto* vertexShader = vertexShaders[
                     (contract.hasVertexColor ? 1u : 0u) |
-                    (contract.isInstanced ? 2u : 0u)].Get();
+                    (contract.isInstanced ? 2u : 0u) |
+                    (contract.usesTessellatedInputs ? 4u : 0u)].Get();
                 const auto vanilla = render(
                     *device.Get(),
                     *context.Get(),

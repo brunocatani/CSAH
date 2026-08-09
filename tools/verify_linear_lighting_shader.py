@@ -83,6 +83,31 @@ def parse_dcl_contract(assembly: str) -> dict[str, object]:
     inputs: list[str] = []
     outputs: set[int] = set()
     global_flags = ""
+    input_signature: list[tuple[str, int, str, int, str, str, str]] = []
+
+    signature_text = assembly.partition("// Input signature:")[2].partition(
+        "// Output signature:"
+    )[0]
+    for raw_line in signature_text.splitlines():
+        if not raw_line.startswith("//"):
+            continue
+        columns = raw_line[2:].split()
+        if (
+            len(columns) in (6, 7)
+            and columns[1].isdigit()
+            and columns[3].isdigit()
+        ):
+            input_signature.append(
+                (
+                    columns[0],
+                    int(columns[1]),
+                    columns[2],
+                    int(columns[3]),
+                    columns[4],
+                    columns[5],
+                    columns[6] if len(columns) == 7 else "",
+                )
+            )
 
     for raw_line in assembly.splitlines():
         line = raw_line.strip()
@@ -107,6 +132,7 @@ def parse_dcl_contract(assembly: str) -> dict[str, object]:
         "samplers": sorted(samplers),
         "textures": sorted(textures),
         "inputs": inputs,
+        "input_signature": input_signature,
         "outputs": sorted(outputs),
         "global_flags": global_flags,
     }
@@ -141,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 37:
-        fail("Linear Lighting manifest must contain exactly 37 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 45:
+        fail("Linear Lighting manifest must contain exactly 45 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -231,6 +257,7 @@ def verify_source_contracts(
     glowmap_contracts = 0
     instanced_contracts = 0
     model_space_normal_contracts = 0
+    tessellated_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -251,17 +278,23 @@ def verify_source_contracts(
             if "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1" not in source_text:
                 fail(f"{contract['label']} no longer selects model-space normals")
             model_space_normal_contracts += 1
-    if vertex_contracts != 17:
-        fail(f"expected 17 COLOR0 contracts, found {vertex_contracts}")
+        if str(contract["label"]).startswith("Tessellated"):
+            if "#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1" not in source_text:
+                fail(f"{contract['label']} no longer selects tessellated inputs")
+            tessellated_contracts += 1
+    if vertex_contracts != 21:
+        fail(f"expected 21 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 10:
         fail(f"expected 10 glowmap contracts, found {glowmap_contracts}")
-    if instanced_contracts != 2:
-        fail(f"expected 2 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 3:
+    if instanced_contracts != 4:
+        fail(f"expected 4 instanced contracts, found {instanced_contracts}")
+    if model_space_normal_contracts != 4:
         fail(
-            "expected 3 model-space-normal contracts, "
+            "expected 4 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
+    if tessellated_contracts != 5:
+        fail(f"expected 5 tessellated contracts, found {tessellated_contracts}")
 
 
 def verify(root: Path) -> None:
@@ -315,17 +348,24 @@ def verify(root: Path) -> None:
     parity_text = parity_source.read_text(encoding="utf-8")
     parity_entries = re.findall(
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
-        r'(true|false)\s*\}',
+        r'(true|false)(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
-    parity_contracts: dict[str, tuple[int, bool, bool]] = {}
-    for name, mrt_count, has_vertex_color, is_instanced in parity_entries:
+    parity_contracts: dict[str, tuple[int, bool, bool, bool]] = {}
+    for (
+        name,
+        mrt_count,
+        has_vertex_color,
+        is_instanced,
+        uses_tessellated_inputs,
+    ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
         parity_contracts[name] = (
             int(mrt_count),
             has_vertex_color == "true",
             is_instanced == "true",
+            uses_tessellated_inputs == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -421,6 +461,10 @@ def verify(root: Path) -> None:
                 len(original["outputs"]),
                 "#define LINEAR_LIGHTING_VERTEX_COLOR 1" in source_text,
                 13 in original["constant_buffers"],
+                any(
+                    semantic[0] == "POSITION" and semantic[1] == 1
+                    for semantic in original["input_signature"]
+                ),
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(
@@ -439,7 +483,14 @@ def verify(root: Path) -> None:
                     f"{label} replacement constant buffers differ from vanilla: "
                     f"{candidate_buffers!r} != {original['constant_buffers']!r}"
                 )
-            for key in ("samplers", "textures", "inputs", "outputs", "global_flags"):
+            for key in (
+                "samplers",
+                "textures",
+                "inputs",
+                "input_signature",
+                "outputs",
+                "global_flags",
+            ):
                 if candidate[key] != original[key]:
                     fail(f"{label} replacement {key} differs from vanilla")
             validate_frame_reflection(candidate_assembly)

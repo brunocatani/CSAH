@@ -18,9 +18,9 @@ namespace
             .shaderDetoursOwned = true,
             .drawDetoursOwned = true,
             .geometryHookOwned = true,
-            .expectedShaderContracts = 37,
-            .verifiedShaderContracts = 37,
-            .matchingShaderContractMask = expectedContractMask(37),
+            .expectedShaderContracts = 45,
+            .verifiedShaderContracts = 45,
+            .matchingShaderContractMask = expectedContractMask(45),
             .geometryCalls = 2,
             .geometryAccepted = 2,
             .deepestGeometrySourceStage = 2,
@@ -99,8 +99,8 @@ int main()
         "zero contract mask is invalid");
     passed &= expect(expectedContractMask(22) == 0x003FFFFFull,
         "22-contract mask is invalid");
-    passed &= expect(expectedContractMask(37) == 0x0000001FFFFFFFFFull,
-        "37-contract mask is invalid");
+    passed &= expect(expectedContractMask(45) == 0x00001FFFFFFFFFFFull,
+        "45-contract mask is invalid");
     passed &= expect(expectedContractMask(64) == UINT64_MAX,
         "full contract mask is invalid");
 

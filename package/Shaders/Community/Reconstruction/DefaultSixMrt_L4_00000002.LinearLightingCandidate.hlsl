@@ -60,19 +60,31 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 0
 #endif
 
+#ifndef LINEAR_LIGHTING_TESSELLATED_INPUTS
+#define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
+#endif
+
 struct PSInput
 {
     float4 position : SV_POSITION;
+#if LINEAR_LIGHTING_TESSELLATED_INPUTS
+    float2 uv : TEXCOORD0;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    float4 vertexColor : COLOR0;
+#endif
+    float3 tangent : TEXCOORD1;
+    float3 bitangent : TEXCOORD2;
+    float3 normal : TEXCOORD3;
+    float4 currentPosition : POSITION1;
+    float4 previousPosition : POSITION2;
+#else
     float3 tangent : TEXCOORD0;
     float3 bitangent : TEXCOORD1;
     float3 normal : TEXCOORD2;
     float4 currentPosition : TEXCOORD3;
     float4 previousPosition : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
-#if LINEAR_LIGHTING_VERTEX_ALPHA
     float4 vertexColor : COLOR0;
-#else
-    float3 vertexColor : COLOR0;
 #endif
 #endif
 #if LINEAR_LIGHTING_INSTANCED
@@ -99,7 +111,11 @@ PSOutput PSMain(PSInput input)
 {
     PSOutput output;
 
+#if LINEAR_LIGHTING_TESSELLATED_INPUTS
+    float2 uv = input.uv;
+#else
     float2 uv = float2(input.currentPosition.w, input.previousPosition.w);
+#endif
 #if LINEAR_LIGHTING_ALPHA_TEST
     float4 diffuseSample = TexDiffuse.Sample(SampDiffuse, uv);
     float alpha = diffuseSample.w;
@@ -192,7 +208,11 @@ PSOutput PSMain(PSInput input)
         dot(cb12[matrixBase + 63u], currentPosition),
         dot(cb12[matrixBase + 64u], currentPosition)) / currentW;
 
+#if LINEAR_LIGHTING_TESSELLATED_INPUTS
+    float4 previousPosition = currentPosition;
+#else
     float4 previousPosition = float4(input.previousPosition.xyz, 1.0);
+#endif
     float previousW = dot(cb12[matrixBase + 54u], previousPosition);
     float2 previousNdc = float2(
         dot(cb12[matrixBase + 51u], previousPosition),

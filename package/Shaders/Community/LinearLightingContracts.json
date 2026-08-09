@@ -35,5 +35,13 @@
   { "name": "InstancedSixMrt_L3_08000003", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "ModelSpaceNormalsSixMrt_L4_00002002", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
   { "name": "ModelSpaceNormalsSixMrt_L3_00002003", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SIX_MRT_VERTEX_COLOR_PS" },
-  { "name": "ModelSpaceNormalsAlphaTestSixMrt_L4_00002102", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" }
+  { "name": "ModelSpaceNormalsAlphaTestSixMrt_L4_00002102", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "TessellatedSixMrt_L4_00080002", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_SIX_MRT_PS" },
+  { "name": "TessellatedSixMrt_L3_00080003", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "TessellatedAlphaTestSixMrt_L4_00080102", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "TessellatedAlphaTestSixMrt_L3_00080103", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "TessellatedAlphaTestSixMrt_RgbOnlyVertexColor_00080503", "resource": "IDR_LINEAR_LIGHTING_TESSELLATED_ALPHA_TEST_RGB_ONLY_VERTEX_COLOR_PS" },
+  { "name": "InstancedLandLodBlendSixMrt_L4_0A000002", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_LAND_LOD_BLEND_SIX_MRT_PS" },
+  { "name": "InstancedLandLodBlendSixMrt_L3_0A000003", "resource": "IDR_LINEAR_LIGHTING_INSTANCED_LAND_LOD_BLEND_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "ModelSpaceNormalsSkinnedSixMrt_L4_00002006", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_SKINNED_SIX_MRT_PS" }
 ]

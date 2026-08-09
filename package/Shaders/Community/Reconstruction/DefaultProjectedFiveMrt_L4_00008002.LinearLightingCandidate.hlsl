@@ -58,11 +58,7 @@ struct PSInput
     float4 texCoord3 : TEXCOORD3;
     float4 texCoord4 : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
-#if LINEAR_LIGHTING_VERTEX_ALPHA
     float4 vertexColor : COLOR0;
-#else
-    float3 vertexColor : COLOR0;
-#endif
 #endif
     uint eyeIndex : EYEINDEX;
     bool isFrontFace : SV_IsFrontFace;
