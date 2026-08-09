@@ -66,6 +66,7 @@ if(NOT EXISTS
 endif()
 
 project(${NAME} VERSION ${VERSION} LANGUAGES CXX)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 include("${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake")
 fo4vr_cs_verify_fo4vr_loader("${SOURCE_DIR}/XSEPlugin.cpp")
@@ -137,6 +138,21 @@ add_custom_target(VerifyLinearLightingQualification ALL
   COMMENT "Verifying unattended Linear Lighting qualification contract"
   VERBATIM)
 
+set(LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/LinearLightingContracts.json")
+set(LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_linear_lighting_runtime_contracts.py")
+set(LINEAR_LIGHTING_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedLinearLightingContracts.inl")
+add_custom_target(VerifyLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying generated Linear Lighting shader identities"
+  VERBATIM)
+
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
@@ -176,6 +192,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
+  "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
@@ -194,6 +211,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyLinearLightingContracts
   VerifyLinearLightingQualification
   VerifyWristPanel)
 
@@ -293,7 +311,6 @@ option(BUILD_FO4VR_CS_TESTS
 if(BUILD_FO4VR_CS_TESTS)
   enable_testing()
   find_program(PWSH_EXECUTABLE NAMES pwsh REQUIRED)
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
   add_executable(FO4VRCommunityShadersLinearLightingSettingsTests
     "${ROOT_DIR}/tests/LinearLightingSettingsTests.cpp")
@@ -347,6 +364,23 @@ if(BUILD_FO4VR_CS_TESTS)
     minhook::minhook d3d11)
   add_test(NAME FO4VRCommunityShaders.D3D11MethodDetourSmoke
     COMMAND FO4VRCommunityShadersD3D11MethodDetourSmokeTests)
+
+  add_executable(FO4VRCommunityShadersLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/LinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.LinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersLinearLightingShaderParityTests
+      "${ROOT_DIR}")
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"
@@ -419,15 +453,21 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/verify_linear_lighting_shader.py"
       --root "${ROOT_DIR}")
+  add_test(NAME FO4VRCommunityShaders.LinearLightingRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+      --check)
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
       --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
       --known-dir "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
-      --expect-total 22
-      --expect-unique 22
-      --expect-target-shape 22
-      --expect-known 22)
+      --expect-total 32
+      --expect-unique 32
+      --expect-target-shape 32
+      --expect-known 32)
   add_test(NAME FO4VRCommunityShaders.LinearLightingFxpParser
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_census_linear_lighting_fxp.py")

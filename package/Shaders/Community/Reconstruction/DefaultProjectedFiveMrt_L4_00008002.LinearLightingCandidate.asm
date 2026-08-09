@@ -152,7 +152,7 @@ mov o0.w, r0.x
 dp3 r0.y, v3.xyzx, v3.xyzx
 rsq r0.y, r0.y
 mul r0.yzw, r0.yyyy, v3.xxyz
-sample_indexable(texture2d)(float,float,float,float) r1.zw, r1.xyxx, t1.xyzw, s1
+sample_indexable(texture2d)(float,float,float,float) r1.zw, r1.xyxx, t1.zwxy, s1
 sample_indexable(texture2d)(float,float,float,float) r1.xy, r1.xyxx, t2.xyzw, s2
 mad r3.xy, r1.zwzz, l(2.000000, 2.000000, 0.000000, 0.000000), l(-1.000000, -1.000000, 0.000000, 0.000000)
 dp2 r1.z, r3.xyxx, r3.xyxx

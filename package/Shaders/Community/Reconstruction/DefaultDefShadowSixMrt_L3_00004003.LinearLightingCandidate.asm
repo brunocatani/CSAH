@@ -156,7 +156,7 @@ mul o0.xyz, r0.xxxx, r2.xyzx
 dp3 r0.x, v3.xyzx, v3.xyzx
 rsq r0.x, r0.x
 mul r0.xyw, r0.xxxx, v3.xyxz
-sample_indexable(texture2d)(float,float,float,float) r1.zw, r1.xyxx, t1.xyzw, s1
+sample_indexable(texture2d)(float,float,float,float) r1.zw, r1.xyxx, t1.zwxy, s1
 mad r2.xy, r1.zwzz, l(2.000000, 2.000000, 0.000000, 0.000000), l(-1.000000, -1.000000, 0.000000, 0.000000)
 dp2 r1.z, r2.xyxx, r2.xyxx
 min r1.z, r1.z, l(1.000000)

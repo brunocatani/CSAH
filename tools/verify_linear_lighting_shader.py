@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -59,16 +60,20 @@ def find_fxc() -> Path:
     fail("fxc.exe was not found")
 
 
-def run_fxc(fxc: Path, arguments: list[str]) -> None:
+def run_command(arguments: list[str], label: str) -> None:
     completed = subprocess.run(
-        [str(fxc), "/nologo", *arguments],
+        arguments,
         capture_output=True,
         text=True,
         check=False,
     )
     if completed.returncode != 0:
         details = (completed.stderr or completed.stdout).strip()
-        fail(f"fxc failed: {details}")
+        fail(f"{label} failed: {details}")
+
+
+def run_fxc(fxc: Path, arguments: list[str]) -> None:
+    run_command([str(fxc), "/nologo", *arguments], "fxc")
 
 
 def parse_dcl_contract(assembly: str) -> dict[str, object]:
@@ -84,8 +89,9 @@ def parse_dcl_contract(assembly: str) -> dict[str, object]:
         if line.startswith("dcl_globalFlags "):
             global_flags = line
         elif match := re.fullmatch(
-                r"dcl_constantbuffer CB(\d+)\[(\d+)\], (?:immediate|dynamic)Indexed",
-                line):
+            r"dcl_constantbuffer CB(\d+)\[(\d+)\], (?:immediate|dynamic)Indexed",
+            line,
+        ):
             constant_buffers[int(match.group(1))] = int(match.group(2))
         elif match := re.match(r"dcl_sampler s(\d+)", line):
             samplers.add(int(match.group(1)))
@@ -113,22 +119,132 @@ def validate_frame_reflection(assembly: str) -> None:
         fail("Linear Lighting reflection blocks are missing")
 
     frame_block = assembly[frame_start:geometry_start]
-    reflected: list[tuple[str, int]] = []
     field_pattern = re.compile(
-        r"//\s+(?:uint|float)\s+(\w+);\s+// Offset:\s+(\d+)")
-    for match in field_pattern.finditer(frame_block):
-        reflected.append((match.group(1), int(match.group(2))))
+        r"//\s+(?:uint|float)\s+(\w+);\s+// Offset:\s+(\d+)"
+    )
+    reflected = [
+        (match.group(1), int(match.group(2)))
+        for match in field_pattern.finditer(frame_block)
+    ]
     if reflected != EXPECTED_FRAME_FIELDS:
         fail(f"LinearLightingFrame layout drifted: {reflected!r}")
 
     geometry_block = assembly[geometry_start:]
-    if not re.search(r"float emissiveMult;\s+// Offset:\s+0 Size:\s+4", geometry_block):
+    if not re.search(
+        r"float emissiveMult;\s+// Offset:\s+0 Size:\s+4", geometry_block
+    ):
         fail("LinearLightingGeometry emissiveMult is not reflected at offset zero")
 
 
-def verify(root: Path) -> None:
+def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
+    manifest_path = (
+        root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, list) or len(manifest) != 32:
+        fail("Linear Lighting manifest must contain exactly 32 contracts")
+
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
+    names: set[str] = set()
+    resources: set[str] = set()
+    contracts: list[dict[str, object]] = []
+    for index, entry in enumerate(manifest):
+        if not isinstance(entry, dict):
+            fail(f"manifest entry {index} is not an object")
+        name = entry.get("name")
+        resource = entry.get("resource")
+        if not isinstance(name, str) or not name:
+            fail(f"manifest entry {index} has an invalid name")
+        if not isinstance(resource, str) or not resource.startswith("IDR_"):
+            fail(f"manifest entry {index} has an invalid resource symbol")
+        if name in names:
+            fail(f"duplicate shader contract name: {name}")
+        if resource in resources:
+            fail(f"duplicate shader contract resource: {resource}")
+        names.add(name)
+        resources.add(resource)
+        contracts.append(
+            {
+                "label": name,
+                "resource": resource,
+                "source": reconstruction
+                / f"{name}.LinearLightingCandidate.hlsl",
+                "packaged": reconstruction
+                / f"{name}.LinearLightingCandidate.dxbc",
+                "vanilla": verified / f"{name}.dxbc",
+            }
+        )
+    return manifest_path, contracts
+
+
+def verify_source_contracts(
+    root: Path, contracts: list[dict[str, object]], shared: Path
+) -> None:
+    projected_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"
+    )
+    six_mrt_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "DefaultSixMrt_L4_00000002.LinearLightingCandidate.hlsl"
+    )
+    base_source_texts = [
+        projected_source.read_text(encoding="utf-8"),
+        six_mrt_source.read_text(encoding="utf-8"),
+    ]
+    shared_text = shared.read_text(encoding="utf-8")
+    if any("enableGammaCorrection" in text for text in base_source_texts) or (
+        "enableGammaCorrection" in shared_text
+    ):
+        fail("removed upstream setting enableGammaCorrection returned")
+
+    for base_source_text in base_source_texts:
+        for token in (
+            "LinearLightingDiffuse(diffuse",
+            "LinearLightingEmitColor(cb2[1].xyz)",
+            "float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;",
+        ):
+            if token not in base_source_text:
+                fail(f"active shader is missing transformation contract: {token}")
+    for token in (
+        "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)",
+        "clip(alpha - cb2[1].w)",
+    ):
+        if token not in base_source_texts[1]:
+            fail(f"six-MRT shader is missing semantic contract: {token}")
+    if "clip(diffuse.w - cb2[1].w)" not in base_source_texts[0]:
+        fail("projected shader no longer preserves alpha-reference testing")
+
+    vertex_contracts = 0
+    glowmap_contracts = 0
+    for contract in contracts:
+        source = contract["source"]
+        assert isinstance(source, Path)
+        source_text = source.read_text(encoding="utf-8")
+        if "L3" in str(contract["label"]) or "VertexColor" in str(contract["label"]):
+            if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in source_text:
+                fail(f"{contract['label']} no longer selects the COLOR0 path")
+            vertex_contracts += 1
+        if str(contract["label"]).startswith("Glowmap"):
+            if "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" not in source_text:
+                fail(f"{contract['label']} no longer selects textured emission")
+            glowmap_contracts += 1
+    if vertex_contracts != 15:
+        fail(f"expected 15 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 10:
+        fail(f"expected 10 glowmap contracts, found {glowmap_contracts}")
+
+
+def verify(root: Path) -> None:
     shared = (
         root
         / "package"
@@ -144,524 +260,162 @@ def verify(root: Path) -> None:
         / "linear_lighting"
         / "LinearLightingRuntime.cpp"
     )
+    generated_contracts = (
+        root
+        / "src"
+        / "Features"
+        / "linear_lighting"
+        / "GeneratedLinearLightingContracts.inl"
+    )
     resources_rc = root / "src" / "resources.rc"
-    contracts = [
-        {
-            "label": "DefaultProjectedFiveMrt_L4_00008002",
-            "source": reconstruction
-            / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultProjectedFiveMrt_L4_00008002.dxbc",
-            "original_size": 3052,
-            "replacement_size": 6184,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-        },
-        {
-            "label": "DefaultProjectedFiveMrt_L3_00008003",
-            "source": reconstruction
-            / "DefaultProjectedFiveMrt_L3_00008003.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultProjectedFiveMrt_L3_00008003.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultProjectedFiveMrt_L3_00008003.dxbc",
-            "original_size": 3120,
-            "replacement_size": 6252,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-        },
-        {
-            "label": "DefaultSixMrt_L4_00000002",
-            "source": reconstruction
-            / "DefaultSixMrt_L4_00000002.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultSixMrt_L4_00000002.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultSixMrt_L4_00000002.dxbc",
-            "original_size": 3336,
-            "replacement_size": 6524,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "DefaultSixMrt_L3_00000003",
-            "source": reconstruction
-            / "DefaultSixMrt_L3_00000003.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultSixMrt_L3_00000003.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultSixMrt_L3_00000003.dxbc",
-            "original_size": 3404,
-            "replacement_size": 6592,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "DefaultModelSpaceSixMrt_L4_00000006",
-            "source": reconstruction
-            / "DefaultModelSpaceSixMrt_L4_00000006.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultModelSpaceSixMrt_L4_00000006.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultModelSpaceSixMrt_L4_00000006.dxbc",
-            "original_size": 3336,
-            "replacement_size": 6524,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_MODEL_SPACE_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "DefaultModelSpaceSixMrt_L3_00000007",
-            "source": reconstruction
-            / "DefaultModelSpaceSixMrt_L3_00000007.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultModelSpaceSixMrt_L3_00000007.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultModelSpaceSixMrt_L3_00000007.dxbc",
-            "original_size": 3404,
-            "replacement_size": 6592,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_MODEL_SPACE_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "DefaultDefShadowSixMrt_L4_00004002",
-            "source": reconstruction
-            / "DefaultDefShadowSixMrt_L4_00004002.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultDefShadowSixMrt_L4_00004002.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultDefShadowSixMrt_L4_00004002.dxbc",
-            "original_size": 3388,
-            "replacement_size": 6828,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "frame_registers": 6,
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "DefaultDefShadowSixMrt_L3_00004003",
-            "source": reconstruction
-            / "DefaultDefShadowSixMrt_L3_00004003.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultDefShadowSixMrt_L3_00004003.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "DefaultDefShadowSixMrt_L3_00004003.dxbc",
-            "original_size": 3456,
-            "replacement_size": 6896,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_TEXTURED_EMISSION_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "frame_registers": 6,
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "EnvmapSixMrt_L4_00000102",
-            "source": reconstruction
-            / "EnvmapSixMrt_L4_00000102.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapSixMrt_L4_00000102.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapSixMrt_L4_00000102.dxbc",
-            "original_size": 3384,
-            "replacement_size": 6572,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "EnvmapSixMrt_L3_00000103",
-            "source": reconstruction
-            / "EnvmapSixMrt_L3_00000103.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapSixMrt_L3_00000103.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapSixMrt_L3_00000103.dxbc",
-            "original_size": 3460,
-            "replacement_size": 6648,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "EnvmapModelSpaceSixMrt_L4_00000106",
-            "source": reconstruction
-            / "EnvmapModelSpaceSixMrt_L4_00000106.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapModelSpaceSixMrt_L4_00000106.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapModelSpaceSixMrt_L4_00000106.dxbc",
-            "original_size": 3384,
-            "replacement_size": 6572,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "EnvmapModelSpaceSixMrt_L3_00000107",
-            "source": reconstruction
-            / "EnvmapModelSpaceSixMrt_L3_00000107.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapModelSpaceSixMrt_L3_00000107.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapModelSpaceSixMrt_L3_00000107.dxbc",
-            "original_size": 3460,
-            "replacement_size": 6648,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-        },
-        {
-            "label": "EnvmapProjectedFiveMrt_L4_00008102",
-            "source": reconstruction
-            / "EnvmapProjectedFiveMrt_L4_00008102.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapProjectedFiveMrt_L4_00008102.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapProjectedFiveMrt_L4_00008102.dxbc",
-            "original_size": 3100,
-            "replacement_size": 6232,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-        },
-        {
-            "label": "EnvmapProjectedFiveMrt_L3_00008103",
-            "source": reconstruction
-            / "EnvmapProjectedFiveMrt_L3_00008103.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapProjectedFiveMrt_L3_00008103.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapProjectedFiveMrt_L3_00008103.dxbc",
-            "original_size": 3176,
-            "replacement_size": 6308,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-        },
-        {
-            "label": "EnvmapProjectedFiveMrt_L4_00008106",
-            "source": reconstruction
-            / "EnvmapProjectedFiveMrt_L4_00008106.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapProjectedFiveMrt_L4_00008106.LinearLightingCandidate.dxbc",
-            "vanilla": verified / "EnvmapProjectedFiveMrt_L4_00008106.dxbc",
-            "original_size": 3100,
-            "replacement_size": 6232,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-        },
-        {
-            "label": "TexturedEmissionAlphaTestSixMrt_L4_00004102",
-            "source": reconstruction
-            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "TexturedEmissionAlphaTestSixMrt_L4_00004102.dxbc",
-            "original_size": 3464,
-            "replacement_size": 6904,
-            "resource": "IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "frame_registers": 6,
-            "outputs": [0, 1, 2, 3, 4, 5],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
-                "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1",
-            ),
-            "required_vanilla_tokens": (
-                "add r0.z, r1.w, -cb2[1].w",
-                "discard_nz r0.z",
-                "mul o4.xyz, r1.xyzx, cb2[1].xyzx",
-            ),
-        },
-        {
-            "label": "TexturedEmissionAlphaTestSixMrt_L3_00004103",
-            "source": reconstruction
-            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "TexturedEmissionAlphaTestSixMrt_L3_00004103.dxbc",
-            "original_size": 3540,
-            "replacement_size": 6980,
-            "resource": "IDR_LINEAR_LIGHTING_TEXTURED_EMISSION_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "frame_registers": 6,
-            "outputs": [0, 1, 2, 3, 4, 5],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
-                "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1",
-                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
-            ),
-            "required_vanilla_tokens": (
-                "mad r0.z, r1.w, v6.w, -cb2[1].w",
-                "discard_nz r0.z",
-                "mul o4.xyz, r1.xyzx, cb2[1].xyzx",
-            ),
-        },
-        {
-            "label": "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016",
-            "source": reconstruction
-            / "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "EnvmapModelSpaceSixMrt_RgbOnlyAlphaTest_54F53016.dxbc",
-            "original_size": 3452,
-            "replacement_size": 6640,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_MODEL_SPACE_RGB_ONLY_ALPHA_TEST_PS",
-            "original_buffers": {2: 6, 12: 71},
-            "outputs": [0, 1, 2, 3, 4, 5],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
-                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
-                "#define LINEAR_LIGHTING_VERTEX_ALPHA 0",
-            ),
-            "required_vanilla_tokens": (
-                "dcl_input_ps linear v6.xyz",
-                "add r0.z, r1.w, -cb2[1].w",
-                "discard_nz r0.z",
-                "mul r1.xyz, r1.xyzx, v6.xyzx",
-            ),
-        },
-        {
-            "label": "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5",
-            "source": reconstruction
-            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "EnvmapProjectedFiveMrt_RgbOnlyAlphaTest_5A5E1AD5.dxbc",
-            "original_size": 3168,
-            "replacement_size": 6300,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_RGB_ONLY_ALPHA_TEST_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
-                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
-                "#define LINEAR_LIGHTING_NORMAL_XY 1",
-                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
-                "#define LINEAR_LIGHTING_VERTEX_ALPHA 0",
-            ),
-            "required_vanilla_tokens": (
-                "dcl_globalFlags refactoringAllowed",
-                "dcl_input_ps linear v6.xyz",
-                "add r0.z, r1.w, -cb2[1].w",
-                "discard_nz r0.z",
-                "mul r1.xyz, r1.xyzx, v6.xyzx",
-            ),
-        },
-        {
-            "label": "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98",
-            "source": reconstruction
-            / "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "EnvmapProjectedFiveMrt_VertexColorNoEarlyDepth_B4D2FE98.dxbc",
-            "original_size": 3176,
-            "replacement_size": 6308,
-            "resource": "IDR_LINEAR_LIGHTING_ENVMAP_PROJECTED_VERTEX_COLOR_NO_EARLY_DEPTH_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_ALPHA_TEST 1",
-                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
-                "#define LINEAR_LIGHTING_NORMAL_XY 1",
-                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
-            ),
-            "required_vanilla_tokens": (
-                "dcl_globalFlags refactoringAllowed",
-                "dcl_input_ps linear v6.xyzw",
-                "mad r0.z, r1.w, v6.w, -cb2[1].w",
-                "mul r1.xyzw, r1.xyzw, v6.xyzw",
-                "discard_nz r0.z",
-            ),
-        },
-        {
-            "label": "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C",
-            "source": reconstruction
-            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.dxbc",
-            "original_size": 3052,
-            "replacement_size": 6184,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_NO_EARLY_DEPTH_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
-            ),
-            "required_vanilla_tokens": (
-                "dcl_globalFlags refactoringAllowed",
-            ),
-        },
-        {
-            "label": "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A",
-            "source": reconstruction
-            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.LinearLightingCandidate.hlsl",
-            "packaged": reconstruction
-            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.LinearLightingCandidate.dxbc",
-            "vanilla": verified
-            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.dxbc",
-            "original_size": 3120,
-            "replacement_size": 6252,
-            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_NO_EARLY_DEPTH_PS",
-            "original_buffers": {2: 7, 12: 51},
-            "outputs": [0, 1, 2, 3, 4],
-            "required_source_tokens": (
-                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
-                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
-            ),
-            "required_vanilla_tokens": (
-                "dcl_globalFlags refactoringAllowed",
-                "dcl_input_ps linear v6.xyzw",
-                "mul r2.xyzw, r2.xyzw, v6.xyzw",
-            ),
-        },
-    ]
+    parity_source = root / "tests" / "LinearLightingShaderParityTests.cpp"
+    generator = root / "tools" / "generate_linear_lighting_runtime_contracts.py"
+    manifest_path, contracts = load_contracts(root)
 
-    required_files = [shared, runtime_source, resources_rc]
+    required_files = [
+        manifest_path,
+        shared,
+        runtime_source,
+        generated_contracts,
+        resources_rc,
+        parity_source,
+        generator,
+    ]
     for contract in contracts:
         required_files.extend(
-            (contract["source"], contract["packaged"], contract["vanilla"]))
+            (contract["source"], contract["packaged"], contract["vanilla"])
+        )
     for required in required_files:
-        if not required.is_file():
+        if not isinstance(required, Path) or not required.is_file():
             fail(f"required shader artifact is missing: {required}")
 
-    base_source_texts = [
-        contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (0, 2)
-    ]
-    vertex_source_texts = [
-        contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5, 7, 9, 11, 13, 16, 17, 18, 19, 21)
-    ]
-    shared_text = shared.read_text(encoding="utf-8")
+    verify_source_contracts(root, contracts, shared)
     runtime_text = runtime_source.read_text(encoding="utf-8")
     resources_text = resources_rc.read_text(encoding="utf-8")
-    if any("enableGammaCorrection" in text for text in base_source_texts) or \
-            "enableGammaCorrection" in shared_text:
-        fail("removed upstream setting enableGammaCorrection returned")
-    for base_source_text in base_source_texts:
-        for call in ("LinearLightingDiffuse(diffuse", "LinearLightingEmitColor(cb2[1].xyz)"):
-            if call not in base_source_text:
-                fail(f"active shader is missing transformation: {call}")
-        if "diffuse *= input.vertexColor" not in base_source_text:
-            fail("L3 shader no longer modulates sampled diffuse by COLOR0")
-    for vertex_source_text in vertex_source_texts:
-        if "#define LINEAR_LIGHTING_VERTEX_COLOR 1" not in vertex_source_text:
-            fail("L3 shader no longer selects the verified COLOR0 path")
-    if "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)" not in \
-            base_source_texts[1]:
-        fail("textured-emission shaders no longer transform the glow texture")
-    if "clip(alpha - cb2[1].w)" not in base_source_texts[1]:
-        fail("six-MRT envmap shaders no longer preserve alpha-reference testing")
-    if "clip(diffuse.w - cb2[1].w)" not in base_source_texts[0]:
-        fail("projected envmap shaders no longer preserve alpha-reference testing")
-    for contract in contracts:
-        source_text = contract["source"].read_text(encoding="utf-8")
-        for token in contract.get("required_source_tokens", ()):
-            if token not in source_text:
-                fail(f"{contract['label']} is missing source contract: {token}")
-
-    for token in ("kShaderContracts", "expectedChecksum.size()) == 0"):
+    parity_text = parity_source.read_text(encoding="utf-8")
+    parity_entries = re.findall(
+        r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false)\s*\}',
+        parity_text,
+    )
+    parity_contracts: dict[str, tuple[int, bool]] = {}
+    for name, mrt_count, has_vertex_color in parity_entries:
+        if name in parity_contracts:
+            fail(f"duplicate WARP parity contract: {name}")
+        parity_contracts[name] = (int(mrt_count), has_vertex_color == "true")
+    expected_names = {str(contract["label"]) for contract in contracts}
+    if set(parity_contracts) != expected_names:
+        missing = sorted(expected_names - set(parity_contracts))
+        unexpected = sorted(set(parity_contracts) - expected_names)
+        fail(
+            "WARP parity manifest differs from runtime manifest: "
+            f"missing={missing!r}, unexpected={unexpected!r}"
+        )
+    for token in (
+        "GeneratedLinearLightingContracts.inl",
+        "kShaderContracts",
+        "expectedChecksum.size()) == 0",
+    ):
         if token not in runtime_text:
             fail(f"runtime shader identity gate is missing: {token}")
 
-    for index, contract in enumerate(contracts):
-        original_bytes = contract["vanilla"].read_bytes()
-        packaged_bytes = contract["packaged"].read_bytes()
-        if len(original_bytes) != contract["original_size"]:
-            fail(f"{contract['label']} vanilla byte length drifted")
-        if len(packaged_bytes) != contract["replacement_size"]:
-            fail(f"{contract['label']} replacement byte length drifted")
+    run_command(
+        [
+            sys.executable,
+            str(generator),
+            "--root",
+            str(root),
+            "--output",
+            str(generated_contracts),
+            "--check",
+        ],
+        "Linear Lighting contract generator",
+    )
 
-        section_start = runtime_text.find(f'"{contract["label"]}"')
-        if section_start < 0:
-            fail(f"runtime shader contract is missing: {contract['label']}")
-        if index + 1 < len(contracts):
-            section_end = runtime_text.find(
-                f'"{contracts[index + 1]["label"]}"', section_start + 1)
-        else:
-            section_end = runtime_text.find("} };", section_start)
-        if section_end <= section_start:
-            fail(f"runtime shader contract boundary is malformed: {contract['label']}")
-        section = runtime_text[section_start:section_end]
-        if contract["resource"] not in section:
-            fail(f"runtime resource mapping is missing for {contract['label']}")
+    for contract in contracts:
+        label = str(contract["label"])
+        resource = str(contract["resource"])
+        packaged = contract["packaged"]
+        assert isinstance(packaged, Path)
         expected_resource = (
-            f'{contract["resource"]} RCDATA '
-            f'"../package/Shaders/Community/Reconstruction/'
-            f'{contract["packaged"].name}"')
-        if expected_resource not in resources_text:
-            fail(f"embedded resource path differs for {contract['label']}")
-        sizes = [
-            int(value)
-            for value in re.findall(r"\n\s+(\d+),\s*\n\s+\{", section)
-        ]
-        if sizes[:2] != [contract["original_size"], contract["replacement_size"]]:
-            fail(f"runtime shader lengths differ for {contract['label']}: {sizes!r}")
-        encoded = bytes(
-            int(value, 16)
-            for value in re.findall(
-                r"std::byte\{\s*0x([0-9A-Fa-f]{2})\s*\}", section)
+            f'{resource} RCDATA "../package/Shaders/Community/Reconstruction/'
+            f'{packaged.name}"'
         )
-        expected = original_bytes[4:20] + packaged_bytes[4:20]
-        if encoded != expected:
-            fail(f"runtime checksums differ for {contract['label']}")
+        if expected_resource not in resources_text:
+            fail(f"embedded resource path differs for {label}")
 
     fxc = find_fxc()
     with tempfile.TemporaryDirectory(prefix="fo4vr-cs-ll-") as temporary:
         temp = Path(temporary)
         for index, contract in enumerate(contracts):
+            label = str(contract["label"])
+            source = contract["source"]
+            packaged = contract["packaged"]
+            vanilla = contract["vanilla"]
+            assert isinstance(source, Path)
+            assert isinstance(packaged, Path)
+            assert isinstance(vanilla, Path)
             compiled = temp / f"candidate-{index}.dxbc"
             candidate_assembly_path = temp / f"candidate-{index}.asm"
             vanilla_assembly_path = temp / f"vanilla-{index}.asm"
             run_fxc(
                 fxc,
                 [
-                    "/T", "ps_5_0",
-                    "/E", "PSMain",
+                    "/T",
+                    "ps_5_0",
+                    "/E",
+                    "PSMain",
                     "/O3",
-                    "/Fo", str(compiled),
-                    "/Fc", str(candidate_assembly_path),
-                    str(contract["source"]),
+                    "/Fo",
+                    str(compiled),
+                    "/Fc",
+                    str(candidate_assembly_path),
+                    str(source),
                 ],
             )
             run_fxc(
                 fxc,
-                ["/dumpbin", "/Fc", str(vanilla_assembly_path), str(contract["vanilla"])],
+                ["/dumpbin", "/Fc", str(vanilla_assembly_path), str(vanilla)],
             )
 
-            if compiled.read_bytes() != contract["packaged"].read_bytes():
-                fail(f"{contract['label']} packaged DXBC is stale relative to source")
-            if compiled.read_bytes() == contract["vanilla"].read_bytes():
-                fail(f"{contract['label']} replacement unexpectedly matches vanilla")
+            compiled_bytes = compiled.read_bytes()
+            if compiled_bytes != packaged.read_bytes():
+                fail(f"{label} packaged DXBC is stale relative to source")
+            if compiled_bytes == vanilla.read_bytes():
+                fail(f"{label} replacement unexpectedly matches vanilla")
 
             candidate_assembly = candidate_assembly_path.read_text(
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"
+            )
             vanilla_assembly = vanilla_assembly_path.read_text(
-                encoding="utf-8", errors="replace")
+                encoding="utf-8", errors="replace"
+            )
             candidate = parse_dcl_contract(candidate_assembly)
             original = parse_dcl_contract(vanilla_assembly)
-
-            if original["constant_buffers"] != contract["original_buffers"]:
+            source_text = source.read_text(encoding="utf-8")
+            expected_parity_metadata = (
+                len(original["outputs"]),
+                "#define LINEAR_LIGHTING_VERTEX_COLOR 1" in source_text,
+            )
+            if parity_contracts[label] != expected_parity_metadata:
                 fail(
-                    f"{contract['label']} vanilla constant buffers drifted: "
-                    f"{original['constant_buffers']!r}")
-            expected_candidate_buffers = dict(contract["original_buffers"])
-            expected_candidate_buffers.update(
-                {5: contract.get("frame_registers", 5), 8: 1})
-            if candidate["constant_buffers"] != expected_candidate_buffers:
+                    f"{label} WARP parity metadata differs from shader reflection: "
+                    f"{parity_contracts[label]!r} != {expected_parity_metadata!r}"
+                )
+            candidate_buffers = dict(candidate["constant_buffers"])
+            frame_registers = candidate_buffers.pop(5, None)
+            geometry_registers = candidate_buffers.pop(8, None)
+            if frame_registers not in (5, 6):
+                fail(f"{label} has an invalid LinearLightingFrame binding")
+            if geometry_registers != 1:
+                fail(f"{label} has an invalid LinearLightingGeometry binding")
+            if candidate_buffers != original["constant_buffers"]:
                 fail(
-                    f"{contract['label']} replacement constant buffers drifted: "
-                    f"{candidate['constant_buffers']!r}")
+                    f"{label} replacement constant buffers differ from vanilla: "
+                    f"{candidate_buffers!r} != {original['constant_buffers']!r}"
+                )
             for key in ("samplers", "textures", "inputs", "outputs", "global_flags"):
                 if candidate[key] != original[key]:
-                    fail(f"{contract['label']} replacement {key} differs from vanilla")
-            if candidate["outputs"] != contract["outputs"]:
-                fail(f"{contract['label']} MRT contract drifted")
-            for token in contract.get("required_vanilla_tokens", ()):
-                if token not in vanilla_assembly:
-                    fail(f"{contract['label']} vanilla semantic witness drifted: {token}")
-
+                    fail(f"{label} replacement {key} differs from vanilla")
             validate_frame_reflection(candidate_assembly)
 
     print(f"Linear Lighting shader contracts verified: {len(contracts)}")
@@ -673,7 +427,7 @@ def main() -> int:
     arguments = parser.parse_args()
     try:
         verify(arguments.root.resolve())
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, json.JSONDecodeError) as error:
         print(f"Linear Lighting shader verification failed: {error}", file=sys.stderr)
         return 1
     return 0

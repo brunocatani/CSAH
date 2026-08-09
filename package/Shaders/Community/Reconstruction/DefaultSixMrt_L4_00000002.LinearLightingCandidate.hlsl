@@ -101,7 +101,7 @@ PSOutput PSMain(PSInput input)
     output.target0.w = cb2[0].z;
 
     float3 sourceNormal = normalize(input.normal);
-    float2 normalSample = TexNormal.Sample(SampNormal, uv).zw;
+    float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
     float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));

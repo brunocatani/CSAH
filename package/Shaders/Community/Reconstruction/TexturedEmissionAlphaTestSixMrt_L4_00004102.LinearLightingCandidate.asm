@@ -156,7 +156,7 @@ mov o0.w, cb2[0].z
 dp3 r0.z, v3.xyzx, v3.xyzx
 rsq r0.z, r0.z
 mul r1.xyz, r0.zzzz, v3.xyzx
-sample_indexable(texture2d)(float,float,float,float) r0.zw, r0.xyxx, t1.xyzw, s1
+sample_indexable(texture2d)(float,float,float,float) r0.zw, r0.xyxx, t1.zwxy, s1
 mad r3.xy, r0.zwzz, l(2.000000, 2.000000, 0.000000, 0.000000), l(-1.000000, -1.000000, 0.000000, 0.000000)
 dp2 r0.z, r3.xyxx, r3.xyxx
 min r0.z, r0.z, l(1.000000)

@@ -1,0 +1,3 @@
+#define LINEAR_LIGHTING_ALPHA_TEST 1
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 1
+#include "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"
