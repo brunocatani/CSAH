@@ -28,7 +28,7 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
-        constexpr std::array<ShaderContractDefinition, 20> kShaderContracts{ {
+        constexpr std::array<ShaderContractDefinition, 22> kShaderContracts{ {
             {
                 "DefaultProjectedFiveMrt_L4_00008002",
                 IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS,
@@ -466,6 +466,50 @@ namespace community_shaders::linear_lighting
                         std::byte{ 0x99 }, std::byte{ 0xF8 }, std::byte{ 0x32 }, std::byte{ 0x62 },
                         std::byte{ 0x37 }, std::byte{ 0x2D }, std::byte{ 0x8B }, std::byte{ 0x89 },
                         std::byte{ 0x31 }, std::byte{ 0x27 }, std::byte{ 0x85 }, std::byte{ 0x1A },
+                    },
+                },
+            },
+            {
+                "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C",
+                IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_NO_EARLY_DEPTH_PS,
+                {
+                    3052,
+                    {
+                        std::byte{ 0x15 }, std::byte{ 0xE2 }, std::byte{ 0x9A }, std::byte{ 0x6C },
+                        std::byte{ 0x23 }, std::byte{ 0x36 }, std::byte{ 0xBA }, std::byte{ 0xEC },
+                        std::byte{ 0x93 }, std::byte{ 0x01 }, std::byte{ 0x94 }, std::byte{ 0xE8 },
+                        std::byte{ 0x73 }, std::byte{ 0x80 }, std::byte{ 0xAE }, std::byte{ 0xFE },
+                    },
+                },
+                {
+                    6184,
+                    {
+                        std::byte{ 0xE2 }, std::byte{ 0x5F }, std::byte{ 0x7C }, std::byte{ 0x95 },
+                        std::byte{ 0xE6 }, std::byte{ 0x1A }, std::byte{ 0xC1 }, std::byte{ 0xCB },
+                        std::byte{ 0x3E }, std::byte{ 0xBF }, std::byte{ 0x80 }, std::byte{ 0x0D },
+                        std::byte{ 0x25 }, std::byte{ 0xBB }, std::byte{ 0x05 }, std::byte{ 0x2C },
+                    },
+                },
+            },
+            {
+                "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A",
+                IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_NO_EARLY_DEPTH_PS,
+                {
+                    3120,
+                    {
+                        std::byte{ 0xB8 }, std::byte{ 0x0C }, std::byte{ 0xA1 }, std::byte{ 0x2A },
+                        std::byte{ 0x39 }, std::byte{ 0x15 }, std::byte{ 0xE1 }, std::byte{ 0x03 },
+                        std::byte{ 0x08 }, std::byte{ 0x23 }, std::byte{ 0x73 }, std::byte{ 0xD0 },
+                        std::byte{ 0xF9 }, std::byte{ 0x7D }, std::byte{ 0x50 }, std::byte{ 0x87 },
+                    },
+                },
+                {
+                    6252,
+                    {
+                        std::byte{ 0xE0 }, std::byte{ 0x3E }, std::byte{ 0x51 }, std::byte{ 0x59 },
+                        std::byte{ 0x45 }, std::byte{ 0x3A }, std::byte{ 0x9D }, std::byte{ 0x4B },
+                        std::byte{ 0x6A }, std::byte{ 0xE5 }, std::byte{ 0x43 }, std::byte{ 0x5C },
+                        std::byte{ 0x21 }, std::byte{ 0xE0 }, std::byte{ 0xE8 }, std::byte{ 0xA9 },
                     },
                 },
             },

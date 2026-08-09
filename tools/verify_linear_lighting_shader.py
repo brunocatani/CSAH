@@ -472,6 +472,49 @@ def verify(root: Path) -> None:
                 "discard_nz r0.z",
             ),
         },
+        {
+            "label": "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C",
+            "source": reconstruction
+            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.LinearLightingCandidate.dxbc",
+            "vanilla": verified
+            / "DefaultProjectedFiveMrt_L4NoEarlyDepth_15E29A6C.dxbc",
+            "original_size": 3052,
+            "replacement_size": 6184,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_NO_EARLY_DEPTH_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+            "required_source_tokens": (
+                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
+            ),
+            "required_vanilla_tokens": (
+                "dcl_globalFlags refactoringAllowed",
+            ),
+        },
+        {
+            "label": "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A",
+            "source": reconstruction
+            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.LinearLightingCandidate.hlsl",
+            "packaged": reconstruction
+            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.LinearLightingCandidate.dxbc",
+            "vanilla": verified
+            / "DefaultProjectedFiveMrt_L3NoEarlyDepth_B80CA12A.dxbc",
+            "original_size": 3120,
+            "replacement_size": 6252,
+            "resource": "IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_NO_EARLY_DEPTH_PS",
+            "original_buffers": {2: 7, 12: 51},
+            "outputs": [0, 1, 2, 3, 4],
+            "required_source_tokens": (
+                "#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0",
+                "#define LINEAR_LIGHTING_VERTEX_COLOR 1",
+            ),
+            "required_vanilla_tokens": (
+                "dcl_globalFlags refactoringAllowed",
+                "dcl_input_ps linear v6.xyzw",
+                "mul r2.xyzw, r2.xyzw, v6.xyzw",
+            ),
+        },
     ]
 
     required_files = [shared, runtime_source, resources_rc]
@@ -488,7 +531,7 @@ def verify(root: Path) -> None:
     ]
     vertex_source_texts = [
         contracts[index]["source"].read_text(encoding="utf-8")
-        for index in (1, 3, 5, 7, 9, 11, 13, 16, 17, 18, 19)
+        for index in (1, 3, 5, 7, 9, 11, 13, 16, 17, 18, 19, 21)
     ]
     shared_text = shared.read_text(encoding="utf-8")
     runtime_text = runtime_source.read_text(encoding="utf-8")
