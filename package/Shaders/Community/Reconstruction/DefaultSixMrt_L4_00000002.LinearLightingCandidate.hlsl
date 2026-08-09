@@ -217,9 +217,9 @@ PSOutput PSMain(PSInput input)
 #endif
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 #if LINEAR_LIGHTING_ALPHA_TEST
-    float gradientRemapSource = diffuseSample.x;
+    float gradientRemapSource = diffuseSample.y;
 #else
-    float gradientRemapSource = TexDiffuse.Sample(SampDiffuse, uv).x;
+    float gradientRemapSource = TexDiffuse.Sample(SampDiffuse, uv).y;
 #endif
     float gradientRemapRow = cb2[2].x;
 #if LINEAR_LIGHTING_VERTEX_COLOR

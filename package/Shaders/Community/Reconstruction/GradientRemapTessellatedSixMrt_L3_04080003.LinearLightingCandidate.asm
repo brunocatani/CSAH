@@ -141,7 +141,7 @@ mul r0.x, r0.x, l(0.454545)
 exp r0.x, r0.x
 add r0.x, r0.x, cb2[2].x
 add r0.y, r0.x, l(-1.000000)
-sample_indexable(texture2d)(float,float,float,float) r0.z, v1.xyxx, t0.yzxw, s0
+sample_indexable(texture2d)(float,float,float,float) r0.z, v1.xyxx, t0.xzyw, s0
 log r0.z, r0.z
 mul r0.z, r0.z, l(0.454545)
 exp r0.x, r0.z

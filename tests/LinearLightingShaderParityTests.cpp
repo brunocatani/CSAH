@@ -41,6 +41,7 @@ namespace
         bool hasAdditionalAlphaMask{};
         bool hasLandscapeLod{};
         bool hasGradientRemap{};
+        bool hasGradientHair{};
     };
 
     constexpr std::array kShaderContracts{
@@ -115,6 +116,19 @@ namespace
         ShaderContract{ "GradientRemapAlphaTestSixMrt_L3_04000107", 6, true, false, false, false, false, true },
         ShaderContract{ "GradientRemapTessellatedSixMrt_L4_04080002", 6, false, false, true, false, false, true },
         ShaderContract{ "GradientRemapTessellatedSixMrt_L3_04080003", 6, true, false, true, false, false, true },
+        ShaderContract{ "GradientRemapProjectedFiveMrt_L4_04008002", 5, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapProjectedFiveMrt_L3_04008003", 5, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestProjectedFiveMrt_L3_04008103", 5, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapHairProjectedFiveMrt_L4_04028002", 5, false, false, false, false, false, true, true },
+        ShaderContract{ "GradientRemapHairProjectedFiveMrt_L3_04028003", 5, true, false, false, false, false, true, true },
+        ShaderContract{ "GradientRemapHairAlphaTestProjectedFiveMrt_L3_04028103", 5, true, false, false, false, false, true, true },
+        ShaderContract{ "GradientRemapProjectedFiveMrt_L4NoEarlyDepth_04008006", 5, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapProjectedFiveMrt_L3NoEarlyDepth_04008007", 5, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestProjectedFiveMrt_L4NoEarlyDepth_04008106", 5, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestProjectedFiveMrt_L3NoEarlyDepth_04008107", 5, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapHairProjectedFiveMrt_L4NoEarlyDepth_04028006", 5, false, false, false, false, false, true, true },
+        ShaderContract{ "GradientRemapHairProjectedFiveMrt_L3NoEarlyDepth_04028007", 5, true, false, false, false, false, true, true },
+        ShaderContract{ "GradientRemapHairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_04028107", 5, true, false, false, false, false, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -183,7 +197,7 @@ namespace
         3.0F,
     };
 
-    constexpr Pixel kDiffuseTexture{ 0.25F, 0.5F, 0.75F, 0.8F };
+    constexpr Pixel kDiffuseTexture{ 0.1F, 0.5F, 0.75F, 0.8F };
     constexpr Pixel kNormalTexture{ 0.35F, 0.65F, 0.2F, 0.8F };
     constexpr Pixel kSpecularTexture{ 0.45F, 0.7F, 0.15F, 0.9F };
     constexpr Pixel kGlowTexture{ 0.6F, 0.4F, 0.2F, 1.0F };
@@ -542,14 +556,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return result;
     }
 
-    [[nodiscard]] std::array<std::array<float, 4>, 7> makeMaterialData(
+    [[nodiscard]] std::array<std::array<float, 4>, 8> makeMaterialData(
         UINT mrtCount,
         std::size_t caseIndex,
         bool hasAdditionalAlphaMask,
         bool hasGradientRemap,
+        bool hasGradientHair,
         AdditionalAlphaCase additionalAlphaCase)
     {
-        std::array<std::array<float, 4>, 7> values{};
+        std::array<std::array<float, 4>, 8> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
         values[0] = { 0.4F, 0.7F, 0.25F, 0.8F };
         values[1] = { 0.3F, 0.45F, 0.6F, 0.2F };
@@ -565,6 +580,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0.9F,
         };
         if (hasGradientRemap) {
+            if (mrtCount == 5) {
+                values[2] = {
+                    hasGradientHair ? 0.022F : 0.75F,
+                    1.0F,
+                    0.0F,
+                    0.0F,
+                };
+                values[3] = { 0.55F, 0.0F, 0.0F, 0.0F };
+                values[4] = { 0.9F, 0.6F, 0.0F, 0.0F };
+                values[6] = {
+                    1.0F,
+                    1.0F,
+                    0.4F,
+                    caseIndex == 2 ? -1.0F : 0.6F,
+                };
+                values[7] = depthParameters;
+                return values;
+            }
             values[2] = { 0.55F, 0.0F, 0.0F, 0.0F };
             values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
             values[4] = {};
@@ -681,6 +714,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasAdditionalAlphaMask,
         bool hasLandscapeLod,
         bool hasGradientRemap,
+        bool hasGradientHair,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -689,6 +723,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             caseIndex,
             hasAdditionalAlphaMask,
             hasGradientRemap,
+            hasGradientHair,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -945,6 +980,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (contract.hasGradientRemap) {
                 const auto gradientTexel = contract.hasVertexColor ? 1u : 3u;
                 diffuse = kGradientRemapTexture[gradientTexel][channel];
+                if (contract.hasGradientHair) {
+                    diffuse *= kDiffuseTexture[1] * 1.8F;
+                }
             } else {
                 diffuse = kDiffuseTexture[channel];
                 if (contract.hasLandscapeLod) {
@@ -1080,7 +1118,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kDisabledCase,
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
-                    contract.hasGradientRemap);
+                    contract.hasGradientRemap,
+                    contract.hasGradientHair);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1092,7 +1131,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kDisabledCase,
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
-                    contract.hasGradientRemap);
+                    contract.hasGradientRemap,
+                    contract.hasGradientHair);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1114,7 +1154,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kIdentityCase,
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
-                    contract.hasGradientRemap);
+                    contract.hasGradientRemap,
+                    contract.hasGradientHair);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1136,7 +1177,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kTransformedCase,
                     contract.hasAdditionalAlphaMask,
                     contract.hasLandscapeLod,
-                    contract.hasGradientRemap);
+                    contract.hasGradientRemap,
+                    contract.hasGradientHair);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1185,6 +1227,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         true,
                         false,
                         false,
+                        false,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1196,6 +1239,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         maskCaseIndex,
                         kDisabledCase,
                         true,
+                        false,
                         false,
                         false,
                         maskCase.value);

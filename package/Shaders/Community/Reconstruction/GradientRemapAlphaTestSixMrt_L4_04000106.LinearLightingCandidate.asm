@@ -135,7 +135,7 @@ dcl_output o5.xy
 dcl_temps 4
 mov r0.x, v4.w
 mov r0.y, v5.w
-sample_indexable(texture2d)(float,float,float,float) r0.zw, r0.xyxx, t0.yzxw, s0
+sample_indexable(texture2d)(float,float,float,float) r0.zw, r0.xyxx, t0.xzyw, s0
 add r0.w, r0.w, -cb2[1].w
 log r0.z, r0.z
 mul r0.z, r0.z, l(0.454545)

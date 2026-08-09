@@ -1,6 +1,22 @@
+#ifndef LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_GRADIENT_REMAP 0
+#endif
+
+#ifndef LINEAR_LIGHTING_GRADIENT_HAIR
+#define LINEAR_LIGHTING_GRADIENT_HAIR 0
+#endif
+
+#if LINEAR_LIGHTING_GRADIENT_HAIR && !LINEAR_LIGHTING_GRADIENT_REMAP
+#error Gradient hair requires the verified gradient-remap material layout.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    float4 cb2[8];
+#else
     float4 cb2[7];
+#endif
 };
 
 #include "../LinearLighting/LinearLighting.hlsli"
@@ -13,6 +29,9 @@ cbuffer PerGeometry : register(b12)
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+Texture2D<float4> TexGradientRemap : register(t5);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -25,6 +44,9 @@ Texture2D<float4> TexGlow : register(t3);
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+SamplerState SampGradientRemap : register(s5);
+#endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
 #endif
@@ -47,6 +69,16 @@ SamplerState SampGlow : register(s3);
 
 #ifndef LINEAR_LIGHTING_FORCE_EARLY_DEPTH
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
+#endif
+
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
+#else
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[6]
 #endif
 
 struct PSInput
@@ -83,10 +115,16 @@ PSOutput PSMain(PSInput input)
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 #if LINEAR_LIGHTING_VERTEX_COLOR
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_VERTEX_ALPHA
+    diffuse.w *= input.vertexColor.w;
+#endif
+#else
 #if LINEAR_LIGHTING_VERTEX_ALPHA
     diffuse *= input.vertexColor;
 #else
     diffuse.xyz *= input.vertexColor.xyz;
+#endif
 #endif
 #endif
 #if LINEAR_LIGHTING_ALPHA_TEST
@@ -97,8 +135,27 @@ PSOutput PSMain(PSInput input)
 
     clip((cb2[2].x * alphaMask) - 0.015686);
 
-    float fade = (cb2[5].w == -1.0) ? 1.0 : ((-cb2[5].w * cb12[50].x) + 1.0);
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse.xyz);
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    float gradientRemapRow = cb2[3].x;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0;
+#endif
+    float4 gradientRemap = TexGradientRemap.SampleLevel(
+        SampGradientRemap,
+        float2(pow(diffuse.y, 0.454545), gradientRemapRow),
+        0.0);
+    float3 mappedDiffuse = gradientRemap.xyz;
+#if LINEAR_LIGHTING_GRADIENT_HAIR
+    mappedDiffuse *= diffuse.y * 1.8;
+#endif
+#else
+    float3 mappedDiffuse = diffuse.xyz;
+#endif
+
+    float fade = (LINEAR_LIGHTING_PROJECTED_PROPERTIES.w == -1.0) ?
+        1.0 :
+        ((-LINEAR_LIGHTING_PROJECTED_PROPERTIES.w * cb12[50].x) + 1.0);
+    output.target0.xyz = fade * LinearLightingDiffuse(mappedDiffuse);
     output.target0.w = alpha;
 
     float3 sourceNormal = normalize(input.normal);
@@ -123,31 +180,51 @@ PSOutput PSMain(PSInput input)
     output.target1.z = -projectedNormal.z;
     output.target1.w = alpha;
 
-    float depthRange = cb2[6].w - cb2[6].z;
-    float depthSwitch = (cb2[6].w < 0.0) ? 0.0 : cb12[50].x;
-    float depthValue = (depthSwitch * depthRange) + cb2[6].z;
-    float depthAlt = depthSwitch * cb2[6].w;
-    depthValue = (cb2[6].y != 0.0) ? depthValue : depthAlt;
+    float depthRange = LINEAR_LIGHTING_PROJECTED_DEPTH.w -
+        LINEAR_LIGHTING_PROJECTED_DEPTH.z;
+    float depthSwitch = (LINEAR_LIGHTING_PROJECTED_DEPTH.w < 0.0) ?
+        0.0 : cb12[50].x;
+    float depthValue = (depthSwitch * depthRange) +
+        LINEAR_LIGHTING_PROJECTED_DEPTH.z;
+    float depthAlt = depthSwitch * LINEAR_LIGHTING_PROJECTED_DEPTH.w;
+    depthValue = (LINEAR_LIGHTING_PROJECTED_DEPTH.y != 0.0) ?
+        depthValue : depthAlt;
     output.target2.z = sqrt(depthValue * 0.02);
 
-    bool materialFlag = (cb12[50].x != 0.0 && cb2[5].y != 0.0) || cb2[5].x != 0.0;
+    bool materialFlag =
+        (cb12[50].x != 0.0 && LINEAR_LIGHTING_PROJECTED_PROPERTIES.y != 0.0) ||
+        LINEAR_LIGHTING_PROJECTED_PROPERTIES.x != 0.0;
     output.target2.x = materialFlag ? 1.0 : 0.0;
-    output.target2.y = cb2[6].x * 0.003922;
-    output.target2.w = saturate(cb2[6].x);
+    output.target2.y = LINEAR_LIGHTING_PROJECTED_DEPTH.x * 0.003922;
+    output.target2.w = saturate(LINEAR_LIGHTING_PROJECTED_DEPTH.x);
 
+#if LINEAR_LIGHTING_GRADIENT_HAIR
+    output.target3.w = saturate(max(alpha, 0.019608));
+#else
     output.target3.w = alpha;
+#endif
     output.target4.w = alpha;
 
-    float specBlendA = cb12[50].x * cb2[5].z;
-    float specBlendB = (-cb2[5].z * cb12[50].x) + 1.0;
+    float specBlendA =
+        cb12[50].x * LINEAR_LIGHTING_PROJECTED_PROPERTIES.z;
+    float specBlendB =
+        (-LINEAR_LIGHTING_PROJECTED_PROPERTIES.z * cb12[50].x) + 1.0;
     float specBlend = (specularSample.x * specBlendB) + specBlendA;
 
-    float2 materialXY = ((cb2[3].xy - cb2[0].xy) * cb12[50].xx) + cb2[0].xy;
+    float2 materialXY =
+        ((LINEAR_LIGHTING_PROJECTED_INTERPOLATION.xy - cb2[0].xy) *
+            cb12[50].xx) +
+        cb2[0].xy;
     materialXY *= cb2[0].xy;
-    materialXY = (cb2[3].xy >= 0.0) ? materialXY : cb2[0].xy;
+    materialXY = (LINEAR_LIGHTING_PROJECTED_INTERPOLATION.xy >= 0.0) ?
+        materialXY : cb2[0].xy;
 
     output.target3.y = materialXY.y * specBlend;
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    output.target3.x = materialXY.x * specularSample.y * gradientRemap.w;
+#else
     output.target3.x = materialXY.x * specularSample.y;
+#endif
     output.target3.z = cb2[0].w * 0.01;
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
     float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);

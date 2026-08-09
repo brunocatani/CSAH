@@ -134,7 +134,7 @@ dcl_output o3.xyzw
 dcl_output o4.xyz
 dcl_output o5.xy
 dcl_temps 4
-sample_indexable(texture2d)(float,float,float,float) r0.x, v1.xyxx, t0.xyzw, s0
+sample_indexable(texture2d)(float,float,float,float) r0.x, v1.xyxx, t0.yxzw, s0
 log r0.x, r0.x
 mul r0.x, r0.x, l(0.454545)
 exp r0.x, r0.x

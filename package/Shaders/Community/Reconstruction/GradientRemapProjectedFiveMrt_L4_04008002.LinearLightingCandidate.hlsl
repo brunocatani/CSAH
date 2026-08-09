@@ -1,0 +1,2 @@
+#define LINEAR_LIGHTING_GRADIENT_REMAP 1
+#include "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"
