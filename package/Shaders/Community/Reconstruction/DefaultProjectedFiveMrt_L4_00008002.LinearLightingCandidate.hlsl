@@ -22,6 +22,14 @@
 #define LINEAR_LIGHTING_BONE_TINTING 0
 #endif
 
+#ifndef LINEAR_LIGHTING_HAIR
+#define LINEAR_LIGHTING_HAIR 0
+#endif
+
+#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
+#endif
+
 #if LINEAR_LIGHTING_GRADIENT_HAIR && !LINEAR_LIGHTING_GRADIENT_REMAP
 #error Gradient hair requires the verified gradient-remap material layout.
 #endif
@@ -50,12 +58,20 @@
 #error Landscape LOD and LOD-object alpha require a separately verified contract.
 #endif
 
+#if LINEAR_LIGHTING_HAIR && \
+    (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
+    LINEAR_LIGHTING_LOD_OBJECT_ALPHA || LINEAR_LIGHTING_LANDSCAPE_LOD || \
+    LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_GRADIENT_HAIR || \
+    LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_TEXTURED_EMISSION)
+#error Standalone projected hair requires its verified material contract.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_GRADIENT_REMAP && (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_BONE_TINTING)
     float4 cb2[9];
 #elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
-    LINEAR_LIGHTING_BONE_TINTING
+    LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_HAIR
     float4 cb2[8];
 #else
     float4 cb2[7];
@@ -93,10 +109,6 @@ Texture2D<float4> TexGradientRemap : register(t5);
 #if LINEAR_LIGHTING_BONE_TINTING
 Texture2D<float4> TexBoneTintLookup : register(t13);
 Texture2D<float4> TexBoneTintPalette : register(t14);
-#endif
-
-#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
-#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
 #endif
 
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
@@ -152,7 +164,11 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 1
 #endif
 
-#if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_BONE_TINTING
+#if LINEAR_LIGHTING_HAIR
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
+#elif LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_BONE_TINTING
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW cb2[7]
@@ -242,7 +258,11 @@ PSOutput PSMain(PSInput input)
 #endif
     float4 diffuse = TexDiffuse.Sample(SampDiffuse, uv);
 #if LINEAR_LIGHTING_VERTEX_COLOR
-#if LINEAR_LIGHTING_GRADIENT_REMAP
+#if LINEAR_LIGHTING_HAIR
+#if LINEAR_LIGHTING_VERTEX_ALPHA
+    diffuse.w *= input.vertexColor.w;
+#endif
+#elif LINEAR_LIGHTING_GRADIENT_REMAP
 #if LINEAR_LIGHTING_VERTEX_ALPHA
     diffuse.w *= input.vertexColor.w;
 #endif
@@ -301,7 +321,11 @@ PSOutput PSMain(PSInput input)
     float fade = (LINEAR_LIGHTING_PROJECTED_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_PROJECTED_PROPERTIES.w * cb12[50].x) + 1.0);
+#if LINEAR_LIGHTING_HAIR
+    output.target0.xyz = float3(0.0, 0.0, 0.0);
+#else
     output.target0.xyz = fade * LinearLightingDiffuse(mappedDiffuse);
+#endif
 #if LINEAR_LIGHTING_BONE_TINTING
     output.target0.xyz += boneTint;
 #endif
@@ -381,7 +405,7 @@ PSOutput PSMain(PSInput input)
 
 #if LINEAR_LIGHTING_LOD_OBJECT_ALPHA
     output.target3.w = pow(alpha, 0.1);
-#elif LINEAR_LIGHTING_GRADIENT_HAIR
+#elif LINEAR_LIGHTING_GRADIENT_HAIR || LINEAR_LIGHTING_HAIR
     output.target3.w = saturate(max(alpha, 0.019608));
 #else
     output.target3.w = alpha;

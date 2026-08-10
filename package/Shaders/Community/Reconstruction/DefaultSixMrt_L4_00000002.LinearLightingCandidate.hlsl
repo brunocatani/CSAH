@@ -30,6 +30,14 @@
 #define LINEAR_LIGHTING_BONE_TINTING 0
 #endif
 
+#ifndef LINEAR_LIGHTING_HAIR
+#define LINEAR_LIGHTING_HAIR 0
+#endif
+
+#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
@@ -57,6 +65,15 @@
 #error Six-MRT bone tinting cannot share these material layouts.
 #endif
 
+#if LINEAR_LIGHTING_HAIR && \
+    (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
+    LINEAR_LIGHTING_LANDSCAPE_LOD || LINEAR_LIGHTING_GRADIENT_REMAP || \
+    LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN || \
+    LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT || \
+    LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_TEXTURED_EMISSION)
+#error Standalone six-MRT hair requires its verified material contract.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if (LINEAR_LIGHTING_BONE_TINTING && \
@@ -64,7 +81,7 @@ cbuffer PerMaterial : register(b2)
     (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && \
     (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT))
     float4 cb2[8];
-#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_BONE_TINTING
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_HAIR
     float4 cb2[7];
 #else
     float4 cb2[6];
@@ -103,7 +120,11 @@ cbuffer PerInstance : register(b13)
 
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
+#if LINEAR_LIGHTING_HAIR
+Texture2D<float4> TexHairDirection : register(t3);
+#else
 Texture2D<float4> TexSpecular : register(t2);
+#endif
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 Texture2D<float4> TexAdditionalAlpha : register(t12);
 Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
@@ -126,17 +147,17 @@ Texture2D<float4> TexBoneTintLookup : register(t13);
 Texture2D<float4> TexBoneTintPalette : register(t14);
 #endif
 
-#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
-#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
-#endif
-
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 Texture2D<float4> TexGlow : register(t3);
 #endif
 
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
+#if LINEAR_LIGHTING_HAIR
+SamplerState SampHairDirection : register(s3);
+#else
 SamplerState SampSpecular : register(s2);
+#endif
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 SamplerState SampAdditionalAlpha : register(s12);
 #endif
@@ -185,7 +206,10 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
 #endif
 
-#if LINEAR_LIGHTING_BONE_TINTING && \
+#if LINEAR_LIGHTING_HAIR
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
+#elif LINEAR_LIGHTING_BONE_TINTING && \
     (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
@@ -386,10 +410,19 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_BONE_TINTING
     output.target0.xyz += boneTint;
 #endif
+#if LINEAR_LIGHTING_HAIR
+    output.target0.w = 0.0;
+#else
     output.target0.w = cb2[0].z;
+#endif
 
     float3 sourceNormal = normalize(input.normal);
+#if LINEAR_LIGHTING_HAIR
+    float3 hairDirection = normalize(
+        (TexHairDirection.Sample(SampHairDirection, uv).xyz * 2.0) - 1.0);
+#else
     float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
+#endif
 #if LINEAR_LIGHTING_LANDSCAPE_LOD
     float2 landscapeLodNormalXY =
         (TexLandscapeLodNormal.Sample(
@@ -502,6 +535,12 @@ PSOutput PSMain(PSInput input)
     output.target2.y = LINEAR_LIGHTING_DEPTH_PARAMETERS.x * 0.003922;
     output.target2.w = saturate(LINEAR_LIGHTING_DEPTH_PARAMETERS.x);
 
+#if LINEAR_LIGHTING_HAIR
+    output.target3.x = dot(normalize(input.tangent), hairDirection);
+    output.target3.y = dot(normalize(input.bitangent), hairDirection);
+    output.target3.z = dot(sourceNormal, hairDirection);
+    float3 emitColor = cb2[1].xyz;
+#else
     float specBlendA =
         cb12[50].x * LINEAR_LIGHTING_MATERIAL_PROPERTIES.z;
     float specBlendB =
@@ -537,7 +576,10 @@ PSOutput PSMain(PSInput input)
     output.target3.z = cb2[0].w * 0.01;
     emitColor = cb2[1].xyz;
 #endif
-#if LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT
+#endif
+#if LINEAR_LIGHTING_HAIR
+    output.target3.w = 0.003922;
+#elif LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT
     output.target3.w = 0.019608;
 #elif LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target3.w = 0.015686;

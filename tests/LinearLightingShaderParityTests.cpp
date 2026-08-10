@@ -48,6 +48,7 @@ namespace
         bool hasFaceDetail{};
         bool faceUsesModelSpaceNormals{};
         bool hasSkinTint{};
+        bool hasStandaloneHair{};
     };
 
     constexpr std::array kShaderContracts{
@@ -232,6 +233,13 @@ namespace
         ShaderContract{ "LandscapeLodBlendFiveMrt_L3_00008203", 5, true, false, false, false, true },
         ShaderContract{ "ModelSpaceNormalsProjectedFiveMrt_L4_0000A002", 5, false, false },
         ShaderContract{ "ModelSpaceNormalsProjectedFiveMrt_L3_0000A003", 5, true, false },
+        ShaderContract{ "HairSixMrt_L3_00020003", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairAlphaTestSixMrt_L3_00020103", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairAlphaTestSixMrt_L4NoEarlyDepth_00020106", 6, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairAlphaTestSixMrt_L3NoEarlyDepth_00020107", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairProjectedFiveMrt_L3_00028003", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairAlphaTestProjectedFiveMrt_L3_00028103", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "HairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_00028107", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -707,6 +715,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasGradientHair,
         bool hasBoneTint,
         bool hasSkinTint,
+        bool hasStandaloneHair,
         AdditionalAlphaCase additionalAlphaCase)
     {
         std::array<std::array<float, 4>, 9> values{};
@@ -786,6 +795,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };
                 values[7] = depthParameters;
             } else {
+                values[6] = depthParameters;
+            }
+            return values;
+        }
+        if (hasStandaloneHair) {
+            if (mrtCount == 5) {
+                values[6] = values[4];
+                values[4] = { 0.85F, 0.55F, -1.0F, 0.0F };
+                values[7] = depthParameters;
+            } else {
+                values[5] = values[4];
                 values[6] = depthParameters;
             }
             return values;
@@ -926,6 +946,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasBoneTint,
         bool hasPipboyScreen,
         bool hasSkinTint,
+        bool hasStandaloneHair,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -937,6 +958,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasGradientHair,
             hasBoneTint,
             hasSkinTint,
+            hasStandaloneHair,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -1297,7 +1319,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     lightingCase.colorGamma,
                     lightingCase.vanillaDiffuseColorMult);
             }
-            expected[0][channel] = fade * transformedDiffuse;
+            if (!(contract.hasStandaloneHair && contract.mrtCount == 5)) {
+                expected[0][channel] = fade * transformedDiffuse;
+            }
             const auto pipboyScreen = std::pow(
                 kScreenTexture[screenTexel][channel],
                 2.2F);
@@ -1411,7 +1435,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 reconstruction /
                 (std::string(contract.name) +
                     ".LinearLightingCandidate.dxbc"));
-            const auto usesGlowmap = usesTextureSlot(vanillaBytes, 3);
+            const auto usesGlowmap = usesTextureSlot(vanillaBytes, 3) &&
+                !contract.hasStandaloneHair;
             ComPtr<ID3D11PixelShader> vanillaShader;
             ComPtr<ID3D11PixelShader> replacementShader;
             require(
@@ -1459,7 +1484,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientHair,
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
-                    contract.hasSkinTint);
+                    contract.hasSkinTint,
+                    contract.hasStandaloneHair);
                 if (contract.mrtCount == 6 && caseIndex == 0) {
                     if (eyeIndex == 0) {
                         leftEyeMotion = vanilla[5];
@@ -1486,7 +1512,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientHair,
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
-                    contract.hasSkinTint);
+                    contract.hasSkinTint,
+                    contract.hasStandaloneHair);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1513,7 +1540,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientHair,
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
-                    contract.hasSkinTint);
+                    contract.hasSkinTint,
+                    contract.hasStandaloneHair);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1540,7 +1568,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientHair,
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
-                    contract.hasSkinTint);
+                    contract.hasSkinTint,
+                    contract.hasStandaloneHair);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1594,6 +1623,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasBoneTint,
                         contract.hasPipboyScreen,
                         contract.hasSkinTint,
+                        contract.hasStandaloneHair,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1611,6 +1641,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasBoneTint,
                         contract.hasPipboyScreen,
                         contract.hasSkinTint,
+                        contract.hasStandaloneHair,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

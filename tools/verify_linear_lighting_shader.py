@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 181:
-        fail("Linear Lighting manifest must contain exactly 181 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 188:
+        fail("Linear Lighting manifest must contain exactly 188 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -250,6 +250,11 @@ def verify_source_contracts(
     for token in (
         "LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz)",
         "clip(alpha - cb2[1].w)",
+        "TexHairDirection.Sample(SampHairDirection, uv).xyz",
+        "output.target3.x = dot(normalize(input.tangent), hairDirection)",
+        "output.target3.y = dot(normalize(input.bitangent), hairDirection)",
+        "output.target3.z = dot(sourceNormal, hairDirection)",
+        "output.target3.w = 0.003922;",
     ):
         if token not in base_source_texts[1]:
             fail(f"six-MRT shader is missing semantic contract: {token}")
@@ -366,7 +371,7 @@ def verify_source_contracts(
         "float3 tintedDiffuse = pow(abs(skinTintBlend), 2.2)",
         "diffuse = lerp(diffuse, tintedDiffuse, cb2[2].w)",
         "LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)",
-        "#if LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT",
+        "#elif LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT",
         "output.target3.w = 0.019608;",
     ):
         if token not in base_source_texts[1]:
@@ -396,6 +401,11 @@ def verify_source_contracts(
         "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]",
         "float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0",
         "output.target3.w = pow(alpha, 0.1)",
+        "#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]",
+        "#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]",
+        "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]",
+        "output.target0.xyz = float3(0.0, 0.0, 0.0)",
+        "LINEAR_LIGHTING_GRADIENT_HAIR || LINEAR_LIGHTING_HAIR",
     ):
         if token not in base_source_texts[0]:
             fail(
@@ -428,6 +438,7 @@ def verify_source_contracts(
     standalone_projected_bone_tint_contracts = 0
     standalone_lod_object_contracts = 0
     standalone_projected_model_space_contracts = 0
+    standalone_hair_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -454,6 +465,8 @@ def verify_source_contracts(
             lod_object_alpha_contracts += 1
         if "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text:
             bone_tint_contracts += 1
+        if "#define LINEAR_LIGHTING_HAIR 1" in source_text:
+            standalone_hair_contracts += 1
         if (
             "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
@@ -522,8 +535,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 84:
-        fail(f"expected 84 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 90:
+        fail(f"expected 90 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -622,6 +635,11 @@ def verify_source_contracts(
             "expected 2 standalone projected model-space contracts, "
             f"found {standalone_projected_model_space_contracts}"
         )
+    if standalone_hair_contracts != 7:
+        fail(
+            "expected 7 standalone hair contracts, "
+            f"found {standalone_hair_contracts}"
+        )
 
 
 def verify(root: Path) -> None:
@@ -696,13 +714,14 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
         str,
         tuple[
             int,
+            bool,
             bool,
             bool,
             bool,
@@ -734,6 +753,7 @@ def verify(root: Path) -> None:
         has_face_detail,
         face_uses_model_space_normals,
         has_skin_tint,
+        has_standalone_hair,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -752,6 +772,7 @@ def verify(root: Path) -> None:
             has_face_detail == "true",
             face_uses_model_space_normals == "true",
             has_skin_tint == "true",
+            has_standalone_hair == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -899,6 +920,29 @@ def verify(root: Path) -> None:
                 in source_text,
                 "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
                 and original["constant_buffers"].get(2) in (7, 8),
+                "#define LINEAR_LIGHTING_HAIR 1" in source_text
+                and (
+                    (
+                        len(original["outputs"]) == 6
+                        and original["constant_buffers"].get(2) == 7
+                        and 3 in original["samplers"]
+                        and 3 in original["textures"]
+                        and 2 not in original["samplers"]
+                        and 2 not in original["textures"]
+                    )
+                    or (
+                        len(original["outputs"]) == 5
+                        and original["constant_buffers"].get(2) == 8
+                        and 2 in original["samplers"]
+                        and 2 in original["textures"]
+                        and any(
+                            semantic[0] == "COLOR"
+                            and semantic[1] == 0
+                            and semantic[6] == "w"
+                            for semantic in original["input_signature"]
+                        )
+                    )
+                ),
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(
