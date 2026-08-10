@@ -74,7 +74,7 @@ string(FIND "${runtimeSource}"
   "if (binding.family == ReplacementShaderFamily::distantTree)"
   distantTreeSelectionStart)
 string(FIND "${runtimeSource}"
-  "if (binding.family == ReplacementShaderFamily::dFLightAmbient"
+  "if (binding.family == ReplacementShaderFamily::particle)"
   distantTreeSelectionEnd)
 if(distantTreeSelectionStart EQUAL -1 OR distantTreeSelectionEnd EQUAL -1 OR
    NOT distantTreeSelectionStart LESS distantTreeSelectionEnd)

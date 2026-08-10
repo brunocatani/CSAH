@@ -1,0 +1,22 @@
+[
+  {
+    "name": "ParticleDefault_00000000",
+    "descriptor": 0,
+    "resource": "IDR_LINEAR_LIGHTING_PARTICLE_DEFAULT_PS"
+  },
+  {
+    "name": "ParticleGrayscaleToColor_00000001",
+    "descriptor": 1,
+    "resource": "IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_COLOR_PS"
+  },
+  {
+    "name": "ParticleGrayscaleToAlpha_00000002",
+    "descriptor": 2,
+    "resource": "IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_ALPHA_PS"
+  },
+  {
+    "name": "ParticleGrayscaleToColorAlpha_00000003",
+    "descriptor": 3,
+    "resource": "IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_COLOR_ALPHA_PS"
+  }
+]

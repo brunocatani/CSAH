@@ -39,6 +39,7 @@ foreach(required IN ITEMS
     "Linear Lighting first replacement proof:"
     "Linear Lighting first Sky replacement proof:"
     "Linear Lighting first DistantTree replacement proof:"
+    "Linear Lighting first Particle replacement proof:"
     "Linear Lighting geometry-call proof:"
     "Linear Lighting geometry proof:"
     "validateD3D11ShaderHooks(\"GameDataReady\")"
@@ -51,6 +52,7 @@ foreach(required IN ITEMS
     "dfPrepassCoverageComplete"
     "skyCoverageComplete"
     "distantTreeCoverageComplete"
+    "particleCoverageComplete"
     "shaderBindingLookupFailures"
     "std::atomic_bool diagnosticsEnabled{ true }"
     "scene %s | qualification %s | proof %u/%u"
@@ -77,6 +79,7 @@ foreach(required IN ITEMS
     "metric(\"World lifecycle\""
     "metric(\"Render session\""
     "metric(\"DistantTree binds\""
+    "metric(\"Particle binds\""
     "metric(\"Binding lookup\""
     "bounded, leased, automatic start"
     "QUAL \${qualificationLabel}")
