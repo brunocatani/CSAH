@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 138:
-        fail("Linear Lighting manifest must contain exactly 138 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 142:
+        fail("Linear Lighting manifest must contain exactly 142 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -395,6 +395,7 @@ def verify_source_contracts(
     face_detail_contracts = 0
     skin_tint_contracts = 0
     combined_skin_tint_additional_alpha_contracts = 0
+    combined_gradient_remap_glowmap_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -439,10 +440,15 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
         ):
             combined_skin_tint_additional_alpha_contracts += 1
-    if vertex_contracts != 69:
-        fail(f"expected 69 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 20:
-        fail(f"expected 20 glowmap contracts, found {glowmap_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" in source_text
+            and "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text
+        ):
+            combined_gradient_remap_glowmap_contracts += 1
+    if vertex_contracts != 71:
+        fail(f"expected 71 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 24:
+        fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 13:
@@ -462,9 +468,9 @@ def verify_source_contracts(
             "expected 7 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 43:
+    if gradient_remap_contracts != 47:
         fail(
-            "expected 43 gradient-remap contracts, "
+            "expected 47 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
     if gradient_hair_contracts != 15:
@@ -498,6 +504,11 @@ def verify_source_contracts(
         fail(
             "expected 4 combined skin-tint/additional-alpha contracts, "
             f"found {combined_skin_tint_additional_alpha_contracts}"
+        )
+    if combined_gradient_remap_glowmap_contracts != 4:
+        fail(
+            "expected 4 combined gradient-remap/glowmap contracts, "
+            f"found {combined_gradient_remap_glowmap_contracts}"
         )
 
 
