@@ -144,5 +144,9 @@
   { "name": "AdditionalAlphaMaskFaceDetailSixMrt_L4_81000042", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_SIX_MRT_PS" },
   { "name": "AdditionalAlphaMaskFaceDetailAlphaTestSixMrt_L4_81000142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_ALPHA_TEST_SIX_MRT_PS" },
   { "name": "AdditionalAlphaMaskFaceDetailModelSpaceNormalsSixMrt_L4_81002042", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
-  { "name": "AdditionalAlphaMaskFaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_81002142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" }
+  { "name": "AdditionalAlphaMaskFaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_81002142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "BoneTintFaceDetailSixMrt_L4_C0000042", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_SIX_MRT_PS" },
+  { "name": "BoneTintFaceDetailSixMrt_L3_C0000043", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "BoneTintFaceDetailAlphaTestSixMrt_L4_C0000142", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "BoneTintFaceDetailModelSpaceNormalsSixMrt_L4_C0002042", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" }
 ]

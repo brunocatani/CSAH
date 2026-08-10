@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 146:
-        fail("Linear Lighting manifest must contain exactly 146 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 150:
+        fail("Linear Lighting manifest must contain exactly 150 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -279,6 +279,20 @@ def verify_source_contracts(
         if token not in base_source_texts[0]:
             fail(
                 "projected shader is missing bone-tint contract: "
+                f"{token}"
+            )
+    for token in (
+        "TexBoneTintLookup.Sample",
+        "TexBoneTintPalette.Sample",
+        "frac(LINEAR_LIGHTING_BONE_TINT_ROW.x)",
+        "LinearLightingDiffuse(boneTintPalette.xyz)",
+        "boneTintPalette.w * boneTintLookup.w * input.boneTintColor.w * 4.0",
+        "output.target0.xyz += boneTint",
+        "#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing bone-tint contract: "
                 f"{token}"
             )
     for token in (
@@ -397,6 +411,7 @@ def verify_source_contracts(
     combined_skin_tint_additional_alpha_contracts = 0
     combined_gradient_remap_glowmap_contracts = 0
     combined_face_detail_additional_alpha_contracts = 0
+    combined_face_detail_bone_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -451,15 +466,20 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
         ):
             combined_face_detail_additional_alpha_contracts += 1
-    if vertex_contracts != 71:
-        fail(f"expected 71 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_FACE_DETAIL 1" in source_text
+            and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
+        ):
+            combined_face_detail_bone_tint_contracts += 1
+    if vertex_contracts != 72:
+        fail(f"expected 72 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 15:
+    if model_space_normal_contracts != 16:
         fail(
-            "expected 15 model-space-normal contracts, "
+            "expected 16 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 16:
@@ -489,8 +509,8 @@ def verify_source_contracts(
             "expected 1 projected LOD-object-alpha contract, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 12:
-        fail(f"expected 12 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 16:
+        fail(f"expected 16 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 5:
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "
@@ -502,8 +522,8 @@ def verify_source_contracts(
         fail(
             f"expected 2 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
         )
-    if face_detail_contracts != 9:
-        fail(f"expected 9 face-detail contracts, found {face_detail_contracts}")
+    if face_detail_contracts != 13:
+        fail(f"expected 13 face-detail contracts, found {face_detail_contracts}")
     if skin_tint_contracts != 8:
         fail(f"expected 8 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 4:
@@ -520,6 +540,11 @@ def verify_source_contracts(
         fail(
             "expected 4 combined face-detail/additional-alpha contracts, "
             f"found {combined_face_detail_additional_alpha_contracts}"
+        )
+    if combined_face_detail_bone_tint_contracts != 4:
+        fail(
+            "expected 4 combined face-detail/bone-tint contracts, "
+            f"found {combined_face_detail_bone_tint_contracts}"
         )
 
 
@@ -746,7 +771,8 @@ def verify(root: Path) -> None:
                 and 5 in original["samplers"]
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,
-                original["constant_buffers"].get(2) == 9
+                "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
+                and original["constant_buffers"].get(2) in (7, 9)
                 and 13 in original["samplers"]
                 and 14 in original["samplers"]
                 and 13 in original["textures"]

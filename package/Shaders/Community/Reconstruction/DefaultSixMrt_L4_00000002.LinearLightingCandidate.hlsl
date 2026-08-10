@@ -26,6 +26,10 @@
 #define LINEAR_LIGHTING_SKIN_TINT 0
 #endif
 
+#ifndef LINEAR_LIGHTING_BONE_TINTING
+#define LINEAR_LIGHTING_BONE_TINTING 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
@@ -46,11 +50,23 @@
 #error Skin-tint and gradient-remap shaders use distinct cb2[2] contracts.
 #endif
 
+#if LINEAR_LIGHTING_BONE_TINTING && !LINEAR_LIGHTING_FACE_DETAIL
+#error Six-MRT bone tinting requires the verified face-detail layout.
+#endif
+
+#if LINEAR_LIGHTING_BONE_TINTING && \
+    (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
+    LINEAR_LIGHTING_LANDSCAPE_LOD || LINEAR_LIGHTING_GRADIENT_REMAP || \
+    LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN || \
+    LINEAR_LIGHTING_SKIN_TINT)
+#error Six-MRT bone tinting is verified only with the standalone face-detail layout.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)
     float4 cb2[8];
-#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_BONE_TINTING
     float4 cb2[7];
 #else
     float4 cb2[6];
@@ -107,6 +123,10 @@ Texture2D<float4> TexScreen : register(t4);
 #if LINEAR_LIGHTING_FACE_DETAIL
 Texture2D<float4> TexFaceDetail : register(t8);
 #endif
+#if LINEAR_LIGHTING_BONE_TINTING
+Texture2D<float4> TexBoneTintLookup : register(t13);
+Texture2D<float4> TexBoneTintPalette : register(t14);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -134,6 +154,10 @@ SamplerState SampScreen : register(s4);
 #endif
 #if LINEAR_LIGHTING_FACE_DETAIL
 SamplerState SampFaceDetail : register(s8);
+#endif
+#if LINEAR_LIGHTING_BONE_TINTING
+SamplerState SampBoneTintLookup : register(s13);
+SamplerState SampBoneTintPalette : register(s14);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -163,7 +187,12 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
 #endif
 
-#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)
+#if LINEAR_LIGHTING_BONE_TINTING
+#define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[2]
+#define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[4]
+#define LINEAR_LIGHTING_BONE_TINT_ROW cb2[5]
+#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[6]
@@ -210,6 +239,9 @@ struct PSInput
     float3 screenDirection : TEXCOORD6;
 #elif LINEAR_LIGHTING_FACE_DETAIL
     float faceFactor : TEXCOORD6;
+#endif
+#if LINEAR_LIGHTING_BONE_TINTING
+    float4 boneTintColor : COLOR1;
 #endif
 #if LINEAR_LIGHTING_INSTANCED
     uint instanceDataIndex : COLOR2;
@@ -327,6 +359,16 @@ PSOutput PSMain(PSInput input)
 #endif
     diffuse *= 1.0 - ((1.0 - faceDiffuseMask) * input.faceFactor * 0.3);
 #endif
+#if LINEAR_LIGHTING_BONE_TINTING
+    float4 boneTintLookup = TexBoneTintLookup.Sample(SampBoneTintLookup, uv);
+    float4 boneTintPalette = TexBoneTintPalette.Sample(
+        SampBoneTintPalette,
+        float2(
+            boneTintLookup.y,
+            frac(LINEAR_LIGHTING_BONE_TINT_ROW.x)));
+    float3 boneTint = LinearLightingDiffuse(boneTintPalette.xyz) *
+        boneTintPalette.w * boneTintLookup.w * input.boneTintColor.w * 4.0;
+#endif
     float fade = (LINEAR_LIGHTING_MATERIAL_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_MATERIAL_PROPERTIES.w * cb12[50].x) + 1.0);
@@ -336,6 +378,9 @@ PSOutput PSMain(PSInput input)
         LinearLightingDiffuse(diffuse) + LinearLightingDiffuse(menuScreen));
 #elif !LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+#endif
+#if LINEAR_LIGHTING_BONE_TINTING
+    output.target0.xyz += boneTint;
 #endif
     output.target0.w = cb2[0].z;
 
