@@ -1,5 +1,7 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 
+#include "Features/linear_lighting/DFTiledPointLightHook.h"
+
 #include "resources.h"
 #include "support/Logger.h"
 
@@ -511,6 +513,7 @@ namespace community_shaders::linear_lighting
     {
         settings_ = sanitize(settings);
         enabled_.store(settings_.enabled, std::memory_order_release);
+        publishDFTiledPointLightSettings(settings_);
         publishFrameData();
     }
 

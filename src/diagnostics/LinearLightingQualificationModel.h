@@ -37,6 +37,7 @@ namespace community_shaders::diagnostics::qualification_model
         Failure_NoVerifiedDraw = 1ull << 18,
         Failure_NoCommonVerifiedContract = 1ull << 19,
         Failure_ShaderContractCapacityExceeded = 1ull << 20,
+        Failure_PointLightHookUnowned = 1ull << 21,
     };
 
     struct Sample
@@ -48,6 +49,7 @@ namespace community_shaders::diagnostics::qualification_model
         bool shaderDetoursOwned{};
         bool drawDetoursOwned{};
         bool geometryHookOwned{};
+        bool pointLightHookOwned{};
         std::uint32_t expectedShaderContracts{};
         std::uint32_t verifiedShaderContracts{};
         linear_lighting::ContractMask matchingShaderContractMask{};
@@ -106,6 +108,9 @@ namespace community_shaders::diagnostics::qualification_model
         }
         if (!sample.geometryHookOwned) {
             result.reasonMask |= Failure_GeometryHookUnowned;
+        }
+        if (!sample.pointLightHookOwned) {
+            result.reasonMask |= Failure_PointLightHookUnowned;
         }
         if (sample.verifiedShaderContracts != sample.expectedShaderContracts) {
             result.reasonMask |= Failure_ShaderContractsIncomplete;
@@ -166,6 +171,7 @@ namespace community_shaders::diagnostics::qualification_model
             Failure_ShaderDetoursUnowned | Failure_DrawDetoursUnowned |
             Failure_GeometryHookUnowned | Failure_ShaderContractsIncomplete |
             Failure_GeometryProviderUnavailable |
+            Failure_PointLightHookUnowned |
             Failure_ShaderContractCapacityExceeded;
         if ((result.reasonMask & hardFailures) != 0) {
             result.status = Status::failed;

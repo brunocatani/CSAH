@@ -20,6 +20,7 @@ namespace
             .shaderDetoursOwned = true,
             .drawDetoursOwned = true,
             .geometryHookOwned = true,
+            .pointLightHookOwned = true,
             .expectedShaderContracts = 288,
             .verifiedShaderContracts = 288,
             .matchingShaderContractMask = expectedContractMask(288),
@@ -78,6 +79,16 @@ int main()
     disabled.enabled = false;
     passed &= expect(evaluate(disabled, false).status == Status::failed,
         "disabled feature did not fail immediately");
+
+    auto pointLightHookLost = completeSample();
+    pointLightHookLost.pointLightHookOwned = false;
+    const auto pointHookEvaluation = evaluate(pointLightHookLost, false);
+    passed &= expect(pointHookEvaluation.status == Status::failed,
+        "unowned point-light hook did not fail immediately");
+    passed &= expect(
+        (pointHookEvaluation.reasonMask &
+            Failure_PointLightHookUnowned) != 0,
+        "unowned point-light hook was not classified");
 
     auto incompleteContracts = completeSample();
     clearContractBit(incompleteContracts.matchingShaderContractMask, 191);

@@ -1,5 +1,6 @@
 #include "diagnostics/LinearLightingQualification.h"
 
+#include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "diagnostics/LinearLightingQualificationModel.h"
 #include "render/BSLightingGeometryHook.h"
@@ -56,6 +57,10 @@ namespace community_shaders::diagnostics
             std::uint64_t geometrySourceRejectedBaseline{};
             std::uint64_t geometryUpdatesBaseline{};
             std::uint64_t geometryUpdateRejectsBaseline{};
+            std::uint64_t pointLightCallsBaseline{};
+            std::uint64_t pointLightModifiedBaseline{};
+            std::uint64_t pointLightPassThroughBaseline{};
+            std::uint64_t pointLightInvalidSourceBaseline{};
             std::string trigger;
         };
 
@@ -65,6 +70,7 @@ namespace community_shaders::diagnostics
             render::GeometryHookSnapshot geometry;
             render::HookSnapshot hooks;
             render::QualificationSnapshot d3d;
+            linear_lighting::DFTiledPointLightHookSnapshot pointLight;
             Sample sample;
             std::uint64_t elapsedMilliseconds{};
         };
@@ -225,6 +231,9 @@ namespace community_shaders::diagnostics
             appendReason(reasons, mask,
                 qualification_model::Failure_ShaderContractCapacityExceeded,
                 "shader_contract_capacity_exceeded");
+            appendReason(reasons, mask,
+                qualification_model::Failure_PointLightHookUnowned,
+                "point_light_hook_unowned");
             return reasons;
         }
 
@@ -245,6 +254,10 @@ namespace community_shaders::diagnostics
             capture.geometry = render::geometryHookSnapshot();
             capture.hooks = render::d3d11HookSnapshot();
             capture.d3d = render::d3d11QualificationSnapshot();
+            (void)linear_lighting::validateDFTiledPointLightHook(
+                "Qualification");
+            capture.pointLight =
+                linear_lighting::dFTiledPointLightHookSnapshot();
             capture.elapsedMilliseconds = GetTickCount64() -
                 session.startedTickMilliseconds;
             capture.sample = {
@@ -260,6 +273,9 @@ namespace community_shaders::diagnostics
                 .drawDetoursOwned =
                     capture.hooks.qualificationDrawDetoursOwned,
                 .geometryHookOwned = capture.geometry.vtableCellOwned,
+                .pointLightHookOwned =
+                    capture.pointLight.detourOwned &&
+                    capture.pointLight.gammaLoadsOwned,
                 .expectedShaderContracts = static_cast<std::uint32_t>(
                     linear_lighting::Runtime::kShaderContractCount),
                 .verifiedShaderContracts =
@@ -347,7 +363,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 2 },
+                    { "schemaVersion", 3 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -410,6 +426,28 @@ namespace community_shaders::diagnostics
                                 capture.sample.geometryUpdateRejects },
                             { "lastSourceEmissive",
                                 capture.geometry.lastSourceEmissiveMultiplier },
+                            { "pointLightEnabled",
+                                capture.pointLight.enabled },
+                            { "pointLightGamma",
+                                capture.pointLight.activeGamma },
+                            { "pointLightColorMultiplier",
+                                capture.pointLight.activeColorMultiplier },
+                            { "pointLightCalls",
+                                delta(
+                                    capture.pointLight.completedCalls,
+                                    session.pointLightCallsBaseline) },
+                            { "pointLightModified",
+                                delta(
+                                    capture.pointLight.modifiedCalls,
+                                    session.pointLightModifiedBaseline) },
+                            { "pointLightPassThrough",
+                                delta(
+                                    capture.pointLight.passThroughCalls,
+                                    session.pointLightPassThroughBaseline) },
+                            { "pointLightInvalidSources",
+                                delta(
+                                    capture.pointLight.invalidColorSources,
+                                    session.pointLightInvalidSourceBaseline) },
                         } },
                     { "hooks",
                         {
@@ -426,6 +464,14 @@ namespace community_shaders::diagnostics
                                     .qualificationDrawDetoursOwned },
                             { "geometryHookOwned",
                                 capture.geometry.vtableCellOwned },
+                            { "pointLightHookInstalled",
+                                capture.pointLight.installed },
+                            { "pointLightDetourOwned",
+                                capture.pointLight.detourOwned },
+                            { "pointLightGammaLoadsOwned",
+                                capture.pointLight.gammaLoadsOwned },
+                            { "pointLightValidationFailures",
+                                capture.pointLight.validationFailures },
                         } },
                     { "renderProof",
                         {
@@ -554,6 +600,10 @@ namespace community_shaders::diagnostics
                     const auto runtime =
                         linear_lighting::Runtime::get().snapshot();
                     const auto geometry = render::geometryHookSnapshot();
+                    (void)linear_lighting::validateDFTiledPointLightHook(
+                        "QualificationStart");
+                    const auto pointLight = linear_lighting::
+                        dFTiledPointLightHookSnapshot();
                     const auto d3dSessionId =
                         render::beginD3D11QualificationSession(
                             runtime.geometryUpdates);
@@ -569,6 +619,14 @@ namespace community_shaders::diagnostics
                         .geometryUpdatesBaseline = runtime.geometryUpdates,
                         .geometryUpdateRejectsBaseline =
                             runtime.rejectedGeometryUpdates,
+                        .pointLightCallsBaseline =
+                            pointLight.completedCalls,
+                        .pointLightModifiedBaseline =
+                            pointLight.modifiedCalls,
+                        .pointLightPassThroughBaseline =
+                            pointLight.passThroughCalls,
+                        .pointLightInvalidSourceBaseline =
+                            pointLight.invalidColorSources,
                         .trigger = trigger ? trigger : "unknown",
                     };
                     publishArmedSession(session_);

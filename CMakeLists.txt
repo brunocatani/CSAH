@@ -80,11 +80,14 @@ set(WRIST_PANEL_VIEW_SOURCE
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
+set(POINT_LIGHT_HOOK_SOURCE
+  "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.cpp")
 set(QUALIFICATION_SOURCE
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.cpp")
 set(PLUGIN_SOURCE "${SOURCE_DIR}/XSEPlugin.cpp")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
+include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -99,6 +102,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+  "${POINT_LIGHT_HOOK_SOURCE}"
+  "${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   "${QUALIFICATION_SOURCE}"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
@@ -142,6 +147,13 @@ add_custom_target(VerifyLinearLightingConstantScope ALL
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
   COMMENT "Verifying Linear Lighting constant-buffer restoration contract"
+  VERBATIM)
+
+add_custom_target(VerifyDFTiledPointLightHook ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPOINT_LIGHT_HOOK_SOURCE=${POINT_LIGHT_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake"
+  COMMENT "Verifying FO4VR DFTiled point-light producer contract"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingQualification ALL
@@ -206,6 +218,9 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.h"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
+  "${POINT_LIGHT_HOOK_SOURCE}"
+  "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.h"
+  "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
@@ -227,6 +242,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyDFTiledPointLightHook
   VerifyLinearLightingConstantScope
   VerifyLinearLightingContracts
   VerifyLinearLightingQualification
@@ -366,6 +382,10 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake'")
 
+  add_test(NAME FO4VRCommunityShaders.DFTiledPointLightHookSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DPOINT_LIGHT_HOOK_SOURCE=${POINT_LIGHT_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake'")
+
   add_test(NAME FO4VRCommunityShaders.LinearLightingQualificationSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DPLUGIN_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DQUALIFICATION_SOURCE=${QUALIFICATION_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake'")
@@ -469,6 +489,22 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.LinearLightingQualification
     COMMAND FO4VRCommunityShadersLinearLightingQualificationTests)
+
+  add_executable(FO4VRCommunityShadersDFTiledPointLightModelTests
+    "${ROOT_DIR}/tests/DFTiledPointLightModelTests.cpp"
+    "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h")
+  target_compile_features(
+    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE
+    FO4VRCommunityShadersCore)
+  add_test(NAME FO4VRCommunityShaders.DFTiledPointLightModel
+    COMMAND FO4VRCommunityShadersDFTiledPointLightModelTests)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"

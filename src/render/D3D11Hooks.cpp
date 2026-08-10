@@ -1,5 +1,6 @@
 #include "render/D3D11Hooks.h"
 
+#include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "support/Logger.h"
 
@@ -1219,6 +1220,11 @@ namespace community_shaders::render
                 logging::error(
                     "D3D11 device captured, but method detours remain fail-closed and rendering stays vanilla.");
                 return result;
+            }
+
+            if (!linear_lighting::installDFTiledPointLightHook()) {
+                logging::warn(
+                    "Verified DFTiled point-light producer hook remains unavailable; point lighting stays vanilla while material Linear Lighting remains active.");
             }
 
             linear_lighting::Runtime::get().onDeviceCreated(

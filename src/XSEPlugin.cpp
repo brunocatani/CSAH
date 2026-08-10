@@ -1,5 +1,6 @@
 #include "PCH.h"
 
+#include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "diagnostics/LinearLightingQualification.h"
@@ -69,8 +70,12 @@ namespace
                 community_shaders::render::geometryHookSnapshot();
             const auto d3d =
                 community_shaders::render::d3d11HookSnapshot();
+            (void)community_shaders::linear_lighting::
+                validateDFTiledPointLightHook("GameDataReady");
+            const auto pointLight = community_shaders::linear_lighting::
+                dFTiledPointLightHookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
@@ -84,7 +89,13 @@ namespace
                 geometry.calls,
                 geometry.acceptedUpdates,
                 geometry.rejectedSources,
-                static_cast<std::uint32_t>(geometry.deepestStage));
+                static_cast<std::uint32_t>(geometry.deepestStage),
+                pointLight.detourOwned,
+                pointLight.gammaLoadsOwned,
+                pointLight.completedCalls,
+                pointLight.modifiedCalls,
+                pointLight.activeGamma,
+                pointLight.activeColorMultiplier);
             break;
         }
         case F4SE::MessagingInterface::kPostLoadGame:
