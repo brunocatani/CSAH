@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 259:
-        fail("Linear Lighting manifest must contain exactly 259 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 261:
+        fail("Linear Lighting manifest must contain exactly 261 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -262,6 +262,38 @@ def verify_source_contracts(
             fail(f"dismemberment shader is missing verified contract: {token}")
     if "[earlydepthstencil]" in dismemberment_source_text:
         fail("baseline dismemberment shaders must preserve no-early-depth behavior")
+    dismemberment_blend_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "DismembermentBlendFiveMrt_L3NoEarlyDepth_00288047.LinearLightingCandidate.hlsl"
+    )
+    dismemberment_blend_source_text = dismemberment_blend_source.read_text(
+        encoding="utf-8"
+    )
+    for token in (
+        "float4 cb2[11]",
+        "float4 cb2[12]",
+        "float4 cb12[51]",
+        "LINEAR_LIGHTING_BLEND_BASIS_X cb2[6]",
+        "LINEAR_LIGHTING_BLEND_ALPHA_MASK cb2[10]",
+        "LINEAR_LIGHTING_BLEND_DEPTH cb2[11]",
+        "baseDiffuseSample.w * input.vertexColor.w",
+        "baseDiffuseSample.xyz * input.vertexColor.xyz",
+        "TexDismembermentDiffuse.Sample",
+        "output.target1.z = -projectedNormal.z",
+        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingEmitColor(cb2[1].xyz)",
+    ):
+        if token not in dismemberment_blend_source_text:
+            fail(
+                "dismemberment blend shader is missing verified contract: "
+                f"{token}"
+            )
+    if "[earlydepthstencil]" in dismemberment_blend_source_text:
+        fail("dismemberment blend shaders must preserve no-early-depth behavior")
     meat_cuff_source = (
         root
         / "package"
@@ -656,8 +688,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 131:
-        fail(f"expected 131 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 133:
+        fail(f"expected 133 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 39:
         fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -669,15 +701,15 @@ def verify_source_contracts(
         )
     if tessellated_contracts != 37:
         fail(f"expected 37 tessellated contracts, found {tessellated_contracts}")
-    if dismemberment_contracts != 20:
+    if dismemberment_contracts != 22:
         fail(
-            f"expected 20 dismemberment contracts, found {dismemberment_contracts}"
+            f"expected 22 dismemberment contracts, found {dismemberment_contracts}"
         )
     if meat_cuff_contracts != 20:
         fail(f"expected 20 meat-cuff contracts, found {meat_cuff_contracts}")
-    if additional_alpha_mask_contracts != 78:
+    if additional_alpha_mask_contracts != 79:
         fail(
-            "expected 78 additional-alpha-mask contracts, "
+            "expected 79 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -866,6 +898,8 @@ def verify(root: Path) -> None:
         '{ "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" }',
         '"meat-cuff-invalid-low"',
         '"meat-cuff-alpha-reject"',
+        "#if USES_TESSELLATED_INPUTS || HAS_DISMEMBERMENT",
+        "if (mrtCount == 5)",
         "values[55] =",
         "values[67] =",
         "paired-eye fixture produced identical motion vectors",
@@ -1147,11 +1181,16 @@ def verify(root: Path) -> None:
                 ),
                 "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text
                 and original["constant_buffers"].get(2)
-                == 10
-                + int(
-                    "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
-                    or "#define LINEAR_LIGHTING_GRADIENT_REMAP 1"
+                == (
+                    11
+                    if "#define LINEAR_LIGHTING_DISMEMBERMENT_BLEND 1"
                     in source_text
+                    else 10
+                    + int(
+                        "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+                        or "#define LINEAR_LIGHTING_GRADIENT_REMAP 1"
+                        in source_text
+                    )
                 )
                 + int(
                     "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"

@@ -313,6 +313,8 @@ namespace
         ShaderContract{ "GradientRemapMeatCuffProjectedFiveMrt_L3_04408043", 5, true, false, false, false, false, true, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_05408046", 5, false, false, false, true, false, true, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapMeatCuffProjectedFiveMrt_L3_05408043", 5, true, false, false, true, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "DismembermentBlendFiveMrt_L3NoEarlyDepth_00288047", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentBlendFiveMrt_L3NoEarlyDepth_01288047", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, true, false },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -549,7 +551,7 @@ namespace
 struct VSOutput
 {
     float4 position : SV_POSITION;
-#if USES_TESSELLATED_INPUTS
+#if USES_TESSELLATED_INPUTS || HAS_DISMEMBERMENT
     float2 uv : TEXCOORD0;
 #if HAS_DISMEMBERMENT
     float2 dismembermentUv : TEXCOORD4;
@@ -563,8 +565,10 @@ struct VSOutput
 #if HAS_DISMEMBERMENT
     float2 dismembermentSelector : TEXCOORD5;
 #endif
+#if USES_TESSELLATED_INPUTS
     float4 currentPosition : POSITION1;
     float4 previousPosition : POSITION2;
+#endif
 #else
     float3 tangent : TEXCOORD0;
     float3 bitangent : TEXCOORD1;
@@ -610,7 +614,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         float2(3.0, -1.0)
     };
     output.position = float4(positions[vertexId], 0.5, 1.0);
-#if USES_TESSELLATED_INPUTS
+#if USES_TESSELLATED_INPUTS || HAS_DISMEMBERMENT
     output.uv = float2(0.25, 0.75);
 #if HAS_DISMEMBERMENT
     output.dismembermentUv = float2(0.75, 0.25);
@@ -621,8 +625,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.tangent = float3(1.0, 0.0, 0.0);
     output.bitangent = float3(0.0, 1.0, 0.0);
     output.normal = float3(0.0, 0.0, -1.0);
+#if USES_TESSELLATED_INPUTS
     output.currentPosition = float4(0.2, -0.3, 0.4, 1.0);
     output.previousPosition = float4(0.15, -0.2, 0.35, 1.0);
+#endif
 #else
     output.tangent = float3(1.0, 0.0, 0.0);
     output.bitangent = float3(0.0, 1.0, 0.0);
@@ -892,6 +898,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             }
         }
         if (hasDismemberment) {
+            if (mrtCount == 5) {
+                values[5] = values[4];
+                values[4] = {};
+                values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
+                values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                values[8] = { 0.0F, 0.0F, -1.0F, 0.0F };
+                if (hasAdditionalAlphaMask) {
+                    values[10] = maskParameters;
+                    values[11] = depthParameters;
+                } else {
+                    values[10] = depthParameters;
+                }
+                return values;
+            }
             if (hasSkinTint || hasGradientRemap) {
                 values[2] = hasSkinTint ? kSkinTintColor :
                     std::array<float, 4>{ 0.55F, 0.0F, 0.0F, 0.0F };
