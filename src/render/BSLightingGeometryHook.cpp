@@ -1,7 +1,9 @@
 #include "render/BSLightingGeometryHook.h"
 
+#include "Features/linear_lighting/DFLightProducerModel.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "support/Logger.h"
+#include "support/NearAllocation.h"
 
 #include <Windows.h>
 
@@ -21,17 +23,54 @@ namespace community_shaders::render
     {
         // Independently derived from raw Fallout4VR.exe 1.2.72 disassembly.
         // The active VR renderer constructs the BSDF lighting object at
-        // 0x14291D6B0 and publishes this vtable. The legacy BSLightingShader
-        // vtable at RVA 0x030BBDB8 is constructed too, but its slot 9 receives
-        // no world-rendering calls in the VR-extended pipeline.
+        // 0x14291D6B0 and publishes this vtable. Its slot 9 routine owns both
+        // the geometry constant-buffer transaction and the native DFLight
+        // ambient/directional RGB producer paths scoped below.
         constexpr std::uintptr_t kBSDFLightShaderVtableRva = 0x030BF3C8;
         constexpr std::size_t kGeometrySetupSlot = 9;
         constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0291DCA0;
+        constexpr std::size_t kDFLightDescriptorOffset = 0x48;
         constexpr std::uintptr_t kLightingStateAccessorRva = 0x027AEEB0;
         constexpr std::uintptr_t kLightingStateRva = 0x068787F0;
         constexpr std::size_t kLightingStateEmissiveMultiplierOffset = 0x1BC;
         constexpr std::size_t kLightingStateLeaInstructionBytes = 7;
+        constexpr std::uintptr_t kNativeScalarPowThunkRva = 0x029917A8;
+        constexpr std::size_t kRelativeCallBytes = 5;
+        constexpr std::size_t kJumpStubBytes = 12;
+        constexpr std::size_t kAmbientJumpStubOffset = 0;
+        constexpr std::size_t kDirectionalJumpStubOffset = 16;
+        constexpr std::size_t kJumpIslandRequiredBytes = 32;
         constexpr float kMaximumPlausibleEmissiveMultiplier = 1.0e6f;
+
+        struct PowCallsite
+        {
+            std::uintptr_t rva{};
+            std::array<std::byte, kRelativeCallBytes> signature{};
+
+            constexpr PowCallsite(
+                std::uintptr_t address,
+                std::uint32_t displacement) noexcept :
+                rva(address),
+                signature{
+                    std::byte{ 0xE8 },
+                    static_cast<std::byte>(displacement & 0xFFu),
+                    static_cast<std::byte>((displacement >> 8) & 0xFFu),
+                    static_cast<std::byte>((displacement >> 16) & 0xFFu),
+                    static_cast<std::byte>((displacement >> 24) & 0xFFu),
+                }
+            {}
+        };
+
+        constexpr std::array<PowCallsite, 3> kAmbientPowCallsites{
+            PowCallsite{ 0x0291E138, 0x0007366B },
+            PowCallsite{ 0x0291E14C, 0x00073657 },
+            PowCallsite{ 0x0291E160, 0x00073643 },
+        };
+        constexpr std::array<PowCallsite, 3> kDirectionalPowCallsites{
+            PowCallsite{ 0x0291E9E7, 0x00072DBC },
+            PowCallsite{ 0x0291E9FB, 0x00072DA8 },
+            PowCallsite{ 0x0291EA0F, 0x00072D94 },
+        };
 
         constexpr std::array<std::byte, 41> kGeometrySetupSignature{
             std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
@@ -52,21 +91,80 @@ namespace community_shaders::render
             std::byte{ 0x39 }, std::byte{ 0x99 }, std::byte{ 0x0C }, std::byte{ 0x04 },
             std::byte{ 0xC3 },
         };
+        constexpr std::array<std::byte, 6> kNativeScalarPowThunkSignature{
+            std::byte{ 0xFF }, std::byte{ 0x25 }, std::byte{ 0x3A },
+            std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 },
+        };
 
         using GeometrySetupFunction = void(__fastcall*)(
             void* receiver,
             void* pass,
             void* compiledProgram);
+        using NativeScalarPowFunction = float(__fastcall*)(
+            float value,
+            float exponent);
 
         GeometrySetupFunction originalGeometrySetup{};
+        NativeScalarPowFunction originalNativeScalarPow{};
         void** geometrySetupCell{};
         const std::byte* lightingState{};
+        std::byte* executableImage{};
+        std::byte* powJumpIsland{};
+        std::byte* ambientPowJumpStub{};
+        std::byte* directionalPowJumpStub{};
         std::atomic_bool installed{};
+        std::atomic_bool producerOwnershipReady{};
+        std::atomic_bool desiredProducerEnabled{};
+        std::atomic_uint32_t desiredDirectionalGammaBits{
+            std::bit_cast<std::uint32_t>(
+                linear_lighting::kVanillaDFLightGamma) };
+        std::atomic_uint32_t desiredDirectionalMultiplierBits{
+            std::bit_cast<std::uint32_t>(1.0f) };
+        std::atomic_uint32_t desiredAmbientGammaBits{
+            std::bit_cast<std::uint32_t>(
+                linear_lighting::kVanillaDFLightGamma) };
+        std::atomic_uint32_t desiredAmbientMultiplierBits{
+            std::bit_cast<std::uint32_t>(1.0f) };
         std::atomic_uint64_t calls{};
         std::atomic_uint64_t acceptedUpdates{};
         std::atomic_uint64_t rejectedSources{};
+        std::atomic_uint64_t ambientDescriptors{};
+        std::atomic_uint64_t directionalDescriptors{};
+        std::atomic_uint64_t otherDescriptors{};
+        std::atomic_uint64_t ambientPowCalls{};
+        std::atomic_uint64_t ambientPowModified{};
+        std::atomic_uint64_t ambientPowPassThrough{};
+        std::atomic_uint64_t directionalPowCalls{};
+        std::atomic_uint64_t directionalPowModified{};
+        std::atomic_uint64_t directionalPowPassThrough{};
+        std::atomic_uint64_t invalidPowResults{};
+        std::atomic_uint64_t validationFailures{};
         std::atomic_uint32_t deepestStage{};
+        std::atomic_uint32_t lastDescriptor{};
         std::atomic_uint32_t lastSourceEmissiveMultiplierBits{};
+        thread_local std::uint32_t activeDFLightDescriptor{};
+
+        class DFLightDescriptorScope
+        {
+        public:
+            explicit DFLightDescriptorScope(std::uint32_t descriptor) noexcept :
+                previous_(activeDFLightDescriptor)
+            {
+                activeDFLightDescriptor = descriptor;
+            }
+
+            ~DFLightDescriptorScope()
+            {
+                activeDFLightDescriptor = previous_;
+            }
+
+            DFLightDescriptorScope(const DFLightDescriptorScope&) = delete;
+            DFLightDescriptorScope& operator=(const DFLightDescriptorScope&) =
+                delete;
+
+        private:
+            std::uint32_t previous_{};
+        };
 
         void recordStage(GeometrySourceStage stage) noexcept
         {
@@ -138,6 +236,144 @@ namespace community_shaders::render
             return (information.Protect & executableProtection) != 0;
         }
 
+        [[nodiscard]] bool addRelativeDisplacement(
+            std::uintptr_t nextInstruction,
+            std::int32_t displacement,
+            std::uintptr_t& destination) noexcept
+        {
+            if (displacement >= 0) {
+                const auto positive = static_cast<std::uintptr_t>(displacement);
+                if (positive >
+                    std::numeric_limits<std::uintptr_t>::max() -
+                        nextInstruction) {
+                    return false;
+                }
+                destination = nextInstruction + positive;
+                return true;
+            }
+            const auto magnitude = static_cast<std::uintptr_t>(
+                -static_cast<std::int64_t>(displacement));
+            if (magnitude > nextInstruction) {
+                return false;
+            }
+            destination = nextInstruction - magnitude;
+            return true;
+        }
+
+        [[nodiscard]] const std::byte* resolveRelativeCallTarget(
+            const std::byte* instruction) noexcept
+        {
+            if (!instruction ||
+                !isReadableRange(instruction, kRelativeCallBytes) ||
+                instruction[0] != std::byte{ 0xE8 }) {
+                return nullptr;
+            }
+            std::int32_t displacement{};
+            std::memcpy(&displacement, instruction + 1, sizeof(displacement));
+            const auto next = reinterpret_cast<std::uintptr_t>(instruction) +
+                kRelativeCallBytes;
+            std::uintptr_t destination{};
+            return addRelativeDisplacement(next, displacement, destination) ?
+                reinterpret_cast<const std::byte*>(destination) :
+                nullptr;
+        }
+
+        [[nodiscard]] bool displacementForTarget(
+            const std::byte* instruction,
+            const void* target,
+            std::int32_t& displacement) noexcept
+        {
+            if (!instruction || !target) {
+                return false;
+            }
+            const auto next = reinterpret_cast<std::uintptr_t>(instruction) +
+                kRelativeCallBytes;
+            const auto destination = reinterpret_cast<std::uintptr_t>(target);
+            const auto delta = static_cast<std::int64_t>(destination) -
+                static_cast<std::int64_t>(next);
+            if (delta < (std::numeric_limits<std::int32_t>::min)() ||
+                delta > (std::numeric_limits<std::int32_t>::max)()) {
+                return false;
+            }
+            displacement = static_cast<std::int32_t>(delta);
+            return true;
+        }
+
+        [[nodiscard]] bool writeExecutableBytes(
+            std::byte* target,
+            const std::byte* bytes,
+            std::size_t size) noexcept
+        {
+            if (!target || !bytes || size == 0) {
+                return false;
+            }
+            DWORD oldProtection{};
+            if (!VirtualProtect(
+                    target,
+                    size,
+                    PAGE_EXECUTE_READWRITE,
+                    &oldProtection)) {
+                return false;
+            }
+            std::memcpy(target, bytes, size);
+            DWORD discardedProtection{};
+            const auto restored = VirtualProtect(
+                target,
+                size,
+                oldProtection,
+                &discardedProtection);
+            FlushInstructionCache(GetCurrentProcess(), target, size);
+            return restored != FALSE;
+        }
+
+        [[nodiscard]] bool writeRelativeCall(
+            std::byte* instruction,
+            const void* target) noexcept
+        {
+            std::int32_t displacement{};
+            if (!displacementForTarget(instruction, target, displacement)) {
+                return false;
+            }
+            std::array<std::byte, kRelativeCallBytes> replacement{};
+            replacement[0] = std::byte{ 0xE8 };
+            std::memcpy(
+                replacement.data() + 1,
+                &displacement,
+                sizeof(displacement));
+            return writeExecutableBytes(
+                instruction,
+                replacement.data(),
+                replacement.size());
+        }
+
+        void buildAbsoluteJumpStub(
+            std::byte* stub,
+            const void* destination) noexcept
+        {
+            stub[0] = std::byte{ 0x48 };
+            stub[1] = std::byte{ 0xB8 };
+            const auto address = reinterpret_cast<std::uintptr_t>(destination);
+            std::memcpy(stub + 2, &address, sizeof(address));
+            stub[10] = std::byte{ 0xFF };
+            stub[11] = std::byte{ 0xE0 };
+        }
+
+        [[nodiscard]] bool absoluteJumpStubOwned(
+            const std::byte* stub,
+            const void* destination) noexcept
+        {
+            if (!isExecutableRange(stub, kJumpStubBytes) ||
+                stub[0] != std::byte{ 0x48 } ||
+                stub[1] != std::byte{ 0xB8 } ||
+                stub[10] != std::byte{ 0xFF } ||
+                stub[11] != std::byte{ 0xE0 }) {
+                return false;
+            }
+            std::uintptr_t encoded{};
+            std::memcpy(&encoded, stub + 2, sizeof(encoded));
+            return encoded == reinterpret_cast<std::uintptr_t>(destination);
+        }
+
         [[nodiscard]] void* readPointerCell(void** cell) noexcept
         {
             return cell ? ReadPointerAcquire(
@@ -175,6 +411,177 @@ namespace community_shaders::render
             return observed == expected && restored != FALSE;
         }
 
+        [[nodiscard]] bool callsiteFamilyOwned(
+            const auto& callsites,
+            const std::byte* expectedTarget) noexcept
+        {
+            if (!executableImage || !expectedTarget) {
+                return false;
+            }
+            for (const auto& callsite : callsites) {
+                const auto* instruction = executableImage + callsite.rva;
+                if (resolveRelativeCallTarget(instruction) != expectedTarget) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        [[nodiscard]] bool dFLightPowCallsitesOwned() noexcept;
+
+        [[nodiscard]] float runDFLightPowProducer(
+            linear_lighting::DFLightProducerKind expectedKind,
+            float value,
+            float vanillaExponent,
+            const std::atomic_uint32_t& desiredGamma,
+            const std::atomic_uint32_t& desiredMultiplier,
+            std::atomic_uint64_t& completed,
+            std::atomic_uint64_t& modified,
+            std::atomic_uint64_t& passThrough) noexcept
+        {
+            const auto active = originalNativeScalarPow &&
+                producerOwnershipReady.load(std::memory_order_acquire) &&
+                desiredProducerEnabled.load(std::memory_order_acquire) &&
+                linear_lighting::classifyDFLightProducer(
+                    activeDFLightDescriptor) == expectedKind;
+            if (!active) {
+                const auto result = originalNativeScalarPow ?
+                    originalNativeScalarPow(value, vanillaExponent) :
+                    value;
+                passThrough.fetch_add(1, std::memory_order_relaxed);
+                completed.fetch_add(1, std::memory_order_release);
+                return result;
+            }
+
+            const auto gamma = std::bit_cast<float>(
+                desiredGamma.load(std::memory_order_relaxed));
+            const auto multiplier = std::bit_cast<float>(
+                desiredMultiplier.load(std::memory_order_relaxed));
+            if (!std::isfinite(gamma) || gamma <= 0.0f ||
+                !std::isfinite(multiplier)) {
+                invalidPowResults.fetch_add(1, std::memory_order_relaxed);
+                const auto result =
+                    originalNativeScalarPow(value, vanillaExponent);
+                passThrough.fetch_add(1, std::memory_order_relaxed);
+                completed.fetch_add(1, std::memory_order_release);
+                return result;
+            }
+
+            const auto converted = originalNativeScalarPow(value, gamma);
+            const auto result = converted * multiplier;
+            if (!std::isfinite(result)) {
+                invalidPowResults.fetch_add(1, std::memory_order_relaxed);
+                const auto fallback =
+                    originalNativeScalarPow(value, vanillaExponent);
+                passThrough.fetch_add(1, std::memory_order_relaxed);
+                completed.fetch_add(1, std::memory_order_release);
+                return fallback;
+            }
+            modified.fetch_add(1, std::memory_order_relaxed);
+            completed.fetch_add(1, std::memory_order_release);
+            return result;
+        }
+
+        float __fastcall hookAmbientScalarPow(
+            float value,
+            float exponent) noexcept
+        {
+            return runDFLightPowProducer(
+                linear_lighting::DFLightProducerKind::ambient,
+                value,
+                exponent,
+                desiredAmbientGammaBits,
+                desiredAmbientMultiplierBits,
+                ambientPowCalls,
+                ambientPowModified,
+                ambientPowPassThrough);
+        }
+
+        float __fastcall hookDirectionalScalarPow(
+            float value,
+            float exponent) noexcept
+        {
+            return runDFLightPowProducer(
+                linear_lighting::DFLightProducerKind::directional,
+                value,
+                exponent,
+                desiredDirectionalGammaBits,
+                desiredDirectionalMultiplierBits,
+                directionalPowCalls,
+                directionalPowModified,
+                directionalPowPassThrough);
+        }
+
+        [[nodiscard]] bool dFLightPowCallsitesOwned() noexcept
+        {
+            const auto* nativePow = executableImage ?
+                executableImage + kNativeScalarPowThunkRva :
+                nullptr;
+            return nativePow &&
+                isExecutableRange(
+                    nativePow,
+                    kNativeScalarPowThunkSignature.size()) &&
+                std::memcmp(
+                    nativePow,
+                    kNativeScalarPowThunkSignature.data(),
+                    kNativeScalarPowThunkSignature.size()) == 0 &&
+                absoluteJumpStubOwned(
+                    ambientPowJumpStub,
+                    reinterpret_cast<const void*>(&hookAmbientScalarPow)) &&
+                absoluteJumpStubOwned(
+                    directionalPowJumpStub,
+                    reinterpret_cast<const void*>(&hookDirectionalScalarPow)) &&
+                callsiteFamilyOwned(
+                    kAmbientPowCallsites,
+                    ambientPowJumpStub) &&
+                callsiteFamilyOwned(
+                    kDirectionalPowCallsites,
+                    directionalPowJumpStub);
+        }
+
+        [[nodiscard]] bool restorePowCallsites(
+            std::size_t patchedCallsites) noexcept
+        {
+            bool restored = true;
+            std::size_t index{};
+            for (const auto& callsite : kAmbientPowCallsites) {
+                if (index++ >= patchedCallsites) {
+                    return restored;
+                }
+                restored = writeExecutableBytes(
+                               executableImage + callsite.rva,
+                               callsite.signature.data(),
+                               callsite.signature.size()) &&
+                    restored;
+            }
+            for (const auto& callsite : kDirectionalPowCallsites) {
+                if (index++ >= patchedCallsites) {
+                    return restored;
+                }
+                restored = writeExecutableBytes(
+                               executableImage + callsite.rva,
+                               callsite.signature.data(),
+                               callsite.signature.size()) &&
+                    restored;
+            }
+            return restored;
+        }
+
+        void releaseProducerPatchStateIfRestored(bool restored) noexcept
+        {
+            if (!restored) {
+                return;
+            }
+            if (powJumpIsland) {
+                (void)VirtualFree(powJumpIsland, 0, MEM_RELEASE);
+            }
+            originalNativeScalarPow = nullptr;
+            executableImage = nullptr;
+            powJumpIsland = nullptr;
+            ambientPowJumpStub = nullptr;
+            directionalPowJumpStub = nullptr;
+        }
+
         [[nodiscard]] bool readEmissiveMultiplier(float& value) noexcept
         {
             // Fallout4VR's active geometry routine obtains this exact
@@ -204,10 +611,34 @@ namespace community_shaders::render
             void* pass,
             void* compiledProgram) noexcept
         {
+            std::uint32_t descriptor{};
+            if (pass) {
+                std::memcpy(
+                    &descriptor,
+                    static_cast<const std::byte*>(pass) +
+                        kDFLightDescriptorOffset,
+                    sizeof(descriptor));
+            }
+            lastDescriptor.store(descriptor, std::memory_order_relaxed);
+            switch (linear_lighting::classifyDFLightProducer(descriptor)) {
+            case linear_lighting::DFLightProducerKind::ambient:
+                ambientDescriptors.fetch_add(1, std::memory_order_relaxed);
+                break;
+            case linear_lighting::DFLightProducerKind::directional:
+                directionalDescriptors.fetch_add(1, std::memory_order_relaxed);
+                break;
+            case linear_lighting::DFLightProducerKind::other:
+                otherDescriptors.fetch_add(1, std::memory_order_relaxed);
+                break;
+            }
+
             // Preserve the engine's complete selector-2 map/write/unmap/bind
-            // transaction exactly once. Our independent b8 is published after
-            // it returns so the engine cannot overwrite that slot afterward.
-            originalGeometrySetup(receiver, pass, compiledProgram);
+            // transaction exactly once. The descriptor scope exists only for
+            // the six verified native pow calls reached by this transaction.
+            {
+                DFLightDescriptorScope descriptorScope(descriptor);
+                originalGeometrySetup(receiver, pass, compiledProgram);
+            }
 
             float emissiveMultiplier{};
             const auto validSource = readEmissiveMultiplier(emissiveMultiplier);
@@ -223,9 +654,6 @@ namespace community_shaders::render
                     emissiveMultiplier)) {
                 acceptedUpdates.fetch_add(1, std::memory_order_relaxed);
             }
-            // Publish a completed call only after every classification counter
-            // and sample is final, allowing the telemetry acquire to report a
-            // coherent first-call outcome from another thread.
             calls.fetch_add(1, std::memory_order_release);
         }
     }
@@ -254,18 +682,37 @@ namespace community_shaders::render
             image + dos->e_lfanew);
         if (!isReadableRange(nt, sizeof(*nt)) ||
             nt->Signature != IMAGE_NT_SIGNATURE ||
-            nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
-            kBSDFLightShaderVtableRva +
+            nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+            logging::error(
+                "BSDF lighting geometry hook rejected invalid PE metadata.");
+            return false;
+        }
+        const auto imageSize =
+            static_cast<std::size_t>(nt->OptionalHeader.SizeOfImage);
+        const auto callsiteInBounds = [imageSize](const auto& callsites) {
+            return std::ranges::all_of(
+                callsites,
+                [imageSize](const PowCallsite& callsite) {
+                    return callsite.rva <= imageSize &&
+                        callsite.signature.size() <= imageSize - callsite.rva;
+                });
+        };
+        if (kBSDFLightShaderVtableRva +
                     (kGeometrySetupSlot + 1) * sizeof(void*) >
-                nt->OptionalHeader.SizeOfImage ||
+                imageSize ||
             kGeometrySetupFunctionRva + kGeometrySetupSignature.size() >
-                nt->OptionalHeader.SizeOfImage ||
+                imageSize ||
             kLightingStateAccessorRva +
                     kLightingStateAccessorSignature.size() >
-                nt->OptionalHeader.SizeOfImage ||
+                imageSize ||
             kLightingStateRva + kLightingStateEmissiveMultiplierOffset +
                     sizeof(float) >
-                nt->OptionalHeader.SizeOfImage) {
+                imageSize ||
+            kNativeScalarPowThunkRva +
+                    kNativeScalarPowThunkSignature.size() >
+                imageSize ||
+            !callsiteInBounds(kAmbientPowCallsites) ||
+            !callsiteInBounds(kDirectionalPowCallsites)) {
             logging::error(
                 "BSDF lighting geometry hook rejected invalid PE image bounds.");
             return false;
@@ -277,6 +724,7 @@ namespace community_shaders::render
         auto* expected = image + kGeometrySetupFunctionRva;
         const auto* accessor = image + kLightingStateAccessorRva;
         const auto* state = image + kLightingStateRva;
+        const auto* nativePow = image + kNativeScalarPowThunkRva;
         if (!isReadableRange(cell, sizeof(*cell)) || *cell != expected ||
             !isExecutableRange(expected, kGeometrySetupSignature.size()) ||
             std::memcmp(
@@ -292,9 +740,16 @@ namespace community_shaders::render
                 kLightingStateAccessorSignature.size()) != 0 ||
             !isReadableRange(
                 state + kLightingStateEmissiveMultiplierOffset,
-                sizeof(float))) {
+                sizeof(float)) ||
+            !isExecutableRange(
+                nativePow,
+                kNativeScalarPowThunkSignature.size()) ||
+            std::memcmp(
+                nativePow,
+                kNativeScalarPowThunkSignature.data(),
+                kNativeScalarPowThunkSignature.size()) != 0) {
             logging::error(
-                "BSDF lighting geometry hook live identity/signature gate failed; Linear Lighting remains vanilla.");
+                "BSDF lighting geometry/producer live identity gate failed; Linear Lighting remains vanilla.");
             return false;
         }
         std::int32_t stateDisplacement{};
@@ -309,6 +764,116 @@ namespace community_shaders::render
                 "BSDF lighting geometry hook accessor target gate failed; Linear Lighting remains vanilla.");
             return false;
         }
+        const auto originalCallsitesOwned = [image, nativePow](
+                                                   const auto& callsites) {
+            for (const auto& callsite : callsites) {
+                const auto* instruction = image + callsite.rva;
+                if (!isExecutableRange(
+                        instruction,
+                        callsite.signature.size()) ||
+                    std::memcmp(
+                        instruction,
+                        callsite.signature.data(),
+                        callsite.signature.size()) != 0 ||
+                    resolveRelativeCallTarget(instruction) != nativePow) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        if (!originalCallsitesOwned(kAmbientPowCallsites) ||
+            !originalCallsitesOwned(kDirectionalPowCallsites)) {
+            logging::error(
+                "BSDF DFLight pow-callsite identity gate failed; Linear Lighting remains vanilla.");
+            return false;
+        }
+
+        const auto imageAddress = reinterpret_cast<std::uintptr_t>(image);
+        if (imageAddress >
+            std::numeric_limits<std::uintptr_t>::max() - imageSize) {
+            logging::error(
+                "BSDF DFLight jump-island preferred address overflowed; Linear Lighting remains vanilla.");
+            return false;
+        }
+        std::array<std::uintptr_t,
+            kAmbientPowCallsites.size() + kDirectionalPowCallsites.size()>
+            nextInstructions{};
+        std::size_t nextIndex{};
+        for (const auto& callsite : kAmbientPowCallsites) {
+            nextInstructions[nextIndex++] = imageAddress + callsite.rva +
+                kRelativeCallBytes;
+        }
+        for (const auto& callsite : kDirectionalPowCallsites) {
+            nextInstructions[nextIndex++] = imageAddress + callsite.rva +
+                kRelativeCallBytes;
+        }
+        auto* island = static_cast<std::byte*>(
+            support::near_allocation::allocateReachablePage(
+                nextInstructions,
+                imageAddress + imageSize,
+                kJumpIslandRequiredBytes));
+        if (!island) {
+            logging::error(
+                "BSDF DFLight producer could not allocate a reachable jump island; Linear Lighting remains vanilla.");
+            return false;
+        }
+        auto* ambientStub = island + kAmbientJumpStubOffset;
+        auto* directionalStub = island + kDirectionalJumpStubOffset;
+        buildAbsoluteJumpStub(
+            ambientStub,
+            reinterpret_cast<const void*>(&hookAmbientScalarPow));
+        buildAbsoluteJumpStub(
+            directionalStub,
+            reinterpret_cast<const void*>(&hookDirectionalScalarPow));
+        DWORD oldIslandProtection{};
+        if (!VirtualProtect(
+                island,
+                kJumpIslandRequiredBytes,
+                PAGE_EXECUTE_READ,
+                &oldIslandProtection)) {
+            (void)VirtualFree(island, 0, MEM_RELEASE);
+            logging::error(
+                "BSDF DFLight jump-island protection failed; Linear Lighting remains vanilla.");
+            return false;
+        }
+        FlushInstructionCache(
+            GetCurrentProcess(),
+            island,
+            kJumpIslandRequiredBytes);
+
+        executableImage = image;
+        originalNativeScalarPow =
+            reinterpret_cast<NativeScalarPowFunction>(
+                const_cast<std::byte*>(nativePow));
+        powJumpIsland = island;
+        ambientPowJumpStub = ambientStub;
+        directionalPowJumpStub = directionalStub;
+        producerOwnershipReady.store(false, std::memory_order_release);
+
+        std::size_t patchedCallsites{};
+        const auto patchFamily = [&patchedCallsites](
+                                     const auto& callsites,
+                                     const void* target) {
+            for (const auto& callsite : callsites) {
+                ++patchedCallsites;
+                if (!writeRelativeCall(
+                        executableImage + callsite.rva,
+                        target)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        if (!patchFamily(kAmbientPowCallsites, ambientStub) ||
+            !patchFamily(kDirectionalPowCallsites, directionalStub) ||
+            !dFLightPowCallsitesOwned()) {
+            const auto restored = restorePowCallsites(patchedCallsites);
+            releaseProducerPatchStateIfRestored(restored);
+            logging::error(
+                "BSDF DFLight producer patch/ownership gate failed (restored={}); Linear Lighting remains vanilla.",
+                restored);
+            return false;
+        }
 
         originalGeometrySetup =
             reinterpret_cast<GeometrySetupFunction>(expected);
@@ -319,35 +884,132 @@ namespace community_shaders::render
                 reinterpret_cast<void*>(&hookGeometrySetup))) {
             originalGeometrySetup = nullptr;
             lightingState = nullptr;
+            const auto restored = restorePowCallsites(patchedCallsites);
+            releaseProducerPatchStateIfRestored(restored);
             logging::error(
-                "BSDF lighting geometry vtable patch failed; Linear Lighting remains vanilla.");
+                "BSDF lighting geometry vtable patch failed (producer restored={}); Linear Lighting remains vanilla.",
+                restored);
             return false;
         }
 
         geometrySetupCell = cell;
+        producerOwnershipReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
-            "Installed verified Fallout4VR BSDF lighting geometry hook (vtable slot 9, renderer state RVA 0x068787F0, emissive multiplier +0x1BC).");
+            "Installed verified Fallout4VR BSDF lighting hook (vtable slot 9, six DFLight ambient/directional pow callsites, renderer state RVA 0x068787F0 +0x1BC).");
         return true;
+    }
+
+    bool validateBSLightingGeometryHook(const char* trigger) noexcept
+    {
+        const auto hookInstalled = installed.load(std::memory_order_acquire);
+        const auto vtableOwned = hookInstalled &&
+            readPointerCell(geometrySetupCell) ==
+                reinterpret_cast<void*>(&hookGeometrySetup);
+        const auto powOwned = hookInstalled && dFLightPowCallsitesOwned();
+        const auto owned = vtableOwned && powOwned;
+        producerOwnershipReady.store(owned, std::memory_order_release);
+        if (!owned && hookInstalled) {
+            linear_lighting::Runtime::get().setGeometryProviderReady(false);
+            const auto failures = validationFailures.fetch_add(
+                                      1,
+                                      std::memory_order_relaxed) +
+                1;
+            if ((failures & (failures - 1)) == 0) {
+                logging::error(
+                    "BSDF lighting hook ownership validation failed at '{}' (vtableOwned={}, dFLightPowCallsitesOwned={}, failures={}); geometry and DFLight producers are fail-closed.",
+                    trigger ? trigger : "unknown",
+                    vtableOwned,
+                    powOwned,
+                    failures);
+            }
+        }
+        return owned;
+    }
+
+    void publishDFLightProducerSettings(
+        const linear_lighting::Settings& settings) noexcept
+    {
+        const auto state = linear_lighting::makeDFLightProducerState(settings);
+        desiredDirectionalGammaBits.store(
+            std::bit_cast<std::uint32_t>(state.directionalGamma),
+            std::memory_order_relaxed);
+        desiredDirectionalMultiplierBits.store(
+            std::bit_cast<std::uint32_t>(state.directionalMultiplier),
+            std::memory_order_relaxed);
+        desiredAmbientGammaBits.store(
+            std::bit_cast<std::uint32_t>(state.ambientGamma),
+            std::memory_order_relaxed);
+        desiredAmbientMultiplierBits.store(
+            std::bit_cast<std::uint32_t>(state.ambientMultiplier),
+            std::memory_order_relaxed);
+        desiredProducerEnabled.store(state.enabled, std::memory_order_release);
     }
 
     GeometryHookSnapshot geometryHookSnapshot() noexcept
     {
         const auto hookInstalled = installed.load(std::memory_order_acquire);
+        // Ownership is refreshed only at explicit lifecycle/qualification
+        // validation points. Wrist telemetry can request snapshots every
+        // frame, so it must not perform VirtualQuery or scan six callsites.
+        const auto producerOwned = hookInstalled &&
+            producerOwnershipReady.load(std::memory_order_acquire);
+        const auto producerActive = producerOwned &&
+            desiredProducerEnabled.load(std::memory_order_acquire);
         return {
             .installed = hookInstalled,
             .vtableCellOwned = hookInstalled &&
                 readPointerCell(geometrySetupCell) ==
-                reinterpret_cast<void*>(&hookGeometrySetup),
+                    reinterpret_cast<void*>(&hookGeometrySetup),
+            .dFLightPowCallsitesOwned = producerOwned,
+            .dFLightProducerEnabled = producerActive,
             .calls = calls.load(std::memory_order_acquire),
             .acceptedUpdates = acceptedUpdates.load(std::memory_order_relaxed),
             .rejectedSources = rejectedSources.load(std::memory_order_relaxed),
+            .ambientDescriptors =
+                ambientDescriptors.load(std::memory_order_relaxed),
+            .directionalDescriptors =
+                directionalDescriptors.load(std::memory_order_relaxed),
+            .otherDescriptors =
+                otherDescriptors.load(std::memory_order_relaxed),
+            .ambientPowCalls = ambientPowCalls.load(std::memory_order_acquire),
+            .ambientPowModified =
+                ambientPowModified.load(std::memory_order_relaxed),
+            .ambientPowPassThrough =
+                ambientPowPassThrough.load(std::memory_order_relaxed),
+            .directionalPowCalls =
+                directionalPowCalls.load(std::memory_order_acquire),
+            .directionalPowModified =
+                directionalPowModified.load(std::memory_order_relaxed),
+            .directionalPowPassThrough =
+                directionalPowPassThrough.load(std::memory_order_relaxed),
+            .invalidPowResults =
+                invalidPowResults.load(std::memory_order_relaxed),
+            .validationFailures =
+                validationFailures.load(std::memory_order_relaxed),
             .deepestStage = static_cast<GeometrySourceStage>(
                 deepestStage.load(std::memory_order_relaxed)),
+            .lastDescriptor = lastDescriptor.load(std::memory_order_relaxed),
             .lastSourceEmissiveMultiplier = std::bit_cast<float>(
                 lastSourceEmissiveMultiplierBits.load(
                     std::memory_order_relaxed)),
+            .activeDirectionalGamma = producerActive ?
+                std::bit_cast<float>(desiredDirectionalGammaBits.load(
+                    std::memory_order_relaxed)) :
+                linear_lighting::kVanillaDFLightGamma,
+            .activeDirectionalMultiplier = producerActive ?
+                std::bit_cast<float>(desiredDirectionalMultiplierBits.load(
+                    std::memory_order_relaxed)) :
+                1.0f,
+            .activeAmbientGamma = producerActive ?
+                std::bit_cast<float>(
+                    desiredAmbientGammaBits.load(std::memory_order_relaxed)) :
+                linear_lighting::kVanillaDFLightGamma,
+            .activeAmbientMultiplier = producerActive ?
+                std::bit_cast<float>(desiredAmbientMultiplierBits.load(
+                    std::memory_order_relaxed)) :
+                1.0f,
         };
     }
 }

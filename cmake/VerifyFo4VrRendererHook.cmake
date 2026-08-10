@@ -9,11 +9,33 @@ foreach(required IN ITEMS
     "kBSDFLightShaderVtableRva = 0x030BF3C8"
     "kGeometrySetupSlot = 9"
     "kGeometrySetupFunctionRva = 0x0291DCA0"
+    "kDFLightDescriptorOffset = 0x48"
     "kLightingStateAccessorRva = 0x027AEEB0"
     "kLightingStateRva = 0x068787F0"
     "kLightingStateEmissiveMultiplierOffset = 0x1BC"
+    "kNativeScalarPowThunkRva = 0x029917A8"
+    "PowCallsite{ 0x0291E138, 0x0007366B }"
+    "PowCallsite{ 0x0291E14C, 0x00073657 }"
+    "PowCallsite{ 0x0291E160, 0x00073643 }"
+    "PowCallsite{ 0x0291E9E7, 0x00072DBC }"
+    "PowCallsite{ 0x0291E9FB, 0x00072DA8 }"
+    "PowCallsite{ 0x0291EA0F, 0x00072D94 }"
     "kGeometrySetupSignature"
     "kLightingStateAccessorSignature"
+    "kNativeScalarPowThunkSignature"
+    "std::byte{ 0xFF }, std::byte{ 0x25 }, std::byte{ 0x3A }"
+    "std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 }"
+    "originalCallsitesOwned(kAmbientPowCallsites)"
+    "originalCallsitesOwned(kDirectionalPowCallsites)"
+    "resolveRelativeCallTarget(instruction) != nativePow"
+    "allocateReachablePage("
+    "DFLightDescriptorScope descriptorScope(descriptor)"
+    "hookAmbientScalarPow"
+    "hookDirectionalScalarPow"
+    "dFLightPowCallsitesOwned"
+    "producerOwnershipReady"
+    "publishDFLightProducerSettings("
+    "completed.fetch_add(1, std::memory_order_release)"
     "isReadableRange"
     "resolvedLightingState != state"
     "vtableCellOwned"
@@ -28,6 +50,33 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "FO4VR renderer hook regression: missing '${required}'")
+  endif()
+endforeach()
+
+string(FIND "${source}"
+  "[[nodiscard]] float runDFLightPowProducer" producerStart)
+string(FIND "${source}"
+  "[[nodiscard]] bool readEmissiveMultiplier" producerEnd)
+if(producerStart EQUAL -1 OR producerEnd EQUAL -1 OR
+   NOT producerStart LESS producerEnd)
+  message(FATAL_ERROR
+    "FO4VR renderer hook regression: DFLight producer boundary is missing")
+endif()
+math(EXPR producerLength "${producerEnd} - ${producerStart}")
+string(SUBSTRING "${source}" ${producerStart} ${producerLength}
+  producerBody)
+foreach(forbidden IN ITEMS
+    "VirtualQuery"
+    "VirtualProtect"
+    "logging::"
+    "std::vector"
+    "std::mutex"
+    "new "
+    "malloc")
+  string(FIND "${producerBody}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "FO4VR DFLight producer hot-path regression: found '${forbidden}'")
   endif()
 endforeach()
 

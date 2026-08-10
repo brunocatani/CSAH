@@ -2,6 +2,7 @@
 
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 
+#include "render/BSLightingGeometryHook.h"
 #include "resources.h"
 #include "support/Logger.h"
 
@@ -503,7 +504,11 @@ namespace community_shaders::linear_lighting
 
     void Runtime::setGeometryProviderReady(bool ready) noexcept
     {
-        geometryProviderReady_.store(ready, std::memory_order_release);
+        const auto previous =
+            geometryProviderReady_.exchange(ready, std::memory_order_acq_rel);
+        if (previous == ready) {
+            return;
+        }
         logging::info(
             "Linear Lighting verified geometry provider is {}.",
             ready ? "ready" : "unavailable");
@@ -514,6 +519,7 @@ namespace community_shaders::linear_lighting
         settings_ = sanitize(settings);
         enabled_.store(settings_.enabled, std::memory_order_release);
         publishDFTiledPointLightSettings(settings_);
+        render::publishDFLightProducerSettings(settings_);
         publishFrameData();
     }
 

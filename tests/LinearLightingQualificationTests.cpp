@@ -21,6 +21,7 @@ namespace
             .drawDetoursOwned = true,
             .geometryHookOwned = true,
             .pointLightHookOwned = true,
+            .dFLightPowCallsitesOwned = true,
             .expectedShaderContracts = 288,
             .verifiedShaderContracts = 288,
             .matchingShaderContractMask = expectedContractMask(288),
@@ -28,6 +29,8 @@ namespace
             .geometryAccepted = 2,
             .deepestGeometrySourceStage = 2,
             .geometryUpdates = 2,
+            .ambientPowModified = 3,
+            .directionalPowModified = 3,
             .replacementShaderBinds = 1,
             .replacementDrawCalls = 1,
             .replacementContractMask = contract,
@@ -89,6 +92,34 @@ int main()
         (pointHookEvaluation.reasonMask &
             Failure_PointLightHookUnowned) != 0,
         "unowned point-light hook was not classified");
+
+    auto dFLightHookLost = completeSample();
+    dFLightHookLost.dFLightPowCallsitesOwned = false;
+    const auto dFLightHookEvaluation = evaluate(dFLightHookLost, false);
+    passed &= expect(dFLightHookEvaluation.status == Status::failed,
+        "unowned DFLight pow callsites did not fail immediately");
+    passed &= expect(
+        (dFLightHookEvaluation.reasonMask &
+            Failure_DFLightPowCallsitesUnowned) != 0,
+        "unowned DFLight pow callsites were not classified");
+
+    auto noAmbientProof = completeSample();
+    noAmbientProof.ambientPowModified = 0;
+    passed &= expect(evaluate(noAmbientProof, false).status == Status::waiting,
+        "missing ambient producer proof did not wait");
+    passed &= expect(evaluate(noAmbientProof, true).status == Status::failed,
+        "missing ambient producer proof did not fail at timeout");
+
+    auto noDirectionalProof = completeSample();
+    noDirectionalProof.directionalPowModified = 0;
+    passed &= expect(
+        evaluate(noDirectionalProof, false).status == Status::waiting,
+        "missing directional producer proof did not wait");
+
+    auto invalidDFLight = completeSample();
+    invalidDFLight.dFLightInvalidPowResults = 1;
+    passed &= expect(evaluate(invalidDFLight, false).status == Status::failed,
+        "invalid DFLight pow result did not fail immediately");
 
     auto incompleteContracts = completeSample();
     clearContractBit(incompleteContracts.matchingShaderContractMask, 191);

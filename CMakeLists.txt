@@ -95,6 +95,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
   "${RENDERER_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
+  "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake"
   "${WRIST_PANEL_SOURCE}"
   "${WRIST_PANEL_POSE_SOURCE}"
   "${WRIST_PANEL_VIEW_SOURCE}"
@@ -108,6 +109,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${QUALIFICATION_SOURCE}"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
+  "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h"
+  "${SOURCE_DIR}/support/NearAllocation.h"
   "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
@@ -221,6 +224,7 @@ add_library(${PROJECT_NAME} SHARED
   "${POINT_LIGHT_HOOK_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h"
+  "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
@@ -231,6 +235,7 @@ add_library(${PROJECT_NAME} SHARED
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
+  "${SOURCE_DIR}/support/NearAllocation.h"
   "${SOURCE_DIR}/ui/LinearLightingTelemetryGate.h"
   "${SOURCE_DIR}/ui/PointerClickGate.h"
   "${SOURCE_DIR}/ui/WristPanelPose.h"
@@ -370,6 +375,12 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.RendererHookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake'")
+  add_test(NAME FO4VRCommunityShaders.RendererHookValidatorNegative
+    COMMAND "${CMAKE_COMMAND}"
+      "-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}"
+      "-DRENDERER_VALIDATOR=${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
+      "-DTEST_OUTPUT_DIR=${BUILD_DIR}/renderer-validator-negative"
+      -P "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
@@ -505,6 +516,22 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore)
   add_test(NAME FO4VRCommunityShaders.DFTiledPointLightModel
     COMMAND FO4VRCommunityShadersDFTiledPointLightModelTests)
+
+  add_executable(FO4VRCommunityShadersDFLightProducerModelTests
+    "${ROOT_DIR}/tests/DFLightProducerModelTests.cpp"
+    "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h")
+  target_compile_features(
+    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE
+    FO4VRCommunityShadersCore)
+  add_test(NAME FO4VRCommunityShaders.DFLightProducerModel
+    COMMAND FO4VRCommunityShadersDFLightProducerModelTests)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"

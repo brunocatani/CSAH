@@ -57,6 +57,15 @@ namespace community_shaders::diagnostics
             std::uint64_t geometrySourceRejectedBaseline{};
             std::uint64_t geometryUpdatesBaseline{};
             std::uint64_t geometryUpdateRejectsBaseline{};
+            std::uint64_t ambientDescriptorsBaseline{};
+            std::uint64_t directionalDescriptorsBaseline{};
+            std::uint64_t ambientPowCallsBaseline{};
+            std::uint64_t ambientPowModifiedBaseline{};
+            std::uint64_t ambientPowPassThroughBaseline{};
+            std::uint64_t directionalPowCallsBaseline{};
+            std::uint64_t directionalPowModifiedBaseline{};
+            std::uint64_t directionalPowPassThroughBaseline{};
+            std::uint64_t dFLightInvalidPowResultsBaseline{};
             std::uint64_t pointLightCallsBaseline{};
             std::uint64_t pointLightModifiedBaseline{};
             std::uint64_t pointLightPassThroughBaseline{};
@@ -234,6 +243,18 @@ namespace community_shaders::diagnostics
             appendReason(reasons, mask,
                 qualification_model::Failure_PointLightHookUnowned,
                 "point_light_hook_unowned");
+            appendReason(reasons, mask,
+                qualification_model::Failure_DFLightPowCallsitesUnowned,
+                "dflight_pow_callsites_unowned");
+            appendReason(reasons, mask,
+                qualification_model::Failure_NoAmbientProducerProof,
+                "no_ambient_producer_proof");
+            appendReason(reasons, mask,
+                qualification_model::Failure_NoDirectionalProducerProof,
+                "no_directional_producer_proof");
+            appendReason(reasons, mask,
+                qualification_model::Failure_DFLightInvalidPowResult,
+                "dflight_invalid_pow_result");
             return reasons;
         }
 
@@ -250,12 +271,13 @@ namespace community_shaders::diagnostics
         [[nodiscard]] Capture captureSession(const Session& session) noexcept
         {
             Capture capture{};
+            (void)render::validateBSLightingGeometryHook("Qualification");
+            (void)linear_lighting::validateDFTiledPointLightHook(
+                "Qualification");
             capture.runtime = linear_lighting::Runtime::get().snapshot();
             capture.geometry = render::geometryHookSnapshot();
             capture.hooks = render::d3d11HookSnapshot();
             capture.d3d = render::d3d11QualificationSnapshot();
-            (void)linear_lighting::validateDFTiledPointLightHook(
-                "Qualification");
             capture.pointLight =
                 linear_lighting::dFTiledPointLightHookSnapshot();
             capture.elapsedMilliseconds = GetTickCount64() -
@@ -276,6 +298,8 @@ namespace community_shaders::diagnostics
                 .pointLightHookOwned =
                     capture.pointLight.detourOwned &&
                     capture.pointLight.gammaLoadsOwned,
+                .dFLightPowCallsitesOwned =
+                    capture.geometry.dFLightPowCallsitesOwned,
                 .expectedShaderContracts = static_cast<std::uint32_t>(
                     linear_lighting::Runtime::kShaderContractCount),
                 .verifiedShaderContracts =
@@ -299,6 +323,15 @@ namespace community_shaders::diagnostics
                 .geometryUpdateRejects = delta(
                     capture.runtime.rejectedGeometryUpdates,
                     session.geometryUpdateRejectsBaseline),
+                .ambientPowModified = delta(
+                    capture.geometry.ambientPowModified,
+                    session.ambientPowModifiedBaseline),
+                .directionalPowModified = delta(
+                    capture.geometry.directionalPowModified,
+                    session.directionalPowModifiedBaseline),
+                .dFLightInvalidPowResults = delta(
+                    capture.geometry.invalidPowResults,
+                    session.dFLightInvalidPowResultsBaseline),
                 .replacementShaderBinds =
                     capture.d3d.replacementShaderBinds,
                 .replacementDrawCalls = capture.d3d.replacementDrawCalls,
@@ -363,7 +396,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 3 },
+                    { "schemaVersion", 4 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -426,6 +459,51 @@ namespace community_shaders::diagnostics
                                 capture.sample.geometryUpdateRejects },
                             { "lastSourceEmissive",
                                 capture.geometry.lastSourceEmissiveMultiplier },
+                            { "lastDFLightDescriptor",
+                                capture.geometry.lastDescriptor },
+                            { "dFLightProducerEnabled",
+                                capture.geometry.dFLightProducerEnabled },
+                            { "directionalGamma",
+                                capture.geometry.activeDirectionalGamma },
+                            { "directionalMultiplier",
+                                capture.geometry
+                                    .activeDirectionalMultiplier },
+                            { "ambientGamma",
+                                capture.geometry.activeAmbientGamma },
+                            { "ambientMultiplier",
+                                capture.geometry.activeAmbientMultiplier },
+                            { "ambientDescriptors",
+                                delta(
+                                    capture.geometry.ambientDescriptors,
+                                    session.ambientDescriptorsBaseline) },
+                            { "directionalDescriptors",
+                                delta(
+                                    capture.geometry.directionalDescriptors,
+                                    session.directionalDescriptorsBaseline) },
+                            { "ambientPowCalls",
+                                delta(
+                                    capture.geometry.ambientPowCalls,
+                                    session.ambientPowCallsBaseline) },
+                            { "ambientPowModified",
+                                capture.sample.ambientPowModified },
+                            { "ambientPowPassThrough",
+                                delta(
+                                    capture.geometry.ambientPowPassThrough,
+                                    session.ambientPowPassThroughBaseline) },
+                            { "directionalPowCalls",
+                                delta(
+                                    capture.geometry.directionalPowCalls,
+                                    session.directionalPowCallsBaseline) },
+                            { "directionalPowModified",
+                                capture.sample.directionalPowModified },
+                            { "directionalPowPassThrough",
+                                delta(
+                                    capture.geometry
+                                        .directionalPowPassThrough,
+                                    session
+                                        .directionalPowPassThroughBaseline) },
+                            { "dFLightInvalidPowResults",
+                                capture.sample.dFLightInvalidPowResults },
                             { "pointLightEnabled",
                                 capture.pointLight.enabled },
                             { "pointLightGamma",
@@ -464,6 +542,11 @@ namespace community_shaders::diagnostics
                                     .qualificationDrawDetoursOwned },
                             { "geometryHookOwned",
                                 capture.geometry.vtableCellOwned },
+                            { "dFLightPowCallsitesOwned",
+                                capture.geometry
+                                    .dFLightPowCallsitesOwned },
+                            { "dFLightValidationFailures",
+                                capture.geometry.validationFailures },
                             { "pointLightHookInstalled",
                                 capture.pointLight.installed },
                             { "pointLightDetourOwned",
@@ -597,11 +680,13 @@ namespace community_shaders::diagnostics
             void beginSession(const char* trigger) noexcept
             {
                 try {
+                    (void)render::validateBSLightingGeometryHook(
+                        "QualificationStart");
+                    (void)linear_lighting::validateDFTiledPointLightHook(
+                        "QualificationStart");
                     const auto runtime =
                         linear_lighting::Runtime::get().snapshot();
                     const auto geometry = render::geometryHookSnapshot();
-                    (void)linear_lighting::validateDFTiledPointLightHook(
-                        "QualificationStart");
                     const auto pointLight = linear_lighting::
                         dFTiledPointLightHookSnapshot();
                     const auto d3dSessionId =
@@ -619,6 +704,23 @@ namespace community_shaders::diagnostics
                         .geometryUpdatesBaseline = runtime.geometryUpdates,
                         .geometryUpdateRejectsBaseline =
                             runtime.rejectedGeometryUpdates,
+                        .ambientDescriptorsBaseline =
+                            geometry.ambientDescriptors,
+                        .directionalDescriptorsBaseline =
+                            geometry.directionalDescriptors,
+                        .ambientPowCallsBaseline = geometry.ambientPowCalls,
+                        .ambientPowModifiedBaseline =
+                            geometry.ambientPowModified,
+                        .ambientPowPassThroughBaseline =
+                            geometry.ambientPowPassThrough,
+                        .directionalPowCallsBaseline =
+                            geometry.directionalPowCalls,
+                        .directionalPowModifiedBaseline =
+                            geometry.directionalPowModified,
+                        .directionalPowPassThroughBaseline =
+                            geometry.directionalPowPassThrough,
+                        .dFLightInvalidPowResultsBaseline =
+                            geometry.invalidPowResults,
                         .pointLightCallsBaseline =
                             pointLight.completedCalls,
                         .pointLightModifiedBaseline =

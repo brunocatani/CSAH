@@ -64,18 +64,20 @@ namespace
         case F4SE::MessagingInterface::kGameDataReady:
         {
             community_shaders::ui::onGameDataReady();
+            (void)community_shaders::render::
+                validateBSLightingGeometryHook("GameDataReady");
+            (void)community_shaders::linear_lighting::
+                validateDFTiledPointLightHook("GameDataReady");
             const auto linearLighting =
                 community_shaders::linear_lighting::Runtime::get().snapshot();
             const auto geometry =
                 community_shaders::render::geometryHookSnapshot();
             const auto d3d =
                 community_shaders::render::d3d11HookSnapshot();
-            (void)community_shaders::linear_lighting::
-                validateDFTiledPointLightHook("GameDataReady");
             const auto pointLight = community_shaders::linear_lighting::
                 dFTiledPointLightHookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, dFLightPowOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientPowModified={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
@@ -86,10 +88,15 @@ namespace
                 linearLighting.replacementBinds,
                 d3d.pixelShaderBindDetourEnabled,
                 geometry.vtableCellOwned,
+                geometry.dFLightPowCallsitesOwned,
                 geometry.calls,
                 geometry.acceptedUpdates,
                 geometry.rejectedSources,
                 static_cast<std::uint32_t>(geometry.deepestStage),
+                geometry.ambientDescriptors,
+                geometry.directionalDescriptors,
+                geometry.ambientPowModified,
+                geometry.directionalPowModified,
                 pointLight.detourOwned,
                 pointLight.gammaLoadsOwned,
                 pointLight.completedCalls,

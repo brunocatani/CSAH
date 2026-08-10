@@ -2,6 +2,7 @@
 
 #include "Features/linear_lighting/DFTiledPointLightModel.h"
 #include "support/Logger.h"
+#include "support/NearAllocation.h"
 
 #include <MinHook.h>
 #include <Windows.h>
@@ -272,154 +273,37 @@ namespace community_shaders::linear_lighting
                 current.destination == pointLightRecordPatch.destination;
         }
 
-        [[nodiscard]] std::uintptr_t alignUp(
-            std::uintptr_t value,
-            std::uintptr_t alignment) noexcept
-        {
-            if (alignment == 0) {
-                return value;
-            }
-            const auto remainder = value % alignment;
-            if (remainder == 0) {
-                return value;
-            }
-            const auto increment = alignment - remainder;
-            return value <=
-                    std::numeric_limits<std::uintptr_t>::max() - increment ?
-                value + increment :
-                0;
-        }
-
-        [[nodiscard]] void* allocateInRange(
-            std::uintptr_t first,
-            std::uintptr_t last,
-            std::size_t bytes,
-            std::uintptr_t allocationGranularity) noexcept
-        {
-            auto cursor = alignUp(first, allocationGranularity);
-            while (cursor != 0 && cursor <= last) {
-                MEMORY_BASIC_INFORMATION information{};
-                if (VirtualQuery(
-                        reinterpret_cast<const void*>(cursor),
-                        &information,
-                        sizeof(information)) != sizeof(information)) {
-                    return nullptr;
-                }
-                const auto regionStart =
-                    reinterpret_cast<std::uintptr_t>(information.BaseAddress);
-                if (regionStart >
-                    std::numeric_limits<std::uintptr_t>::max() -
-                        information.RegionSize) {
-                    return nullptr;
-                }
-                const auto regionEnd = regionStart + information.RegionSize;
-                if (information.State == MEM_FREE) {
-                    const auto candidate = alignUp(
-                        (std::max)(cursor, regionStart),
-                        allocationGranularity);
-                    if (candidate != 0 && candidate <= last &&
-                        candidate <= regionEnd &&
-                        bytes <= regionEnd - candidate) {
-                        auto* result = VirtualAlloc(
-                            reinterpret_cast<void*>(candidate),
-                            bytes,
-                            MEM_RESERVE | MEM_COMMIT,
-                            PAGE_READWRITE);
-                        if (result == reinterpret_cast<void*>(candidate)) {
-                            return result;
-                        }
-                        if (result) {
-                            (void)VirtualFree(result, 0, MEM_RELEASE);
-                        }
-                    }
-                }
-                const auto next = (std::max)(
-                    regionEnd,
-                    cursor <=
-                            std::numeric_limits<std::uintptr_t>::max() -
-                                allocationGranularity ?
-                        cursor + allocationGranularity :
-                        std::numeric_limits<std::uintptr_t>::max());
-                cursor = alignUp(next, allocationGranularity);
-            }
-            return nullptr;
-        }
-
         [[nodiscard]] std::uint32_t* allocateExponentStorage(
             const std::byte* image,
             std::size_t imageSize) noexcept
         {
-            SYSTEM_INFO systemInformation{};
-            GetSystemInfo(&systemInformation);
-            const auto granularity = static_cast<std::uintptr_t>(
-                systemInformation.dwAllocationGranularity);
-            const auto pageSize = static_cast<std::size_t>(
-                systemInformation.dwPageSize);
-            if (!image || imageSize == 0 || granularity == 0 ||
-                pageSize < sizeof(std::uint32_t)) {
+            if (!image || imageSize == 0) {
                 return nullptr;
             }
-
-            auto lower = reinterpret_cast<std::uintptr_t>(
-                systemInformation.lpMinimumApplicationAddress);
-            auto upper = reinterpret_cast<std::uintptr_t>(
-                systemInformation.lpMaximumApplicationAddress);
-            for (const auto rva : kPointLightGammaLoadRvas) {
-                const auto next = reinterpret_cast<std::uintptr_t>(image) +
-                    rva + kGammaLoadInstructionBytes;
-                const auto instructionLower = next >= 0x80000000ull ?
-                    next - 0x80000000ull :
-                    0;
-                const auto instructionUpper = next <=
-                        std::numeric_limits<std::uintptr_t>::max() -
-                            static_cast<std::uintptr_t>(INT32_MAX) ?
-                    next + static_cast<std::uintptr_t>(INT32_MAX) :
-                    std::numeric_limits<std::uintptr_t>::max();
-                lower = (std::max)(lower, instructionLower);
-                upper = (std::min)(upper, instructionUpper);
-            }
-            if (lower > upper) {
-                return nullptr;
-            }
-
             const auto imageAddress = reinterpret_cast<std::uintptr_t>(image);
             if (imageAddress >
                 std::numeric_limits<std::uintptr_t>::max() - imageSize) {
                 return nullptr;
             }
-            auto preferred = alignUp(imageAddress + imageSize, granularity);
-            if (preferred == 0) {
-                return nullptr;
+            std::array<std::uintptr_t, kPointLightGammaLoadRvas.size()>
+                nextInstructions{};
+            for (std::size_t index = 0;
+                 index < kPointLightGammaLoadRvas.size();
+                 ++index) {
+                nextInstructions[index] = imageAddress +
+                    kPointLightGammaLoadRvas[index] +
+                    kGammaLoadInstructionBytes;
             }
-            preferred = std::clamp(preferred, lower, upper);
-            if (auto* result = allocateInRange(
-                    preferred,
-                    upper,
-                    pageSize,
-                    granularity)) {
-                return std::construct_at(
+            auto* result = support::near_allocation::allocateReachablePage(
+                nextInstructions,
+                imageAddress + imageSize,
+                sizeof(std::uint32_t));
+            return result ?
+                std::construct_at(
                     static_cast<std::uint32_t*>(result),
                     std::bit_cast<std::uint32_t>(
-                        kVanillaPointLightGamma));
-            }
-            if (preferred > lower) {
-                const auto secondUpper = preferred >= granularity ?
-                    preferred - granularity :
-                    0;
-                if (secondUpper >= lower) {
-                    if (auto* result = allocateInRange(
-                            lower,
-                            secondUpper,
-                            pageSize,
-                            granularity)) {
-                        return std::construct_at(
-                            static_cast<std::uint32_t*>(result),
-                            std::bit_cast<std::uint32_t>(
-                                kVanillaPointLightGamma));
-                    }
-                }
-            }
-            return nullptr;
+                        kVanillaPointLightGamma)) :
+                nullptr;
         }
 
         [[nodiscard]] bool writeDisplacement(

@@ -2,6 +2,11 @@
 
 #include <cstdint>
 
+namespace community_shaders::linear_lighting
+{
+    struct Settings;
+}
+
 namespace community_shaders::render
 {
     enum class GeometrySourceStage : std::uint32_t
@@ -15,11 +20,29 @@ namespace community_shaders::render
     {
         bool installed{};
         bool vtableCellOwned{};
+        bool dFLightPowCallsitesOwned{};
+        bool dFLightProducerEnabled{};
         std::uint64_t calls{};
         std::uint64_t acceptedUpdates{};
         std::uint64_t rejectedSources{};
+        std::uint64_t ambientDescriptors{};
+        std::uint64_t directionalDescriptors{};
+        std::uint64_t otherDescriptors{};
+        std::uint64_t ambientPowCalls{};
+        std::uint64_t ambientPowModified{};
+        std::uint64_t ambientPowPassThrough{};
+        std::uint64_t directionalPowCalls{};
+        std::uint64_t directionalPowModified{};
+        std::uint64_t directionalPowPassThrough{};
+        std::uint64_t invalidPowResults{};
+        std::uint64_t validationFailures{};
         GeometrySourceStage deepestStage{};
+        std::uint32_t lastDescriptor{};
         float lastSourceEmissiveMultiplier{};
+        float activeDirectionalGamma{};
+        float activeDirectionalMultiplier{};
+        float activeAmbientGamma{};
+        float activeAmbientMultiplier{};
     };
 
     // Installs a process-lifetime patch on the verified Fallout4VR.exe 1.2.72
@@ -27,5 +50,9 @@ namespace community_shaders::render
     // function bytes are checked before the write. No flat-FO4 address or
     // CommonLib relocation is used here.
     [[nodiscard]] bool installBSLightingGeometryHook() noexcept;
+    [[nodiscard]] bool validateBSLightingGeometryHook(
+        const char* trigger) noexcept;
+    void publishDFLightProducerSettings(
+        const linear_lighting::Settings& settings) noexcept;
     [[nodiscard]] GeometryHookSnapshot geometryHookSnapshot() noexcept;
 }
