@@ -244,6 +244,18 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskHairAlphaTestSixMrt_L4NoEarlyDepth_01020106", 6, false, false, false, true, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskHairProjectedFiveMrt_L3NoEarlyDepth_01028003", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskHairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_01028103", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapHairSixMrt_L3_04020003", 6, true, false, false, false, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapHairAlphaTestSixMrt_L4_04024102", 6, false, false, false, false, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapHairAlphaTestSixMrt_L3_04024103", 6, true, false, false, false, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapHairAlphaTestSixMrt_L4NoEarlyDepth_04024106", 6, false, false, false, false, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_04024107", 6, true, false, false, false, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapHairAlphaTestSixMrt_L4NoEarlyDepth_05024102", 6, false, false, false, true, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_05024103", 6, true, false, false, true, false, true, true, false, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L4_44024102", 6, false, false, false, false, false, true, true, true, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L3_44024103", 6, true, false, false, false, false, true, true, true, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L4NoEarlyDepth_44024106", 6, false, false, false, false, false, true, true, true, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_44024107", 6, true, false, false, false, false, true, true, true, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskBoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_45024103", 6, true, false, false, true, false, true, true, true, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -792,7 +804,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 0.4F,
                 caseIndex == 2 ? -1.0F : 0.6F,
             };
-            if (hasAdditionalAlphaMask) {
+            if (hasAdditionalAlphaMask && hasBoneTint) {
+                values[6] = maskParameters;
+                values[7] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                values[8] = depthParameters;
+            } else if (hasAdditionalAlphaMask) {
                 values[6] = maskParameters;
                 values[7] = depthParameters;
             } else if (hasBoneTint) {
@@ -1294,7 +1310,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (contract.hasGradientRemap) {
                 const auto gradientTexel = contract.hasVertexColor ? 1u : 3u;
                 diffuse = kGradientRemapTexture[gradientTexel][channel];
-                if (contract.hasGradientHair) {
+                if (contract.hasGradientHair && contract.mrtCount == 5) {
                     diffuse *= kDiffuseTexture[1] * 1.8F;
                 }
             } else {
