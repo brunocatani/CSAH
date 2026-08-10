@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 179:
-        fail("Linear Lighting manifest must contain exactly 179 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 181:
+        fail("Linear Lighting manifest must contain exactly 181 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -427,6 +427,7 @@ def verify_source_contracts(
     combined_skin_tint_bone_tint_contracts = 0
     standalone_projected_bone_tint_contracts = 0
     standalone_lod_object_contracts = 0
+    standalone_projected_model_space_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -514,15 +515,22 @@ def verify_source_contracts(
                     "the verified normal-map XY channels"
                 )
             standalone_lod_object_contracts += 1
-    if vertex_contracts != 83:
-        fail(f"expected 83 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1" in source_text
+            and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" not in source_text
+            and '"DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"'
+            in source_text
+        ):
+            standalone_projected_model_space_contracts += 1
+    if vertex_contracts != 84:
+        fail(f"expected 84 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 17:
+    if model_space_normal_contracts != 19:
         fail(
-            "expected 17 model-space-normal contracts, "
+            "expected 19 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 16:
@@ -608,6 +616,11 @@ def verify_source_contracts(
         fail(
             "expected 6 standalone projected LOD-object contracts, "
             f"found {standalone_lod_object_contracts}"
+        )
+    if standalone_projected_model_space_contracts != 2:
+        fail(
+            "expected 2 standalone projected model-space contracts, "
+            f"found {standalone_projected_model_space_contracts}"
         )
 
 

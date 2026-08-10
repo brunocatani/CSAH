@@ -177,5 +177,7 @@
   { "name": "LodObjectAlphaTestProjectedFiveMrt_L4_00018902", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_ALPHA_TEST_PROJECTED_FIVE_MRT_PS" },
   { "name": "LodObjectAlphaTestProjectedFiveMrt_L4NoEarlyDepth_00018906", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_ALPHA_TEST_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" },
   { "name": "LandscapeLodBlendFiveMrt_L4_00008202", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_BLEND_FIVE_MRT_PS" },
-  { "name": "LandscapeLodBlendFiveMrt_L3_00008203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_BLEND_FIVE_MRT_VERTEX_COLOR_PS" }
+  { "name": "LandscapeLodBlendFiveMrt_L3_00008203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_BLEND_FIVE_MRT_VERTEX_COLOR_PS" },
+  { "name": "ModelSpaceNormalsProjectedFiveMrt_L4_0000A002", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_PROJECTED_FIVE_MRT_PS" },
+  { "name": "ModelSpaceNormalsProjectedFiveMrt_L3_0000A003", "resource": "IDR_LINEAR_LIGHTING_MODEL_SPACE_NORMALS_PROJECTED_FIVE_MRT_VERTEX_COLOR_PS" }
 ]
