@@ -1,0 +1,4 @@
+#define LINEAR_LIGHTING_VERTEX_COLOR 1
+#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1
+#define LINEAR_LIGHTING_MEAT_CUFF 1
+#include "MeatCuffProjectedFiveMrt_L4_00408042.LinearLightingCandidate.hlsl"

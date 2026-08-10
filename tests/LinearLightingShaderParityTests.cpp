@@ -50,6 +50,7 @@ namespace
         bool hasSkinTint{};
         bool hasStandaloneHair{};
         bool hasDismemberment{};
+        bool hasMeatCuff{};
     };
 
     constexpr std::array kShaderContracts{
@@ -275,6 +276,9 @@ namespace
         ShaderContract{ "DismembermentTessellatedSixMrt_L4_00280042", 6, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "DismembermentTessellatedSixMrt_L3_00280043", 6, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "DismembermentModelSpaceNormalsTessellatedSixMrt_L3_00282043", 6, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "MeatCuffProjectedFiveMrt_L4_00408042", 5, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "MeatCuffProjectedFiveMrt_L3_00408043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "MeatCuffModelSpaceNormalsProjectedFiveMrt_L3_0040A043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -284,6 +288,12 @@ namespace
         textureReject,
         noisePass,
         noiseReject,
+    };
+
+    enum class MeatCuffAlphaCase : std::uint8_t
+    {
+        pass,
+        reject,
     };
 
     struct RenderTargets
@@ -347,9 +357,24 @@ namespace
     constexpr Pixel kNormalTexture{ 0.35F, 0.65F, 0.2F, 0.8F };
     constexpr Pixel kSpecularTexture{ 0.45F, 0.7F, 0.15F, 0.9F };
     constexpr Pixel kGlowTexture{ 0.6F, 0.4F, 0.2F, 1.0F };
-    constexpr Pixel kDismembermentDiffuseTexture{ 0.7F, 0.2F, 0.4F, 0.65F };
-    constexpr Pixel kDismembermentNormalTexture{ 0.6F, 0.4F, 0.3F, 0.8F };
-    constexpr Pixel kDismembermentSpecularTexture{ 0.25F, 0.8F, 0.35F, 0.9F };
+    constexpr std::array<Pixel, 4> kDismembermentDiffuseTexture{
+        Pixel{ 0.15F, 0.25F, 0.35F, 0.55F },
+        Pixel{ 0.7F, 0.2F, 0.4F, 0.65F },
+        Pixel{ 0.3F, 0.75F, 0.25F, 0.8F },
+        Pixel{ 0.85F, 0.35F, 0.6F, 0.7F },
+    };
+    constexpr std::array<Pixel, 4> kDismembermentNormalTexture{
+        Pixel{ 0.55F, 0.35F, 0.3F, 0.8F },
+        Pixel{ 0.6F, 0.4F, 0.3F, 0.8F },
+        Pixel{ 0.45F, 0.65F, 0.3F, 0.8F },
+        Pixel{ 0.35F, 0.55F, 0.3F, 0.8F },
+    };
+    constexpr std::array<Pixel, 4> kDismembermentSpecularTexture{
+        Pixel{ 0.15F, 0.35F, 0.2F, 0.9F },
+        Pixel{ 0.25F, 0.8F, 0.35F, 0.9F },
+        Pixel{ 0.65F, 0.3F, 0.45F, 0.9F },
+        Pixel{ 0.4F, 0.7F, 0.55F, 0.9F },
+    };
     constexpr std::array<Pixel, 4> kScreenTexture{
         Pixel{ 0.12F, 0.34F, 0.56F, 1.0F },
         Pixel{ 0.78F, 0.23F, 0.45F, 1.0F },
@@ -482,6 +507,8 @@ namespace
         bool hasFaceDetail,
         bool hasDismemberment,
         bool useDismemberment,
+        bool hasMeatCuff,
+        std::uint32_t meatCuffCase,
         std::uint32_t eyeIndex)
     {
         constexpr std::string_view source = R"(
@@ -513,6 +540,12 @@ struct VSOutput
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
+#endif
+#if HAS_MEAT_CUFF
+    float2 cuffIndex : TEXCOORD6;
+    float3 cuffOrientation : TEXCOORD7;
+    float3 cuffBasisX : TEXCOORD8;
+    float3 cuffBasisY : TEXCOORD9;
 #endif
 #if HAS_PIPBOY_SCREEN
     float3 screenDirection : TEXCOORD6;
@@ -566,6 +599,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
+#if HAS_MEAT_CUFF
+    output.cuffIndex = float2(TEST_MEAT_CUFF_INDEX, 0.0);
+    output.cuffOrientation = float3(
+        0.6,
+        TEST_MEAT_CUFF_ORIENTATION_Y,
+        0.0);
+    output.cuffBasisX = float3(1.0, 0.0, 0.0);
+    output.cuffBasisY = float3(0.0, 1.0, 0.0);
+#endif
 #if HAS_PIPBOY_SCREEN
     output.screenDirection = float3(0.2, -0.4, -1.0);
 #elif HAS_FACE_DETAIL
@@ -587,6 +629,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
+        const auto meatCuffIndex = meatCuffCase == 2 ? "-1.0" :
+            (meatCuffCase == 3 ? "11.0" : "3.0");
+        const auto meatCuffOrientationY = meatCuffCase == 1 ? "-0.8" : "0.8";
         const D3D_SHADER_MACRO macros[]{
             { "HAS_VERTEX_COLOR", hasVertexColor ? "1" : "0" },
             { "IS_INSTANCED", isInstanced ? "1" : "0" },
@@ -598,6 +643,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
             { "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" },
             { "USE_DISMEMBERMENT_LAYER", useDismemberment ? "1" : "0" },
+            { "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" },
+            { "TEST_MEAT_CUFF_INDEX", meatCuffIndex },
+            { "TEST_MEAT_CUFF_ORIENTATION_Y", meatCuffOrientationY },
             { "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" },
             { nullptr, nullptr },
         };
@@ -771,7 +819,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasSkinTint,
         bool hasStandaloneHair,
         bool hasDismemberment,
-        AdditionalAlphaCase additionalAlphaCase)
+        bool hasMeatCuff,
+        AdditionalAlphaCase additionalAlphaCase,
+        MeatCuffAlphaCase meatCuffAlphaCase)
     {
         std::array<std::array<float, 4>, 10> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
@@ -812,6 +862,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             values[6] = { 0.0F, 1.0F, 0.0F, 0.0F };
             values[7] = { 0.0F, 0.0F, -1.0F, 0.0F };
             values[9] = depthParameters;
+            return values;
+        }
+        if (hasMeatCuff) {
+            values[2][0] = meatCuffAlphaCase == MeatCuffAlphaCase::pass ?
+                values[2][0] : 0.01F;
+            values[5] = values[4];
+            values[4] = {};
+            values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
+            values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
+            values[8] = depthParameters;
             return values;
         }
         if (hasGradientRemap) {
@@ -1024,8 +1084,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasSkinTint,
         bool hasStandaloneHair,
         bool hasDismemberment,
+        bool hasMeatCuff,
         AdditionalAlphaCase additionalAlphaCase =
-            AdditionalAlphaCase::disabled)
+            AdditionalAlphaCase::disabled,
+        MeatCuffAlphaCase meatCuffAlphaCase = MeatCuffAlphaCase::pass)
     {
         const auto materialData = makeMaterialData(
             mrtCount,
@@ -1037,7 +1099,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasSkinTint,
             hasStandaloneHair,
             hasDismemberment,
-            additionalAlphaCase);
+            hasMeatCuff,
+            additionalAlphaCase,
+            meatCuffAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
         const auto frameData = makeFrameData(lightingCase);
@@ -1104,13 +1168,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto faceDetailTexture = createTexture(
             device,
             kFaceDetailTexture);
-        const auto dismembermentDiffuseTexture = createTexture(
+        const auto dismembermentDiffuseTexture = createTexture2x2(
             device,
             kDismembermentDiffuseTexture);
-        const auto dismembermentNormalTexture = createTexture(
+        const auto dismembermentNormalTexture = createTexture2x2(
             device,
             kDismembermentNormalTexture);
-        const auto dismembermentSpecularTexture = createTexture(
+        const auto dismembermentSpecularTexture = createTexture2x2(
             device,
             kDismembermentSpecularTexture);
 
@@ -1203,7 +1267,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetSamplers(13, 1, &rawBoneTintSampler);
             context.PSSetSamplers(14, 1, &rawBoneTintSampler);
         }
-        if (hasDismemberment) {
+        if (hasDismemberment || hasMeatCuff) {
             const std::array<ID3D11ShaderResourceView*, 3>
                 rawDismembermentTextures{
                     dismembermentDiffuseTexture.Get(),
@@ -1263,7 +1327,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.PSSetSamplers(4, 1, &nullSampler);
         context.PSSetSamplers(8, 1, &nullSampler);
         context.PSSetSamplers(12, 1, &nullSampler);
-        if (hasDismemberment) {
+        if (hasDismemberment || hasMeatCuff) {
             constexpr std::array<ID3D11ShaderResourceView*, 3>
                 nullDismembermentTextures{};
             constexpr std::array<ID3D11SamplerState*, 3>
@@ -1387,6 +1451,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         std::size_t caseIndex,
         bool usesGlowmap,
         bool useDismemberment,
+        std::uint32_t surfaceVariant,
         const RenderResult& vanilla,
         const LinearLightingCase& lightingCase)
     {
@@ -1407,14 +1472,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     diffuse *= kDiffuseTexture[1] * 1.8F;
                 }
             } else {
+                const auto meatCuffTexel = surfaceVariant == 0 ? 3u : 2u;
                 diffuse = useDismemberment ?
-                    kDismembermentDiffuseTexture[channel] :
-                    kDiffuseTexture[channel];
+                    kDismembermentDiffuseTexture[1][channel] :
+                    (contract.hasMeatCuff ?
+                            kDismembermentDiffuseTexture[meatCuffTexel][channel] :
+                            kDiffuseTexture[channel]);
                 if (contract.hasLandscapeLod) {
                     diffuse *=
                         (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
                 }
-                if (contract.hasVertexColor && !useDismemberment) {
+                if (contract.hasVertexColor && !useDismemberment &&
+                    !contract.hasMeatCuff) {
                     diffuse *= kVertexColor[channel];
                 }
             }
@@ -1509,7 +1578,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 1024> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 8192> vertexShaders;
         const auto getVertexShader = [&device, &vertexShaders] (
                                          std::size_t index) {
             if (vertexShaders[index].Get() != nullptr) {
@@ -1526,6 +1595,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto eyeIndex = static_cast<std::uint32_t>(
                 (index >> 8u) & 1u);
             const auto useDismemberment = (index & 512u) != 0;
+            const auto hasMeatCuff = (index & 1024u) != 0;
+            const auto meatCuffCase = static_cast<std::uint32_t>(
+                (index >> 11u) & 3u);
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
@@ -1536,6 +1608,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 hasFaceDetail,
                 hasDismemberment,
                 useDismemberment,
+                hasMeatCuff,
+                meatCuffCase,
                 eyeIndex);
             require(
                 device->CreateVertexShader(
@@ -1555,6 +1629,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasFaceDetail ? ", face TEXCOORD6" : "") +
                     (hasDismemberment ? ", dismemberment inputs" : "") +
                     (useDismemberment ? ", dismemberment layer" : "") +
+                    (hasMeatCuff ? ", meat-cuff inputs" : "") +
+                    (hasMeatCuff ?
+                            ", meat-cuff case " + std::to_string(meatCuffCase) :
+                            "") +
                     ", eye " + std::to_string(eyeIndex) + ")");
             return vertexShaders[index].Get();
         };
@@ -1595,10 +1673,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
             std::array<Pixel, 2> leftEyeMotion{};
             for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
-                const auto layerCount = contract.hasDismemberment ? 2u : 1u;
-                for (std::uint32_t layerIndex = 0; layerIndex < layerCount;
-                     ++layerIndex) {
-                const auto useDismemberment = layerIndex != 0;
+                const auto surfaceVariantCount =
+                    (contract.hasDismemberment || contract.hasMeatCuff) ? 2u : 1u;
+                for (std::uint32_t surfaceVariant = 0;
+                     surfaceVariant < surfaceVariantCount;
+                     ++surfaceVariant) {
+                const auto useDismemberment =
+                    contract.hasDismemberment && surfaceVariant != 0;
+                const auto meatCuffCase = contract.hasMeatCuff ?
+                    surfaceVariant : 0u;
                 auto* vertexShader = getVertexShader(
                     (contract.hasVertexColor ? 1u : 0u) |
                     (contract.isInstanced ? 2u : 0u) |
@@ -1609,7 +1692,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (contract.hasFaceDetail ? 64u : 0u) |
                     (contract.hasDismemberment ? 128u : 0u) |
                     (static_cast<std::size_t>(eyeIndex) << 8u) |
-                    (useDismemberment ? 512u : 0u));
+                    (useDismemberment ? 512u : 0u) |
+                    (contract.hasMeatCuff ? 1024u : 0u) |
+                    (static_cast<std::size_t>(meatCuffCase) << 11u));
                 for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                      ++caseIndex) {
                 const auto vanilla = render(
@@ -1629,15 +1714,22 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
-                    contract.hasDismemberment);
+                    contract.hasDismemberment,
+                    contract.hasMeatCuff);
+                if (contract.hasMeatCuff && caseIndex == 0 &&
+                    isClearResult(vanilla)) {
+                    failures.push_back(
+                        std::string(contract.name) +
+                        " valid meat-cuff atlas case unexpectedly discarded");
+                }
                 if (contract.mrtCount == 6 && caseIndex == 0) {
                     if (eyeIndex == 0) {
-                        leftEyeMotion[layerIndex] = vanilla[5];
+                        leftEyeMotion[surfaceVariant] = vanilla[5];
                     } else if (
                         approximatelyEqual(
-                            leftEyeMotion[layerIndex][0], vanilla[5][0]) &&
+                            leftEyeMotion[surfaceVariant][0], vanilla[5][0]) &&
                         approximatelyEqual(
-                            leftEyeMotion[layerIndex][1], vanilla[5][1])) {
+                            leftEyeMotion[surfaceVariant][1], vanilla[5][1])) {
                         failures.push_back(
                             std::string(contract.name) +
                             " paired-eye fixture produced identical motion vectors");
@@ -1660,7 +1752,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
-                    contract.hasDismemberment);
+                    contract.hasDismemberment,
+                    contract.hasMeatCuff);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1689,7 +1782,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
-                    contract.hasDismemberment);
+                    contract.hasDismemberment,
+                    contract.hasMeatCuff);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1718,12 +1812,14 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
-                    contract.hasDismemberment);
+                    contract.hasDismemberment,
+                    contract.hasMeatCuff);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
                     usesGlowmap,
                     useDismemberment,
+                    surfaceVariant,
                     vanilla,
                     kTransformedCase);
                 mismatch = compare(
@@ -1775,6 +1871,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasSkinTint,
                         contract.hasStandaloneHair,
                         contract.hasDismemberment,
+                        contract.hasMeatCuff,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1794,6 +1891,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasSkinTint,
                         contract.hasStandaloneHair,
                         contract.hasDismemberment,
+                        contract.hasMeatCuff,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,
@@ -1815,6 +1913,97 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 }
                 }
             }
+                if (contract.hasMeatCuff) {
+                    struct MeatCuffProofCase
+                    {
+                        std::uint32_t inputCase;
+                        MeatCuffAlphaCase alphaCase;
+                        std::string_view name;
+                    };
+                    constexpr std::array meatCuffProofCases{
+                        MeatCuffProofCase{ 2, MeatCuffAlphaCase::pass,
+                            "meat-cuff-invalid-low" },
+                        MeatCuffProofCase{ 3, MeatCuffAlphaCase::pass,
+                            "meat-cuff-invalid-high" },
+                        MeatCuffProofCase{ 0, MeatCuffAlphaCase::reject,
+                            "meat-cuff-alpha-reject" },
+                    };
+                    constexpr std::size_t proofCaseIndex = 1;
+                    for (const auto& proofCase : meatCuffProofCases) {
+                        auto* proofVertexShader = getVertexShader(
+                            (contract.hasVertexColor ? 1u : 0u) |
+                            (contract.isInstanced ? 2u : 0u) |
+                            (contract.usesTessellatedInputs ? 4u : 0u) |
+                            (contract.hasLandscapeLod ? 8u : 0u) |
+                            (contract.hasBoneTint ? 16u : 0u) |
+                            (contract.hasPipboyScreen ? 32u : 0u) |
+                            (contract.hasFaceDetail ? 64u : 0u) |
+                            (contract.hasDismemberment ? 128u : 0u) |
+                            (static_cast<std::size_t>(eyeIndex) << 8u) |
+                            (contract.hasMeatCuff ? 1024u : 0u) |
+                            (static_cast<std::size_t>(proofCase.inputCase) <<
+                                11u));
+                        const auto vanilla = render(
+                            *device.Get(),
+                            *context.Get(),
+                            *proofVertexShader,
+                            *vanillaShader.Get(),
+                            contract.mrtCount,
+                            contract.isInstanced,
+                            proofCaseIndex,
+                            kDisabledCase,
+                            contract.hasAdditionalAlphaMask,
+                            contract.hasLandscapeLod,
+                            contract.hasGradientRemap,
+                            contract.hasGradientHair,
+                            contract.hasBoneTint,
+                            contract.hasPipboyScreen,
+                            contract.hasSkinTint,
+                            contract.hasStandaloneHair,
+                            contract.hasDismemberment,
+                            true,
+                            AdditionalAlphaCase::disabled,
+                            proofCase.alphaCase);
+                        const auto replacement = render(
+                            *device.Get(),
+                            *context.Get(),
+                            *proofVertexShader,
+                            *replacementShader.Get(),
+                            contract.mrtCount,
+                            contract.isInstanced,
+                            proofCaseIndex,
+                            kDisabledCase,
+                            contract.hasAdditionalAlphaMask,
+                            contract.hasLandscapeLod,
+                            contract.hasGradientRemap,
+                            contract.hasGradientHair,
+                            contract.hasBoneTint,
+                            contract.hasPipboyScreen,
+                            contract.hasSkinTint,
+                            contract.hasStandaloneHair,
+                            contract.hasDismemberment,
+                            true,
+                            AdditionalAlphaCase::disabled,
+                            proofCase.alphaCase);
+                        auto mismatch = compare(
+                            contract,
+                            proofCase.name,
+                            eyeIndex,
+                            proofCaseIndex,
+                            vanilla,
+                            replacement);
+                        if (!mismatch.empty()) {
+                            failures.push_back(std::move(mismatch));
+                        }
+                        if (!isClearResult(vanilla)) {
+                            failures.push_back(
+                                std::string(contract.name) + " " +
+                                std::string(proofCase.name) + " eye " +
+                                std::to_string(eyeIndex) +
+                                " did not exercise the expected discard state");
+                        }
+                    }
+                }
             }
         }
         if (!failures.empty()) {

@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 222:
-        fail("Linear Lighting manifest must contain exactly 222 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 225:
+        fail("Linear Lighting manifest must contain exactly 225 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -253,6 +253,35 @@ def verify_source_contracts(
             fail(f"dismemberment shader is missing verified contract: {token}")
     if "[earlydepthstencil]" in dismemberment_source_text:
         fail("baseline dismemberment shaders must preserve no-early-depth behavior")
+    meat_cuff_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "MeatCuffProjectedFiveMrt_L4_00408042.LinearLightingCandidate.hlsl"
+    )
+    meat_cuff_source_text = meat_cuff_source.read_text(encoding="utf-8")
+    for token in (
+        "float4 cb2[9]",
+        "float4 cb12[51]",
+        "Texture2D<float4> TexMeatCuffDiffuse : register(t9)",
+        "Texture2D<float4> TexMeatCuffNormal : register(t10)",
+        "Texture2D<float4> TexMeatCuffSpecular : register(t11)",
+        "input.cuffIndex.x < 0.0 || input.cuffIndex.x > 10.0",
+        "dot(cb2[6].xyz, input.cuffOrientation)",
+        "dot(cb2[7].xyz, input.cuffOrientation) > 0.0",
+        "clip(-1.0)",
+        "clip(alpha - 0.015686)",
+        "LinearLightingDiffuse(diffuseSample.xyz)",
+        "LinearLightingEmitColor(cb2[1].xyz)",
+        "output.target1.w = alpha",
+        "output.target4.w = alpha",
+    ):
+        if token not in meat_cuff_source_text:
+            fail(f"meat-cuff shader is missing verified contract: {token}")
+    if "[earlydepthstencil]" in meat_cuff_source_text:
+        fail("baseline meat-cuff shaders must preserve no-early-depth behavior")
     shared_text = shared.read_text(encoding="utf-8")
     if any("enableGammaCorrection" in text for text in base_source_texts) or (
         "enableGammaCorrection" in shared_text
@@ -476,6 +505,7 @@ def verify_source_contracts(
     combined_gradient_hair_additional_alpha_contracts = 0
     combined_gradient_hair_additional_alpha_bone_tint_contracts = 0
     dismemberment_contracts = 0
+    meat_cuff_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -492,6 +522,8 @@ def verify_source_contracts(
             tessellated_contracts += 1
         if "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text:
             dismemberment_contracts += 1
+        if "#define LINEAR_LIGHTING_MEAT_CUFF 1" in source_text:
+            meat_cuff_contracts += 1
         if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
             additional_alpha_mask_contracts += 1
         if "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1" in source_text:
@@ -605,15 +637,15 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 109:
-        fail(f"expected 109 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 111:
+        fail(f"expected 111 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 31:
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 21:
+    if model_space_normal_contracts != 22:
         fail(
-            "expected 21 model-space-normal contracts, "
+            "expected 22 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 20:
@@ -622,6 +654,8 @@ def verify_source_contracts(
         fail(
             f"expected 3 dismemberment contracts, found {dismemberment_contracts}"
         )
+    if meat_cuff_contracts != 3:
+        fail(f"expected 3 meat-cuff contracts, found {meat_cuff_contracts}")
     if additional_alpha_mask_contracts != 58:
         fail(
             "expected 58 additional-alpha-mask contracts, "
@@ -805,11 +839,14 @@ def verify(root: Path) -> None:
     for token in (
         "output.eyeIndex = TEST_EYE_INDEX;",
         '{ "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" }',
-        "std::array<ComPtr<ID3D11VertexShader>, 1024>",
+        "std::array<ComPtr<ID3D11VertexShader>, 8192>",
         "for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex)",
         "output.dismembermentSelector = float2(",
         '{ "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" }',
-        "for (std::uint32_t layerIndex = 0; layerIndex < layerCount;",
+        "surfaceVariant < surfaceVariantCount;",
+        '{ "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" }',
+        '"meat-cuff-invalid-low"',
+        '"meat-cuff-alpha-reject"',
         "values[55] =",
         "values[67] =",
         "paired-eye fixture produced identical motion vectors",
@@ -829,13 +866,14 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
         str,
         tuple[
             int,
+            bool,
             bool,
             bool,
             bool,
@@ -871,6 +909,7 @@ def verify(root: Path) -> None:
         has_skin_tint,
         has_standalone_hair,
         has_dismemberment,
+        has_meat_cuff,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -891,6 +930,7 @@ def verify(root: Path) -> None:
             has_skin_tint == "true",
             has_standalone_hair == "true",
             has_dismemberment == "true",
+            has_meat_cuff == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -1090,6 +1130,16 @@ def verify(root: Path) -> None:
                 and all(slot in original["textures"] for slot in (9, 10, 11))
                 and any(
                     semantic[0] == "TEXCOORD" and semantic[1] == 5
+                    for semantic in original["input_signature"]
+                ),
+                "#define LINEAR_LIGHTING_MEAT_CUFF 1" in source_text
+                and len(original["outputs"]) == 5
+                and original["constant_buffers"].get(2) == 9
+                and original["constant_buffers"].get(12) == 51
+                and all(slot in original["samplers"] for slot in (9, 10, 11))
+                and all(slot in original["textures"] for slot in (9, 10, 11))
+                and any(
+                    semantic[0] == "TEXCOORD" and semantic[1] == 6
                     for semantic in original["input_signature"]
                 ),
             )
