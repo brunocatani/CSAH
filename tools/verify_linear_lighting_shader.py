@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 162:
-        fail("Linear Lighting manifest must contain exactly 162 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 165:
+        fail("Linear Lighting manifest must contain exactly 165 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -413,6 +413,7 @@ def verify_source_contracts(
     combined_face_detail_additional_alpha_contracts = 0
     combined_face_detail_bone_tint_contracts = 0
     combined_gradient_remap_bone_tint_contracts = 0
+    combined_skin_tint_bone_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -477,15 +478,20 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
         ):
             combined_gradient_remap_bone_tint_contracts += 1
+        if (
+            "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+            and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
+        ):
+            combined_skin_tint_bone_tint_contracts += 1
     if vertex_contracts != 78:
         fail(f"expected 78 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 16:
+    if model_space_normal_contracts != 17:
         fail(
-            "expected 16 model-space-normal contracts, "
+            "expected 17 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 16:
@@ -515,8 +521,8 @@ def verify_source_contracts(
             "expected 1 projected LOD-object-alpha contract, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 24:
-        fail(f"expected 24 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 27:
+        fail(f"expected 27 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 5:
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "
@@ -530,8 +536,8 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 13:
         fail(f"expected 13 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 8:
-        fail(f"expected 8 skin-tint contracts, found {skin_tint_contracts}")
+    if skin_tint_contracts != 11:
+        fail(f"expected 11 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 4:
         fail(
             "expected 4 combined skin-tint/additional-alpha contracts, "
@@ -556,6 +562,11 @@ def verify_source_contracts(
         fail(
             "expected 16 combined gradient-remap/bone-tint contracts, "
             f"found {combined_gradient_remap_bone_tint_contracts}"
+        )
+    if combined_skin_tint_bone_tint_contracts != 3:
+        fail(
+            "expected 3 combined skin-tint/bone-tint contracts, "
+            f"found {combined_skin_tint_bone_tint_contracts}"
         )
 
 
