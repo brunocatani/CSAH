@@ -222,6 +222,12 @@ namespace
         ShaderContract{ "BoneTintProjectedFiveMrt_L3NoEarlyDepth_40008007", 5, true, false, false, false, false, false, false, true },
         ShaderContract{ "BoneTintLodObjectProjectedFiveMrt_L4_40018802", 5, false, false, false, false, false, false, false, true },
         ShaderContract{ "BoneTintLodObjectProjectedFiveMrt_L4NoEarlyDepth_40018806", 5, false, false, false, false, false, false, false, true },
+        ShaderContract{ "LodObjectProjectedFiveMrt_L4_00018802", 5, false, false },
+        ShaderContract{ "LodObjectProjectedFiveMrt_L3_00018803", 5, true, false },
+        ShaderContract{ "LodObjectProjectedFiveMrt_L4NoEarlyDepth_00018806", 5, false, false },
+        ShaderContract{ "LodObjectProjectedFiveMrt_L3NoEarlyDepth_00018807", 5, true, false },
+        ShaderContract{ "LodObjectAlphaTestProjectedFiveMrt_L4_00018902", 5, false, false },
+        ShaderContract{ "LodObjectAlphaTestProjectedFiveMrt_L4NoEarlyDepth_00018906", 5, false, false },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t

@@ -26,11 +26,6 @@
 #error Combined bone tinting and additional alpha require a separately verified contract.
 #endif
 
-#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && \
-    !(LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_BONE_TINTING)
-#error LOD-object alpha requires a verified projected extended material layout.
-#endif
-
 #if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && LINEAR_LIGHTING_GRADIENT_REMAP
 #error Combined LOD-object alpha and gradient remap require a separately verified contract.
 #endif

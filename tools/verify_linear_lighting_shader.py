@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 171:
-        fail("Linear Lighting manifest must contain exactly 171 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 177:
+        fail("Linear Lighting manifest must contain exactly 177 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -415,6 +415,7 @@ def verify_source_contracts(
     combined_gradient_remap_bone_tint_contracts = 0
     combined_skin_tint_bone_tint_contracts = 0
     standalone_projected_bone_tint_contracts = 0
+    standalone_lod_object_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -491,8 +492,19 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_bone_tint_contracts += 1
-    if vertex_contracts != 80:
-        fail(f"expected 80 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_LOD_OBJECT_ALPHA 1" in source_text
+            and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" not in source_text
+            and "#define LINEAR_LIGHTING_BONE_TINTING 1" not in source_text
+        ):
+            if "#define LINEAR_LIGHTING_NORMAL_XY 0" in source_text:
+                fail(
+                    "standalone projected LOD-object contracts must sample "
+                    "the verified normal-map XY channels"
+                )
+            standalone_lod_object_contracts += 1
+    if vertex_contracts != 82:
+        fail(f"expected 82 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -524,9 +536,9 @@ def verify_source_contracts(
             "expected 15 gradient-hair contracts, "
             f"found {gradient_hair_contracts}"
         )
-    if lod_object_alpha_contracts != 3:
+    if lod_object_alpha_contracts != 9:
         fail(
-            "expected 3 projected LOD-object-alpha contracts, "
+            "expected 9 projected LOD-object-alpha contracts, "
             f"found {lod_object_alpha_contracts}"
         )
     if bone_tint_contracts != 33:
@@ -580,6 +592,11 @@ def verify_source_contracts(
         fail(
             "expected 6 standalone projected bone-tint contracts, "
             f"found {standalone_projected_bone_tint_contracts}"
+        )
+    if standalone_lod_object_contracts != 6:
+        fail(
+            "expected 6 standalone projected LOD-object contracts, "
+            f"found {standalone_lod_object_contracts}"
         )
 
 
