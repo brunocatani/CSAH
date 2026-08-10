@@ -1,0 +1,2 @@
+#define LINEAR_LIGHTING_VERTEX_COLOR 1
+#include "CombinedAlphaTestSixMrt_L4_10000142.LinearLightingCandidate.hlsl"

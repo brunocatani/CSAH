@@ -51,6 +51,7 @@ namespace
         bool hasStandaloneHair{};
         bool hasDismemberment{};
         bool hasMeatCuff{};
+        bool hasCombinedMaterial{};
     };
 
     constexpr std::array kShaderContracts{
@@ -315,6 +316,13 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskGradientRemapMeatCuffProjectedFiveMrt_L3_05408043", 5, true, false, false, true, false, true, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "DismembermentBlendFiveMrt_L3NoEarlyDepth_00288047", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
         ShaderContract{ "AdditionalAlphaMaskDismembermentBlendFiveMrt_L3NoEarlyDepth_01288047", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "CombinedAlphaTestSixMrt_L4_10000142", 6, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "CombinedAlphaTestSixMrt_L3_10000143", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskCombinedAlphaTestSixMrt_L4_11000142", 6, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskCombinedAlphaTestSixMrt_L3_11000143", 6, true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "CombinedAlphaTestBlendFiveMrt_L4_10008142", 5, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "CombinedGradientRemapAlphaTestSixMrt_L4_14000142", 6, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskCombinedGradientRemapAlphaTestSixMrt_L4_15000142", 6, false, false, false, true, false, true, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -542,6 +550,7 @@ namespace
         bool hasPipboyScreen,
         bool hasFaceDetail,
         bool hasDismemberment,
+        bool hasCombinedMaterial,
         bool useDismemberment,
         bool hasMeatCuff,
         std::uint32_t meatCuffCase,
@@ -593,7 +602,7 @@ struct VSOutput
 #if HAS_BONE_TINT
     float4 boneTintColor : COLOR1;
 #endif
-#if IS_INSTANCED
+#if IS_INSTANCED || HAS_COMBINED_MATERIAL
     nointerpolation uint instanceDataIndex : COLOR2;
 #endif
 #if HAS_LANDSCAPE_LOD && !IS_INSTANCED
@@ -656,8 +665,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_BONE_TINT
     output.boneTintColor = float4(0.2, 0.3, 0.4, 0.625);
 #endif
-#if IS_INSTANCED
-    output.instanceDataIndex = 2;
+#if IS_INSTANCED || HAS_COMBINED_MATERIAL
+    output.instanceDataIndex = IS_INSTANCED ? 2 : 0;
 #endif
 #if HAS_LANDSCAPE_LOD
     output.landscapeLodCoordinates = float2(128.0, 256.0);
@@ -682,6 +691,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_PIPBOY_SCREEN", hasPipboyScreen ? "1" : "0" },
             { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
             { "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" },
+            { "HAS_COMBINED_MATERIAL", hasCombinedMaterial ? "1" : "0" },
             { "USE_DISMEMBERMENT_LAYER", useDismemberment ? "1" : "0" },
             { "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" },
             { "TEST_MEAT_CUFF_INDEX", meatCuffIndex },
@@ -725,6 +735,59 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device.CreateBuffer(&description, &initial, &buffer),
             "CreateBuffer");
         return buffer;
+    }
+
+    struct CombinedMaterialData
+    {
+        std::array<float, 4> material;
+        std::array<float, 4> emitColorAndAlphaReference;
+        std::array<float, 4> interpolationAndProperties;
+        std::array<float, 4> reserved;
+        std::array<std::uint32_t, 4> textureSlices;
+        std::uint32_t gradientTextureSlice;
+        float gradientRow;
+        float depth;
+    };
+    static_assert(sizeof(CombinedMaterialData) == 92);
+
+    struct CombinedDepthData
+    {
+        std::array<float, 24> reserved;
+        float value;
+    };
+    static_assert(sizeof(CombinedDepthData) == 100);
+
+    template <class T>
+    [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createStructuredBuffer(
+        ID3D11Device& device,
+        std::span<const T> values)
+    {
+        D3D11_BUFFER_DESC description{};
+        description.ByteWidth = static_cast<UINT>(values.size_bytes());
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        description.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        description.StructureByteStride = sizeof(T);
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = values.data();
+        ComPtr<ID3D11Buffer> buffer;
+        require(
+            device.CreateBuffer(&description, &initial, &buffer),
+            "CreateBuffer(structured input)");
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+        viewDescription.Format = DXGI_FORMAT_UNKNOWN;
+        viewDescription.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        viewDescription.Buffer.FirstElement = 0;
+        viewDescription.Buffer.NumElements = static_cast<UINT>(values.size());
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device.CreateShaderResourceView(
+                buffer.Get(),
+                &viewDescription,
+                &view),
+            "CreateShaderResourceView(structured input)");
+        return view;
     }
 
     [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTexture(
@@ -778,6 +841,82 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         require(
             device.CreateShaderResourceView(texture.Get(), nullptr, &view),
             "CreateShaderResourceView(2x2 input)");
+        return view;
+    }
+
+    [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTextureArray(
+        ID3D11Device& device,
+        const Pixel& pixel)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 1;
+        description.Height = 1;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = pixel.data();
+        initial.SysMemPitch = kFloat4Size;
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device.CreateTexture2D(&description, &initial, &texture),
+            "CreateTexture2D(array input)");
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+        viewDescription.Format = description.Format;
+        viewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        viewDescription.Texture2DArray.MostDetailedMip = 0;
+        viewDescription.Texture2DArray.MipLevels = 1;
+        viewDescription.Texture2DArray.FirstArraySlice = 0;
+        viewDescription.Texture2DArray.ArraySize = 1;
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device.CreateShaderResourceView(
+                texture.Get(),
+                &viewDescription,
+                &view),
+            "CreateShaderResourceView(array input)");
+        return view;
+    }
+
+    [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTexture2x2Array(
+        ID3D11Device& device,
+        const std::array<Pixel, 4>& pixels)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 2;
+        description.Height = 2;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = pixels.data();
+        initial.SysMemPitch = kFloat4Size * 2;
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device.CreateTexture2D(&description, &initial, &texture),
+            "CreateTexture2D(2x2 array input)");
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+        viewDescription.Format = description.Format;
+        viewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        viewDescription.Texture2DArray.MostDetailedMip = 0;
+        viewDescription.Texture2DArray.MipLevels = 1;
+        viewDescription.Texture2DArray.FirstArraySlice = 0;
+        viewDescription.Texture2DArray.ArraySize = 1;
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device.CreateShaderResourceView(
+                texture.Get(),
+                &viewDescription,
+                &view),
+            "CreateShaderResourceView(2x2 array input)");
         return view;
     }
 
@@ -860,6 +999,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasStandaloneHair,
         bool hasDismemberment,
         bool hasMeatCuff,
+        bool hasCombinedMaterial,
         AdditionalAlphaCase additionalAlphaCase,
         MeatCuffAlphaCase meatCuffAlphaCase)
     {
@@ -896,6 +1036,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 maskParameters = { 0.0F, 1.0F, 0.0F, 0.0F };
                 break;
             }
+        }
+        if (hasCombinedMaterial) {
+            const auto flagsIndex =
+                (hasGradientRemap || mrtCount == 5) ? 5u : 4u;
+            values[flagsIndex] = { 1.0F, 1.0F, 0.0F, 0.0F };
+            if (hasAdditionalAlphaMask) {
+                values[flagsIndex + 1u] = maskParameters;
+            }
+            return values;
         }
         if (hasDismemberment) {
             if (mrtCount == 5) {
@@ -1181,6 +1330,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasStandaloneHair,
         bool hasDismemberment,
         bool hasMeatCuff,
+        bool hasCombinedMaterial,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled,
         MeatCuffAlphaCase meatCuffAlphaCase = MeatCuffAlphaCase::pass)
@@ -1196,6 +1346,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasStandaloneHair,
             hasDismemberment,
             hasMeatCuff,
+            hasCombinedMaterial,
             additionalAlphaCase,
             meatCuffAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
@@ -1229,6 +1380,47 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device,
             pipboyScreenGlobalsData);
 
+        const std::array combinedMaterialData{
+            CombinedMaterialData{
+                .material = { 0.4F, 0.7F, 0.25F, 0.8F },
+                .emitColorAndAlphaReference = {
+                    kEmitColor[0],
+                    kEmitColor[1],
+                    kEmitColor[2],
+                    0.2F,
+                },
+                .interpolationAndProperties = {
+                    0.85F,
+                    0.55F,
+                    0.4F,
+                    caseIndex == 2 ? -1.0F : 0.6F,
+                },
+                .reserved = {},
+                .textureSlices = {},
+                .gradientTextureSlice = 0,
+                .gradientRow = 0.55F,
+                .depth = 0.9F,
+            },
+        };
+        const std::array combinedDepthData{
+            CombinedDepthData{
+                .reserved = {},
+                .value = 0.65F,
+            },
+        };
+        const auto combinedMaterialView = createStructuredBuffer(
+            device,
+            std::span<const CombinedMaterialData>{
+                combinedMaterialData.data(),
+                combinedMaterialData.size(),
+            });
+        const auto combinedDepthView = createStructuredBuffer(
+            device,
+            std::span<const CombinedDepthData>{
+                combinedDepthData.data(),
+                combinedDepthData.size(),
+            });
+
         const std::array<Pixel, 4> texturePixels{
             kDiffuseTexture,
             kNormalTexture,
@@ -1238,7 +1430,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         std::array<ComPtr<ID3D11ShaderResourceView>, 4> textureViews;
         std::array<ID3D11ShaderResourceView*, 4> rawTextureViews{};
         for (std::size_t index = 0; index < textureViews.size(); ++index) {
-            textureViews[index] = createTexture(device, texturePixels[index]);
+            textureViews[index] = hasCombinedMaterial && index < 3 ?
+                createTextureArray(device, texturePixels[index]) :
+                createTexture(device, texturePixels[index]);
             rawTextureViews[index] = textureViews[index].Get();
         }
         const auto additionalAlphaTexture = createTexture(
@@ -1254,6 +1448,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device,
             kLandscapeLodNormal);
         const auto gradientRemapTexture = createTexture2x2(
+            device,
+            kGradientRemapTexture);
+        const auto combinedGradientRemapTexture = createTexture2x2Array(
             device,
             kGradientRemapTexture);
         const auto boneTintLookup = createTexture(device, kBoneTintLookup);
@@ -1351,8 +1548,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         auto* rawGradientRemapTexture = gradientRemapTexture.Get();
         auto* rawGradientRemapSampler = sampler.Get();
         if (hasGradientRemap) {
-            context.PSSetShaderResources(5, 1, &rawGradientRemapTexture);
+            auto* gradientView = hasCombinedMaterial ?
+                combinedGradientRemapTexture.Get() :
+                rawGradientRemapTexture;
+            context.PSSetShaderResources(5, 1, &gradientView);
             context.PSSetSamplers(5, 1, &rawGradientRemapSampler);
+        }
+        if (hasCombinedMaterial) {
+            auto* rawCombinedMaterial = combinedMaterialView.Get();
+            auto* rawCombinedDepth = combinedDepthView.Get();
+            context.PSSetShaderResources(4, 1, &rawCombinedMaterial);
+            context.PSSetShaderResources(6, 1, &rawCombinedDepth);
         }
         auto* rawBoneTintLookup = boneTintLookup.Get();
         auto* rawBoneTintPalette = boneTintPalette.Get();
@@ -1416,6 +1622,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             nullViews.data());
         ID3D11ShaderResourceView* nullView{};
         context.PSSetShaderResources(4, 1, &nullView);
+        context.PSSetShaderResources(6, 1, &nullView);
         context.PSSetShaderResources(8, 1, &nullView);
         context.PSSetShaderResources(12, 1, &nullView);
         context.PSSetShaderResources(15, 1, &nullView);
@@ -1676,7 +1883,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 8192> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 16384> vertexShaders;
         const auto getVertexShader = [&device, &vertexShaders] (
                                          std::size_t index) {
             if (vertexShaders[index].Get() != nullptr) {
@@ -1690,6 +1897,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto hasPipboyScreen = (index & 32u) != 0;
             const auto hasFaceDetail = (index & 64u) != 0;
             const auto hasDismemberment = (index & 128u) != 0;
+            const auto hasCombinedMaterial = (index & 8192u) != 0;
             const auto eyeIndex = static_cast<std::uint32_t>(
                 (index >> 8u) & 1u);
             const auto useDismemberment = (index & 512u) != 0;
@@ -1705,6 +1913,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 hasPipboyScreen,
                 hasFaceDetail,
                 hasDismemberment,
+                hasCombinedMaterial,
                 useDismemberment,
                 hasMeatCuff,
                 meatCuffCase,
@@ -1726,6 +1935,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasPipboyScreen ? ", Pip-Boy TEXCOORD6" : "") +
                     (hasFaceDetail ? ", face TEXCOORD6" : "") +
                     (hasDismemberment ? ", dismemberment inputs" : "") +
+                    (hasCombinedMaterial ? ", combined material" : "") +
                     (useDismemberment ? ", dismemberment layer" : "") +
                     (hasMeatCuff ? ", meat-cuff inputs" : "") +
                     (hasMeatCuff ?
@@ -1792,7 +2002,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (static_cast<std::size_t>(eyeIndex) << 8u) |
                     (useDismemberment ? 512u : 0u) |
                     (contract.hasMeatCuff ? 1024u : 0u) |
-                    (static_cast<std::size_t>(meatCuffCase) << 11u));
+                    (static_cast<std::size_t>(meatCuffCase) << 11u) |
+                    (contract.hasCombinedMaterial ? 8192u : 0u));
                 for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                      ++caseIndex) {
                 const auto vanilla = render(
@@ -1813,7 +2024,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
-                    contract.hasMeatCuff);
+                    contract.hasMeatCuff,
+                    contract.hasCombinedMaterial);
                 if (contract.hasMeatCuff && caseIndex == 0 &&
                     isClearResult(vanilla)) {
                     failures.push_back(
@@ -1851,7 +2063,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
-                    contract.hasMeatCuff);
+                    contract.hasMeatCuff,
+                    contract.hasCombinedMaterial);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1881,7 +2094,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
-                    contract.hasMeatCuff);
+                    contract.hasMeatCuff,
+                    contract.hasCombinedMaterial);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1911,7 +2125,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasSkinTint,
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
-                    contract.hasMeatCuff);
+                    contract.hasMeatCuff,
+                    contract.hasCombinedMaterial);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1970,6 +2185,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasStandaloneHair,
                         contract.hasDismemberment,
                         contract.hasMeatCuff,
+                        contract.hasCombinedMaterial,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1990,6 +2206,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasStandaloneHair,
                         contract.hasDismemberment,
                         contract.hasMeatCuff,
+                        contract.hasCombinedMaterial,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,
@@ -2040,7 +2257,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             (static_cast<std::size_t>(eyeIndex) << 8u) |
                             (contract.hasMeatCuff ? 1024u : 0u) |
                             (static_cast<std::size_t>(proofCase.inputCase) <<
-                                11u));
+                                11u) |
+                            (contract.hasCombinedMaterial ? 8192u : 0u));
                         const auto vanilla = render(
                             *device.Get(),
                             *context.Get(),
@@ -2060,6 +2278,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             contract.hasStandaloneHair,
                             contract.hasDismemberment,
                             true,
+                            contract.hasCombinedMaterial,
                             AdditionalAlphaCase::disabled,
                             proofCase.alphaCase);
                         const auto replacement = render(
@@ -2081,6 +2300,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             contract.hasStandaloneHair,
                             contract.hasDismemberment,
                             true,
+                            contract.hasCombinedMaterial,
                             AdditionalAlphaCase::disabled,
                             proofCase.alphaCase);
                         auto mismatch = compare(

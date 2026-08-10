@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 261:
-        fail("Linear Lighting manifest must contain exactly 261 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 268:
+        fail("Linear Lighting manifest must contain exactly 268 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -294,6 +294,32 @@ def verify_source_contracts(
             )
     if "[earlydepthstencil]" in dismemberment_blend_source_text:
         fail("dismemberment blend shaders must preserve no-early-depth behavior")
+    combined_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "CombinedAlphaTestSixMrt_L4_10000142.LinearLightingCandidate.hlsl"
+    )
+    combined_source_text = combined_source.read_text(encoding="utf-8")
+    for token in (
+        "struct CombinedMaterialData",
+        "StructuredBuffer<CombinedMaterialData> CombinedMaterials : register(t4)",
+        "StructuredBuffer<CombinedDepthData> CombinedDepths : register(t6)",
+        "Texture2DArray<float4> TexDiffuse : register(t0)",
+        "float3(material.textureSlices.xyz)",
+        "CombinedMaterials[input.materialIndex]",
+        "LINEAR_LIGHTING_COMBINED_FLAGS cb2[5]",
+        "material.interpolationAndProperties.yx",
+        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingEmitColor(",
+        "input.eyeIndex * 4u",
+    ):
+        if token not in combined_source_text:
+            fail(f"combined-material shader is missing verified contract: {token}")
+    if "[earlydepthstencil]" in combined_source_text:
+        fail("combined-material shaders must preserve no-early-depth behavior")
     meat_cuff_source = (
         root
         / "package"
@@ -557,6 +583,7 @@ def verify_source_contracts(
     combined_gradient_hair_additional_alpha_bone_tint_contracts = 0
     dismemberment_contracts = 0
     meat_cuff_contracts = 0
+    combined_material_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -575,6 +602,8 @@ def verify_source_contracts(
             dismemberment_contracts += 1
         if "#define LINEAR_LIGHTING_MEAT_CUFF 1" in source_text:
             meat_cuff_contracts += 1
+        if "Combined" in str(contract["label"]):
+            combined_material_contracts += 1
         if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
             additional_alpha_mask_contracts += 1
         if "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1" in source_text:
@@ -688,8 +717,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 133:
-        fail(f"expected 133 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 135:
+        fail(f"expected 135 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 39:
         fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -707,9 +736,9 @@ def verify_source_contracts(
         )
     if meat_cuff_contracts != 20:
         fail(f"expected 20 meat-cuff contracts, found {meat_cuff_contracts}")
-    if additional_alpha_mask_contracts != 79:
+    if additional_alpha_mask_contracts != 82:
         fail(
-            "expected 79 additional-alpha-mask contracts, "
+            "expected 82 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -717,10 +746,15 @@ def verify_source_contracts(
             "expected 9 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 80:
+    if gradient_remap_contracts != 82:
         fail(
-            "expected 80 gradient-remap contracts, "
+            "expected 82 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
+        )
+    if combined_material_contracts != 7:
+        fail(
+            "expected 7 combined-material contracts, "
+            f"found {combined_material_contracts}"
         )
     if gradient_hair_contracts != 27:
         fail(
@@ -890,7 +924,7 @@ def verify(root: Path) -> None:
     for token in (
         "output.eyeIndex = TEST_EYE_INDEX;",
         '{ "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" }',
-        "std::array<ComPtr<ID3D11VertexShader>, 8192>",
+        "std::array<ComPtr<ID3D11VertexShader>, 16384>",
         "for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex)",
         "output.dismembermentSelector = float2(",
         '{ "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" }',
@@ -898,6 +932,8 @@ def verify(root: Path) -> None:
         '{ "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" }',
         '"meat-cuff-invalid-low"',
         '"meat-cuff-alpha-reject"',
+        '{ "HAS_COMBINED_MATERIAL", hasCombinedMaterial ? "1" : "0" }',
+        "createStructuredBuffer",
         "#if USES_TESSELLATED_INPUTS || HAS_DISMEMBERMENT",
         "if (mrtCount == 5)",
         "values[55] =",
@@ -919,13 +955,15 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
+        r'(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
         str,
         tuple[
             int,
+            bool,
             bool,
             bool,
             bool,
@@ -963,6 +1001,7 @@ def verify(root: Path) -> None:
         has_standalone_hair,
         has_dismemberment,
         has_meat_cuff,
+        has_combined_material,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -984,6 +1023,7 @@ def verify(root: Path) -> None:
             has_standalone_hair == "true",
             has_dismemberment == "true",
             has_meat_cuff == "true",
+            has_combined_material == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -1093,7 +1133,7 @@ def verify(root: Path) -> None:
                 and 15 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" in source_text
                 and original["constant_buffers"].get(2)
-                in (7, 8, 9, 10, 11, 12)
+                in (6, 7, 8, 9, 10, 11, 12)
                 and 5 in original["samplers"]
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,
@@ -1220,6 +1260,13 @@ def verify(root: Path) -> None:
                 and all(slot in original["textures"] for slot in (9, 10, 11))
                 and any(
                     semantic[0] == "TEXCOORD" and semantic[1] == 6
+                    for semantic in original["input_signature"]
+                ),
+                "Combined" in label
+                and "dcl_resource_structured t4, 92" in vanilla_assembly
+                and "dcl_resource_structured t6, 100" in vanilla_assembly
+                and any(
+                    semantic[0] == "COLOR" and semantic[1] == 2
                     for semantic in original["input_signature"]
                 ),
             )

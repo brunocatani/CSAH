@@ -1,0 +1,2 @@
+#define LINEAR_LIGHTING_GRADIENT_REMAP 1
+#include "CombinedAlphaTestSixMrt_L4_10000142.LinearLightingCandidate.hlsl"
