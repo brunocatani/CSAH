@@ -14,9 +14,17 @@
 #define LINEAR_LIGHTING_DISMEMBERMENT 1
 #endif
 
+#ifndef LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_SKIN_TINT 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
+#if LINEAR_LIGHTING_SKIN_TINT
+    float4 cb2[11];
+#else
     float4 cb2[10];
+#endif
 };
 
 #include "../LinearLighting/LinearLighting.hlsli"
@@ -39,6 +47,22 @@ SamplerState SampSpecular : register(s2);
 SamplerState SampDismembermentDiffuse : register(s9);
 SamplerState SampDismembermentNormal : register(s10);
 SamplerState SampDismembermentSpecular : register(s11);
+
+#if LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[6]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Y cb2[7]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Z cb2[8]
+#define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[10]
+#else
+#define LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION cb2[2]
+#define LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES cb2[4]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[5]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Y cb2[6]
+#define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Z cb2[7]
+#define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[9]
+#endif
 
 struct PSInput
 {
@@ -86,9 +110,11 @@ PSOutput PSMain(PSInput input)
         const float normalZ = sqrt(1.0 - dot(normalXY, normalXY));
         const float3 tangentNormal = float3(normalXY, normalZ);
         projectedNormal = float3(
-            dot(cb2[5].xyz, tangentNormal),
-            dot(cb2[6].xyz, tangentNormal),
-            min(dot(cb2[7].xyz, tangentNormal), 0.0));
+            dot(LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X.xyz, tangentNormal),
+            dot(LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Y.xyz, tangentNormal),
+            min(dot(
+                LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Z.xyz,
+                tangentNormal), 0.0));
     }
     else
     {
@@ -120,29 +146,39 @@ PSOutput PSMain(PSInput input)
     output.target1.xy = (projectedNormal.xy / normalPackScale) + 0.5;
 
     const float2 materialXYCandidate =
-        (((cb2[2].xy - cb2[0].xy) * cb12[50].xx) + cb2[0].xy) *
+        (((LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION.xy - cb2[0].xy) *
+        cb12[50].xx) + cb2[0].xy) *
         cb2[0].xy;
-    const float2 materialXY = (cb2[2].xy >= 0.0) ?
+    const float2 materialXY =
+        (LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION.xy >= 0.0) ?
         materialXYCandidate : cb2[0].xy;
-    const float specBlendA = cb12[50].x * cb2[4].z;
-    const float specBlendB = (-cb2[4].z * cb12[50].x) + 1.0;
+    const float specBlendA =
+        cb12[50].x * LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.z;
+    const float specBlendB =
+        (-LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.z * cb12[50].x) + 1.0;
     const float specBlend =
         (specularSample.x * specBlendB) + specBlendA;
     output.target3.xy = materialXY * float2(
         specularSample.y,
         specBlend);
 
-    const float depthSwitch = (cb2[9].w < 0.0) ? 0.0 : cb12[50].x;
-    const float depthRange = cb2[9].w - cb2[9].z;
-    const float depthValue = (cb2[9].y != 0.0) ?
-        ((depthSwitch * depthRange) + cb2[9].z) :
-        (depthSwitch * cb2[9].w);
+    const float depthSwitch =
+        (LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.w < 0.0) ? 0.0 : cb12[50].x;
+    const float depthRange =
+        LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.w -
+        LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.z;
+    const float depthValue = (LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.y != 0.0) ?
+        ((depthSwitch * depthRange) +
+        LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.z) :
+        (depthSwitch * LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.w);
     output.target2.z = sqrt(depthValue * 0.02);
     output.target2.x =
-        ((cb12[50].x != 0.0 && cb2[4].y != 0.0) || cb2[4].x != 0.0) ?
+        ((cb12[50].x != 0.0 &&
+        LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.y != 0.0) ||
+        LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.x != 0.0) ?
         1.0 : 0.0;
-    output.target2.y = cb2[9].x * 0.003922;
-    output.target2.w = saturate(cb2[9].x);
+    output.target2.y = LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.x * 0.003922;
+    output.target2.w = saturate(LINEAR_LIGHTING_DISMEMBERMENT_DEPTH.x);
 
     float3 diffuse;
     if (useDismemberment)
@@ -156,9 +192,25 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_VERTEX_COLOR
         diffuse *= input.vertexColor.xyz;
 #endif
+#if LINEAR_LIGHTING_SKIN_TINT
+        const float3 skinTintGamma = pow(abs(cb2[2].xyz), 0.454545);
+        const float3 skinBaseGamma = pow(abs(diffuse), 0.454545);
+        const float3 skinTintDark =
+            (2.0 * skinBaseGamma * skinTintGamma) +
+            (skinBaseGamma * skinBaseGamma *
+            (1.0 - (2.0 * skinTintGamma)));
+        const float3 skinTintLight =
+            (sqrt(skinBaseGamma) * ((2.0 * skinTintGamma) - 1.0)) +
+            (2.0 * skinBaseGamma * (1.0 - skinTintGamma));
+        const float3 skinTintGammaResult =
+            (skinTintGamma < 0.5) ? skinTintDark : skinTintLight;
+        const float3 skinTint = pow(abs(skinTintGammaResult), 2.2);
+        diffuse = lerp(diffuse, skinTint, cb2[2].w);
+#endif
     }
-    const float fade = (cb2[4].w == -1.0) ?
-        1.0 : ((-cb2[4].w * cb12[50].x) + 1.0);
+    const float fade = (LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.w == -1.0) ?
+        1.0 :
+        ((-LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.w * cb12[50].x) + 1.0);
     output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
 
     const uint matrixBase = input.eyeIndex * 4u;
@@ -176,7 +228,11 @@ PSOutput PSMain(PSInput input)
 
     output.target0.w = cb2[0].z;
     output.target3.z = cb2[0].w * 0.01;
+#if LINEAR_LIGHTING_SKIN_TINT
+    output.target3.w = 0.019608;
+#else
     output.target3.w = 1.0;
+#endif
     output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
     return output;
 }

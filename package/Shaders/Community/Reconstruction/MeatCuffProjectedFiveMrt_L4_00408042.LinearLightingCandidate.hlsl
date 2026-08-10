@@ -10,9 +10,17 @@
 #define LINEAR_LIGHTING_MEAT_CUFF 1
 #endif
 
+#ifndef LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_SKIN_TINT 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
+#if LINEAR_LIGHTING_SKIN_TINT
+    float4 cb2[10];
+#else
     float4 cb2[9];
+#endif
 };
 
 #include "../LinearLighting/LinearLighting.hlsli"
@@ -35,6 +43,20 @@ SamplerState SampSpecular : register(s2);
 SamplerState SampMeatCuffDiffuse : register(s9);
 SamplerState SampMeatCuffNormal : register(s10);
 SamplerState SampMeatCuffSpecular : register(s11);
+
+#if LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION cb2[4]
+#define LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[7]
+#define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_Y cb2[8]
+#define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[9]
+#else
+#define LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[6]
+#define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_Y cb2[7]
+#define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[8]
+#endif
 
 struct PSInput
 {
@@ -74,9 +96,13 @@ PSOutput PSMain(PSInput input)
         input.cuffIndex.x < 0.0 || input.cuffIndex.x > 10.0;
 
     const float orientation =
-        (dot(cb2[6].xyz, input.cuffOrientation) * 0.5) + 0.5;
+        (dot(
+            LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X.xyz,
+            input.cuffOrientation) * 0.5) + 0.5;
     const bool positiveOrientation =
-        dot(cb2[7].xyz, input.cuffOrientation) > 0.0;
+        dot(
+            LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_Y.xyz,
+            input.cuffOrientation) > 0.0;
     const float cuffNormalU = positiveOrientation ?
         orientation * 0.5 : 1.0 - (orientation * 0.5);
     const float2 cuffNormalUv = float2(
@@ -123,8 +149,28 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_VERTEX_COLOR
         diffuseSample = baseDiffuseSample * input.vertexColor;
 #endif
-        clip(-1.0);
+#if LINEAR_LIGHTING_SKIN_TINT
 #if !LINEAR_LIGHTING_VERTEX_COLOR
+        diffuseSample = baseDiffuseSample;
+#endif
+        const float3 skinTintGamma = pow(abs(cb2[3].xyz), 0.454545);
+        const float3 skinBaseGamma =
+            pow(abs(diffuseSample.xyz), 0.454545);
+        const float3 skinTintDark =
+            (2.0 * skinBaseGamma * skinTintGamma) +
+            (skinBaseGamma * skinBaseGamma *
+            (1.0 - (2.0 * skinTintGamma)));
+        const float3 skinTintLight =
+            (sqrt(skinBaseGamma) * ((2.0 * skinTintGamma) - 1.0)) +
+            (2.0 * skinBaseGamma * (1.0 - skinTintGamma));
+        const float3 skinTintGammaResult =
+            (skinTintGamma < 0.5) ? skinTintDark : skinTintLight;
+        const float3 skinTint = pow(abs(skinTintGammaResult), 2.2);
+        diffuseSample.xyz =
+            lerp(diffuseSample.xyz, skinTint, cb2[3].w);
+#endif
+        clip(-1.0);
+#if !LINEAR_LIGHTING_VERTEX_COLOR && !LINEAR_LIGHTING_SKIN_TINT
         diffuseSample = baseDiffuseSample;
 #endif
         specularSample = baseSpecularSample;
@@ -152,12 +198,16 @@ PSOutput PSMain(PSInput input)
     }
 
     const float2 materialXYCandidate =
-        (((cb2[3].xy - cb2[0].xy) * cb12[50].xx) + cb2[0].xy) *
+        (((LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION.xy - cb2[0].xy) *
+        cb12[50].xx) + cb2[0].xy) *
         cb2[0].xy;
-    const float2 materialXY = (cb2[3].xy >= 0.0) ?
+    const float2 materialXY =
+        (LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION.xy >= 0.0) ?
         materialXYCandidate : cb2[0].xy;
-    const float specBlendA = cb12[50].x * cb2[5].z;
-    const float specBlendB = (-cb2[5].z * cb12[50].x) + 1.0;
+    const float specBlendA =
+        cb12[50].x * LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.z;
+    const float specBlendB =
+        (-LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.z * cb12[50].x) + 1.0;
     const float specBlend =
         (specularSample.x * specBlendB) + specBlendA;
     output.target3.x = materialXY.x * specularSample.y;
@@ -169,29 +219,38 @@ PSOutput PSMain(PSInput input)
     const float normalPackScale = sqrt((projectedNormal.z * -8.0) + 8.0);
     output.target1.xy = (projectedNormal.xy / normalPackScale) + 0.5;
 
-    const float depthSwitch = (cb2[8].w < 0.0) ? 0.0 : cb12[50].x;
-    const float depthRange = cb2[8].w - cb2[8].z;
-    const float depthValue = (cb2[8].y != 0.0) ?
-        ((depthSwitch * depthRange) + cb2[8].z) :
-        (depthSwitch * cb2[8].w);
+    const float depthSwitch =
+        (LINEAR_LIGHTING_MEAT_CUFF_DEPTH.w < 0.0) ? 0.0 : cb12[50].x;
+    const float depthRange =
+        LINEAR_LIGHTING_MEAT_CUFF_DEPTH.w -
+        LINEAR_LIGHTING_MEAT_CUFF_DEPTH.z;
+    const float depthValue = (LINEAR_LIGHTING_MEAT_CUFF_DEPTH.y != 0.0) ?
+        ((depthSwitch * depthRange) + LINEAR_LIGHTING_MEAT_CUFF_DEPTH.z) :
+        (depthSwitch * LINEAR_LIGHTING_MEAT_CUFF_DEPTH.w);
     output.target2.z = sqrt(depthValue * 0.02);
     output.target2.x =
-        ((cb12[50].x != 0.0 && cb2[5].y != 0.0) || cb2[5].x != 0.0) ?
+        ((cb12[50].x != 0.0 &&
+        LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.y != 0.0) ||
+        LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.x != 0.0) ?
         1.0 : 0.0;
-    output.target2.y = cb2[8].x * 0.003922;
-    output.target2.w = saturate(cb2[8].x);
+    output.target2.y = LINEAR_LIGHTING_MEAT_CUFF_DEPTH.x * 0.003922;
+    output.target2.w = saturate(LINEAR_LIGHTING_MEAT_CUFF_DEPTH.x);
 
     const float alphaSource = (cb2[2].y == 1.0) ? diffuseSample.w : 1.0;
     const float alpha = cb2[2].x * alphaSource;
     clip(alpha - 0.015686);
-    const float fade = (cb2[5].w == -1.0) ?
-        1.0 : ((-cb2[5].w * cb12[50].x) + 1.0);
+    const float fade = (LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.w == -1.0) ?
+        1.0 : ((-LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES.w * cb12[50].x) + 1.0);
     output.target0.xyz =
         fade * LinearLightingDiffuse(diffuseSample.xyz);
     output.target0.w = alpha;
     output.target1.w = alpha;
     output.target3.z = cb2[0].w * 0.01;
+#if LINEAR_LIGHTING_SKIN_TINT
+    output.target3.w = 0.019608;
+#else
     output.target3.w = alpha;
+#endif
     output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
     output.target4.w = alpha;
     return output;

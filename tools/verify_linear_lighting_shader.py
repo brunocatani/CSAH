@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 225:
-        fail("Linear Lighting manifest must contain exactly 225 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 231:
+        fail("Linear Lighting manifest must contain exactly 231 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -242,9 +242,10 @@ def verify_source_contracts(
         "Texture2D<float4> TexDismembermentNormal : register(t10)",
         "Texture2D<float4> TexDismembermentSpecular : register(t11)",
         "input.dismembermentSelector.y > 0.0",
-        "dot(cb2[5].xyz, tangentNormal)",
-        "dot(cb2[6].xyz, tangentNormal)",
-        "min(dot(cb2[7].xyz, tangentNormal), 0.0)",
+        "LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[5]",
+        "LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[6]",
+        "LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[10]",
+        "diffuse = lerp(diffuse, skinTint, cb2[2].w)",
         "LinearLightingDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
         "input.eyeIndex * 4u",
@@ -269,8 +270,10 @@ def verify_source_contracts(
         "Texture2D<float4> TexMeatCuffNormal : register(t10)",
         "Texture2D<float4> TexMeatCuffSpecular : register(t11)",
         "input.cuffIndex.x < 0.0 || input.cuffIndex.x > 10.0",
-        "dot(cb2[6].xyz, input.cuffOrientation)",
-        "dot(cb2[7].xyz, input.cuffOrientation) > 0.0",
+        "LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[6]",
+        "LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[7]",
+        "LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[9]",
+        "lerp(diffuseSample.xyz, skinTint, cb2[3].w)",
         "clip(-1.0)",
         "clip(alpha - 0.015686)",
         "LinearLightingDiffuse(diffuseSample.xyz)",
@@ -637,25 +640,25 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 111:
-        fail(f"expected 111 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 115:
+        fail(f"expected 115 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 31:
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 22:
+    if model_space_normal_contracts != 24:
         fail(
-            "expected 22 model-space-normal contracts, "
+            "expected 24 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 20:
-        fail(f"expected 20 tessellated contracts, found {tessellated_contracts}")
-    if dismemberment_contracts != 3:
+    if tessellated_contracts != 23:
+        fail(f"expected 23 tessellated contracts, found {tessellated_contracts}")
+    if dismemberment_contracts != 6:
         fail(
-            f"expected 3 dismemberment contracts, found {dismemberment_contracts}"
+            f"expected 6 dismemberment contracts, found {dismemberment_contracts}"
         )
-    if meat_cuff_contracts != 3:
-        fail(f"expected 3 meat-cuff contracts, found {meat_cuff_contracts}")
+    if meat_cuff_contracts != 6:
+        fail(f"expected 6 meat-cuff contracts, found {meat_cuff_contracts}")
     if additional_alpha_mask_contracts != 58:
         fail(
             "expected 58 additional-alpha-mask contracts, "
@@ -701,8 +704,8 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 16:
         fail(f"expected 16 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 14:
-        fail(f"expected 14 skin-tint contracts, found {skin_tint_contracts}")
+    if skin_tint_contracts != 20:
+        fail(f"expected 20 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 4:
         fail(
             "expected 4 combined skin-tint/additional-alpha contracts, "
@@ -1077,7 +1080,7 @@ def verify(root: Path) -> None:
                 and "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1"
                 in source_text,
                 "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
-                and original["constant_buffers"].get(2) in (7, 8),
+                and original["constant_buffers"].get(2) in (7, 8, 10, 11),
                 "#define LINEAR_LIGHTING_HAIR 1" in source_text
                 and (
                     (
@@ -1125,7 +1128,8 @@ def verify(root: Path) -> None:
                     )
                 ),
                 "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text
-                and original["constant_buffers"].get(2) == 10
+                and original["constant_buffers"].get(2)
+                == (11 if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text else 10)
                 and all(slot in original["samplers"] for slot in (9, 10, 11))
                 and all(slot in original["textures"] for slot in (9, 10, 11))
                 and any(
@@ -1134,7 +1138,8 @@ def verify(root: Path) -> None:
                 ),
                 "#define LINEAR_LIGHTING_MEAT_CUFF 1" in source_text
                 and len(original["outputs"]) == 5
-                and original["constant_buffers"].get(2) == 9
+                and original["constant_buffers"].get(2)
+                == (10 if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text else 9)
                 and original["constant_buffers"].get(12) == 51
                 and all(slot in original["samplers"] for slot in (9, 10, 11))
                 and all(slot in original["textures"] for slot in (9, 10, 11))

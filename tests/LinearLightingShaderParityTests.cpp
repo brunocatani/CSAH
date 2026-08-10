@@ -279,6 +279,12 @@ namespace
         ShaderContract{ "MeatCuffProjectedFiveMrt_L4_00408042", 5, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "MeatCuffProjectedFiveMrt_L3_00408043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "MeatCuffModelSpaceNormalsProjectedFiveMrt_L3_0040A043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "DismembermentSkinTintTessellatedSixMrt_L4_002C0042", 6, false, false, true, false, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "DismembermentSkinTintTessellatedSixMrt_L3_002C0043", 6, true, false, true, false, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "DismembermentSkinTintModelSpaceNormalsTessellatedSixMrt_L3_002C2043", 6, true, false, true, false, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "MeatCuffSkinTintProjectedFiveMrt_L4_00448042", 5, false, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "MeatCuffSkinTintProjectedFiveMrt_L3_00448043", 5, true, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "MeatCuffSkinTintModelSpaceNormalsProjectedFiveMrt_L3_0044A043", 5, true, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -809,7 +815,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return result;
     }
 
-    [[nodiscard]] std::array<std::array<float, 4>, 10> makeMaterialData(
+    [[nodiscard]] std::array<std::array<float, 4>, 12> makeMaterialData(
         UINT mrtCount,
         std::size_t caseIndex,
         bool hasAdditionalAlphaMask,
@@ -823,7 +829,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         AdditionalAlphaCase additionalAlphaCase,
         MeatCuffAlphaCase meatCuffAlphaCase)
     {
-        std::array<std::array<float, 4>, 10> values{};
+        std::array<std::array<float, 4>, 12> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
         values[0] = { 0.4F, 0.7F, 0.25F, 0.8F };
         values[1] = { 0.3F, 0.45F, 0.6F, 0.2F };
@@ -858,20 +864,40 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             }
         }
         if (hasDismemberment) {
-            values[5] = { 1.0F, 0.0F, 0.0F, 0.0F };
-            values[6] = { 0.0F, 1.0F, 0.0F, 0.0F };
-            values[7] = { 0.0F, 0.0F, -1.0F, 0.0F };
-            values[9] = depthParameters;
+            if (hasSkinTint) {
+                values[2] = kSkinTintColor;
+                values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
+                values[5] = values[4];
+                values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
+                values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                values[8] = { 0.0F, 0.0F, -1.0F, 0.0F };
+                values[10] = depthParameters;
+            } else {
+                values[5] = { 1.0F, 0.0F, 0.0F, 0.0F };
+                values[6] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                values[7] = { 0.0F, 0.0F, -1.0F, 0.0F };
+                values[9] = depthParameters;
+            }
             return values;
         }
         if (hasMeatCuff) {
             values[2][0] = meatCuffAlphaCase == MeatCuffAlphaCase::pass ?
                 values[2][0] : 0.01F;
-            values[5] = values[4];
-            values[4] = {};
-            values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
-            values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
-            values[8] = depthParameters;
+            if (hasSkinTint) {
+                values[6] = values[4];
+                values[4] = values[3];
+                values[3] = kSkinTintColor;
+                values[5] = {};
+                values[7] = { 1.0F, 0.0F, 0.0F, 0.0F };
+                values[8] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                values[9] = depthParameters;
+            } else {
+                values[5] = values[4];
+                values[4] = {};
+                values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
+                values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
+                values[8] = depthParameters;
+            }
             return values;
         }
         if (hasGradientRemap) {
@@ -1487,7 +1513,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     diffuse *= kVertexColor[channel];
                 }
             }
-            if (contract.hasSkinTint) {
+            if (contract.hasSkinTint && !useDismemberment &&
+                !contract.hasMeatCuff) {
                 diffuse = skinTintValue(
                     diffuse,
                     kSkinTintColor[channel],
