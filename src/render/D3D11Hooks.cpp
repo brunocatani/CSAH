@@ -754,6 +754,9 @@ namespace community_shaders::render
                 selection.shader,
                 classInstances,
                 classInstanceCount);
+            if (selection.retainedForBind && selection.shader) {
+                selection.shader->Release();
+            }
             activeReplacementContractPlusOne = selection.contractPlusOne;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {

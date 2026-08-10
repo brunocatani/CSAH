@@ -1,5 +1,6 @@
 #include "render/BSLightingGeometryHook.h"
 
+#include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFLightProducerModel.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "support/Logger.h"
@@ -16,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <span>
 
 namespace community_shaders::render
 {
@@ -26,8 +28,9 @@ namespace community_shaders::render
         // 0x14291D6B0 and publishes this vtable. Raw FO4VR disassembly and the
         // DFLight macro emitter independently establish that slot 3 owns the
         // active technique-light transaction while slot 9 owns the geometry
-        // transaction. Both phases contain matching ambient/directional RGB
-        // producers and must share the same descriptor scope.
+        // transaction. Both phases must share the same descriptor scope: the
+        // technique phase owns ambient-transform selection, while both phases
+        // contain the directional scalar-pow producer family.
         constexpr std::uintptr_t kBSDFLightShaderVtableRva = 0x030BF3C8;
         constexpr std::size_t kTechniqueSetupSlot = 3;
         constexpr std::uintptr_t kTechniqueSetupFunctionRva = 0x02922810;
@@ -39,11 +42,14 @@ namespace community_shaders::render
         constexpr std::size_t kLightingStateEmissiveMultiplierOffset = 0x1BC;
         constexpr std::size_t kLightingStateLeaInstructionBytes = 7;
         constexpr std::uintptr_t kNativeScalarPowThunkRva = 0x029917A8;
+        constexpr std::uintptr_t kLocalAmbientTransformAccessorRva = 0x027ADD90;
+        constexpr std::uintptr_t kFallbackAmbientTransformAccessorRva = 0x027AE6F0;
         constexpr std::size_t kRelativeCallBytes = 5;
         constexpr std::size_t kJumpStubBytes = 12;
-        constexpr std::size_t kAmbientJumpStubOffset = 0;
-        constexpr std::size_t kDirectionalJumpStubOffset = 16;
-        constexpr std::size_t kJumpIslandRequiredBytes = 32;
+        constexpr std::size_t kDirectionalJumpStubOffset = 0;
+        constexpr std::size_t kFallbackAmbientJumpStubOffset = 16;
+        constexpr std::size_t kLocalAmbientJumpStubOffset = 32;
+        constexpr std::size_t kJumpIslandRequiredBytes = 48;
         constexpr float kMaximumPlausibleEmissiveMultiplier = 1.0e6f;
 
         struct PowCallsite
@@ -65,14 +71,6 @@ namespace community_shaders::render
             {}
         };
 
-        constexpr std::array<PowCallsite, 6> kAmbientPowCallsites{
-            PowCallsite{ 0x02922B47, 0x0006EC5C },
-            PowCallsite{ 0x02922B5B, 0x0006EC48 },
-            PowCallsite{ 0x02922B6F, 0x0006EC34 },
-            PowCallsite{ 0x0291E138, 0x0007366B },
-            PowCallsite{ 0x0291E14C, 0x00073657 },
-            PowCallsite{ 0x0291E160, 0x00073643 },
-        };
         constexpr std::array<PowCallsite, 6> kDirectionalPowCallsites{
             PowCallsite{ 0x029232E9, 0x0006E4BA },
             PowCallsite{ 0x029232FD, 0x0006E4A6 },
@@ -80,6 +78,10 @@ namespace community_shaders::render
             PowCallsite{ 0x0291E9E7, 0x00072DBC },
             PowCallsite{ 0x0291E9FB, 0x00072DA8 },
             PowCallsite{ 0x0291EA0F, 0x00072D94 },
+        };
+        constexpr std::array<PowCallsite, 2> kAmbientTransformCallsites{
+            PowCallsite{ 0x02922AB5, 0xFFE8BC36 },
+            PowCallsite{ 0x02922ABF, 0xFFE8B2CC },
         };
 
         constexpr std::array<std::byte, 45> kTechniqueSetupSignature{
@@ -126,6 +128,16 @@ namespace community_shaders::render
             std::byte{ 0xFF }, std::byte{ 0x25 }, std::byte{ 0x3A },
             std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 },
         };
+        constexpr std::array<std::byte, 8> kLocalAmbientAccessorSignature{
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0x81 },
+            std::byte{ 0x00 }, std::byte{ 0x01 }, std::byte{ 0x00 },
+            std::byte{ 0x00 }, std::byte{ 0xC3 },
+        };
+        constexpr std::array<std::byte, 8> kFallbackAmbientAccessorSignature{
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0x05 },
+            std::byte{ 0xD9 }, std::byte{ 0x9F }, std::byte{ 0x0C },
+            std::byte{ 0x04 }, std::byte{ 0xC3 },
+        };
 
         using TechniqueSetupFunction = void(__fastcall*)(
             void* receiver,
@@ -139,17 +151,24 @@ namespace community_shaders::render
         using NativeScalarPowFunction = float(__fastcall*)(
             float value,
             float exponent);
+        using LocalAmbientTransformAccessorFunction = const float*(__fastcall*)(
+            const void* state);
+        using FallbackAmbientTransformAccessorFunction = const float*(__fastcall*)();
 
         TechniqueSetupFunction originalTechniqueSetup{};
         GeometrySetupFunction originalGeometrySetup{};
         NativeScalarPowFunction originalNativeScalarPow{};
+        LocalAmbientTransformAccessorFunction originalLocalAmbientTransformAccessor{};
+        FallbackAmbientTransformAccessorFunction
+            originalFallbackAmbientTransformAccessor{};
         void** techniqueSetupCell{};
         void** geometrySetupCell{};
         const std::byte* lightingState{};
         std::byte* executableImage{};
         std::byte* powJumpIsland{};
-        std::byte* ambientPowJumpStub{};
         std::byte* directionalPowJumpStub{};
+        std::byte* fallbackAmbientJumpStub{};
+        std::byte* localAmbientJumpStub{};
         std::atomic_bool installed{};
         std::atomic_bool producerOwnershipReady{};
         std::atomic_bool desiredProducerEnabled{};
@@ -163,6 +182,8 @@ namespace community_shaders::render
                 linear_lighting::kVanillaDFLightGamma) };
         std::atomic_uint32_t desiredAmbientMultiplierBits{
             std::bit_cast<std::uint32_t>(1.0f) };
+        std::atomic_uint32_t desiredAmbientInputScaleBits{
+            std::bit_cast<std::uint32_t>(1.0f) };
         std::atomic_uint64_t techniqueCalls{};
         std::atomic_uint64_t calls{};
         std::atomic_uint64_t acceptedUpdates{};
@@ -170,9 +191,9 @@ namespace community_shaders::render
         std::atomic_uint64_t ambientDescriptors{};
         std::atomic_uint64_t directionalDescriptors{};
         std::atomic_uint64_t otherDescriptors{};
-        std::atomic_uint64_t ambientPowCalls{};
-        std::atomic_uint64_t ambientPowModified{};
-        std::atomic_uint64_t ambientPowPassThrough{};
+        std::atomic_uint64_t ambientTransformCalls{};
+        std::atomic_uint64_t ambientTransformPrepared{};
+        std::atomic_uint64_t ambientTransformPassThrough{};
         std::atomic_uint64_t directionalPowCalls{};
         std::atomic_uint64_t directionalPowModified{};
         std::atomic_uint64_t directionalPowPassThrough{};
@@ -182,6 +203,8 @@ namespace community_shaders::render
         std::atomic_uint32_t lastDescriptor{};
         std::atomic_uint32_t lastSourceEmissiveMultiplierBits{};
         thread_local std::uint32_t activeDFLightDescriptor{};
+        alignas(16) thread_local linear_lighting::DirectionalAmbientTransform
+            scaledAmbientTransform{};
 
         class DFLightDescriptorScope
         {
@@ -466,7 +489,7 @@ namespace community_shaders::render
             return true;
         }
 
-        [[nodiscard]] bool dFLightPowCallsitesOwned() noexcept;
+        [[nodiscard]] bool dFLightProducerCallsitesOwned() noexcept;
 
         [[nodiscard]] float runDFLightPowProducer(
             linear_lighting::DFLightProducerKind expectedKind,
@@ -521,21 +544,6 @@ namespace community_shaders::render
             return result;
         }
 
-        float __fastcall hookAmbientScalarPow(
-            float value,
-            float exponent) noexcept
-        {
-            return runDFLightPowProducer(
-                linear_lighting::DFLightProducerKind::ambient,
-                value,
-                exponent,
-                desiredAmbientGammaBits,
-                desiredAmbientMultiplierBits,
-                ambientPowCalls,
-                ambientPowModified,
-                ambientPowPassThrough);
-        }
-
         float __fastcall hookDirectionalScalarPow(
             float value,
             float exponent) noexcept
@@ -551,12 +559,73 @@ namespace community_shaders::render
                 directionalPowPassThrough);
         }
 
-        [[nodiscard]] bool dFLightPowCallsitesOwned() noexcept
+        [[nodiscard]] const float* prepareAmbientTransform(
+            const float* source) noexcept
+        {
+            ambientTransformCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto active = source &&
+                producerOwnershipReady.load(std::memory_order_acquire) &&
+                desiredProducerEnabled.load(std::memory_order_acquire) &&
+                linear_lighting::classifyDFLightProducer(
+                    activeDFLightDescriptor) ==
+                    linear_lighting::DFLightProducerKind::ambient &&
+                linear_lighting::Runtime::get().dFLightAmbientDescriptorReady(
+                    activeDFLightDescriptor);
+            if (!active) {
+                ambientTransformPassThrough.fetch_add(
+                    1, std::memory_order_relaxed);
+                return source;
+            }
+
+            const auto scale = std::bit_cast<float>(
+                desiredAmbientInputScaleBits.load(std::memory_order_relaxed));
+            if (!std::isfinite(scale) || scale < 0.0f) {
+                invalidPowResults.fetch_add(1, std::memory_order_relaxed);
+                ambientTransformPassThrough.fetch_add(
+                    1, std::memory_order_relaxed);
+                return source;
+            }
+
+            std::memcpy(
+                scaledAmbientTransform.data(),
+                source,
+                sizeof(scaledAmbientTransform));
+            linear_lighting::scaleDirectionalAmbientTransform(
+                scaledAmbientTransform,
+                scale);
+            ambientTransformPrepared.fetch_add(1, std::memory_order_release);
+            return scaledAmbientTransform.data();
+        }
+
+        const float* __fastcall hookFallbackAmbientTransform() noexcept
+        {
+            const auto* source = originalFallbackAmbientTransformAccessor ?
+                originalFallbackAmbientTransformAccessor() :
+                nullptr;
+            return prepareAmbientTransform(source);
+        }
+
+        const float* __fastcall hookLocalAmbientTransform(
+            const void* state) noexcept
+        {
+            const auto* source = originalLocalAmbientTransformAccessor ?
+                originalLocalAmbientTransformAccessor(state) :
+                nullptr;
+            return prepareAmbientTransform(source);
+        }
+
+        [[nodiscard]] bool dFLightProducerCallsitesOwned() noexcept
         {
             const auto* nativePow = executableImage ?
                 executableImage + kNativeScalarPowThunkRva :
                 nullptr;
-            return nativePow &&
+            const auto* localAccessor = executableImage ?
+                executableImage + kLocalAmbientTransformAccessorRva :
+                nullptr;
+            const auto* fallbackAccessor = executableImage ?
+                executableImage + kFallbackAmbientTransformAccessorRva :
+                nullptr;
+            return nativePow && localAccessor && fallbackAccessor &&
                 isExecutableRange(
                     nativePow,
                     kNativeScalarPowThunkSignature.size()) &&
@@ -564,26 +633,47 @@ namespace community_shaders::render
                     nativePow,
                     kNativeScalarPowThunkSignature.data(),
                     kNativeScalarPowThunkSignature.size()) == 0 &&
-                absoluteJumpStubOwned(
-                    ambientPowJumpStub,
-                    reinterpret_cast<const void*>(&hookAmbientScalarPow)) &&
+                isExecutableRange(
+                    localAccessor,
+                    kLocalAmbientAccessorSignature.size()) &&
+                std::memcmp(
+                    localAccessor,
+                    kLocalAmbientAccessorSignature.data(),
+                    kLocalAmbientAccessorSignature.size()) == 0 &&
+                isExecutableRange(
+                    fallbackAccessor,
+                    kFallbackAmbientAccessorSignature.size()) &&
+                std::memcmp(
+                    fallbackAccessor,
+                    kFallbackAmbientAccessorSignature.data(),
+                    kFallbackAmbientAccessorSignature.size()) == 0 &&
                 absoluteJumpStubOwned(
                     directionalPowJumpStub,
                     reinterpret_cast<const void*>(&hookDirectionalScalarPow)) &&
-                callsiteFamilyOwned(
-                    kAmbientPowCallsites,
-                    ambientPowJumpStub) &&
+                absoluteJumpStubOwned(
+                    fallbackAmbientJumpStub,
+                    reinterpret_cast<const void*>(
+                        &hookFallbackAmbientTransform)) &&
+                absoluteJumpStubOwned(
+                    localAmbientJumpStub,
+                    reinterpret_cast<const void*>(&hookLocalAmbientTransform)) &&
                 callsiteFamilyOwned(
                     kDirectionalPowCallsites,
-                    directionalPowJumpStub);
+                    directionalPowJumpStub) &&
+                resolveRelativeCallTarget(
+                    executableImage + kAmbientTransformCallsites[0].rva) ==
+                    fallbackAmbientJumpStub &&
+                resolveRelativeCallTarget(
+                    executableImage + kAmbientTransformCallsites[1].rva) ==
+                    localAmbientJumpStub;
         }
 
-        [[nodiscard]] bool restorePowCallsites(
+        [[nodiscard]] bool restoreProducerCallsites(
             std::size_t patchedCallsites) noexcept
         {
             bool restored = true;
             std::size_t index{};
-            for (const auto& callsite : kAmbientPowCallsites) {
+            for (const auto& callsite : kDirectionalPowCallsites) {
                 if (index++ >= patchedCallsites) {
                     return restored;
                 }
@@ -593,7 +683,7 @@ namespace community_shaders::render
                                callsite.signature.size()) &&
                     restored;
             }
-            for (const auto& callsite : kDirectionalPowCallsites) {
+            for (const auto& callsite : kAmbientTransformCallsites) {
                 if (index++ >= patchedCallsites) {
                     return restored;
                 }
@@ -615,10 +705,13 @@ namespace community_shaders::render
                 (void)VirtualFree(powJumpIsland, 0, MEM_RELEASE);
             }
             originalNativeScalarPow = nullptr;
+            originalLocalAmbientTransformAccessor = nullptr;
+            originalFallbackAmbientTransformAccessor = nullptr;
             executableImage = nullptr;
             powJumpIsland = nullptr;
-            ambientPowJumpStub = nullptr;
             directionalPowJumpStub = nullptr;
+            fallbackAmbientJumpStub = nullptr;
+            localAmbientJumpStub = nullptr;
         }
 
         [[nodiscard]] bool readEmissiveMultiplier(float& value) noexcept
@@ -777,7 +870,13 @@ namespace community_shaders::render
             kNativeScalarPowThunkRva +
                     kNativeScalarPowThunkSignature.size() >
                 imageSize ||
-            !callsiteInBounds(kAmbientPowCallsites) ||
+            kLocalAmbientTransformAccessorRva +
+                    kLocalAmbientAccessorSignature.size() >
+                imageSize ||
+            kFallbackAmbientTransformAccessorRva +
+                    kFallbackAmbientAccessorSignature.size() >
+                imageSize ||
+            !callsiteInBounds(kAmbientTransformCallsites) ||
             !callsiteInBounds(kDirectionalPowCallsites)) {
             logging::error(
                 "BSDF lighting geometry hook rejected invalid PE image bounds.");
@@ -795,6 +894,10 @@ namespace community_shaders::render
         const auto* accessor = image + kLightingStateAccessorRva;
         const auto* state = image + kLightingStateRva;
         const auto* nativePow = image + kNativeScalarPowThunkRva;
+        const auto* localAmbientAccessor =
+            image + kLocalAmbientTransformAccessorRva;
+        const auto* fallbackAmbientAccessor =
+            image + kFallbackAmbientTransformAccessorRva;
         if (!isReadableRange(techniqueCell, sizeof(*techniqueCell)) ||
             *techniqueCell != expectedTechnique ||
             !isExecutableRange(
@@ -829,7 +932,21 @@ namespace community_shaders::render
             std::memcmp(
                 nativePow,
                 kNativeScalarPowThunkSignature.data(),
-                kNativeScalarPowThunkSignature.size()) != 0) {
+                kNativeScalarPowThunkSignature.size()) != 0 ||
+            !isExecutableRange(
+                localAmbientAccessor,
+                kLocalAmbientAccessorSignature.size()) ||
+            std::memcmp(
+                localAmbientAccessor,
+                kLocalAmbientAccessorSignature.data(),
+                kLocalAmbientAccessorSignature.size()) != 0 ||
+            !isExecutableRange(
+                fallbackAmbientAccessor,
+                kFallbackAmbientAccessorSignature.size()) ||
+            std::memcmp(
+                fallbackAmbientAccessor,
+                kFallbackAmbientAccessorSignature.data(),
+                kFallbackAmbientAccessorSignature.size()) != 0) {
             logging::error(
                 "BSDF lighting geometry/producer live identity gate failed; Linear Lighting remains vanilla.");
             return false;
@@ -846,8 +963,9 @@ namespace community_shaders::render
                 "BSDF lighting geometry hook accessor target gate failed; Linear Lighting remains vanilla.");
             return false;
         }
-        const auto originalCallsitesOwned = [image, nativePow](
-                                                   const auto& callsites) {
+        const auto originalCallsitesOwned = [image](
+                                                   const auto& callsites,
+                                                   const std::byte* target) {
             for (const auto& callsite : callsites) {
                 const auto* instruction = image + callsite.rva;
                 if (!isExecutableRange(
@@ -857,16 +975,21 @@ namespace community_shaders::render
                         instruction,
                         callsite.signature.data(),
                         callsite.signature.size()) != 0 ||
-                    resolveRelativeCallTarget(instruction) != nativePow) {
+                    resolveRelativeCallTarget(instruction) != target) {
                     return false;
                 }
             }
             return true;
         };
-        if (!originalCallsitesOwned(kAmbientPowCallsites) ||
-            !originalCallsitesOwned(kDirectionalPowCallsites)) {
+        if (!originalCallsitesOwned(kDirectionalPowCallsites, nativePow) ||
+            !originalCallsitesOwned(
+                std::span{ kAmbientTransformCallsites }.first<1>(),
+                fallbackAmbientAccessor) ||
+            !originalCallsitesOwned(
+                std::span{ kAmbientTransformCallsites }.subspan<1, 1>(),
+                localAmbientAccessor)) {
             logging::error(
-                "BSDF DFLight pow-callsite identity gate failed; Linear Lighting remains vanilla.");
+                "BSDF DFLight producer-callsite identity gate failed; Linear Lighting remains vanilla.");
             return false;
         }
 
@@ -878,14 +1001,15 @@ namespace community_shaders::render
             return false;
         }
         std::array<std::uintptr_t,
-            kAmbientPowCallsites.size() + kDirectionalPowCallsites.size()>
+            kAmbientTransformCallsites.size() +
+                kDirectionalPowCallsites.size()>
             nextInstructions{};
         std::size_t nextIndex{};
-        for (const auto& callsite : kAmbientPowCallsites) {
+        for (const auto& callsite : kDirectionalPowCallsites) {
             nextInstructions[nextIndex++] = imageAddress + callsite.rva +
                 kRelativeCallBytes;
         }
-        for (const auto& callsite : kDirectionalPowCallsites) {
+        for (const auto& callsite : kAmbientTransformCallsites) {
             nextInstructions[nextIndex++] = imageAddress + callsite.rva +
                 kRelativeCallBytes;
         }
@@ -899,14 +1023,19 @@ namespace community_shaders::render
                 "BSDF DFLight producer could not allocate a reachable jump island; Linear Lighting remains vanilla.");
             return false;
         }
-        auto* ambientStub = island + kAmbientJumpStubOffset;
         auto* directionalStub = island + kDirectionalJumpStubOffset;
-        buildAbsoluteJumpStub(
-            ambientStub,
-            reinterpret_cast<const void*>(&hookAmbientScalarPow));
+        auto* fallbackAmbientStub =
+            island + kFallbackAmbientJumpStubOffset;
+        auto* localAmbientStub = island + kLocalAmbientJumpStubOffset;
         buildAbsoluteJumpStub(
             directionalStub,
             reinterpret_cast<const void*>(&hookDirectionalScalarPow));
+        buildAbsoluteJumpStub(
+            fallbackAmbientStub,
+            reinterpret_cast<const void*>(&hookFallbackAmbientTransform));
+        buildAbsoluteJumpStub(
+            localAmbientStub,
+            reinterpret_cast<const void*>(&hookLocalAmbientTransform));
         DWORD oldIslandProtection{};
         if (!VirtualProtect(
                 island,
@@ -927,9 +1056,16 @@ namespace community_shaders::render
         originalNativeScalarPow =
             reinterpret_cast<NativeScalarPowFunction>(
                 const_cast<std::byte*>(nativePow));
+        originalLocalAmbientTransformAccessor =
+            reinterpret_cast<LocalAmbientTransformAccessorFunction>(
+                const_cast<std::byte*>(localAmbientAccessor));
+        originalFallbackAmbientTransformAccessor =
+            reinterpret_cast<FallbackAmbientTransformAccessorFunction>(
+                const_cast<std::byte*>(fallbackAmbientAccessor));
         powJumpIsland = island;
-        ambientPowJumpStub = ambientStub;
         directionalPowJumpStub = directionalStub;
+        fallbackAmbientJumpStub = fallbackAmbientStub;
+        localAmbientJumpStub = localAmbientStub;
         producerOwnershipReady.store(false, std::memory_order_release);
 
         std::size_t patchedCallsites{};
@@ -946,10 +1082,15 @@ namespace community_shaders::render
             }
             return true;
         };
-        if (!patchFamily(kAmbientPowCallsites, ambientStub) ||
-            !patchFamily(kDirectionalPowCallsites, directionalStub) ||
-            !dFLightPowCallsitesOwned()) {
-            const auto restored = restorePowCallsites(patchedCallsites);
+        if (!patchFamily(kDirectionalPowCallsites, directionalStub) ||
+            !patchFamily(
+                std::span{ kAmbientTransformCallsites }.first<1>(),
+                fallbackAmbientStub) ||
+            !patchFamily(
+                std::span{ kAmbientTransformCallsites }.subspan<1, 1>(),
+                localAmbientStub) ||
+            !dFLightProducerCallsitesOwned()) {
+            const auto restored = restoreProducerCallsites(patchedCallsites);
             releaseProducerPatchStateIfRestored(restored);
             logging::error(
                 "BSDF DFLight producer patch/ownership gate failed (restored={}); Linear Lighting remains vanilla.",
@@ -969,7 +1110,7 @@ namespace community_shaders::render
             originalTechniqueSetup = nullptr;
             originalGeometrySetup = nullptr;
             lightingState = nullptr;
-            const auto restored = restorePowCallsites(patchedCallsites);
+            const auto restored = restoreProducerCallsites(patchedCallsites);
             releaseProducerPatchStateIfRestored(restored);
             logging::error(
                 "BSDF lighting technique vtable patch failed (producer restored={}); Linear Lighting remains vanilla.",
@@ -985,7 +1126,7 @@ namespace community_shaders::render
                 reinterpret_cast<void*>(&hookTechniqueSetup),
                 expectedTechnique);
             const auto producerRestored = techniqueRestored &&
-                restorePowCallsites(patchedCallsites);
+                restoreProducerCallsites(patchedCallsites);
             releaseProducerPatchStateIfRestored(producerRestored);
             if (techniqueRestored) {
                 originalTechniqueSetup = nullptr;
@@ -1005,7 +1146,7 @@ namespace community_shaders::render
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
-            "Installed verified Fallout4VR BSDF lighting hook (vtable slots 3/9, twelve DFLight ambient/directional pow callsites, renderer state RVA 0x068787F0 +0x1BC).");
+            "Installed verified Fallout4VR BSDF lighting hook (vtable slots 3/9, six directional pow callsites, two ambient-transform callsites, renderer state RVA 0x068787F0 +0x1BC).");
         return true;
     }
 
@@ -1018,9 +1159,11 @@ namespace community_shaders::render
         const auto geometryVtableOwned = hookInstalled &&
             readPointerCell(geometrySetupCell) ==
                 reinterpret_cast<void*>(&hookGeometrySetup);
-        const auto powOwned = hookInstalled && dFLightPowCallsitesOwned();
+        const auto producerCallsitesOwned =
+            hookInstalled && dFLightProducerCallsitesOwned();
         const auto owned =
-            techniqueVtableOwned && geometryVtableOwned && powOwned;
+            techniqueVtableOwned && geometryVtableOwned &&
+            producerCallsitesOwned;
         producerOwnershipReady.store(owned, std::memory_order_release);
         if (!owned && hookInstalled) {
             linear_lighting::Runtime::get().setGeometryProviderReady(false);
@@ -1030,11 +1173,11 @@ namespace community_shaders::render
                 1;
             if ((failures & (failures - 1)) == 0) {
                 logging::error(
-                    "BSDF lighting hook ownership validation failed at '{}' (techniqueVtableOwned={}, geometryVtableOwned={}, dFLightPowCallsitesOwned={}, failures={}); geometry and DFLight producers are fail-closed.",
+                    "BSDF lighting hook ownership validation failed at '{}' (techniqueVtableOwned={}, geometryVtableOwned={}, dFLightProducerCallsitesOwned={}, failures={}); geometry and DFLight producers are fail-closed.",
                     trigger ? trigger : "unknown",
                     techniqueVtableOwned,
                     geometryVtableOwned,
-                    powOwned,
+                    producerCallsitesOwned,
                     failures);
             }
         }
@@ -1056,6 +1199,12 @@ namespace community_shaders::render
             std::memory_order_relaxed);
         desiredAmbientMultiplierBits.store(
             std::bit_cast<std::uint32_t>(state.ambientMultiplier),
+            std::memory_order_relaxed);
+        desiredAmbientInputScaleBits.store(
+            std::bit_cast<std::uint32_t>(
+                linear_lighting::directionalAmbientInputScale(
+                    state.ambientMultiplier,
+                    state.ambientGamma)),
             std::memory_order_relaxed);
         desiredProducerEnabled.store(state.enabled, std::memory_order_release);
     }
@@ -1081,7 +1230,7 @@ namespace community_shaders::render
             .vtableCellOwned = techniqueOwned && geometryOwned,
             .techniqueVtableCellOwned = techniqueOwned,
             .geometryVtableCellOwned = geometryOwned,
-            .dFLightPowCallsitesOwned = producerOwned,
+            .dFLightProducerCallsitesOwned = producerOwned,
             .dFLightProducerEnabled = producerActive,
             .techniqueCalls =
                 techniqueCalls.load(std::memory_order_acquire),
@@ -1094,11 +1243,12 @@ namespace community_shaders::render
                 directionalDescriptors.load(std::memory_order_relaxed),
             .otherDescriptors =
                 otherDescriptors.load(std::memory_order_relaxed),
-            .ambientPowCalls = ambientPowCalls.load(std::memory_order_acquire),
-            .ambientPowModified =
-                ambientPowModified.load(std::memory_order_relaxed),
-            .ambientPowPassThrough =
-                ambientPowPassThrough.load(std::memory_order_relaxed),
+            .ambientTransformCalls =
+                ambientTransformCalls.load(std::memory_order_acquire),
+            .ambientTransformPrepared =
+                ambientTransformPrepared.load(std::memory_order_relaxed),
+            .ambientTransformPassThrough =
+                ambientTransformPassThrough.load(std::memory_order_relaxed),
             .directionalPowCalls =
                 directionalPowCalls.load(std::memory_order_acquire),
             .directionalPowModified =

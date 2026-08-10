@@ -1,0 +1,713 @@
+{
+  "schemaVersion": 1,
+  "sourceFxpSha256": "eea46bb93c047c359451b8852a4ab013a1444d67fe8974813f5c456ef7b7d4ee",
+  "ambientDescriptorBit": "0x00020000",
+  "characterDescriptorBit": "0x04000000",
+  "recordCount": 78,
+  "uniqueShaderCount": 39,
+  "maximumInstancesPerIdentity": 6,
+  "contracts": [
+    {
+      "name": "DFLightAmbient_0053d7e2_13136",
+      "file": "DFLightAmbient_0053d7e2_13136.dxbc",
+      "size": 13136,
+      "checksum": "0053d7e249b14bf40ce57490acc735dc",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        10452,
+        10456,
+        10460
+      ],
+      "descriptorKeys": [
+        "0x09120202",
+        "0x09120282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_04e0ed28_9204",
+      "file": "DFLightAmbient_04e0ed28_9204.dxbc",
+      "size": 9204,
+      "checksum": "04e0ed2825ffde29e61a6121c567f292",
+      "gammaOffsets": [
+        2220,
+        2224,
+        2228,
+        7332,
+        7336,
+        7340
+      ],
+      "descriptorKeys": [
+        "0x01124202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_0b71be4b_64488",
+      "file": "DFLightAmbient_0b71be4b_64488.dxbc",
+      "size": 64488,
+      "checksum": "0b71be4b2e9de8cdfb0633db5ac4aee7",
+      "gammaOffsets": [
+        18248,
+        18252,
+        18256,
+        61804,
+        61808,
+        61812
+      ],
+      "descriptorKeys": [
+        "0x09820202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_0bbd4d8b_10156",
+      "file": "DFLightAmbient_0bbd4d8b_10156.dxbc",
+      "size": 10156,
+      "checksum": "0bbd4d8be992051e42bf4256fe217658",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7472,
+        7476,
+        7480
+      ],
+      "descriptorKeys": [
+        "0x00120202",
+        "0x00120282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_18e21c61_10084",
+      "file": "DFLightAmbient_18e21c61_10084.dxbc",
+      "size": 10084,
+      "checksum": "18e21c61ec323e5e24c30eff0c09c92a",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7400,
+        7404,
+        7408
+      ],
+      "descriptorKeys": [
+        "0x01120202",
+        "0x01120282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_1b7a77fd_9900",
+      "file": "DFLightAmbient_1b7a77fd_9900.dxbc",
+      "size": 9900,
+      "checksum": "1b7a77fd79f9b5411dae26580206ae1a",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7216,
+        7220,
+        7224
+      ],
+      "descriptorKeys": [
+        "0x08020202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_1d065bd1_2912",
+      "file": "DFLightAmbient_1d065bd1_2912.dxbc",
+      "size": 2912,
+      "checksum": "1d065bd1661b1845ffa89c9bd1d09cab",
+      "gammaOffsets": [
+        2120,
+        2124,
+        2128,
+        2636,
+        2640,
+        2644
+      ],
+      "descriptorKeys": [
+        "0x00020000",
+        "0x00020080",
+        "0x10020000"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_235b930a_26072",
+      "file": "DFLightAmbient_235b930a_26072.dxbc",
+      "size": 26072,
+      "checksum": "235b930a82cebf73bb325e6f4cd7f296",
+      "gammaOffsets": [
+        2280,
+        2284,
+        2288,
+        23388,
+        23392,
+        23396
+      ],
+      "descriptorKeys": [
+        "0x01420202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_246964c9_13208",
+      "file": "DFLightAmbient_246964c9_13208.dxbc",
+      "size": 13208,
+      "checksum": "246964c9022c40ecf9b467a903d636db",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        10524,
+        10528,
+        10532
+      ],
+      "descriptorKeys": [
+        "0x08120202",
+        "0x08120282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_267befcc_26144",
+      "file": "DFLightAmbient_267befcc_26144.dxbc",
+      "size": 26144,
+      "checksum": "267befccc690548b654302adf3d53d35",
+      "gammaOffsets": [
+        2280,
+        2284,
+        2288,
+        23460,
+        23464,
+        23468
+      ],
+      "descriptorKeys": [
+        "0x00420202",
+        "0x00420282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_2a28f204_30032",
+      "file": "DFLightAmbient_2a28f204_30032.dxbc",
+      "size": 30032,
+      "checksum": "2a28f204afab29960a7161d615589169",
+      "gammaOffsets": [
+        18188,
+        18192,
+        18196,
+        28160,
+        28164,
+        28168
+      ],
+      "descriptorKeys": [
+        "0x09224202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_2d5fee10_7976",
+      "file": "DFLightAmbient_2d5fee10_7976.dxbc",
+      "size": 7976,
+      "checksum": "2d5fee10d8a4783650d23c499f35bc87",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        5292,
+        5296,
+        5300
+      ],
+      "descriptorKeys": [
+        "0x00130202",
+        "0x00130282",
+        "0x01130282",
+        "0x08130202",
+        "0x08130282",
+        "0x09130282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_2fc73abc_24264",
+      "file": "DFLightAmbient_2fc73abc_24264.dxbc",
+      "size": 24264,
+      "checksum": "2fc73abc57654c883098f33ff842baec",
+      "gammaOffsets": [
+        18220,
+        18224,
+        18228,
+        21580,
+        21584,
+        21588
+      ],
+      "descriptorKeys": [
+        "0x00230202",
+        "0x00230282",
+        "0x01230282",
+        "0x08230202",
+        "0x08230282",
+        "0x09230282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_4cdeb9b6_7944",
+      "file": "DFLightAmbient_4cdeb9b6_7944.dxbc",
+      "size": 7944,
+      "checksum": "4cdeb9b641f5045bc23dc74b32139252",
+      "gammaOffsets": [
+        2220,
+        2224,
+        2228,
+        6072,
+        6076,
+        6080
+      ],
+      "descriptorKeys": [
+        "0x000A4202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_579bfa84_30932",
+      "file": "DFLightAmbient_579bfa84_30932.dxbc",
+      "size": 30932,
+      "checksum": "579bfa84f6ba4239c1f97652597804a4",
+      "gammaOffsets": [
+        18220,
+        18224,
+        18228,
+        28248,
+        28252,
+        28256
+      ],
+      "descriptorKeys": [
+        "0x09220202",
+        "0x09220282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_5905a51c_3604",
+      "file": "DFLightAmbient_5905a51c_3604.dxbc",
+      "size": 3604,
+      "checksum": "5905a51c9c19643323e09c1d160d1531",
+      "gammaOffsets": [
+        2060,
+        2064,
+        2068,
+        3360,
+        3364,
+        3368
+      ],
+      "descriptorKeys": [
+        "0x010F0282",
+        "0x090F0282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_68c5ffe0_26040",
+      "file": "DFLightAmbient_68c5ffe0_26040.dxbc",
+      "size": 26040,
+      "checksum": "68c5ffe052f7f27ab0ded461a2aec583",
+      "gammaOffsets": [
+        18188,
+        18192,
+        18196,
+        24168,
+        24172,
+        24176
+      ],
+      "descriptorKeys": [
+        "0x00224202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_6a73562e_26932",
+      "file": "DFLightAmbient_6a73562e_26932.dxbc",
+      "size": 26932,
+      "checksum": "6a73562e9457f8898d98fa4c31e22b75",
+      "gammaOffsets": [
+        18220,
+        18224,
+        18228,
+        24248,
+        24252,
+        24256
+      ],
+      "descriptorKeys": [
+        "0x00220202",
+        "0x00220282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_7006b78d_25236",
+      "file": "DFLightAmbient_7006b78d_25236.dxbc",
+      "size": 25236,
+      "checksum": "7006b78dbc69d83fbb42f536c77301d6",
+      "gammaOffsets": [
+        2248,
+        2252,
+        2256,
+        23364,
+        23368,
+        23372
+      ],
+      "descriptorKeys": [
+        "0x00424282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_89c3d428_20316",
+      "file": "DFLightAmbient_89c3d428_20316.dxbc",
+      "size": 20316,
+      "checksum": "89c3d428148b0987e885e3c599a0e19a",
+      "gammaOffsets": [
+        18028,
+        18032,
+        18036,
+        20072,
+        20076,
+        20080
+      ],
+      "descriptorKeys": [
+        "0x01270282",
+        "0x09270282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_a4452ef0_26860",
+      "file": "DFLightAmbient_a4452ef0_26860.dxbc",
+      "size": 26860,
+      "checksum": "a4452ef0999316572b11aaa738f94bca",
+      "gammaOffsets": [
+        18220,
+        18224,
+        18228,
+        24176,
+        24180,
+        24184
+      ],
+      "descriptorKeys": [
+        "0x01220202",
+        "0x01220282",
+        "0x11220202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_a59e261f_25968",
+      "file": "DFLightAmbient_a59e261f_25968.dxbc",
+      "size": 25968,
+      "checksum": "a59e261fe6657f189f67d0b7efcead7f",
+      "gammaOffsets": [
+        18188,
+        18192,
+        18196,
+        24096,
+        24100,
+        24104
+      ],
+      "descriptorKeys": [
+        "0x01224202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_a6f66042_47648",
+      "file": "DFLightAmbient_a6f66042_47648.dxbc",
+      "size": 47648,
+      "checksum": "a6f6604219b75ad141466e7a57a34b70",
+      "gammaOffsets": [
+        2248,
+        2252,
+        2256,
+        45776,
+        45780,
+        45784
+      ],
+      "descriptorKeys": [
+        "0x08424282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_affb527d_6960",
+      "file": "DFLightAmbient_affb527d_6960.dxbc",
+      "size": 6960,
+      "checksum": "affb527d995e7430e7514d60be1c4c9e",
+      "gammaOffsets": [
+        2224,
+        2228,
+        2232,
+        4312,
+        4316,
+        4320
+      ],
+      "descriptorKeys": [
+        "0x00020201",
+        "0x00020281",
+        "0x10020201"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_b4fb1f66_9316",
+      "file": "DFLightAmbient_b4fb1f66_9316.dxbc",
+      "size": 9316,
+      "checksum": "b4fb1f664e2990d169aaf9287d211f56",
+      "gammaOffsets": [
+        2280,
+        2284,
+        2288,
+        6632,
+        6636,
+        6640
+      ],
+      "descriptorKeys": [
+        "0x00430282",
+        "0x08430282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_bfd64867_6064",
+      "file": "DFLightAmbient_bfd64867_6064.dxbc",
+      "size": 6064,
+      "checksum": "bfd64867561a7b87755ee10d9fbb8d13",
+      "gammaOffsets": [
+        2192,
+        2196,
+        2200,
+        4228,
+        4232,
+        4236
+      ],
+      "descriptorKeys": [
+        "0x00024201",
+        "0x00024281"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_c3c4e934_9276",
+      "file": "DFLightAmbient_c3c4e934_9276.dxbc",
+      "size": 9276,
+      "checksum": "c3c4e93454eb1fbfd22b3547312b35bb",
+      "gammaOffsets": [
+        2220,
+        2224,
+        2228,
+        7404,
+        7408,
+        7412
+      ],
+      "descriptorKeys": [
+        "0x00124202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_c7851fe9_10140",
+      "file": "DFLightAmbient_c7851fe9_10140.dxbc",
+      "size": 10140,
+      "checksum": "c7851fe90e50b30a6b30cb9886807003",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7456,
+        7460,
+        7464
+      ],
+      "descriptorKeys": [
+        "0x080A0202",
+        "0x080A0282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_cb69199d_7552",
+      "file": "DFLightAmbient_cb69199d_7552.dxbc",
+      "size": 7552,
+      "checksum": "cb69199d7edfa435e5e13cba95fef452",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        4868,
+        4872,
+        4876
+      ],
+      "descriptorKeys": [
+        "0x000B0202",
+        "0x000B0282",
+        "0x010B0282",
+        "0x080B0202",
+        "0x080B0282",
+        "0x090B0282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_cbf41beb_10068",
+      "file": "DFLightAmbient_cbf41beb_10068.dxbc",
+      "size": 10068,
+      "checksum": "cbf41beb0504235b9ee81eb0474a018d",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7384,
+        7388,
+        7392
+      ],
+      "descriptorKeys": [
+        "0x090A0202",
+        "0x090A0282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_cc39d21d_31004",
+      "file": "DFLightAmbient_cc39d21d_31004.dxbc",
+      "size": 31004,
+      "checksum": "cc39d21d04d832703551b3aa94fa638c",
+      "gammaOffsets": [
+        18220,
+        18224,
+        18228,
+        28320,
+        28324,
+        28328
+      ],
+      "descriptorKeys": [
+        "0x08220202",
+        "0x08220282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_d33a9470_48564",
+      "file": "DFLightAmbient_d33a9470_48564.dxbc",
+      "size": 48564,
+      "checksum": "d33a9470d3fdeb4cd6bf62aadd9e5212",
+      "gammaOffsets": [
+        2280,
+        2284,
+        2288,
+        45880,
+        45884,
+        45888
+      ],
+      "descriptorKeys": [
+        "0x08420202",
+        "0x08420282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_da51d6a4_8760",
+      "file": "DFLightAmbient_da51d6a4_8760.dxbc",
+      "size": 8760,
+      "checksum": "da51d6a4abebcc35677468230360d1cd",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        6076,
+        6080,
+        6084
+      ],
+      "descriptorKeys": [
+        "0x010A0202",
+        "0x010A0282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_e43a849a_4028",
+      "file": "DFLightAmbient_e43a849a_4028.dxbc",
+      "size": 4028,
+      "checksum": "e43a849ad91d58910b8d4b8ba59e8e7b",
+      "gammaOffsets": [
+        2060,
+        2064,
+        2068,
+        3784,
+        3788,
+        3792
+      ],
+      "descriptorKeys": [
+        "0x01170282",
+        "0x09170282"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_e73d66f6_9828",
+      "file": "DFLightAmbient_e73d66f6_9828.dxbc",
+      "size": 9828,
+      "checksum": "e73d66f679442efd7ed03519a4a14533",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        7144,
+        7148,
+        7152
+      ],
+      "descriptorKeys": [
+        "0x09020202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_e96ff940_48492",
+      "file": "DFLightAmbient_e96ff940_48492.dxbc",
+      "size": 48492,
+      "checksum": "e96ff94053141239be53959d4bc35b3b",
+      "gammaOffsets": [
+        2280,
+        2284,
+        2288,
+        45808,
+        45812,
+        45816
+      ],
+      "descriptorKeys": [
+        "0x09420202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_f03e91f1_12260",
+      "file": "DFLightAmbient_f03e91f1_12260.dxbc",
+      "size": 12260,
+      "checksum": "f03e91f12e29d34d516597db0cf94921",
+      "gammaOffsets": [
+        2220,
+        2224,
+        2228,
+        10388,
+        10392,
+        10396
+      ],
+      "descriptorKeys": [
+        "0x09124202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_f442b3e1_7876",
+      "file": "DFLightAmbient_f442b3e1_7876.dxbc",
+      "size": 7876,
+      "checksum": "f442b3e1ae23cccd4a8a7227dbc838a9",
+      "gammaOffsets": [
+        2220,
+        2224,
+        2228,
+        6004,
+        6008,
+        6012
+      ],
+      "descriptorKeys": [
+        "0x00024202"
+      ]
+    },
+    {
+      "name": "DFLightAmbient_ff111fbf_8832",
+      "file": "DFLightAmbient_ff111fbf_8832.dxbc",
+      "size": 8832,
+      "checksum": "ff111fbf003015b7088a3735df14aa5c",
+      "gammaOffsets": [
+        2252,
+        2256,
+        2260,
+        6148,
+        6152,
+        6156
+      ],
+      "descriptorKeys": [
+        "0x000A0202",
+        "0x000A0282"
+      ]
+    }
+  ]
+}

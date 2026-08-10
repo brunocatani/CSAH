@@ -80,16 +80,29 @@ set(WRIST_PANEL_VIEW_SOURCE
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
+set(LINEAR_LIGHTING_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h")
 set(POINT_LIGHT_HOOK_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.cpp")
 set(QUALIFICATION_SOURCE
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.cpp")
 set(PLUGIN_SOURCE "${SOURCE_DIR}/XSEPlugin.cpp")
+set(DFLIGHT_AMBIENT_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/DFLightAmbientContracts.json")
+set(DFLIGHT_AMBIENT_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_dflight_ambient_contracts.py")
+set(DFLIGHT_AMBIENT_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedDFLightAmbientContracts.inl")
+set(DFLIGHT_AMBIENT_PATCH_HEADER
+  "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
+file(GLOB DFLIGHT_AMBIENT_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedDFLightAmbient/*.dxbc")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
+include("${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
@@ -103,6 +116,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+  "${LINEAR_LIGHTING_RUNTIME_HEADER}"
   "${POINT_LIGHT_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
@@ -110,8 +124,15 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h"
+  "${DFLIGHT_AMBIENT_PATCH_HEADER}"
+  "${SOURCE_DIR}/Features/linear_lighting/DxbcChecksum.h"
+  "${DFLIGHT_AMBIENT_CONTRACT_MANIFEST}"
+  "${DFLIGHT_AMBIENT_CONTRACT_GENERATOR}"
+  "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
+  ${DFLIGHT_AMBIENT_SHADER_ASSETS}
   "${SOURCE_DIR}/support/NearAllocation.h"
-  "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
+  "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake"
+  "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
   COMMAND "${CMAKE_COMMAND}"
@@ -168,6 +189,17 @@ add_custom_target(VerifyLinearLightingQualification ALL
   COMMENT "Verifying unattended Linear Lighting qualification contract"
   VERBATIM)
 
+add_custom_target(VerifyDFLightAmbientReplacement ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DDFLIGHT_AMBIENT_PATCH_HEADER=${DFLIGHT_AMBIENT_PATCH_HEADER}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake"
+  COMMENT "Verifying exact DFLight ambient replacement contract"
+  VERBATIM)
+
 set(LINEAR_LIGHTING_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/LinearLightingContracts.json")
 set(LINEAR_LIGHTING_CONTRACT_GENERATOR
@@ -181,6 +213,15 @@ add_custom_target(VerifyLinearLightingContracts ALL
     --output "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying generated Linear Lighting shader identities"
+  VERBATIM)
+
+add_custom_target(VerifyDFLightAmbientContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${DFLIGHT_AMBIENT_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying generated DFLight ambient shader identities"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -225,9 +266,12 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h"
+  "${DFLIGHT_AMBIENT_PATCH_HEADER}"
+  "${SOURCE_DIR}/Features/linear_lighting/DxbcChecksum.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
@@ -247,6 +291,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyDFLightAmbientReplacement
+  VerifyDFLightAmbientContracts
   VerifyDFTiledPointLightHook
   VerifyLinearLightingConstantScope
   VerifyLinearLightingContracts
@@ -501,6 +547,39 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.LinearLightingQualification
     COMMAND FO4VRCommunityShadersLinearLightingQualificationTests)
 
+  add_executable(FO4VRCommunityShadersDFLightAmbientShaderPatchTests
+    "${ROOT_DIR}/tests/DFLightAmbientShaderPatchTests.cpp"
+    "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
+  target_compile_features(
+    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.DFLightAmbientShaderPatch
+    COMMAND FO4VRCommunityShadersDFLightAmbientShaderPatchTests)
+
+  add_executable(FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests
+    "${ROOT_DIR}/tests/DFLightAmbientShaderBytecodeTests.cpp"
+    "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
+  target_compile_features(
+    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE d3d11)
+  add_test(NAME FO4VRCommunityShaders.DFLightAmbientShaderBytecode
+    COMMAND FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests
+      "${ROOT_DIR}")
+
   add_executable(FO4VRCommunityShadersDFTiledPointLightModelTests
     "${ROOT_DIR}/tests/DFTiledPointLightModelTests.cpp"
     "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h")
@@ -542,6 +621,12 @@ if(BUILD_FO4VR_CS_TESTS)
       "${LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+      --check)
+  add_test(NAME FO4VRCommunityShaders.DFLightAmbientRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${DFLIGHT_AMBIENT_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
       --check)
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"

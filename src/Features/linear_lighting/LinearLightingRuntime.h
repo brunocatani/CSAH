@@ -8,8 +8,11 @@
 
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cstdint>
 #include <mutex>
+#include <span>
+#include <vector>
 
 namespace community_shaders::linear_lighting
 {
@@ -65,6 +68,15 @@ namespace community_shaders::linear_lighting
         std::uint64_t replacementBinds{};
         std::uint64_t replacementConstantScopes{};
         std::uint64_t replacementConstantRestores{};
+        std::uint32_t verifiedDFLightAmbientShaderContracts{};
+        std::uint64_t matchingDFLightAmbientContractMask{};
+        std::uint64_t readyDFLightAmbientContractMask{};
+        std::uint32_t matchingDFLightAmbientShaders{};
+        std::uint32_t trackedDFLightAmbientShaders{};
+        std::uint64_t dFLightAmbientReplacementBinds{};
+        std::uint64_t dFLightAmbientReplacementBuilds{};
+        std::uint64_t dFLightAmbientReplacementFailures{};
+        std::uint64_t dFLightAmbientGammaRebuilds{};
         std::uint64_t geometryUpdates{};
         std::uint64_t rejectedGeometryUpdates{};
         std::uint64_t geometryResourceRejects{};
@@ -88,12 +100,16 @@ namespace community_shaders::linear_lighting
     {
         ID3D11PixelShader* shader{};
         std::uint32_t contractPlusOne{};
+        bool retainedForBind{};
     };
 
     class Runtime final
     {
     public:
         static constexpr std::size_t kShaderContractCount = 288;
+        static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
+        static constexpr std::size_t
+            kMaximumTrackedOriginalShadersPerContract = 8;
         static_assert(kShaderContractCount <= kContractMaskCapacity);
 
         static Runtime& get() noexcept;
@@ -137,6 +153,8 @@ namespace community_shaders::linear_lighting
             std::uint32_t contractPlusOne) const noexcept;
 
         [[nodiscard]] std::uint64_t geometryUpdateGeneration() const noexcept;
+        [[nodiscard]] bool dFLightAmbientDescriptorReady(
+            std::uint32_t descriptor) const noexcept;
         [[nodiscard]] static const char* shaderContractName(
             std::size_t contractIndex) noexcept;
 
@@ -167,10 +185,24 @@ namespace community_shaders::linear_lighting
                 SIZE_T,
                 ID3D11ClassLinkage*,
                 ID3D11PixelShader**)) noexcept;
+        [[nodiscard]] bool createDFLightAmbientReplacement(
+            std::span<const std::byte> originalBytecode,
+            std::size_t contractIndex,
+            float ambientGamma,
+            Microsoft::WRL::ComPtr<ID3D11PixelShader>& replacement) noexcept;
+        [[nodiscard]] bool rebuildDFLightAmbientReplacements(
+            float ambientGamma) noexcept;
+        [[nodiscard]] PixelShaderSelection selectDFLightAmbientShader(
+            ID3D11PixelShader* requested) noexcept;
         void applyQueuedSettingsForRenderBoundary() noexcept;
         void publishFrameData() noexcept;
 
-        static constexpr std::size_t kMaximumTrackedOriginalShadersPerContract = 8;
+        using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11PixelShader**);
 
         Settings settings_{};
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
@@ -178,6 +210,12 @@ namespace community_shaders::linear_lighting
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContractCount>
             replacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kDFLightAmbientShaderContractCount>
+            dFLightAmbientReplacementShaders_{};
+        std::array<std::vector<std::byte>,
+            kDFLightAmbientShaderContractCount>
+            dFLightAmbientOriginalBytecode_{};
         Microsoft::WRL::ComPtr<ID3D11PixelShader> currentlyRequestedShader_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> frameBuffer_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> geometryBuffer_;
@@ -189,6 +227,15 @@ namespace community_shaders::linear_lighting
                        kMaximumTrackedOriginalShadersPerContract>,
             kShaderContractCount>
             originalShaders_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kDFLightAmbientShaderContractCount>
+            dFLightAmbientOriginalShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kDFLightAmbientShaderContractCount>
+            dFLightAmbientOriginalShaders_{};
+        CreatePixelShaderFunction createPixelShader_{};
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
@@ -202,6 +249,16 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
+        std::atomic_uint64_t matchingDFLightAmbientContractMask_{};
+        std::atomic_uint64_t readyDFLightAmbientContractMask_{};
+        std::atomic_uint32_t dFLightAmbientGammaBits_{
+            std::bit_cast<std::uint32_t>(Settings{}.ambientGamma) };
+        std::atomic_uint32_t matchingDFLightAmbientShaders_{};
+        std::atomic_uint32_t trackedDFLightAmbientShaders_{};
+        std::atomic_uint64_t dFLightAmbientReplacementBinds_{};
+        std::atomic_uint64_t dFLightAmbientReplacementBuilds_{};
+        std::atomic_uint64_t dFLightAmbientReplacementFailures_{};
+        std::atomic_uint64_t dFLightAmbientGammaRebuilds_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};
         std::atomic_uint64_t geometryResourceRejects_{};
@@ -211,6 +268,8 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t frameDataUploads_{};
         std::array<std::atomic_bool, kShaderContractCount>
             originalCapacityWarningLogged_{};
+        std::array<std::atomic_bool, kDFLightAmbientShaderContractCount>
+            dFLightAmbientCapacityWarningLogged_{};
         std::mutex shaderRegistryMutex_;
         std::mutex queuedSettingsMutex_;
         Settings queuedSettings_{};

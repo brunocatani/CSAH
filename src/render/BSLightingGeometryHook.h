@@ -22,7 +22,7 @@ namespace community_shaders::render
         bool vtableCellOwned{};
         bool techniqueVtableCellOwned{};
         bool geometryVtableCellOwned{};
-        bool dFLightPowCallsitesOwned{};
+        bool dFLightProducerCallsitesOwned{};
         bool dFLightProducerEnabled{};
         std::uint64_t techniqueCalls{};
         std::uint64_t calls{};
@@ -31,9 +31,9 @@ namespace community_shaders::render
         std::uint64_t ambientDescriptors{};
         std::uint64_t directionalDescriptors{};
         std::uint64_t otherDescriptors{};
-        std::uint64_t ambientPowCalls{};
-        std::uint64_t ambientPowModified{};
-        std::uint64_t ambientPowPassThrough{};
+        std::uint64_t ambientTransformCalls{};
+        std::uint64_t ambientTransformPrepared{};
+        std::uint64_t ambientTransformPassThrough{};
         std::uint64_t directionalPowCalls{};
         std::uint64_t directionalPowModified{};
         std::uint64_t directionalPowPassThrough{};

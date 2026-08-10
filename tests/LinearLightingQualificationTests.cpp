@@ -21,7 +21,7 @@ namespace
             .drawDetoursOwned = true,
             .geometryHookOwned = true,
             .pointLightHookOwned = true,
-            .dFLightPowCallsitesOwned = true,
+            .dFLightProducerCallsitesOwned = true,
             .expectedShaderContracts = 288,
             .verifiedShaderContracts = 288,
             .matchingShaderContractMask = expectedContractMask(288),
@@ -29,7 +29,8 @@ namespace
             .geometryAccepted = 2,
             .deepestGeometrySourceStage = 2,
             .geometryUpdates = 2,
-            .ambientPowModified = 3,
+            .ambientTransformPrepared = 1,
+            .ambientShaderReplacementBinds = 1,
             .directionalPowModified = 3,
             .replacementShaderBinds = 1,
             .replacementDrawCalls = 1,
@@ -94,21 +95,27 @@ int main()
         "unowned point-light hook was not classified");
 
     auto dFLightHookLost = completeSample();
-    dFLightHookLost.dFLightPowCallsitesOwned = false;
+    dFLightHookLost.dFLightProducerCallsitesOwned = false;
     const auto dFLightHookEvaluation = evaluate(dFLightHookLost, false);
     passed &= expect(dFLightHookEvaluation.status == Status::failed,
-        "unowned DFLight pow callsites did not fail immediately");
+        "unowned DFLight producer callsites did not fail immediately");
     passed &= expect(
         (dFLightHookEvaluation.reasonMask &
-            Failure_DFLightPowCallsitesUnowned) != 0,
-        "unowned DFLight pow callsites were not classified");
+            Failure_DFLightProducerCallsitesUnowned) != 0,
+        "unowned DFLight producer callsites were not classified");
 
     auto noAmbientProof = completeSample();
-    noAmbientProof.ambientPowModified = 0;
+    noAmbientProof.ambientTransformPrepared = 0;
     passed &= expect(evaluate(noAmbientProof, false).status == Status::waiting,
         "missing ambient producer proof did not wait");
     passed &= expect(evaluate(noAmbientProof, true).status == Status::failed,
         "missing ambient producer proof did not fail at timeout");
+
+    auto noAmbientShaderProof = completeSample();
+    noAmbientShaderProof.ambientShaderReplacementBinds = 0;
+    passed &= expect(
+        evaluate(noAmbientShaderProof, false).status == Status::waiting,
+        "missing ambient shader-bind proof did not wait");
 
     auto noDirectionalProof = completeSample();
     noDirectionalProof.directionalPowModified = 0;

@@ -38,7 +38,7 @@ namespace community_shaders::diagnostics::qualification_model
         Failure_NoCommonVerifiedContract = 1ull << 19,
         Failure_ShaderContractCapacityExceeded = 1ull << 20,
         Failure_PointLightHookUnowned = 1ull << 21,
-        Failure_DFLightPowCallsitesUnowned = 1ull << 22,
+        Failure_DFLightProducerCallsitesUnowned = 1ull << 22,
         Failure_NoAmbientProducerProof = 1ull << 23,
         Failure_NoDirectionalProducerProof = 1ull << 24,
         Failure_DFLightInvalidPowResult = 1ull << 25,
@@ -54,7 +54,7 @@ namespace community_shaders::diagnostics::qualification_model
         bool drawDetoursOwned{};
         bool geometryHookOwned{};
         bool pointLightHookOwned{};
-        bool dFLightPowCallsitesOwned{};
+        bool dFLightProducerCallsitesOwned{};
         std::uint32_t expectedShaderContracts{};
         std::uint32_t verifiedShaderContracts{};
         linear_lighting::ContractMask matchingShaderContractMask{};
@@ -64,7 +64,8 @@ namespace community_shaders::diagnostics::qualification_model
         std::uint32_t deepestGeometrySourceStage{};
         std::uint64_t geometryUpdates{};
         std::uint64_t geometryUpdateRejects{};
-        std::uint64_t ambientPowModified{};
+        std::uint64_t ambientTransformPrepared{};
+        std::uint64_t ambientShaderReplacementBinds{};
         std::uint64_t directionalPowModified{};
         std::uint64_t dFLightInvalidPowResults{};
         std::uint64_t replacementShaderBinds{};
@@ -120,8 +121,8 @@ namespace community_shaders::diagnostics::qualification_model
         if (!sample.pointLightHookOwned) {
             result.reasonMask |= Failure_PointLightHookUnowned;
         }
-        if (!sample.dFLightPowCallsitesOwned) {
-            result.reasonMask |= Failure_DFLightPowCallsitesUnowned;
+        if (!sample.dFLightProducerCallsitesOwned) {
+            result.reasonMask |= Failure_DFLightProducerCallsitesUnowned;
         }
         if (sample.verifiedShaderContracts != sample.expectedShaderContracts) {
             result.reasonMask |= Failure_ShaderContractsIncomplete;
@@ -150,7 +151,8 @@ namespace community_shaders::diagnostics::qualification_model
         if (sample.geometryUpdateRejects > 0) {
             result.reasonMask |= Failure_GeometryUpdateRejected;
         }
-        if (sample.ambientPowModified == 0) {
+        if (sample.ambientTransformPrepared == 0 ||
+            sample.ambientShaderReplacementBinds == 0) {
             result.reasonMask |= Failure_NoAmbientProducerProof;
         }
         if (sample.directionalPowModified == 0) {
@@ -192,7 +194,7 @@ namespace community_shaders::diagnostics::qualification_model
             Failure_GeometryHookUnowned | Failure_ShaderContractsIncomplete |
             Failure_GeometryProviderUnavailable |
             Failure_PointLightHookUnowned |
-            Failure_DFLightPowCallsitesUnowned |
+            Failure_DFLightProducerCallsitesUnowned |
             Failure_DFLightInvalidPowResult |
             Failure_ShaderContractCapacityExceeded;
         if ((result.reasonMask & hardFailures) != 0) {

@@ -16,15 +16,13 @@ foreach(required IN ITEMS
     "kLightingStateRva = 0x068787F0"
     "kLightingStateEmissiveMultiplierOffset = 0x1BC"
     "kNativeScalarPowThunkRva = 0x029917A8"
-    "PowCallsite{ 0x02922B47, 0x0006EC5C }"
-    "PowCallsite{ 0x02922B5B, 0x0006EC48 }"
-    "PowCallsite{ 0x02922B6F, 0x0006EC34 }"
+    "kLocalAmbientTransformAccessorRva = 0x027ADD90"
+    "kFallbackAmbientTransformAccessorRva = 0x027AE6F0"
+    "PowCallsite{ 0x02922AB5, 0xFFE8BC36 }"
+    "PowCallsite{ 0x02922ABF, 0xFFE8B2CC }"
     "PowCallsite{ 0x029232E9, 0x0006E4BA }"
     "PowCallsite{ 0x029232FD, 0x0006E4A6 }"
     "PowCallsite{ 0x02923311, 0x0006E492 }"
-    "PowCallsite{ 0x0291E138, 0x0007366B }"
-    "PowCallsite{ 0x0291E14C, 0x00073657 }"
-    "PowCallsite{ 0x0291E160, 0x00073643 }"
     "PowCallsite{ 0x0291E9E7, 0x00072DBC }"
     "PowCallsite{ 0x0291E9FB, 0x00072DA8 }"
     "PowCallsite{ 0x0291EA0F, 0x00072D94 }"
@@ -32,16 +30,20 @@ foreach(required IN ITEMS
     "kGeometrySetupSignature"
     "kLightingStateAccessorSignature"
     "kNativeScalarPowThunkSignature"
+    "kLocalAmbientAccessorSignature"
+    "kFallbackAmbientAccessorSignature"
     "std::byte{ 0xFF }, std::byte{ 0x25 }, std::byte{ 0x3A }"
     "std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 }"
-    "originalCallsitesOwned(kAmbientPowCallsites)"
-    "originalCallsitesOwned(kDirectionalPowCallsites)"
-    "resolveRelativeCallTarget(instruction) != nativePow"
+    "originalCallsitesOwned(kDirectionalPowCallsites, nativePow)"
+    "kAmbientTransformCallsites"
     "allocateReachablePage("
     "DFLightDescriptorScope descriptorScope(descriptor)"
-    "hookAmbientScalarPow"
     "hookDirectionalScalarPow"
-    "dFLightPowCallsitesOwned"
+    "hookFallbackAmbientTransform"
+    "hookLocalAmbientTransform"
+    "dFLightProducerCallsitesOwned"
+    "directionalAmbientInputScale("
+    "scaleDirectionalAmbientTransform("
     "producerOwnershipReady"
     "publishDFLightProducerSettings("
     "completed.fetch_add(1, std::memory_order_release)"
@@ -61,6 +63,16 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "FO4VR renderer hook regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "hookAmbientScalarPow"
+    "kAmbientPowCallsites")
+  string(FIND "${source}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "FO4VR renderer hook regression: stale ambient CPU producer '${forbidden}'")
   endif()
 endforeach()
 

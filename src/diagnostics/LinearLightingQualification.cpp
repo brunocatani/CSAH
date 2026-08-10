@@ -60,9 +60,10 @@ namespace community_shaders::diagnostics
             std::uint64_t geometryUpdateRejectsBaseline{};
             std::uint64_t ambientDescriptorsBaseline{};
             std::uint64_t directionalDescriptorsBaseline{};
-            std::uint64_t ambientPowCallsBaseline{};
-            std::uint64_t ambientPowModifiedBaseline{};
-            std::uint64_t ambientPowPassThroughBaseline{};
+            std::uint64_t ambientTransformCallsBaseline{};
+            std::uint64_t ambientTransformPreparedBaseline{};
+            std::uint64_t ambientTransformPassThroughBaseline{};
+            std::uint64_t ambientReplacementBindsBaseline{};
             std::uint64_t directionalPowCallsBaseline{};
             std::uint64_t directionalPowModifiedBaseline{};
             std::uint64_t directionalPowPassThroughBaseline{};
@@ -245,8 +246,8 @@ namespace community_shaders::diagnostics
                 qualification_model::Failure_PointLightHookUnowned,
                 "point_light_hook_unowned");
             appendReason(reasons, mask,
-                qualification_model::Failure_DFLightPowCallsitesUnowned,
-                "dflight_pow_callsites_unowned");
+                qualification_model::Failure_DFLightProducerCallsitesUnowned,
+                "dflight_producer_callsites_unowned");
             appendReason(reasons, mask,
                 qualification_model::Failure_NoAmbientProducerProof,
                 "no_ambient_producer_proof");
@@ -299,8 +300,8 @@ namespace community_shaders::diagnostics
                 .pointLightHookOwned =
                     capture.pointLight.detourOwned &&
                     capture.pointLight.gammaLoadsOwned,
-                .dFLightPowCallsitesOwned =
-                    capture.geometry.dFLightPowCallsitesOwned,
+                .dFLightProducerCallsitesOwned =
+                    capture.geometry.dFLightProducerCallsitesOwned,
                 .expectedShaderContracts = static_cast<std::uint32_t>(
                     linear_lighting::Runtime::kShaderContractCount),
                 .verifiedShaderContracts =
@@ -324,9 +325,12 @@ namespace community_shaders::diagnostics
                 .geometryUpdateRejects = delta(
                     capture.runtime.rejectedGeometryUpdates,
                     session.geometryUpdateRejectsBaseline),
-                .ambientPowModified = delta(
-                    capture.geometry.ambientPowModified,
-                    session.ambientPowModifiedBaseline),
+                .ambientTransformPrepared = delta(
+                    capture.geometry.ambientTransformPrepared,
+                    session.ambientTransformPreparedBaseline),
+                .ambientShaderReplacementBinds = delta(
+                    capture.runtime.dFLightAmbientReplacementBinds,
+                    session.ambientReplacementBindsBaseline),
                 .directionalPowModified = delta(
                     capture.geometry.directionalPowModified,
                     session.directionalPowModifiedBaseline),
@@ -397,7 +401,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 5 },
+                    { "schemaVersion", 6 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -442,6 +446,36 @@ namespace community_shaders::diagnostics
                                 capture.runtime.matchingShadersCreated },
                             { "trackedOriginalShaders",
                                 capture.runtime.trackedOriginalShaders },
+                            { "verifiedDFLightAmbientShaderContracts",
+                                capture.runtime
+                                    .verifiedDFLightAmbientShaderContracts },
+                            { "matchingDFLightAmbientContractMask",
+                                capture.runtime
+                                    .matchingDFLightAmbientContractMask },
+                            { "readyDFLightAmbientContractMask",
+                                capture.runtime
+                                    .readyDFLightAmbientContractMask },
+                            { "matchingDFLightAmbientShaders",
+                                capture.runtime
+                                    .matchingDFLightAmbientShaders },
+                            { "trackedDFLightAmbientShaders",
+                                capture.runtime
+                                    .trackedDFLightAmbientShaders },
+                            { "dFLightAmbientReplacementBinds",
+                                delta(
+                                    capture.runtime
+                                        .dFLightAmbientReplacementBinds,
+                                    session
+                                        .ambientReplacementBindsBaseline) },
+                            { "dFLightAmbientReplacementBuilds",
+                                capture.runtime
+                                    .dFLightAmbientReplacementBuilds },
+                            { "dFLightAmbientReplacementFailures",
+                                capture.runtime
+                                    .dFLightAmbientReplacementFailures },
+                            { "dFLightAmbientGammaRebuilds",
+                                capture.runtime
+                                    .dFLightAmbientGammaRebuilds },
                             { "replacementConstantScopes",
                                 capture.runtime.replacementConstantScopes },
                             { "replacementConstantRestores",
@@ -485,16 +519,18 @@ namespace community_shaders::diagnostics
                                 delta(
                                     capture.geometry.directionalDescriptors,
                                     session.directionalDescriptorsBaseline) },
-                            { "ambientPowCalls",
+                            { "ambientTransformCalls",
                                 delta(
-                                    capture.geometry.ambientPowCalls,
-                                    session.ambientPowCallsBaseline) },
-                            { "ambientPowModified",
-                                capture.sample.ambientPowModified },
-                            { "ambientPowPassThrough",
+                                    capture.geometry.ambientTransformCalls,
+                                    session.ambientTransformCallsBaseline) },
+                            { "ambientTransformPrepared",
+                                capture.sample.ambientTransformPrepared },
+                            { "ambientTransformPassThrough",
                                 delta(
-                                    capture.geometry.ambientPowPassThrough,
-                                    session.ambientPowPassThroughBaseline) },
+                                    capture.geometry
+                                        .ambientTransformPassThrough,
+                                    session
+                                        .ambientTransformPassThroughBaseline) },
                             { "directionalPowCalls",
                                 delta(
                                     capture.geometry.directionalPowCalls,
@@ -553,9 +589,9 @@ namespace community_shaders::diagnostics
                             { "dFLightGeometryVtableOwned",
                                 capture.geometry
                                     .geometryVtableCellOwned },
-                            { "dFLightPowCallsitesOwned",
+                            { "dFLightProducerCallsitesOwned",
                                 capture.geometry
-                                    .dFLightPowCallsitesOwned },
+                                    .dFLightProducerCallsitesOwned },
                             { "dFLightValidationFailures",
                                 capture.geometry.validationFailures },
                             { "pointLightHookInstalled",
@@ -720,11 +756,14 @@ namespace community_shaders::diagnostics
                             geometry.ambientDescriptors,
                         .directionalDescriptorsBaseline =
                             geometry.directionalDescriptors,
-                        .ambientPowCallsBaseline = geometry.ambientPowCalls,
-                        .ambientPowModifiedBaseline =
-                            geometry.ambientPowModified,
-                        .ambientPowPassThroughBaseline =
-                            geometry.ambientPowPassThrough,
+                        .ambientTransformCallsBaseline =
+                            geometry.ambientTransformCalls,
+                        .ambientTransformPreparedBaseline =
+                            geometry.ambientTransformPrepared,
+                        .ambientTransformPassThroughBaseline =
+                            geometry.ambientTransformPassThrough,
+                        .ambientReplacementBindsBaseline =
+                            runtime.dFLightAmbientReplacementBinds,
                         .directionalPowCallsBaseline =
                             geometry.directionalPowCalls,
                         .directionalPowModifiedBaseline =

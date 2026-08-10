@@ -1,5 +1,6 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 
+#include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 
 #include "render/BSLightingGeometryHook.h"
@@ -31,7 +32,21 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
+        struct DFLightAmbientContractDefinition
+        {
+            const char* name{};
+            DxbcIdentity original{};
+            DFLightAmbientGammaOffsets gammaOffsets{};
+        };
+
+        struct DFLightAmbientDescriptorContract
+        {
+            std::uint32_t descriptor{};
+            std::uint32_t contractIndex{};
+        };
+
         #include "Features/linear_lighting/GeneratedLinearLightingContracts.inl"
+        #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
         struct EmbeddedShader
         {
@@ -157,7 +172,9 @@ namespace community_shaders::linear_lighting
 
             device_ = device;
             context_ = context;
+            createPixelShader_ = createPixelShader;
             if (!createResources(device, createPixelShader)) {
+                createPixelShader_ = nullptr;
                 device_.Reset();
                 context_.Reset();
                 return;
@@ -264,6 +281,112 @@ namespace community_shaders::linear_lighting
         return true;
     }
 
+    bool Runtime::createDFLightAmbientReplacement(
+        std::span<const std::byte> originalBytecode,
+        std::size_t contractIndex,
+        float ambientGamma,
+        Microsoft::WRL::ComPtr<ID3D11PixelShader>& replacement) noexcept
+    {
+        if (contractIndex >= kDFLightAmbientContracts.size() ||
+            !device_ || !createPixelShader_ || originalBytecode.empty()) {
+            return false;
+        }
+
+        const auto& contract = kDFLightAmbientContracts[contractIndex];
+        if (!matchesDxbcIdentity(
+                originalBytecode.data(),
+                originalBytecode.size(),
+                contract.original.size,
+                contract.original.checksum)) {
+            return false;
+        }
+
+        try {
+            std::vector<std::byte> patched(
+                originalBytecode.begin(), originalBytecode.end());
+            if (!patchDFLightAmbientGamma(
+                    patched,
+                    contract.gammaOffsets,
+                    ambientGamma)) {
+                logging::error(
+                    "DFLight ambient replacement '{}' failed its six-offset gamma identity gate.",
+                    contract.name);
+                return false;
+            }
+
+            Microsoft::WRL::ComPtr<ID3D11PixelShader> candidate;
+            const auto result = createPixelShader_(
+                device_.Get(),
+                patched.data(),
+                patched.size(),
+                nullptr,
+                candidate.GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "DFLight ambient replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    contract.name,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+            replacement = std::move(candidate);
+            dFLightAmbientReplacementBuilds_.fetch_add(
+                1, std::memory_order_relaxed);
+            return true;
+        } catch (const std::exception& error) {
+            logging::error(
+                "DFLight ambient replacement '{}' failed while copying bytecode: {}",
+                contract.name,
+                error.what());
+        } catch (...) {
+            logging::error(
+                "DFLight ambient replacement '{}' failed while copying bytecode with an unknown exception.",
+                contract.name);
+        }
+        return false;
+    }
+
+    bool Runtime::rebuildDFLightAmbientReplacements(
+        float ambientGamma) noexcept
+    {
+        std::scoped_lock lock(shaderRegistryMutex_);
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kDFLightAmbientShaderContractCount>
+            replacements{};
+        std::uint64_t rebuiltMask{};
+        for (std::size_t index = 0;
+             index < dFLightAmbientOriginalBytecode_.size();
+             ++index) {
+            const auto& original = dFLightAmbientOriginalBytecode_[index];
+            if (original.empty()) {
+                continue;
+            }
+            if (!createDFLightAmbientReplacement(
+                    original,
+                    index,
+                    ambientGamma,
+                    replacements[index])) {
+                dFLightAmbientReplacementFailures_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return false;
+            }
+            rebuiltMask |= 1ull << index;
+        }
+
+        for (std::size_t index = 0; index < replacements.size(); ++index) {
+            if (replacements[index]) {
+                dFLightAmbientReplacementShaders_[index] =
+                    std::move(replacements[index]);
+            }
+        }
+        dFLightAmbientGammaBits_.store(
+            std::bit_cast<std::uint32_t>(ambientGamma),
+            std::memory_order_release);
+        readyDFLightAmbientContractMask_.fetch_or(
+            rebuiltMask, std::memory_order_release);
+        dFLightAmbientGammaRebuilds_.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+
     void Runtime::onPixelShaderCreated(
         const void* bytecode,
         SIZE_T bytecodeLength,
@@ -285,35 +408,150 @@ namespace community_shaders::linear_lighting
                 break;
             }
         }
-        if (contractIndex == kShaderContracts.size()) {
+        if (contractIndex != kShaderContracts.size()) {
+            matchingShaderContractMask_.set(
+                contractIndex,
+                std::memory_order_relaxed);
+            matchingShadersCreated_.fetch_add(1, std::memory_order_relaxed);
+            std::scoped_lock lock(shaderRegistryMutex_);
+            auto& owners = originalShaderOwners_[contractIndex];
+            auto& slots = originalShaders_[contractIndex];
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                if (slots[index].load(std::memory_order_relaxed) == shader) {
+                    return;
+                }
+                if (!owners[index]) {
+                    owners[index] = shader;
+                    slots[index].store(shader, std::memory_order_release);
+                    trackedOriginalShaders_.fetch_add(
+                        1, std::memory_order_relaxed);
+                    return;
+                }
+            }
+            if (!originalCapacityWarningLogged_[contractIndex].exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Linear Lighting original-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                    kShaderContracts[contractIndex].name);
+            }
             return;
         }
 
-        matchingShaderContractMask_.set(
-            contractIndex,
+        std::size_t ambientContractIndex = kDFLightAmbientContracts.size();
+        for (std::size_t index = 0;
+             index < kDFLightAmbientContracts.size();
+             ++index) {
+            const auto& identity = kDFLightAmbientContracts[index].original;
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                ambientContractIndex = index;
+                break;
+            }
+        }
+        if (ambientContractIndex == kDFLightAmbientContracts.size()) {
+            return;
+        }
+
+        matchingDFLightAmbientContractMask_.fetch_or(
+            1ull << ambientContractIndex,
             std::memory_order_relaxed);
-        matchingShadersCreated_.fetch_add(1, std::memory_order_relaxed);
+        matchingDFLightAmbientShaders_.fetch_add(
+            1, std::memory_order_relaxed);
         std::scoped_lock lock(shaderRegistryMutex_);
-        auto& owners = originalShaderOwners_[contractIndex];
-        auto& slots = originalShaders_[contractIndex];
+        auto& owners =
+            dFLightAmbientOriginalShaderOwners_[ambientContractIndex];
+        auto& slots = dFLightAmbientOriginalShaders_[ambientContractIndex];
         for (std::size_t index = 0; index < slots.size(); ++index) {
             if (slots[index].load(std::memory_order_relaxed) == shader) {
                 return;
             }
             if (!owners[index]) {
+                if (dFLightAmbientOriginalBytecode_[ambientContractIndex].empty()) {
+                    const auto* begin = static_cast<const std::byte*>(bytecode);
+                    try {
+                        dFLightAmbientOriginalBytecode_[ambientContractIndex]
+                            .assign(begin, begin + bytecodeLength);
+                    } catch (const std::exception& error) {
+                        logging::error(
+                            "DFLight ambient bytecode capture '{}' failed: {}",
+                            kDFLightAmbientContracts[ambientContractIndex].name,
+                            error.what());
+                        dFLightAmbientReplacementFailures_.fetch_add(
+                            1, std::memory_order_relaxed);
+                        return;
+                    } catch (...) {
+                        logging::error(
+                            "DFLight ambient bytecode capture '{}' failed with an unknown exception.",
+                            kDFLightAmbientContracts[ambientContractIndex].name);
+                        dFLightAmbientReplacementFailures_.fetch_add(
+                            1, std::memory_order_relaxed);
+                        return;
+                    }
+                }
+                if (!dFLightAmbientReplacementShaders_[ambientContractIndex]) {
+                    if (!createDFLightAmbientReplacement(
+                            dFLightAmbientOriginalBytecode_[ambientContractIndex],
+                            ambientContractIndex,
+                            std::bit_cast<float>(
+                                dFLightAmbientGammaBits_.load(
+                                    std::memory_order_acquire)),
+                            dFLightAmbientReplacementShaders_[ambientContractIndex])) {
+                        dFLightAmbientReplacementFailures_.fetch_add(
+                            1, std::memory_order_relaxed);
+                    } else {
+                        readyDFLightAmbientContractMask_.fetch_or(
+                            1ull << ambientContractIndex,
+                            std::memory_order_release);
+                    }
+                }
                 owners[index] = shader;
                 slots[index].store(shader, std::memory_order_release);
-                trackedOriginalShaders_.fetch_add(1, std::memory_order_relaxed);
+                trackedDFLightAmbientShaders_.fetch_add(
+                    1, std::memory_order_relaxed);
                 return;
             }
         }
-        if (!originalCapacityWarningLogged_[contractIndex].exchange(
+        if (!dFLightAmbientCapacityWarningLogged_[ambientContractIndex].exchange(
                 true,
                 std::memory_order_relaxed)) {
             logging::warn(
-                "Linear Lighting original-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
-                kShaderContracts[contractIndex].name);
+                "DFLight ambient original-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                kDFLightAmbientContracts[ambientContractIndex].name);
         }
+    }
+
+    PixelShaderSelection Runtime::selectDFLightAmbientShader(
+        ID3D11PixelShader* requested) noexcept
+    {
+        for (std::size_t contractIndex = 0;
+             contractIndex < dFLightAmbientOriginalShaders_.size();
+             ++contractIndex) {
+            for (const auto& slot :
+                 dFLightAmbientOriginalShaders_[contractIndex]) {
+                if (slot.load(std::memory_order_acquire) != requested) {
+                    continue;
+                }
+
+                std::scoped_lock lock(shaderRegistryMutex_);
+                if (slot.load(std::memory_order_relaxed) != requested) {
+                    return { requested, 0, false };
+                }
+                auto* replacement =
+                    dFLightAmbientReplacementShaders_[contractIndex].Get();
+                if (!replacement) {
+                    return { requested, 0, false };
+                }
+                replacement->AddRef();
+                dFLightAmbientReplacementBinds_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { replacement, 0, true };
+            }
+        }
+        return { requested, 0, false };
     }
 
     PixelShaderSelection Runtime::selectPixelShader(
@@ -355,8 +593,13 @@ namespace community_shaders::linear_lighting
             }
         }
         if (!replacement) {
+            const auto ambientSelection =
+                selectDFLightAmbientShader(requested);
+            if (ambientSelection.shader != requested) {
+                return ambientSelection;
+            }
             unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            return { requested, 0 };
+            return { requested, 0, false };
         }
 
         auto noContractObserved = 0u;
@@ -366,7 +609,7 @@ namespace community_shaders::linear_lighting
             std::memory_order_release,
             std::memory_order_relaxed);
         replacementBinds_.fetch_add(1, std::memory_order_relaxed);
-        return { replacement, replacementContractPlusOne };
+        return { replacement, replacementContractPlusOne, false };
     }
 
     ScopedReplacementPixelConstants Runtime::scopeReplacementPixelConstants(
@@ -429,6 +672,27 @@ namespace community_shaders::linear_lighting
     std::uint64_t Runtime::geometryUpdateGeneration() const noexcept
     {
         return geometryUpdates_.load(std::memory_order_acquire);
+    }
+
+    bool Runtime::dFLightAmbientDescriptorReady(
+        std::uint32_t descriptor) const noexcept
+    {
+        const auto found = std::lower_bound(
+            kDFLightAmbientDescriptorContracts.begin(),
+            kDFLightAmbientDescriptorContracts.end(),
+            descriptor,
+            [](const DFLightAmbientDescriptorContract& contract,
+                std::uint32_t value) {
+                return contract.descriptor < value;
+            });
+        if (found == kDFLightAmbientDescriptorContracts.end() ||
+            found->descriptor != descriptor ||
+            found->contractIndex >= kDFLightAmbientShaderContractCount) {
+            return false;
+        }
+        return (readyDFLightAmbientContractMask_.load(
+                    std::memory_order_acquire) &
+                   (1ull << found->contractIndex)) != 0;
     }
 
     const char* Runtime::shaderContractName(
@@ -516,7 +780,18 @@ namespace community_shaders::linear_lighting
 
     void Runtime::applySettings(const Settings& settings) noexcept
     {
-        settings_ = sanitize(settings);
+        auto next = sanitize(settings);
+        if (next.ambientGamma != settings_.ambientGamma && device_ &&
+            !rebuildDFLightAmbientReplacements(next.ambientGamma)) {
+            logging::error(
+                "DFLight ambient gamma update failed to rebuild every observed replacement; retaining gamma {} while applying the remaining settings.",
+                settings_.ambientGamma);
+            next.ambientGamma = settings_.ambientGamma;
+        }
+        settings_ = next;
+        dFLightAmbientGammaBits_.store(
+            std::bit_cast<std::uint32_t>(settings_.ambientGamma),
+            std::memory_order_release);
         enabled_.store(settings_.enabled, std::memory_order_release);
         publishDFTiledPointLightSettings(settings_);
         render::publishDFLightProducerSettings(settings_);
@@ -562,6 +837,33 @@ namespace community_shaders::linear_lighting
                 replacementConstantScopes_.load(std::memory_order_relaxed),
             .replacementConstantRestores =
                 replacementConstantRestores_.load(std::memory_order_relaxed),
+            .verifiedDFLightAmbientShaderContracts =
+                static_cast<std::uint32_t>(
+                    kDFLightAmbientContracts.size()),
+            .matchingDFLightAmbientContractMask =
+                matchingDFLightAmbientContractMask_.load(
+                    std::memory_order_relaxed),
+            .readyDFLightAmbientContractMask =
+                readyDFLightAmbientContractMask_.load(
+                    std::memory_order_acquire),
+            .matchingDFLightAmbientShaders =
+                matchingDFLightAmbientShaders_.load(
+                    std::memory_order_relaxed),
+            .trackedDFLightAmbientShaders =
+                trackedDFLightAmbientShaders_.load(
+                    std::memory_order_relaxed),
+            .dFLightAmbientReplacementBinds =
+                dFLightAmbientReplacementBinds_.load(
+                    std::memory_order_relaxed),
+            .dFLightAmbientReplacementBuilds =
+                dFLightAmbientReplacementBuilds_.load(
+                    std::memory_order_relaxed),
+            .dFLightAmbientReplacementFailures =
+                dFLightAmbientReplacementFailures_.load(
+                    std::memory_order_relaxed),
+            .dFLightAmbientGammaRebuilds =
+                dFLightAmbientGammaRebuilds_.load(
+                    std::memory_order_relaxed),
             .geometryUpdates = geometryUpdates_.load(std::memory_order_relaxed),
             .rejectedGeometryUpdates = rejectedGeometryUpdates_.load(std::memory_order_relaxed),
             .geometryResourceRejects =
