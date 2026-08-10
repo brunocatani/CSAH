@@ -8,6 +8,9 @@ struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float4 pipboyTexCoord : TEXCOORD4;
+#endif
 #if (EFFECT_TECHNIQUE & 0x01000000) != 0
     float4 depthTestData : TEXCOORD3;
 #endif
@@ -15,6 +18,9 @@ struct EffectPixelInput
     float4 vertexColor : COLOR0;
 #endif
     float4 fogParam : COLOR1;
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float3 pipboyData : TEXCOORD1;
+#endif
 #if (EFFECT_TECHNIQUE & 0x1080) != 0
     float3 particleData : TEXCOORD5;
 #endif
@@ -41,14 +47,26 @@ cbuffer EffectPerMaterial : register(b1)
 
 cbuffer EffectPerGeometry : register(b2)
 {
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float4 EffectUnusedPerGeometryBeforePipboy[12] : packoffset(c0);
+    float4 EffectPipboyControls : packoffset(c12);
+    float4 EffectUnusedPerGeometryAfterPipboy[7] : packoffset(c13);
+#else
     float4 EffectUnusedPerGeometry[20] : packoffset(c0);
+#endif
     float4 EffectPropertyColor : packoffset(c20);
     float4 EffectAlphaTest : packoffset(c21);
 };
 
 SamplerState EffectSampler : register(s0);
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+SamplerState EffectPipboySampler : register(s6);
+#endif
 Texture2D<float4> EffectTexture : register(t0);
 Texture2D<float4> EffectDepthTexture : register(t3);
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+Texture2D<float4> EffectPipboyTexture : register(t6);
+#endif
 #if (EFFECT_TECHNIQUE & 0x01000000) != 0
 Texture2D<float4> EffectDepthTestTexture : register(t8);
 #endif
@@ -60,6 +78,16 @@ float4 LinearLightingEffectVertexColor(float4 color)
     }
     return exp2(log2(color) * 2.2f);
 }
+
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+float4 LinearLightingEffectPipboyColor(float4 color)
+{
+    if (enableLinearLighting != 0u) {
+        return float4(LinearLightingEffect(color.xyz), color.w);
+    }
+    return exp2(log2(color) * 2.2f);
+}
+#endif
 
 float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
 {
@@ -140,11 +168,32 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     float3 blendedColor = lerp(lightColor, fogColor, fogFactor);
 #endif
 #if (EFFECT_TECHNIQUE & 0x40) == 0 || (EFFECT_TECHNIQUE & 0x20) != 0
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float alpha = baseColor.w * EffectPropertyColor.w;
+#else
     const float alpha = baseColor.w * EffectPropertyColor.w;
+#endif
 #endif
     if (alpha - EffectAlphaTest.x < 0.0f) {
         discard;
     }
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float4 pipboyColor = EffectPipboyTexture.Sample(
+        EffectPipboySampler,
+        input.texCoord.xy);
+    if (EffectPipboyControls.y == 0.0f) {
+        pipboyColor = LinearLightingEffectPipboyColor(pipboyColor);
+    }
+    blendedColor += pipboyColor.xyz * EffectPipboyControls.w *
+        (enableLinearLighting != 0u ? otherEffectMult : 1.0f);
+    const bool usePipboyAlpha = EffectAlphaTest.w != 0.0f;
+    alpha = usePipboyAlpha ? pipboyColor.w : alpha;
+    if (usePipboyAlpha && EffectPipboyControls.x != 0.0f) {
+        blendedColor *= EffectBaseColor.w;
+        alpha *= EffectBaseColor.w;
+    }
+    alpha *= usePipboyAlpha ? EffectPipboyControls.z : 1.0f;
+#endif
     [branch] if (EffectAlphaTest.y < 1.0f) {
 #if (EFFECT_TECHNIQUE & 0x4) != 0
         const float sampledAlpha = textureColor.w;

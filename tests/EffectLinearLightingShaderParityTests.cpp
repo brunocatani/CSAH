@@ -35,6 +35,9 @@ namespace
     constexpr Pixel kDepthTexture{ 1.0F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kDepthTestTexturePass{ 1.0F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kDepthTestTextureFail{ 0.0F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kPipboyTexture{ 0.25F, 0.5F, 0.75F, 0.65F };
+    constexpr Pixel kPipboyControlsConverted{ 1.0F, 0.0F, 0.8F, 0.45F };
+    constexpr Pixel kPipboyControlsRaw{ 0.0F, 1.0F, 0.6F, 0.4F };
     constexpr Pixel kDepthParameters{ 0.0F, 1.0F, 1.0F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
@@ -84,6 +87,11 @@ namespace
             return (descriptor & 0x01000000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool pipboy() const noexcept
+        {
+            return (descriptor & 0x00100000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool premultipliedAlpha() const noexcept
         {
             return (descriptor & 0x40000000U) != 0;
@@ -95,7 +103,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 45> kEffectContracts{ {
+    constexpr std::array<EffectContract, 53> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -122,6 +130,12 @@ namespace
         { "EffectVertexColorTexturedAdditiveSoft_00001025", 0x00001025U },
         { "EffectVertexColorMultiplyBlendSoft_00001041", 0x00001041U },
         { "EffectVertexColorTexturedMultiplyBlendParticleSoft_000010CD", 0x000010CDU },
+        { "EffectPipboy_00100000", 0x00100000U },
+        { "EffectVertexColorPipboy_00100001", 0x00100001U },
+        { "EffectTexturedPipboy_00100004", 0x00100004U },
+        { "EffectVertexColorTexturedPipboy_00100005", 0x00100005U },
+        { "EffectTexturedAdditivePipboy_00100024", 0x00100024U },
+        { "EffectVertexColorTexturedAdditivePipboy_00100025", 0x00100025U },
         { "EffectDepthTest_01000000", 0x01000000U },
         { "EffectTexturedAdditiveDepthTest_01000024", 0x01000024U },
         { "EffectPremultipliedAlpha_40000000", 0x40000000U },
@@ -140,6 +154,8 @@ namespace
         { "EffectVertexColorTexturedSoftPremultipliedAlpha_40001005", 0x40001005U },
         { "EffectTexturedAdditiveSoftPremultipliedAlpha_40001024", 0x40001024U },
         { "EffectVertexColorTexturedAdditiveSoftPremultipliedAlpha_40001025", 0x40001025U },
+        { "EffectTexturedPipboyPremultipliedAlpha_40100004", 0x40100004U },
+        { "EffectVertexColorTexturedPipboyPremultipliedAlpha_40100005", 0x40100005U },
         { "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044", 0x50000044U },
     } };
 
@@ -159,10 +175,16 @@ namespace
 
     struct alignas(16) EffectPerGeometry
     {
-        std::array<Pixel, 20> unused{};
+        std::array<Pixel, 12> unusedBeforePipboy{};
+        Pixel pipboyControls{};
+        std::array<Pixel, 7> unusedAfterPipboy{};
         Pixel propertyColor{};
         Pixel alphaTest{};
     };
+    static_assert(sizeof(EffectPerGeometry) == 22 * sizeof(Pixel));
+    static_assert(offsetof(EffectPerGeometry, pipboyControls) == 12 * sizeof(Pixel));
+    static_assert(offsetof(EffectPerGeometry, propertyColor) == 20 * sizeof(Pixel));
+    static_assert(offsetof(EffectPerGeometry, alphaTest) == 21 * sizeof(Pixel));
 
     struct RenderTarget
     {
@@ -222,13 +244,17 @@ namespace
         ID3D11Device* device,
         bool vertexColored,
         bool needsParticleData,
-        bool depthTested)
+        bool depthTested,
+        bool pipboy)
     {
         constexpr char source[] = R"(
 struct VSOutput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#ifdef EFFECT_PIPBOY
+    float4 pipboyTexCoord : TEXCOORD4;
+#endif
 #ifdef EFFECT_DEPTH_TEST
     float4 depthTestData : TEXCOORD3;
 #endif
@@ -236,6 +262,9 @@ struct VSOutput
     float4 vertexColor : COLOR0;
 #endif
     float4 color : COLOR1;
+#ifdef EFFECT_PIPBOY
+    float3 pipboyData : TEXCOORD1;
+#endif
 #ifdef EFFECT_PARTICLE
     float3 particleData : TEXCOORD5;
 #endif
@@ -254,6 +283,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     VSOutput output;
     output.position = float4(positions[vertexId], 0.5, 1.0);
     output.texCoord = float4(0.5, 0.5, 0.0, 0.0);
+#ifdef EFFECT_PIPBOY
+    output.pipboyTexCoord = 0.0.xxxx;
+    output.pipboyData = 0.0.xxx;
+#endif
 #ifdef EFFECT_DEPTH_TEST
     output.depthTestData = float4(0.0, 0.0, 0.25, 0.0);
 #endif
@@ -272,7 +305,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 4> macros{};
+        std::array<D3D_SHADER_MACRO, 5> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
@@ -282,6 +315,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
         if (depthTested) {
             macros[macroCount++] = { "EFFECT_DEPTH_TEST", "1" };
+        }
+        if (pipboy) {
+            macros[macroCount++] = { "EFFECT_PIPBOY", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -398,6 +434,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* texture,
         ID3D11ShaderResourceView* depthTexture,
         ID3D11ShaderResourceView* depthTestTexture,
+        ID3D11ShaderResourceView* pipboyTexture,
         ID3D11SamplerState* sampler)
     {
         auto target = createRenderTarget(device);
@@ -417,8 +454,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->PSSetShaderResources(0, 1, &texture);
         context->PSSetShaderResources(3, 1, &depthTexture);
+        context->PSSetShaderResources(6, 1, &pipboyTexture);
         context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
+        context->PSSetSamplers(6, 1, &sampler);
         context->Draw(3, 0);
 
         context->CopyResource(target.staging.Get(), target.texture.Get());
@@ -433,6 +472,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* nullTexture{};
         context->PSSetShaderResources(0, 1, &nullTexture);
         context->PSSetShaderResources(3, 1, &nullTexture);
+        context->PSSetShaderResources(6, 1, &nullTexture);
         context->PSSetShaderResources(8, 1, &nullTexture);
         ID3D11RenderTargetView* nullTarget{};
         context->OMSetRenderTargets(1, &nullTarget, nullptr);
@@ -487,7 +527,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return intersectionFade * cameraFade;
     }
 
-    Pixel expectedVanilla(const EffectContract& contract)
+    Pixel expectedVanilla(
+        const EffectContract& contract,
+        const Pixel& pipboyControls = kPipboyControlsConverted,
+        bool usePipboyAlpha = true)
     {
         Pixel result{};
         auto alpha = kBaseColor[3] *
@@ -498,6 +541,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             kPropertyColor[3];
         if (contract.soft()) {
             alpha *= expectedSoftFade();
+        }
+        auto pipboyColor = kPipboyTexture;
+        if (contract.pipboy() && pipboyControls[1] == 0.0F) {
+            for (auto& channel : pipboyColor) {
+                channel = std::pow(channel, 2.2F);
+            }
+        }
+        auto outputAlpha = alpha;
+        if (contract.pipboy()) {
+            outputAlpha = usePipboyAlpha ? pipboyColor[3] : alpha;
+            if (usePipboyAlpha && pipboyControls[0] != 0.0F) {
+                outputAlpha *= kBaseColor[3];
+            }
+            outputAlpha *= usePipboyAlpha ? pipboyControls[2] : 1.0F;
         }
         for (std::size_t channel = 0; channel < 3; ++channel) {
             const auto baseColor = kBaseColor[channel] *
@@ -520,17 +577,26 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 result[channel] = lightColor +
                     kFogParam[3] * (kFogParam[channel] - lightColor);
             }
+            if (contract.pipboy()) {
+                result[channel] +=
+                    pipboyColor[channel] * pipboyControls[3];
+                if (usePipboyAlpha && pipboyControls[0] != 0.0F) {
+                    result[channel] *= kBaseColor[3];
+                }
+            }
             if (contract.premultipliedAlpha()) {
-                result[channel] *= alpha;
+                result[channel] *= outputAlpha;
             }
         }
-        result[3] = alpha;
+        result[3] = outputAlpha;
         return result;
     }
 
     Pixel expectedEnabled(
         const EffectContract& contract,
-        const Settings& settings)
+        const Settings& settings,
+        const Pixel& pipboyControls = kPipboyControlsConverted,
+        bool usePipboyAlpha = true)
     {
         Pixel result{};
         auto rawAlpha = kBaseColor[3] *
@@ -540,8 +606,27 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (contract.soft()) {
             rawAlpha *= expectedSoftFade();
         }
+        auto pipboyColor = kPipboyTexture;
+        if (contract.pipboy() && pipboyControls[1] == 0.0F) {
+            for (std::size_t channel = 0; channel < 3; ++channel) {
+                pipboyColor[channel] = std::pow(
+                    std::abs(pipboyColor[channel]),
+                    settings.effectGamma);
+            }
+        }
+        auto compositeRawAlpha = rawAlpha;
+        if (contract.pipboy()) {
+            compositeRawAlpha = usePipboyAlpha ? pipboyColor[3] : rawAlpha;
+            if (usePipboyAlpha && pipboyControls[0] != 0.0F) {
+                compositeRawAlpha *= kBaseColor[3];
+            }
+            compositeRawAlpha *=
+                usePipboyAlpha ? pipboyControls[2] : 1.0F;
+        }
         const auto outputAlpha =
-            std::pow(std::abs(rawAlpha), settings.effectAlphaGamma);
+            std::pow(
+                std::abs(compositeRawAlpha),
+                settings.effectAlphaGamma);
         const auto fogFactor =
             std::pow(std::abs(kFogParam[3]), settings.fogAlphaGamma);
         for (std::size_t channel = 0; channel < 3; ++channel) {
@@ -574,6 +659,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
                 result[channel] = lightColor +
                     fogFactor * (fogColor - lightColor);
+            }
+            if (contract.pipboy()) {
+                result[channel] += pipboyColor[channel] *
+                    pipboyControls[3] * settings.otherEffectMultiplier;
+                if (usePipboyAlpha && pipboyControls[0] != 0.0F) {
+                    result[channel] *= kBaseColor[3];
+                }
             }
             if (contract.premultipliedAlpha()) {
                 result[channel] *= outputAlpha;
@@ -613,14 +705,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         materialConstants.lightingInfluence[1] = kSoftDepthScale;
         materialConstants.depthTestParameters[0] = 1.0F;
         EffectPerGeometry geometryConstants{};
+        geometryConstants.pipboyControls = kPipboyControlsConverted;
         geometryConstants.propertyColor = kPropertyColor;
-        geometryConstants.alphaTest = { 0.001F, 0.8F, 0.0F, 0.0F };
+        geometryConstants.alphaTest = { 0.001F, 0.8F, 0.0F, 1.0F };
+        auto rawPipboyGeometryConstants = geometryConstants;
+        rawPipboyGeometryConstants.pipboyControls = kPipboyControlsRaw;
+        rawPipboyGeometryConstants.alphaTest[3] = 0.0F;
         const auto techniqueBuffer =
             createConstantBuffer(device.Get(), techniqueConstants);
         const auto materialBuffer =
             createConstantBuffer(device.Get(), materialConstants);
         const auto geometryBuffer =
             createConstantBuffer(device.Get(), geometryConstants);
+        const auto rawPipboyGeometryBuffer =
+            createConstantBuffer(device.Get(), rawPipboyGeometryConstants);
 
         Settings disabledSettings{};
         disabledSettings.enabled = false;
@@ -646,6 +744,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             createTexture(device.Get(), kDepthTestTexturePass);
         const auto depthTestTextureFail =
             createTexture(device.Get(), kDepthTestTextureFail);
+        const auto pipboyTexture = createTexture(device.Get(), kPipboyTexture);
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
         samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -659,19 +758,27 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             "CreateSamplerState");
 
         const auto defaultVertexShader =
-            createVertexShader(device.Get(), false, false, false);
+            createVertexShader(device.Get(), false, false, false, false);
         const auto vertexColorVertexShader =
-            createVertexShader(device.Get(), true, false, false);
+            createVertexShader(device.Get(), true, false, false, false);
         const auto particleVertexShader =
-            createVertexShader(device.Get(), false, true, false);
+            createVertexShader(device.Get(), false, true, false, false);
         const auto vertexColorParticleVertexShader =
-            createVertexShader(device.Get(), true, true, false);
+            createVertexShader(device.Get(), true, true, false, false);
         const auto depthTestVertexShader =
-            createVertexShader(device.Get(), false, false, true);
+            createVertexShader(device.Get(), false, false, true, false);
+        const auto pipboyVertexShader =
+            createVertexShader(device.Get(), false, false, false, true);
+        const auto vertexColorPipboyVertexShader =
+            createVertexShader(device.Get(), true, false, false, true);
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
             auto* vertexShader = contract.depthTested() ?
                 depthTestVertexShader.Get() :
+                contract.pipboy() ?
+                (contract.vertexColored() ?
+                        vertexColorPipboyVertexShader.Get() :
+                        pipboyVertexShader.Get()) :
                 contract.needsParticleData() ?
                 (contract.vertexColored() ?
                         vertexColorParticleVertexShader.Get() :
@@ -693,17 +800,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 device.Get(), context.Get(), vertexShader,
                 vanillaShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(),
+                pipboyTexture.Get(), sampler.Get());
             const auto disabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(),
+                pipboyTexture.Get(), sampler.Get());
             const auto enabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), enabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(),
+                pipboyTexture.Get(), sampler.Get());
 
             const std::string label = contract.name;
             passed &= compare(
@@ -724,13 +834,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     vanillaShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
-                    depthTexture.Get(), depthTestTextureFail.Get(), sampler.Get());
+                    depthTexture.Get(), depthTestTextureFail.Get(),
+                    pipboyTexture.Get(), sampler.Get());
                 const auto replacementDiscard = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
-                    depthTexture.Get(), depthTestTextureFail.Get(), sampler.Get());
+                    depthTexture.Get(), depthTestTextureFail.Get(),
+                    pipboyTexture.Get(), sampler.Get());
                 constexpr Pixel discarded{};
                 passed &= compare(
                     vanillaDiscard,
@@ -741,12 +853,54 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     vanillaDiscard,
                     label + " disabled depth discard parity");
             }
+            if (contract.pipboy()) {
+                const auto vanillaRawPipboy = render(
+                    device.Get(), context.Get(), vertexShader,
+                    vanillaShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    pipboyTexture.Get(), sampler.Get());
+                const auto disabledRawPipboy = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    pipboyTexture.Get(), sampler.Get());
+                const auto enabledRawPipboy = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
+                    enabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    pipboyTexture.Get(), sampler.Get());
+                passed &= compare(
+                    vanillaRawPipboy,
+                    expectedVanilla(
+                        contract,
+                        kPipboyControlsRaw,
+                        false),
+                    label + " raw Pipboy vanilla model");
+                passed &= compare(
+                    disabledRawPipboy,
+                    vanillaRawPipboy,
+                    label + " raw Pipboy disabled parity");
+                passed &= compare(
+                    enabledRawPipboy,
+                    expectedEnabled(
+                        contract,
+                        enabledSettings,
+                        kPipboyControlsRaw,
+                        false),
+                    label + " raw Pipboy enabled model");
+            }
         }
         if (!passed) {
             return 1;
         }
         std::cout <<
-            "All forty-five Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All fifty-three Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

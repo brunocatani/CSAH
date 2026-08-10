@@ -264,6 +264,54 @@
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_DEPTH_TEST_PS"
   },
   {
+    "name": "EffectPipboy_00100000",
+    "descriptor": 1048576,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PIPBOY_PS"
+  },
+  {
+    "name": "EffectVertexColorPipboy_00100001",
+    "descriptor": 1048577,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_PIPBOY_PS"
+  },
+  {
+    "name": "EffectTexturedPipboy_00100004",
+    "descriptor": 1048580,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_PIPBOY_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedPipboy_00100005",
+    "descriptor": 1048581,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PIPBOY_PS"
+  },
+  {
+    "name": "EffectTexturedAdditivePipboy_00100024",
+    "descriptor": 1048612,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_PIPBOY_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditivePipboy_00100025",
+    "descriptor": 1048613,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_PIPBOY_PS"
+  },
+  {
+    "name": "EffectTexturedPipboyPremultipliedAlpha_40100004",
+    "descriptor": 1074790404,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_PIPBOY_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedPipboyPremultipliedAlpha_40100005",
+    "descriptor": 1074790405,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PIPBOY_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
     "name": "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044",
     "descriptor": 1342177348,
     "aliases": [],
