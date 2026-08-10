@@ -252,6 +252,18 @@
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_SOFT_PREMULTIPLIED_ALPHA_PS"
   },
   {
+    "name": "EffectDepthTest_01000000",
+    "descriptor": 16777216,
+    "aliases": [33554432],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_DEPTH_TEST_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveDepthTest_01000024",
+    "descriptor": 16777252,
+    "aliases": [33554468],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_DEPTH_TEST_PS"
+  },
+  {
     "name": "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044",
     "descriptor": 1342177348,
     "aliases": [],

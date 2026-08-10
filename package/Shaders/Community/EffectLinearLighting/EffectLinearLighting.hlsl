@@ -8,6 +8,9 @@ struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+    float4 depthTestData : TEXCOORD3;
+#endif
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     float4 vertexColor : COLOR0;
 #endif
@@ -30,6 +33,10 @@ cbuffer EffectPerMaterial : register(b1)
     float4 EffectBaseColor : packoffset(c0);
     float4 EffectUnusedPerMaterial : packoffset(c1);
     float4 EffectLightingInfluence : packoffset(c2);
+#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+    float4 EffectUnusedPerMaterialDepthTest : packoffset(c3);
+    float4 EffectDepthTestParameters : packoffset(c4);
+#endif
 };
 
 cbuffer EffectPerGeometry : register(b2)
@@ -42,6 +49,9 @@ cbuffer EffectPerGeometry : register(b2)
 SamplerState EffectSampler : register(s0);
 Texture2D<float4> EffectTexture : register(t0);
 Texture2D<float4> EffectDepthTexture : register(t3);
+#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+Texture2D<float4> EffectDepthTestTexture : register(t8);
+#endif
 
 float4 LinearLightingEffectVertexColor(float4 color)
 {
@@ -75,6 +85,16 @@ float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
 
 float4 PSMain(EffectPixelInput input) : SV_Target0
 {
+#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+    const int2 depthTestCoordinate = int2(
+        (input.depthTestData.xy + 1.0f) *
+        EffectDepthTestParameters.x * 0.5f);
+    const float depthTestSample = EffectDepthTestTexture.Load(
+        int3(depthTestCoordinate, 0)).x;
+    if (depthTestSample - input.depthTestData.z < 0.0f) {
+        discard;
+    }
+#endif
     float4 baseColor = EffectBaseColor;
     baseColor.xyz = LinearLightingEffect(baseColor.xyz);
 #if (EFFECT_TECHNIQUE & 0x1) != 0

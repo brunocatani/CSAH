@@ -33,11 +33,16 @@ namespace
     constexpr Pixel kFogParam{ 0.65F, 0.8F, 0.45F, 0.7F };
     constexpr Pixel kTextureColor{ 0.2F, 0.4F, 0.6F, 0.3F };
     constexpr Pixel kDepthTexture{ 1.0F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kDepthTestTexturePass{ 1.0F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kDepthTestTextureFail{ 0.0F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kDepthParameters{ 0.0F, 1.0F, 1.0F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
     constexpr float kSoftParticleDepth = 0.75F;
+    constexpr float kDepthTestValue = 0.25F;
+    static_assert(kDepthTestTexturePass[0] >= kDepthTestValue);
+    static_assert(kDepthTestTextureFail[0] < kDepthTestValue);
 
     struct EffectContract
     {
@@ -74,6 +79,11 @@ namespace
             return (descriptor & 0x1000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool depthTested() const noexcept
+        {
+            return (descriptor & 0x01000000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool premultipliedAlpha() const noexcept
         {
             return (descriptor & 0x40000000U) != 0;
@@ -85,7 +95,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 43> kEffectContracts{ {
+    constexpr std::array<EffectContract, 45> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -112,6 +122,8 @@ namespace
         { "EffectVertexColorTexturedAdditiveSoft_00001025", 0x00001025U },
         { "EffectVertexColorMultiplyBlendSoft_00001041", 0x00001041U },
         { "EffectVertexColorTexturedMultiplyBlendParticleSoft_000010CD", 0x000010CDU },
+        { "EffectDepthTest_01000000", 0x01000000U },
+        { "EffectTexturedAdditiveDepthTest_01000024", 0x01000024U },
         { "EffectPremultipliedAlpha_40000000", 0x40000000U },
         { "EffectVertexColorPremultipliedAlpha_40000001", 0x40000001U },
         { "EffectTexturedPremultipliedAlpha_40000004", 0x40000004U },
@@ -141,6 +153,8 @@ namespace
         Pixel baseColor{};
         Pixel unused{};
         Pixel lightingInfluence{};
+        Pixel unusedDepthTest{};
+        Pixel depthTestParameters{};
     };
 
     struct alignas(16) EffectPerGeometry
@@ -207,13 +221,17 @@ namespace
     ComPtr<ID3D11VertexShader> createVertexShader(
         ID3D11Device* device,
         bool vertexColored,
-        bool needsParticleData)
+        bool needsParticleData,
+        bool depthTested)
     {
         constexpr char source[] = R"(
 struct VSOutput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#ifdef EFFECT_DEPTH_TEST
+    float4 depthTestData : TEXCOORD3;
+#endif
 #ifdef EFFECT_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
@@ -236,6 +254,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     VSOutput output;
     output.position = float4(positions[vertexId], 0.5, 1.0);
     output.texCoord = float4(0.5, 0.5, 0.0, 0.0);
+#ifdef EFFECT_DEPTH_TEST
+    output.depthTestData = float4(0.0, 0.0, 0.25, 0.0);
+#endif
 #ifdef EFFECT_VERTEX_COLOR
     output.vertexColor = float4(0.55, 0.75, 0.35, 0.6);
 #endif
@@ -251,13 +272,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 3> macros{};
+        std::array<D3D_SHADER_MACRO, 4> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
         }
         if (needsParticleData) {
             macros[macroCount++] = { "EFFECT_PARTICLE", "1" };
+        }
+        if (depthTested) {
+            macros[macroCount++] = { "EFFECT_DEPTH_TEST", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -373,6 +397,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11Buffer* frameBuffer,
         ID3D11ShaderResourceView* texture,
         ID3D11ShaderResourceView* depthTexture,
+        ID3D11ShaderResourceView* depthTestTexture,
         ID3D11SamplerState* sampler)
     {
         auto target = createRenderTarget(device);
@@ -392,6 +417,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->PSSetShaderResources(0, 1, &texture);
         context->PSSetShaderResources(3, 1, &depthTexture);
+        context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
         context->Draw(3, 0);
 
@@ -406,6 +432,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         ID3D11ShaderResourceView* nullTexture{};
         context->PSSetShaderResources(0, 1, &nullTexture);
+        context->PSSetShaderResources(3, 1, &nullTexture);
+        context->PSSetShaderResources(8, 1, &nullTexture);
         ID3D11RenderTargetView* nullTarget{};
         context->OMSetRenderTargets(1, &nullTarget, nullptr);
         return result;
@@ -583,6 +611,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         materialConstants.baseColor = kBaseColor;
         materialConstants.lightingInfluence[0] = kLightingInfluence;
         materialConstants.lightingInfluence[1] = kSoftDepthScale;
+        materialConstants.depthTestParameters[0] = 1.0F;
         EffectPerGeometry geometryConstants{};
         geometryConstants.propertyColor = kPropertyColor;
         geometryConstants.alphaTest = { 0.001F, 0.8F, 0.0F, 0.0F };
@@ -613,6 +642,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         const auto texture = createTexture(device.Get(), kTextureColor);
         const auto depthTexture = createTexture(device.Get(), kDepthTexture);
+        const auto depthTestTexturePass =
+            createTexture(device.Get(), kDepthTestTexturePass);
+        const auto depthTestTextureFail =
+            createTexture(device.Get(), kDepthTestTextureFail);
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
         samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -626,16 +659,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             "CreateSamplerState");
 
         const auto defaultVertexShader =
-            createVertexShader(device.Get(), false, false);
+            createVertexShader(device.Get(), false, false, false);
         const auto vertexColorVertexShader =
-            createVertexShader(device.Get(), true, false);
+            createVertexShader(device.Get(), true, false, false);
         const auto particleVertexShader =
-            createVertexShader(device.Get(), false, true);
+            createVertexShader(device.Get(), false, true, false);
         const auto vertexColorParticleVertexShader =
-            createVertexShader(device.Get(), true, true);
+            createVertexShader(device.Get(), true, true, false);
+        const auto depthTestVertexShader =
+            createVertexShader(device.Get(), false, false, true);
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
-            auto* vertexShader = contract.needsParticleData() ?
+            auto* vertexShader = contract.depthTested() ?
+                depthTestVertexShader.Get() :
+                contract.needsParticleData() ?
                 (contract.vertexColored() ?
                         vertexColorParticleVertexShader.Get() :
                         particleVertexShader.Get()) :
@@ -656,17 +693,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 device.Get(), context.Get(), vertexShader,
                 vanillaShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
             const auto disabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
             const auto enabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), enabledFrameBuffer.Get(), texture.Get(),
-                depthTexture.Get(), sampler.Get());
+                depthTexture.Get(), depthTestTexturePass.Get(), sampler.Get());
 
             const std::string label = contract.name;
             passed &= compare(
@@ -681,12 +718,35 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 enabled,
                 expectedEnabled(contract, enabledSettings),
                 label + " enabled model");
+            if (contract.depthTested()) {
+                const auto vanillaDiscard = render(
+                    device.Get(), context.Get(), vertexShader,
+                    vanillaShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTextureFail.Get(), sampler.Get());
+                const auto replacementDiscard = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTextureFail.Get(), sampler.Get());
+                constexpr Pixel discarded{};
+                passed &= compare(
+                    vanillaDiscard,
+                    discarded,
+                    label + " vanilla depth discard");
+                passed &= compare(
+                    replacementDiscard,
+                    vanillaDiscard,
+                    label + " disabled depth discard parity");
+            }
         }
         if (!passed) {
             return 1;
         }
         std::cout <<
-            "All forty-three Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All forty-five Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
