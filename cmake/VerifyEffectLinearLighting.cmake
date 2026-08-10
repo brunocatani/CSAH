@@ -30,7 +30,9 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kEffectShaderContractCount = 8"
+    "kEffectShaderContractCount = 16"
+    "EffectContractMask matchingEffectShaderContractMask"
+    "AtomicEffectContractMask matchingEffectShaderContractMask_"
     "matchingEffectShaderContractMask"
     "effectReplacementBinds")
   string(FIND "${runtimeHeader}" "${required}" found)
@@ -44,6 +46,7 @@ foreach(required IN ITEMS
     "#include \"../LinearLighting/LinearLighting.hlsli\""
     "LinearLightingEffect(baseColor.xyz)"
     "LinearLightingEffect(EffectPropertyColor.xyz)"
+    "(EFFECT_TECHNIQUE & 0x1)"
     "(EFFECT_TECHNIQUE & 0x4)"
     "(EFFECT_TECHNIQUE & 0x20)"
     "(EFFECT_TECHNIQUE & 0x40000000)"
@@ -51,7 +54,8 @@ foreach(required IN ITEMS
     "LinearLightingFogAlpha(input.fogParam.w)"
     "EffectAlphaTest.y - sampledAlpha"
     "lightColor *= otherEffectMult;"
-    "LinearLightingEffectAlpha(alpha)")
+    "LinearLightingEffectAlpha(alpha)"
+    "LinearLightingEffectVertexColor(input.vertexColor)")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -69,9 +73,9 @@ string(REGEX MATCHALL
   "IDR_LINEAR_LIGHTING_EFFECT_[A-Z_]+_PS RCDATA"
   effectResources "${resourceSource}")
 list(LENGTH effectResources effectResourceCount)
-if(NOT effectResourceCount EQUAL 8)
+if(NOT effectResourceCount EQUAL 16)
   message(FATAL_ERROR
-    "Effect Linear Lighting regression: expected eight embedded shaders")
+    "Effect Linear Lighting regression: expected sixteen embedded shaders")
 endif()
 
 string(FIND "${runtimeSource}"

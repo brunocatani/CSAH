@@ -55,6 +55,7 @@ foreach(required IN ITEMS
     "distantTreeCoverageComplete"
     "particleCoverageComplete"
     "effectCoverageComplete"
+    "matchingEffectShaderMaskWords"
     "shaderBindingLookupFailures"
     "std::atomic_bool diagnosticsEnabled{ true }"
     "scene %s | qualification %s | proof %u/%u"

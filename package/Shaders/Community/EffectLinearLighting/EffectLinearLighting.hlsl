@@ -8,6 +8,9 @@ struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    float4 vertexColor : COLOR0;
+#endif
     float4 fogParam : COLOR1;
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
@@ -31,10 +34,21 @@ cbuffer EffectPerGeometry : register(b2)
 SamplerState EffectSampler : register(s0);
 Texture2D<float4> EffectTexture : register(t0);
 
+float4 LinearLightingEffectVertexColor(float4 color)
+{
+    if (enableLinearLighting != 0u) {
+        return float4(LinearLightingEffect(color.xyz), color.w);
+    }
+    return exp2(log2(color) * 2.2f);
+}
+
 float4 PSMain(EffectPixelInput input) : SV_Target0
 {
     float4 baseColor = EffectBaseColor;
     baseColor.xyz = LinearLightingEffect(baseColor.xyz);
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    baseColor *= LinearLightingEffectVertexColor(input.vertexColor);
+#endif
 #if (EFFECT_TECHNIQUE & 0x4) != 0
     const float4 textureColor = EffectTexture.Sample(
         EffectSampler,

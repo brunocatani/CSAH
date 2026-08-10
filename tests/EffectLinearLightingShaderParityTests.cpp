@@ -32,25 +32,35 @@ namespace
     constexpr Pixel kPropertyColor{ 0.8F, 0.45F, 0.7F, 0.9F };
     constexpr Pixel kFogParam{ 0.65F, 0.8F, 0.45F, 0.7F };
     constexpr Pixel kTextureColor{ 0.2F, 0.4F, 0.6F, 0.3F };
+    constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
 
     struct EffectContract
     {
         const char* name;
+        bool vertexColored;
         bool textured;
         bool additive;
         bool premultipliedAlpha;
     };
 
-    constexpr std::array<EffectContract, 8> kEffectContracts{ {
-        { "EffectDefault_00000000", false, false, false },
-        { "EffectTextured_00000004", true, false, false },
-        { "EffectAdditive_00000020", false, true, false },
-        { "EffectTexturedAdditive_00000024", true, true, false },
-        { "EffectPremultipliedAlpha_40000000", false, false, true },
-        { "EffectTexturedPremultipliedAlpha_40000004", true, false, true },
-        { "EffectAdditivePremultipliedAlpha_40000020", false, true, true },
-        { "EffectTexturedAdditivePremultipliedAlpha_40000024", true, true, true },
+    constexpr std::array<EffectContract, 16> kEffectContracts{ {
+        { "EffectDefault_00000000", false, false, false, false },
+        { "EffectVertexColor_00000001", true, false, false, false },
+        { "EffectTextured_00000004", false, true, false, false },
+        { "EffectVertexColorTextured_00000005", true, true, false, false },
+        { "EffectAdditive_00000020", false, false, true, false },
+        { "EffectVertexColorAdditive_00000021", true, false, true, false },
+        { "EffectTexturedAdditive_00000024", false, true, true, false },
+        { "EffectVertexColorTexturedAdditive_00000025", true, true, true, false },
+        { "EffectPremultipliedAlpha_40000000", false, false, false, true },
+        { "EffectVertexColorPremultipliedAlpha_40000001", true, false, false, true },
+        { "EffectTexturedPremultipliedAlpha_40000004", false, true, false, true },
+        { "EffectVertexColorTexturedPremultipliedAlpha_40000005", true, true, false, true },
+        { "EffectAdditivePremultipliedAlpha_40000020", false, false, true, true },
+        { "EffectVertexColorAdditivePremultipliedAlpha_40000021", true, false, true, true },
+        { "EffectTexturedAdditivePremultipliedAlpha_40000024", false, true, true, true },
+        { "EffectVertexColorTexturedAdditivePremultipliedAlpha_40000025", true, true, true, true },
     } };
 
     struct alignas(16) EffectPerMaterial
@@ -121,13 +131,18 @@ namespace
         return buffer;
     }
 
-    ComPtr<ID3D11VertexShader> createVertexShader(ID3D11Device* device)
+    ComPtr<ID3D11VertexShader> createVertexShader(
+        ID3D11Device* device,
+        bool vertexColored)
     {
         constexpr char source[] = R"(
 struct VSOutput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
+#ifdef EFFECT_VERTEX_COLOR
+    float4 vertexColor : COLOR0;
+#endif
     float4 color : COLOR1;
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
@@ -144,6 +159,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     VSOutput output;
     output.position = float4(positions[vertexId], 0.5, 1.0);
     output.texCoord = float4(0.5, 0.5, 0.0, 0.0);
+#ifdef EFFECT_VERTEX_COLOR
+    output.vertexColor = float4(0.55, 0.75, 0.35, 0.6);
+#endif
     output.color = float4(0.65, 0.8, 0.45, 0.7);
     output.eyeIndex = 0;
     output.cullDistance = 1.0;
@@ -153,11 +171,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
+        const D3D_SHADER_MACRO vertexColorMacros[]{
+            { "EFFECT_VERTEX_COLOR", "1" },
+            { nullptr, nullptr },
+        };
         const auto result = D3DCompile(
             source,
             sizeof(source) - 1,
             "EffectLinearLightingParityVS",
-            nullptr,
+            vertexColored ? vertexColorMacros : nullptr,
             nullptr,
             "VSMain",
             "vs_5_0",
@@ -328,10 +350,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     {
         Pixel result{};
         const auto alpha = kBaseColor[3] *
+            (contract.vertexColored ?
+                    std::pow(kVertexColor[3], 2.2F) :
+                    1.0F) *
             (contract.textured ? kTextureColor[3] : 1.0F) *
             kPropertyColor[3];
         for (std::size_t channel = 0; channel < 3; ++channel) {
             const auto baseColor = kBaseColor[channel] *
+                (contract.vertexColored ?
+                        std::pow(kVertexColor[channel], 2.2F) :
+                        1.0F) *
                 (contract.textured ? kTextureColor[channel] : 1.0F);
             const auto lightColor = baseColor +
                 kLightingInfluence *
@@ -354,6 +382,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     {
         Pixel result{};
         const auto rawAlpha = kBaseColor[3] *
+            (contract.vertexColored ? kVertexColor[3] : 1.0F) *
             (contract.textured ? kTextureColor[3] : 1.0F) *
             kPropertyColor[3];
         const auto outputAlpha =
@@ -363,6 +392,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         for (std::size_t channel = 0; channel < 3; ++channel) {
             auto base =
                 std::pow(std::abs(kBaseColor[channel]), settings.effectGamma);
+            if (contract.vertexColored) {
+                base *= std::pow(
+                    std::abs(kVertexColor[channel]), settings.effectGamma);
+            }
             if (contract.textured) {
                 base *= std::pow(
                     std::abs(kTextureColor[channel]), settings.effectGamma);
@@ -415,7 +448,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         materialConstants.lightingInfluence[0] = kLightingInfluence;
         EffectPerGeometry geometryConstants{};
         geometryConstants.propertyColor = kPropertyColor;
-        geometryConstants.alphaTest = { 0.2F, 0.8F, 0.0F, 0.0F };
+        geometryConstants.alphaTest = { 0.01F, 0.8F, 0.0F, 0.0F };
         const auto materialBuffer =
             createConstantBuffer(device.Get(), materialConstants);
         const auto geometryBuffer =
@@ -452,9 +485,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 &samplerDescription, sampler.GetAddressOf()),
             "CreateSamplerState");
 
-        const auto vertexShader = createVertexShader(device.Get());
+        const auto defaultVertexShader =
+            createVertexShader(device.Get(), false);
+        const auto vertexColorVertexShader =
+            createVertexShader(device.Get(), true);
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
+            auto* vertexShader = contract.vertexColored ?
+                vertexColorVertexShader.Get() :
+                defaultVertexShader.Get();
             const auto vanillaShader = createPixelShader(
                 device.Get(),
                 root /
@@ -466,15 +505,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (std::string(contract.name) + ".dxbc"));
 
             const auto vanilla = render(
-                device.Get(), context.Get(), vertexShader.Get(),
+                device.Get(), context.Get(), vertexShader,
                 vanillaShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
                 disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
             const auto disabled = render(
-                device.Get(), context.Get(), vertexShader.Get(),
+                device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
                 disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
             const auto enabled = render(
-                device.Get(), context.Get(), vertexShader.Get(),
+                device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
                 enabledFrameBuffer.Get(), texture.Get(), sampler.Get());
 
@@ -496,7 +535,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All eight Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All sixteen Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

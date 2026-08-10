@@ -854,8 +854,8 @@ namespace community_shaders::linear_lighting
             }
         }
         if (effectContractIndex != kEffectShaderContracts.size()) {
-            matchingEffectShaderContractMask_.fetch_or(
-                static_cast<std::uint8_t>(1u << effectContractIndex),
+            matchingEffectShaderContractMask_.set(
+                effectContractIndex,
                 std::memory_order_relaxed);
             matchingEffectShadersCreated_.fetch_add(
                 1,

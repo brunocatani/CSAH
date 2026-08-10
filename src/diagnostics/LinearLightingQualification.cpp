@@ -264,8 +264,9 @@ namespace community_shaders::diagnostics
             return reasons;
         }
 
+        template <std::size_t WordCount>
         [[nodiscard]] nlohmann::json contractMaskWords(
-            const linear_lighting::ContractMask& mask)
+            const linear_lighting::FixedContractMask<WordCount>& mask)
         {
             auto words = nlohmann::json::array();
             for (const auto word : mask) {
@@ -405,7 +406,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 10 },
+                    { "schemaVersion", 11 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -415,6 +416,16 @@ namespace community_shaders::diagnostics
                                 linear_lighting::kContractMaskWordCount },
                             { "capacity",
                                 linear_lighting::kContractMaskCapacity },
+                            { "wordOrder", "least-significant-first" },
+                        } },
+                    { "effectContractMaskEncoding",
+                        {
+                            { "wordBits",
+                                linear_lighting::kContractMaskWordBits },
+                            { "wordCount",
+                                linear_lighting::kEffectContractMaskWordCount },
+                            { "capacity",
+                                linear_lighting::kEffectContractMaskCapacity },
                             { "wordOrder", "least-significant-first" },
                         } },
                     { "status", statusOverride ? statusOverride :
@@ -500,9 +511,9 @@ namespace community_shaders::diagnostics
                             { "verifiedEffectShaderContracts",
                                 capture.runtime
                                     .verifiedEffectShaderContracts },
-                            { "matchingEffectShaderContractMask",
-                                capture.runtime
-                                    .matchingEffectShaderContractMask },
+                            { "matchingEffectShaderContractMaskWords",
+                                contractMaskWords(capture.runtime
+                                                      .matchingEffectShaderContractMask) },
                             { "matchingEffectShadersCreated",
                                 capture.runtime
                                     .matchingEffectShadersCreated },

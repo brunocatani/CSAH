@@ -187,6 +187,17 @@ int main()
     passed &= expect(!anyContractBit(atomicMask.load()),
         "atomic contract mask did not clear all words");
 
+    AtomicFixedContractMask<10> effectMask{};
+    effectMask.set(0);
+    effectMask.set(630, std::memory_order_release);
+    effectMask.set(640);
+    const auto effectSnapshot =
+        effectMask.load(std::memory_order_acquire);
+    passed &= expect(
+        effectSnapshot[0] == 1 &&
+            effectSnapshot[9] == (1ull << 54),
+        "fixed Effect mask lost or exceeded its 640-bit boundary");
+
     auto overCapacity = completeSample();
     overCapacity.expectedShaderContracts = 321;
     overCapacity.verifiedShaderContracts = 321;

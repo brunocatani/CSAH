@@ -13,8 +13,10 @@ namespace community_shaders::linear_lighting
     inline constexpr std::size_t kContractMaskCapacity =
         kContractMaskWordBits * kContractMaskWordCount;
 
-    using ContractMask =
-        std::array<std::uint64_t, kContractMaskWordCount>;
+    template <std::size_t WordCount>
+    using FixedContractMask = std::array<std::uint64_t, WordCount>;
+
+    using ContractMask = FixedContractMask<kContractMaskWordCount>;
     static_assert(std::atomic_uint64_t::is_always_lock_free);
 
     struct ContractBit
@@ -32,6 +34,19 @@ namespace community_shaders::linear_lighting
         std::size_t contractIndex) noexcept
     {
         if (contractIndex >= kContractMaskCapacity) {
+            return {};
+        }
+        return {
+            contractIndex / kContractMaskWordBits,
+            1ull << (contractIndex % kContractMaskWordBits),
+        };
+    }
+
+    template <std::size_t WordCount>
+    [[nodiscard]] constexpr ContractBit fixedContractBit(
+        std::size_t contractIndex) noexcept
+    {
+        if (contractIndex >= kContractMaskWordBits * WordCount) {
             return {};
         }
         return {
@@ -121,7 +136,8 @@ namespace community_shaders::linear_lighting
         return result;
     }
 
-    class AtomicContractMask final
+    template <std::size_t WordCount>
+    class AtomicFixedContractMask final
     {
     public:
         void clear(
@@ -136,7 +152,7 @@ namespace community_shaders::linear_lighting
             std::size_t contractIndex,
             std::memory_order order = std::memory_order_relaxed) noexcept
         {
-            const auto bit = contractBit(contractIndex);
+            const auto bit = fixedContractBit<WordCount>(contractIndex);
             if (bit) {
                 words_[bit.word].fetch_or(bit.value, order);
             }
@@ -146,15 +162,15 @@ namespace community_shaders::linear_lighting
             std::size_t contractIndex,
             std::memory_order order = std::memory_order_relaxed) const noexcept
         {
-            const auto bit = contractBit(contractIndex);
+            const auto bit = fixedContractBit<WordCount>(contractIndex);
             return bit &&
                 (words_[bit.word].load(order) & bit.value) != 0;
         }
 
-        [[nodiscard]] ContractMask load(
+        [[nodiscard]] FixedContractMask<WordCount> load(
             std::memory_order order = std::memory_order_relaxed) const noexcept
         {
-            ContractMask result{};
+            FixedContractMask<WordCount> result{};
             for (std::size_t index = 0; index < result.size(); ++index) {
                 result[index] = words_[index].load(order);
             }
@@ -162,6 +178,9 @@ namespace community_shaders::linear_lighting
         }
 
     private:
-        std::array<std::atomic_uint64_t, kContractMaskWordCount> words_{};
+        std::array<std::atomic_uint64_t, WordCount> words_{};
     };
+
+    using AtomicContractMask =
+        AtomicFixedContractMask<kContractMaskWordCount>;
 }

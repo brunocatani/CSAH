@@ -714,7 +714,7 @@ namespace community_shaders::ui
                             runtime.particleReplacementBinds },
                         { "matchingEffectShaders",
                             runtime.matchingEffectShadersCreated },
-                        { "matchingEffectShaderMask",
+                        { "matchingEffectShaderMaskWords",
                             runtime.matchingEffectShaderContractMask },
                         { "trackedEffectShaders",
                             runtime.trackedOriginalEffectShaders },
@@ -973,10 +973,9 @@ namespace community_shaders::ui
                 runtime.effectReplacementBinds > 0) {
                 effectReplacementReported = true;
                 logging::info(
-                    "Linear Lighting first Effect replacement proof: matchingShaders={}, trackedShaders={}, contractMask=0x{:02X}, replacementBinds={}, frameDataUploads={}, shaderBindingLookupFailures={}.",
+                    "Linear Lighting first Effect replacement proof: matchingShaders={}, trackedShaders={}, replacementBinds={}, frameDataUploads={}, shaderBindingLookupFailures={}.",
                     runtime.matchingEffectShadersCreated,
                     runtime.trackedOriginalEffectShaders,
-                    runtime.matchingEffectShaderContractMask,
                     runtime.effectReplacementBinds,
                     runtime.frameDataUploads,
                     runtime.shaderBindingLookupFailures);

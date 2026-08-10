@@ -19,6 +19,17 @@ namespace community_shaders::linear_lighting
 {
     class Runtime;
 
+    // The active FO4VR FXP contains 631 unique Effect pixel-shader
+    // identities. Reserve the complete fixed capacity now so incremental
+    // coverage never requires allocation or another telemetry schema shape.
+    inline constexpr std::size_t kEffectContractMaskWordCount = 10;
+    inline constexpr std::size_t kEffectContractMaskCapacity =
+        kContractMaskWordBits * kEffectContractMaskWordCount;
+    using EffectContractMask =
+        FixedContractMask<kEffectContractMaskWordCount>;
+    using AtomicEffectContractMask =
+        AtomicFixedContractMask<kEffectContractMaskWordCount>;
+
     enum class ReplacementShaderFamily : std::uint8_t
     {
         none,
@@ -105,7 +116,7 @@ namespace community_shaders::linear_lighting
         std::uint32_t trackedOriginalParticleShaders{};
         std::uint64_t particleReplacementBinds{};
         std::uint32_t verifiedEffectShaderContracts{};
-        std::uint8_t matchingEffectShaderContractMask{};
+        EffectContractMask matchingEffectShaderContractMask{};
         std::uint32_t matchingEffectShadersCreated{};
         std::uint32_t trackedOriginalEffectShaders{};
         std::uint64_t effectReplacementBinds{};
@@ -159,12 +170,14 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kSkyShaderContractCount = 8;
         static constexpr std::size_t kDistantTreeShaderContractCount = 1;
         static constexpr std::size_t kParticleShaderContractCount = 4;
-        static constexpr std::size_t kEffectShaderContractCount = 8;
+        static constexpr std::size_t kEffectShaderContractCount = 16;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t
             kMaximumTrackedOriginalShadersPerContract = 8;
         static_assert(kShaderContractCount <= kContractMaskCapacity);
+        static_assert(
+            kEffectShaderContractCount <= kEffectContractMaskCapacity);
 
         static Runtime& get() noexcept;
 
@@ -355,7 +368,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint8_t matchingParticleShaderContractMask_{};
         std::atomic_uint32_t matchingParticleShadersCreated_{};
         std::atomic_uint32_t trackedOriginalParticleShaders_{};
-        std::atomic_uint8_t matchingEffectShaderContractMask_{};
+        AtomicEffectContractMask matchingEffectShaderContractMask_{};
         std::atomic_uint32_t matchingEffectShadersCreated_{};
         std::atomic_uint32_t trackedOriginalEffectShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};
