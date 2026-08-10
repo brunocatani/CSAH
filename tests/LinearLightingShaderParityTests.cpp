@@ -402,7 +402,8 @@ namespace
         bool hasLandscapeLod,
         bool hasBoneTint,
         bool hasPipboyScreen,
-        bool hasFaceDetail)
+        bool hasFaceDetail,
+        std::uint32_t eyeIndex)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -488,7 +489,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_LANDSCAPE_LOD
     output.landscapeLodCoordinates = float2(128.0, 256.0);
 #endif
-    output.eyeIndex = 0;
+    output.eyeIndex = TEST_EYE_INDEX;
     return output;
 }
 )";
@@ -504,6 +505,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_BONE_TINT", hasBoneTint ? "1" : "0" },
             { "HAS_PIPBOY_SCREEN", hasPipboyScreen ? "1" : "0" },
             { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
+            { "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -802,9 +804,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         values[51] = { 1.0F, 0.0F, 0.0F, 0.0F };
         values[52] = { 0.0F, 1.0F, 0.0F, 0.0F };
         values[54] = { 0.0F, 0.0F, 0.0F, 1.0F };
+        values[55] = { 0.8F, 0.1F, 0.0F, 0.0F };
+        values[56] = { -0.2F, 1.1F, 0.0F, 0.0F };
+        values[58] = { 0.0F, 0.0F, 0.0F, 1.0F };
         values[63] = { 1.0F, 0.0F, 0.0F, 0.0F };
         values[64] = { 0.0F, 1.0F, 0.0F, 0.0F };
         values[66] = { 0.0F, 0.0F, 0.0F, 1.0F };
+        values[67] = { 1.2F, -0.15F, 0.0F, 0.0F };
+        values[68] = { 0.25F, 0.9F, 0.0F, 0.0F };
+        values[70] = { 0.0F, 0.0F, 0.0F, 1.0F };
         return values;
     }
 
@@ -1138,6 +1146,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     [[nodiscard]] std::string compare(
         const ShaderContract& contract,
         std::string_view scenario,
+        std::uint32_t eyeIndex,
         std::size_t caseIndex,
         const RenderResult& expected,
         const RenderResult& actual)
@@ -1151,7 +1160,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 }
                 return std::string(contract.name) + " " +
                     std::string(scenario) + " case " +
-                    std::to_string(caseIndex) + " differs at target " +
+                    std::to_string(caseIndex) + " eye " +
+                    std::to_string(eyeIndex) + " differs at target " +
                     std::to_string(target) + " channel " +
                     std::to_string(channel) + ": expected=" +
                     std::to_string(expected[target][channel]) +
@@ -1307,7 +1317,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 128> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 256> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
@@ -1316,6 +1326,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto hasBoneTint = (index & 16u) != 0;
             const auto hasPipboyScreen = (index & 32u) != 0;
             const auto hasFaceDetail = (index & 64u) != 0;
+            const auto eyeIndex = static_cast<std::uint32_t>(index >> 7u);
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
@@ -1323,7 +1334,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 hasLandscapeLod,
                 hasBoneTint,
                 hasPipboyScreen,
-                hasFaceDetail);
+                hasFaceDetail,
+                eyeIndex);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -1339,7 +1351,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasLandscapeLod ? ", landscape LOD" : "") +
                     (hasBoneTint ? ", COLOR1" : "") +
                     (hasPipboyScreen ? ", Pip-Boy TEXCOORD6" : "") +
-                    (hasFaceDetail ? ", face TEXCOORD6)" : ")"));
+                    (hasFaceDetail ? ", face TEXCOORD6" : "") +
+                    ", eye " + std::to_string(eyeIndex) + ")");
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -1375,16 +1388,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::string("CreatePixelShader(replacement ") +
                     std::string(contract.name) + ")");
 
-            auto* vertexShader = vertexShaders[
-                (contract.hasVertexColor ? 1u : 0u) |
-                (contract.isInstanced ? 2u : 0u) |
-                (contract.usesTessellatedInputs ? 4u : 0u) |
-                (contract.hasLandscapeLod ? 8u : 0u) |
-                (contract.hasBoneTint ? 16u : 0u) |
-                (contract.hasPipboyScreen ? 32u : 0u) |
-                (contract.hasFaceDetail ? 64u : 0u)].Get();
-            for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
-                 ++caseIndex) {
+            Pixel leftEyeMotion{};
+            for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
+                auto* vertexShader = vertexShaders[
+                    (contract.hasVertexColor ? 1u : 0u) |
+                    (contract.isInstanced ? 2u : 0u) |
+                    (contract.usesTessellatedInputs ? 4u : 0u) |
+                    (contract.hasLandscapeLod ? 8u : 0u) |
+                    (contract.hasBoneTint ? 16u : 0u) |
+                    (contract.hasPipboyScreen ? 32u : 0u) |
+                    (contract.hasFaceDetail ? 64u : 0u) |
+                    (static_cast<std::size_t>(eyeIndex) << 7u)].Get();
+                for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
+                     ++caseIndex) {
                 const auto vanilla = render(
                     *device.Get(),
                     *context.Get(),
@@ -1401,6 +1417,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
                     contract.hasSkinTint);
+                if (contract.mrtCount == 6 && caseIndex == 0) {
+                    if (eyeIndex == 0) {
+                        leftEyeMotion = vanilla[5];
+                    } else if (
+                        approximatelyEqual(leftEyeMotion[0], vanilla[5][0]) &&
+                        approximatelyEqual(leftEyeMotion[1], vanilla[5][1])) {
+                        failures.push_back(
+                            std::string(contract.name) +
+                            " paired-eye fixture produced identical motion vectors");
+                    }
+                }
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1420,6 +1447,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
+                    eyeIndex,
                     caseIndex,
                     vanilla,
                     disabled);
@@ -1446,6 +1474,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
+                    eyeIndex,
                     caseIndex,
                     vanilla,
                     identity);
@@ -1478,15 +1507,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 mismatch = compare(
                     contract,
                     kTransformedCase.name,
+                    eyeIndex,
                     caseIndex,
                     expected,
                     transformed);
                 if (!mismatch.empty()) {
                     failures.push_back(std::move(mismatch));
                 }
-            }
+                }
 
-            if (contract.hasAdditionalAlphaMask) {
+                if (contract.hasAdditionalAlphaMask) {
                 struct MaskProofCase
                 {
                     AdditionalAlphaCase value;
@@ -1542,6 +1572,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     auto mismatch = compare(
                         contract,
                         maskCase.name,
+                        eyeIndex,
                         maskCaseIndex,
                         vanilla,
                         replacement);
@@ -1552,8 +1583,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         failures.push_back(
                             std::string(contract.name) + " " +
                             std::string(maskCase.name) +
+                            " eye " + std::to_string(eyeIndex) +
                             " did not exercise the expected discard state");
                     }
+                }
                 }
             }
         }
@@ -1575,7 +1608,7 @@ int main(int argumentCount, char** arguments)
     }
     try {
         run(std::filesystem::absolute(arguments[1]));
-        std::cout << "Linear Lighting disabled and enabled shader paths verified: "
+        std::cout << "Linear Lighting disabled and enabled shader paths verified across both VR eyes: "
                   << kShaderContracts.size() << " contracts\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

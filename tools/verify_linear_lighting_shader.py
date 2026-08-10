@@ -597,6 +597,17 @@ def verify(root: Path) -> None:
     runtime_text = runtime_source.read_text(encoding="utf-8")
     resources_text = resources_rc.read_text(encoding="utf-8")
     parity_text = parity_source.read_text(encoding="utf-8")
+    for token in (
+        "output.eyeIndex = TEST_EYE_INDEX;",
+        '{ "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" }',
+        "std::array<ComPtr<ID3D11VertexShader>, 256>",
+        "for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex)",
+        "values[55] =",
+        "values[67] =",
+        "paired-eye fixture produced identical motion vectors",
+    ):
+        if token not in parity_text:
+            fail(f"WARP parity is missing paired-eye coverage: {token}")
     parity_entries = re.findall(
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
         r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?'
