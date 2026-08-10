@@ -205,6 +205,10 @@ namespace
         ShaderContract{ "GradientRemapSixMrt_L3_04000003", 6, true, false, false, false, false, true },
         ShaderContract{ "GradientRemapAlphaTestSixMrt_L4_04000102", 6, false, false, false, false, false, true },
         ShaderContract{ "GradientRemapAlphaTestSixMrt_L3_04000103", 6, true, false, false, false, false, true },
+        ShaderContract{ "BoneTintSixMrt_L4_40000002", 6, false, false, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintSixMrt_L3_40000003", 6, true, false, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintSixMrt_L4NoEarlyDepth_40000006", 6, false, false, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintSixMrt_L3NoEarlyDepth_40000007", 6, true, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t

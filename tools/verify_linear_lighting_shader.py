@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 154:
-        fail("Linear Lighting manifest must contain exactly 154 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 158:
+        fail("Linear Lighting manifest must contain exactly 158 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -471,8 +471,8 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
         ):
             combined_face_detail_bone_tint_contracts += 1
-    if vertex_contracts != 74:
-        fail(f"expected 74 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 76:
+        fail(f"expected 76 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -509,8 +509,8 @@ def verify_source_contracts(
             "expected 1 projected LOD-object-alpha contract, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 16:
-        fail(f"expected 16 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 20:
+        fail(f"expected 20 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 5:
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "

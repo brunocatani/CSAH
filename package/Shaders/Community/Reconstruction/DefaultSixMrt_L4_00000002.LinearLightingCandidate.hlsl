@@ -50,16 +50,12 @@
 #error Skin-tint and gradient-remap shaders use distinct cb2[2] contracts.
 #endif
 
-#if LINEAR_LIGHTING_BONE_TINTING && !LINEAR_LIGHTING_FACE_DETAIL
-#error Six-MRT bone tinting requires the verified face-detail layout.
-#endif
-
 #if LINEAR_LIGHTING_BONE_TINTING && \
     (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
     LINEAR_LIGHTING_LANDSCAPE_LOD || LINEAR_LIGHTING_GRADIENT_REMAP || \
     LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN || \
     LINEAR_LIGHTING_SKIN_TINT)
-#error Six-MRT bone tinting is verified only with the standalone face-detail layout.
+#error Six-MRT bone tinting cannot share these material layouts.
 #endif
 
 cbuffer PerMaterial : register(b2)
