@@ -44,9 +44,10 @@ foreach(required IN ITEMS
     "#include \"../LinearLighting/LinearLighting.hlsli\""
     "LinearLightingEffect(EffectBaseColor.xyz)"
     "LinearLightingEffect(EffectPropertyColor.xyz)"
-    "LinearLightingEffect(input.color.xyz)"
+    "LinearLightingFog(input.fogParam.xyz)"
+    "LinearLightingFogAlpha(input.fogParam.w)"
     "EffectAlphaTest.y - sampledAlpha"
-    "blendedColor *= otherEffectMult;"
+    "lightColor *= otherEffectMult;"
     "LinearLightingEffectAlpha(alpha)")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)

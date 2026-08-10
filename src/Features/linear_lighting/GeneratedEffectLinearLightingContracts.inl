@@ -17,10 +17,10 @@ constexpr std::array<EffectShaderContractDefinition, 1> kEffectShaderContracts{ 
         {
             4124,
             {
-                std::byte{ 0xE2 }, std::byte{ 0x37 }, std::byte{ 0xFC }, std::byte{ 0x20 },
-                std::byte{ 0x8C }, std::byte{ 0x1C }, std::byte{ 0x5B }, std::byte{ 0xD4 },
-                std::byte{ 0x75 }, std::byte{ 0x62 }, std::byte{ 0xA5 }, std::byte{ 0xAE },
-                std::byte{ 0xE5 }, std::byte{ 0x84 }, std::byte{ 0xE0 }, std::byte{ 0xC5 },
+                std::byte{ 0xDF }, std::byte{ 0x46 }, std::byte{ 0xC6 }, std::byte{ 0xA2 },
+                std::byte{ 0xC9 }, std::byte{ 0x8C }, std::byte{ 0x4D }, std::byte{ 0x1D },
+                std::byte{ 0x50 }, std::byte{ 0x6E }, std::byte{ 0x7E }, std::byte{ 0xDB },
+                std::byte{ 0x49 }, std::byte{ 0x06 }, std::byte{ 0x40 }, std::byte{ 0x44 },
             },
         },
     },

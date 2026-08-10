@@ -99,14 +99,19 @@ def compile_candidate(
         '#include "../LinearLighting/LinearLighting.hlsli"',
         "LinearLightingEffect(EffectBaseColor.xyz)",
         "LinearLightingEffect(EffectPropertyColor.xyz)",
-        "LinearLightingEffect(input.color.xyz)",
+        "LinearLightingFog(input.fogParam.xyz)",
+        "LinearLightingFogAlpha(input.fogParam.w)",
         "EffectAlphaTest.y - sampledAlpha",
-        "blendedColor *= otherEffectMult;",
+        "lightColor *= otherEffectMult;",
         "LinearLightingEffectAlpha(alpha)",
     )
     for required in required_source:
         if required not in source_text:
             raise ContractError(f"Effect HLSL is missing contract: {required}")
+    if source_text.index("lightColor *= otherEffectMult;") > source_text.index(
+        "const float3 blendedColor = lerp(lightColor, fogColor, fogFactor);"
+    ):
+        raise ContractError("Effect multiplier must be applied before fog blending")
 
     name = "EffectDefault_00000000"
     candidate_path = output_directory / f"{name}.dxbc"

@@ -4,7 +4,7 @@ struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
-    float4 color : COLOR1;
+    float4 fogParam : COLOR1;
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
     float clipDistance : SV_ClipDistance0;
@@ -32,15 +32,16 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     const float3 baseColor = LinearLightingEffect(EffectBaseColor.xyz);
     const float3 propertyColor =
         LinearLightingEffect(EffectPropertyColor.xyz);
-    const float3 vertexColor = LinearLightingEffect(input.color.xyz);
-    const float3 propertyBlendedColor = lerp(
+    float3 lightColor = lerp(
         baseColor,
         propertyColor * baseColor,
         EffectLightingInfluence.x);
-    float3 blendedColor = lerp(
-        propertyBlendedColor,
-        vertexColor,
-        input.color.w);
+    if (enableLinearLighting != 0u) {
+        lightColor *= otherEffectMult;
+    }
+    const float3 fogColor = LinearLightingFog(input.fogParam.xyz);
+    const float fogFactor = LinearLightingFogAlpha(input.fogParam.w);
+    const float3 blendedColor = lerp(lightColor, fogColor, fogFactor);
 
     const float alpha = EffectBaseColor.w * EffectPropertyColor.w;
     if (alpha - EffectAlphaTest.x < 0.0f) {
@@ -55,8 +56,5 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         }
     }
 
-    if (enableLinearLighting != 0u) {
-        blendedColor *= otherEffectMult;
-    }
     return float4(blendedColor, LinearLightingEffectAlpha(alpha));
 }

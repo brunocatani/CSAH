@@ -30,7 +30,7 @@ namespace
     constexpr float kTolerance = 1.0e-4F;
     constexpr Pixel kBaseColor{ 0.42F, 0.63F, 0.31F, 0.77F };
     constexpr Pixel kPropertyColor{ 0.8F, 0.45F, 0.7F, 0.9F };
-    constexpr Pixel kVertexColor{ 0.65F, 0.8F, 0.45F, 0.7F };
+    constexpr Pixel kFogParam{ 0.65F, 0.8F, 0.45F, 0.7F };
     constexpr Pixel kTextureColor{ 0.2F, 0.4F, 0.6F, 0.3F };
     constexpr float kLightingInfluence = 0.35F;
 
@@ -309,13 +309,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     {
         Pixel result{};
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            const auto propertyBlended = kBaseColor[channel] +
+            const auto lightColor = kBaseColor[channel] +
                 kLightingInfluence *
                     (kPropertyColor[channel] * kBaseColor[channel] -
                         kBaseColor[channel]);
-            result[channel] = propertyBlended +
-                kVertexColor[3] *
-                    (kVertexColor[channel] - propertyBlended);
+            result[channel] = lightColor +
+                kFogParam[3] * (kFogParam[channel] - lightColor);
         }
         result[3] = kBaseColor[3] * kPropertyColor[3];
         return result;
@@ -329,14 +328,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::pow(std::abs(kBaseColor[channel]), settings.effectGamma);
             const auto property = std::pow(
                 std::abs(kPropertyColor[channel]), settings.effectGamma);
-            const auto vertex =
-                std::pow(std::abs(kVertexColor[channel]), settings.effectGamma);
-            const auto propertyBlended = base +
+            const auto lightColor = base +
                 kLightingInfluence * (property * base - base);
-            result[channel] =
-                (propertyBlended +
-                    kVertexColor[3] * (vertex - propertyBlended)) *
-                settings.otherEffectMultiplier;
+            const auto fogColor =
+                std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
+            const auto fogFactor =
+                std::pow(std::abs(kFogParam[3]), settings.fogAlphaGamma);
+            const auto scaledLightColor =
+                lightColor * settings.otherEffectMultiplier;
+            result[channel] = scaledLightColor +
+                fogFactor * (fogColor - scaledLightColor);
         }
         result[3] = std::pow(
             std::abs(kBaseColor[3] * kPropertyColor[3]),
@@ -383,6 +384,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         enabledSettings.enabled = true;
         enabledSettings.effectGamma = 1.65F;
         enabledSettings.effectAlphaGamma = 1.3F;
+        enabledSettings.fogGamma = 1.85F;
+        enabledSettings.fogAlphaGamma = 1.45F;
         enabledSettings.otherEffectMultiplier = 1.25F;
         const FrameData disabledFrame =
             makeFrameData(disabledSettings, true, false, 1.0F);
