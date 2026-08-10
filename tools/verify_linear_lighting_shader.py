@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 211:
-        fail("Linear Lighting manifest must contain exactly 211 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 213:
+        fail("Linear Lighting manifest must contain exactly 213 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -576,10 +576,10 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 105:
-        fail(f"expected 105 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 29:
-        fail(f"expected 29 glowmap contracts, found {glowmap_contracts}")
+    if vertex_contracts != 106:
+        fail(f"expected 106 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 31:
+        fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 19:
@@ -589,9 +589,9 @@ def verify_source_contracts(
         )
     if tessellated_contracts != 16:
         fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 56:
+    if additional_alpha_mask_contracts != 58:
         fail(
-            "expected 56 additional-alpha-mask contracts, "
+            "expected 58 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -616,9 +616,9 @@ def verify_source_contracts(
         )
     if bone_tint_contracts != 38:
         fail(f"expected 38 bone-tint contracts, found {bone_tint_contracts}")
-    if combined_glowmap_additional_alpha_contracts != 8:
+    if combined_glowmap_additional_alpha_contracts != 10:
         fail(
-            "expected 8 combined glowmap/additional-alpha contracts, "
+            "expected 10 combined glowmap/additional-alpha contracts, "
             f"found {combined_glowmap_additional_alpha_contracts}"
         )
     if menu_screen_contracts != 3:
