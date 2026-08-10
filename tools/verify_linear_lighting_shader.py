@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 165:
-        fail("Linear Lighting manifest must contain exactly 165 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 171:
+        fail("Linear Lighting manifest must contain exactly 171 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -414,6 +414,7 @@ def verify_source_contracts(
     combined_face_detail_bone_tint_contracts = 0
     combined_gradient_remap_bone_tint_contracts = 0
     combined_skin_tint_bone_tint_contracts = 0
+    standalone_projected_bone_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -483,8 +484,15 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
         ):
             combined_skin_tint_bone_tint_contracts += 1
-    if vertex_contracts != 78:
-        fail(f"expected 78 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
+            and "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" not in source_text
+            and '"DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"'
+            in source_text
+        ):
+            standalone_projected_bone_tint_contracts += 1
+    if vertex_contracts != 80:
+        fail(f"expected 80 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -516,13 +524,13 @@ def verify_source_contracts(
             "expected 15 gradient-hair contracts, "
             f"found {gradient_hair_contracts}"
         )
-    if lod_object_alpha_contracts != 1:
+    if lod_object_alpha_contracts != 3:
         fail(
-            "expected 1 projected LOD-object-alpha contract, "
+            "expected 3 projected LOD-object-alpha contracts, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 27:
-        fail(f"expected 27 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 33:
+        fail(f"expected 33 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 5:
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "
@@ -567,6 +575,11 @@ def verify_source_contracts(
         fail(
             "expected 3 combined skin-tint/bone-tint contracts, "
             f"found {combined_skin_tint_bone_tint_contracts}"
+        )
+    if standalone_projected_bone_tint_contracts != 6:
+        fail(
+            "expected 6 standalone projected bone-tint contracts, "
+            f"found {standalone_projected_bone_tint_contracts}"
         )
 
 

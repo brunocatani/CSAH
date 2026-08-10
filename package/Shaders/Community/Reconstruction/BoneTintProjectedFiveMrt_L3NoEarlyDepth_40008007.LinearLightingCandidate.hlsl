@@ -1,0 +1,4 @@
+#define LINEAR_LIGHTING_BONE_TINTING 1
+#define LINEAR_LIGHTING_VERTEX_COLOR 1
+#define LINEAR_LIGHTING_FORCE_EARLY_DEPTH 0
+#include "DefaultProjectedFiveMrt_L4_00008002.LinearLightingCandidate.hlsl"

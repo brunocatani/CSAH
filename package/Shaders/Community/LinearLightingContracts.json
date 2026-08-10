@@ -163,5 +163,11 @@
   { "name": "BoneTintGradientRemapAlphaTestSixMrt_L3NoEarlyDepth_44000107", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_NO_EARLY_DEPTH_PS" },
   { "name": "BoneTintSkinTintSixMrt_L4_40040002", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_SKIN_TINT_SIX_MRT_PS" },
   { "name": "BoneTintSkinTintModelSpaceNormalsSixMrt_L4_40042002", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_SKIN_TINT_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
-  { "name": "BoneTintSkinTintSixMrt_L4NoEarlyDepth_40040006", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_SKIN_TINT_SIX_MRT_NO_EARLY_DEPTH_PS" }
+  { "name": "BoneTintSkinTintSixMrt_L4NoEarlyDepth_40040006", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_SKIN_TINT_SIX_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "BoneTintProjectedFiveMrt_L4_40008002", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_PROJECTED_FIVE_MRT_PS" },
+  { "name": "BoneTintProjectedFiveMrt_L3_40008003", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_PROJECTED_FIVE_MRT_VERTEX_COLOR_PS" },
+  { "name": "BoneTintProjectedFiveMrt_L4NoEarlyDepth_40008006", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "BoneTintProjectedFiveMrt_L3NoEarlyDepth_40008007", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_PROJECTED_FIVE_MRT_VERTEX_COLOR_NO_EARLY_DEPTH_PS" },
+  { "name": "BoneTintLodObjectProjectedFiveMrt_L4_40018802", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_LOD_OBJECT_PROJECTED_FIVE_MRT_PS" },
+  { "name": "BoneTintLodObjectProjectedFiveMrt_L4NoEarlyDepth_40018806", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_LOD_OBJECT_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" }
 ]

@@ -22,16 +22,13 @@
 #error Gradient hair requires the verified gradient-remap material layout.
 #endif
 
-#if LINEAR_LIGHTING_BONE_TINTING && !LINEAR_LIGHTING_GRADIENT_REMAP
-#error Bone tinting requires the verified gradient-remap material layout.
-#endif
-
 #if LINEAR_LIGHTING_BONE_TINTING && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #error Combined bone tinting and additional alpha require a separately verified contract.
 #endif
 
-#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && !LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
-#error LOD-object alpha requires the verified projected additional-alpha layout.
+#if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && \
+    !(LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_BONE_TINTING)
+#error LOD-object alpha requires a verified projected extended material layout.
 #endif
 
 #if LINEAR_LIGHTING_LOD_OBJECT_ALPHA && LINEAR_LIGHTING_GRADIENT_REMAP
@@ -42,7 +39,8 @@ cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_GRADIENT_REMAP && (LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_BONE_TINTING)
     float4 cb2[9];
-#elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
+    LINEAR_LIGHTING_BONE_TINTING
     float4 cb2[8];
 #else
     float4 cb2[7];
@@ -133,6 +131,11 @@ SamplerState SampGlow : register(s3);
 #elif LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
+#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
+#elif LINEAR_LIGHTING_BONE_TINTING
+#define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
+#define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[5]
+#define LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
 #elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[3]
