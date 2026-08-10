@@ -1,5 +1,9 @@
 #include "../LinearLighting/LinearLighting.hlsli"
 
+#ifndef EFFECT_TECHNIQUE
+#error EFFECT_TECHNIQUE must identify a verified FO4VR Effect technique
+#endif
+
 struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
@@ -29,32 +33,52 @@ Texture2D<float4> EffectTexture : register(t0);
 
 float4 PSMain(EffectPixelInput input) : SV_Target0
 {
-    const float3 baseColor = LinearLightingEffect(EffectBaseColor.xyz);
+    float4 baseColor = EffectBaseColor;
+    baseColor.xyz = LinearLightingEffect(baseColor.xyz);
+#if (EFFECT_TECHNIQUE & 0x4) != 0
+    const float4 textureColor = EffectTexture.Sample(
+        EffectSampler,
+        input.texCoord.xy);
+    baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
+    baseColor.w *= textureColor.w;
+#endif
     const float3 propertyColor =
         LinearLightingEffect(EffectPropertyColor.xyz);
     float3 lightColor = lerp(
-        baseColor,
-        propertyColor * baseColor,
+        baseColor.xyz,
+        propertyColor * baseColor.xyz,
         EffectLightingInfluence.x);
     if (enableLinearLighting != 0u) {
         lightColor *= otherEffectMult;
     }
-    const float3 fogColor = LinearLightingFog(input.fogParam.xyz);
     const float fogFactor = LinearLightingFogAlpha(input.fogParam.w);
-    const float3 blendedColor = lerp(lightColor, fogColor, fogFactor);
+#if (EFFECT_TECHNIQUE & 0x20) != 0
+    float3 blendedColor = lightColor * (1.0f - fogFactor);
+#else
+    const float3 fogColor = LinearLightingFog(input.fogParam.xyz);
+    float3 blendedColor = lerp(lightColor, fogColor, fogFactor);
+#endif
 
-    const float alpha = EffectBaseColor.w * EffectPropertyColor.w;
+    const float alpha = baseColor.w * EffectPropertyColor.w;
     if (alpha - EffectAlphaTest.x < 0.0f) {
         discard;
     }
     [branch] if (EffectAlphaTest.y < 1.0f) {
+#if (EFFECT_TECHNIQUE & 0x4) != 0
+        const float sampledAlpha = textureColor.w;
+#else
         const float sampledAlpha = EffectTexture.Sample(
             EffectSampler,
             input.texCoord.xy).w;
+#endif
         if (EffectAlphaTest.y - sampledAlpha < 0.0f) {
             discard;
         }
     }
 
-    return float4(blendedColor, LinearLightingEffectAlpha(alpha));
+    const float outputAlpha = LinearLightingEffectAlpha(alpha);
+#if (EFFECT_TECHNIQUE & 0x40000000) != 0
+    blendedColor *= outputAlpha;
+#endif
+    return float4(blendedColor, outputAlpha);
 }

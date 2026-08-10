@@ -34,6 +34,25 @@ namespace
     constexpr Pixel kTextureColor{ 0.2F, 0.4F, 0.6F, 0.3F };
     constexpr float kLightingInfluence = 0.35F;
 
+    struct EffectContract
+    {
+        const char* name;
+        bool textured;
+        bool additive;
+        bool premultipliedAlpha;
+    };
+
+    constexpr std::array<EffectContract, 8> kEffectContracts{ {
+        { "EffectDefault_00000000", false, false, false },
+        { "EffectTextured_00000004", true, false, false },
+        { "EffectAdditive_00000020", false, true, false },
+        { "EffectTexturedAdditive_00000024", true, true, false },
+        { "EffectPremultipliedAlpha_40000000", false, false, true },
+        { "EffectTexturedPremultipliedAlpha_40000004", true, false, true },
+        { "EffectAdditivePremultipliedAlpha_40000020", false, true, true },
+        { "EffectTexturedAdditivePremultipliedAlpha_40000024", true, true, true },
+    } };
+
     struct alignas(16) EffectPerMaterial
     {
         Pixel baseColor{};
@@ -305,43 +324,67 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return true;
     }
 
-    Pixel expectedVanilla()
+    Pixel expectedVanilla(const EffectContract& contract)
     {
         Pixel result{};
+        const auto alpha = kBaseColor[3] *
+            (contract.textured ? kTextureColor[3] : 1.0F) *
+            kPropertyColor[3];
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            const auto lightColor = kBaseColor[channel] +
+            const auto baseColor = kBaseColor[channel] *
+                (contract.textured ? kTextureColor[channel] : 1.0F);
+            const auto lightColor = baseColor +
                 kLightingInfluence *
-                    (kPropertyColor[channel] * kBaseColor[channel] -
-                        kBaseColor[channel]);
-            result[channel] = lightColor +
-                kFogParam[3] * (kFogParam[channel] - lightColor);
+                    (kPropertyColor[channel] * baseColor - baseColor);
+            result[channel] = contract.additive ?
+                lightColor * (1.0F - kFogParam[3]) :
+                lightColor +
+                    kFogParam[3] * (kFogParam[channel] - lightColor);
+            if (contract.premultipliedAlpha) {
+                result[channel] *= alpha;
+            }
         }
-        result[3] = kBaseColor[3] * kPropertyColor[3];
+        result[3] = alpha;
         return result;
     }
 
-    Pixel expectedEnabled(const Settings& settings)
+    Pixel expectedEnabled(
+        const EffectContract& contract,
+        const Settings& settings)
     {
         Pixel result{};
+        const auto rawAlpha = kBaseColor[3] *
+            (contract.textured ? kTextureColor[3] : 1.0F) *
+            kPropertyColor[3];
+        const auto outputAlpha =
+            std::pow(std::abs(rawAlpha), settings.effectAlphaGamma);
+        const auto fogFactor =
+            std::pow(std::abs(kFogParam[3]), settings.fogAlphaGamma);
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            const auto base =
+            auto base =
                 std::pow(std::abs(kBaseColor[channel]), settings.effectGamma);
+            if (contract.textured) {
+                base *= std::pow(
+                    std::abs(kTextureColor[channel]), settings.effectGamma);
+            }
             const auto property = std::pow(
                 std::abs(kPropertyColor[channel]), settings.effectGamma);
-            const auto lightColor = base +
-                kLightingInfluence * (property * base - base);
-            const auto fogColor =
-                std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
-            const auto fogFactor =
-                std::pow(std::abs(kFogParam[3]), settings.fogAlphaGamma);
-            const auto scaledLightColor =
-                lightColor * settings.otherEffectMultiplier;
-            result[channel] = scaledLightColor +
-                fogFactor * (fogColor - scaledLightColor);
+            const auto lightColor =
+                (base + kLightingInfluence * (property * base - base)) *
+                settings.otherEffectMultiplier;
+            if (contract.additive) {
+                result[channel] = lightColor * (1.0F - fogFactor);
+            } else {
+                const auto fogColor =
+                    std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
+                result[channel] = lightColor +
+                    fogFactor * (fogColor - lightColor);
+            }
+            if (contract.premultipliedAlpha) {
+                result[channel] *= outputAlpha;
+            }
         }
-        result[3] = std::pow(
-            std::abs(kBaseColor[3] * kPropertyColor[3]),
-            settings.effectAlphaGamma);
+        result[3] = outputAlpha;
         return result;
     }
 
@@ -410,40 +453,50 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             "CreateSamplerState");
 
         const auto vertexShader = createVertexShader(device.Get());
-        const auto vanillaShader = createPixelShader(
-            device.Get(),
-            root / "package/Shaders/Community/VerifiedEffectLinearLighting" /
-                "EffectDefault_00000000.dxbc");
-        const auto replacementShader = createPixelShader(
-            device.Get(),
-            root / "package/Shaders/Community/EffectLinearLighting" /
-                "EffectDefault_00000000.dxbc");
-
-        const auto vanilla = render(
-            device.Get(), context.Get(), vertexShader.Get(),
-            vanillaShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
-            disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
-        const auto disabled = render(
-            device.Get(), context.Get(), vertexShader.Get(),
-            replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
-            disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
-        const auto enabled = render(
-            device.Get(), context.Get(), vertexShader.Get(),
-            replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
-            enabledFrameBuffer.Get(), texture.Get(), sampler.Get());
-
         bool passed = true;
-        passed &= compare(vanilla, expectedVanilla(), "Effect vanilla model");
-        passed &= compare(disabled, vanilla, "Effect disabled parity");
-        passed &= compare(
-            enabled,
-            expectedEnabled(enabledSettings),
-            "Effect enabled model");
+        for (const auto& contract : kEffectContracts) {
+            const auto vanillaShader = createPixelShader(
+                device.Get(),
+                root /
+                    "package/Shaders/Community/VerifiedEffectLinearLighting" /
+                    (std::string(contract.name) + ".dxbc"));
+            const auto replacementShader = createPixelShader(
+                device.Get(),
+                root / "package/Shaders/Community/EffectLinearLighting" /
+                    (std::string(contract.name) + ".dxbc"));
+
+            const auto vanilla = render(
+                device.Get(), context.Get(), vertexShader.Get(),
+                vanillaShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
+                disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
+            const auto disabled = render(
+                device.Get(), context.Get(), vertexShader.Get(),
+                replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
+                disabledFrameBuffer.Get(), texture.Get(), sampler.Get());
+            const auto enabled = render(
+                device.Get(), context.Get(), vertexShader.Get(),
+                replacementShader.Get(), materialBuffer.Get(), geometryBuffer.Get(),
+                enabledFrameBuffer.Get(), texture.Get(), sampler.Get());
+
+            const std::string label = contract.name;
+            passed &= compare(
+                vanilla,
+                expectedVanilla(contract),
+                label + " vanilla model");
+            passed &= compare(
+                disabled,
+                vanilla,
+                label + " disabled parity");
+            passed &= compare(
+                enabled,
+                expectedEnabled(contract, enabledSettings),
+                label + " enabled model");
+        }
         if (!passed) {
             return 1;
         }
         std::cout <<
-            "Effect Linear Lighting disabled parity and enabled model tests passed.\n";
+            "All eight Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
