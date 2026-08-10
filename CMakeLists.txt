@@ -136,6 +136,18 @@ file(GLOB PARTICLE_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/ParticleLinearLighting/*.dxbc")
 file(GLOB PARTICLE_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedParticleLinearLighting/*.dxbc")
+set(EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/EffectLinearLightingContracts.json")
+set(EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_effect_linear_lighting_contracts.py")
+set(EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl")
+set(EFFECT_LINEAR_LIGHTING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/EffectLinearLighting/EffectLinearLighting.hlsl")
+file(GLOB EFFECT_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/EffectLinearLighting/*.dxbc")
+file(GLOB EFFECT_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedEffectLinearLighting/*.dxbc")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
@@ -145,6 +157,7 @@ include("${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
 include("${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake")
+include("${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
@@ -192,12 +205,19 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${PARTICLE_LINEAR_LIGHTING_SHADER_SOURCE}"
   ${PARTICLE_LINEAR_LIGHTING_SHADER_ASSETS}
   ${PARTICLE_LINEAR_LIGHTING_VERIFIED_ASSETS}
+  "${EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
+  "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+  "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${EFFECT_LINEAR_LIGHTING_SHADER_SOURCE}"
+  ${EFFECT_LINEAR_LIGHTING_SHADER_ASSETS}
+  ${EFFECT_LINEAR_LIGHTING_VERIFIED_ASSETS}
   "${SOURCE_DIR}/support/NearAllocation.h"
   "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake"
   "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake"
   "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake"
+  "${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
@@ -297,6 +317,16 @@ add_custom_target(VerifyParticleLinearLighting ALL
   COMMENT "Verifying frame-only Particle Linear Lighting ownership"
   VERBATIM)
 
+add_custom_target(VerifyEffectLinearLighting ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DEFFECT_LINEAR_LIGHTING_SHADER_SOURCE=${EFFECT_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake"
+  COMMENT "Verifying frame-only Effect Linear Lighting ownership"
+  VERBATIM)
+
 add_custom_target(VerifyFixedShaderBindingLookup ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
@@ -355,6 +385,15 @@ add_custom_target(VerifyParticleLinearLightingContracts ALL
     --output "${PARTICLE_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying FO4VR Particle Linear Lighting contracts"
+  VERBATIM)
+
+add_custom_target(VerifyEffectLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying FO4VR Effect Linear Lighting contracts"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -431,6 +470,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyDistantTreeLinearLightingContracts
   VerifyParticleLinearLighting
   VerifyParticleLinearLightingContracts
+  VerifyEffectLinearLighting
+  VerifyEffectLinearLightingContracts
   VerifyDFLightAmbientReplacement
   VerifyDFLightAmbientContracts
   VerifyDFTiledPointLightHook
@@ -802,6 +843,12 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --output "${PARTICLE_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
+  add_test(NAME FO4VRCommunityShaders.EffectLinearLightingRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+      --check)
   add_executable(FO4VRCommunityShadersSkyLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/SkyLinearLightingShaderParityTests.cpp")
   target_compile_features(
@@ -860,6 +907,26 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore d3d11 d3dcompiler)
   add_test(NAME FO4VRCommunityShaders.ParticleLinearLightingShaderParity
     COMMAND FO4VRCommunityShadersParticleLinearLightingShaderParityTests
+      "${ROOT_DIR}")
+  add_executable(FO4VRCommunityShadersEffectLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/EffectLinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_definitions(
+    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    FO4VRCommunityShadersCore d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.EffectLinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersEffectLinearLightingShaderParityTests
       "${ROOT_DIR}")
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"

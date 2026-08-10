@@ -66,6 +66,15 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
+        struct EffectShaderContractDefinition
+        {
+            const char* name{};
+            std::uint32_t descriptor{};
+            int resourceId{};
+            DxbcIdentity original{};
+            DxbcIdentity replacement{};
+        };
+
         struct DFLightAmbientDescriptorContract
         {
             std::uint32_t descriptor{};
@@ -76,6 +85,7 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedSkyLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDistantTreeLinearLightingContract.inl"
         #include "Features/linear_lighting/GeneratedParticleLinearLightingContracts.inl"
+        #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
         struct EmbeddedShader
@@ -239,11 +249,12 @@ namespace community_shaders::linear_lighting
 
             gpuResourcesReady_.store(true, std::memory_order_release);
             logging::info(
-                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}); active shader replacement remains {}.",
+                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, effectContracts={}); active shader replacement remains {}.",
                 kShaderContracts.size(),
                 kSkyShaderContracts.size(),
                 kDistantTreeShaderContractCount,
                 kParticleShaderContracts.size(),
+                kEffectShaderContracts.size(),
                 enabled_.load(std::memory_order_relaxed) ? "enabled" : "disabled");
         } catch (const std::exception& error) {
             logging::error(
@@ -269,6 +280,8 @@ namespace community_shaders::linear_lighting
         static_assert(kDistantTreeShaderContractCount == 1);
         static_assert(
             kParticleShaderContracts.size() == kParticleShaderContractCount);
+        static_assert(
+            kEffectShaderContracts.size() == kEffectShaderContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContracts.size()>
             replacements{};
@@ -398,6 +411,40 @@ namespace community_shaders::linear_lighting
             }
         }
 
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kEffectShaderContracts.size()>
+            effectReplacements{};
+        for (std::size_t index = 0;
+             index < kEffectShaderContracts.size();
+             ++index) {
+            const auto& contract = kEffectShaderContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacement.size,
+                    contract.replacement.checksum)) {
+                logging::error(
+                    "Linear Lighting embedded Effect replacement '{}' is missing or invalid.",
+                    contract.name);
+                return false;
+            }
+
+            const auto effectResult = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                effectReplacements[index].GetAddressOf());
+            if (FAILED(effectResult)) {
+                logging::error(
+                    "Linear Lighting Effect replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    contract.name,
+                    static_cast<std::uint32_t>(effectResult));
+                return false;
+            }
+        }
+
         const auto safeSettings = sanitize(settings_);
         const auto frameData = makeFrameData(
             safeSettings,
@@ -440,6 +487,7 @@ namespace community_shaders::linear_lighting
         distantTreeReplacementShaders_ =
             std::move(distantTreeReplacements);
         particleReplacementShaders_ = std::move(particleReplacements);
+        effectReplacementShaders_ = std::move(effectReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
         enabled_.store(settings_.enabled, std::memory_order_release);
@@ -791,6 +839,63 @@ namespace community_shaders::linear_lighting
             return;
         }
 
+        std::size_t effectContractIndex = kEffectShaderContracts.size();
+        for (std::size_t index = 0;
+             index < kEffectShaderContracts.size();
+             ++index) {
+            const auto& identity = kEffectShaderContracts[index].original;
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                effectContractIndex = index;
+                break;
+            }
+        }
+        if (effectContractIndex != kEffectShaderContracts.size()) {
+            matchingEffectShaderContractMask_.fetch_or(
+                static_cast<std::uint8_t>(1u << effectContractIndex),
+                std::memory_order_relaxed);
+            matchingEffectShadersCreated_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            std::scoped_lock lock(shaderRegistryMutex_);
+            auto& owners = originalEffectShaderOwners_[effectContractIndex];
+            auto& slots = originalEffectShaders_[effectContractIndex];
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                if (slots[index].load(std::memory_order_relaxed) == shader) {
+                    return;
+                }
+                if (!owners[index]) {
+                    owners[index] = shader;
+                    if (!registerShaderBinding(
+                            shader,
+                            {
+                                ReplacementShaderFamily::effect,
+                                static_cast<std::uint32_t>(
+                                    effectContractIndex + 1),
+                                ReplacementPixelConstants_Frame,
+                            })) {
+                        owners[index].Reset();
+                        return;
+                    }
+                    slots[index].store(shader, std::memory_order_release);
+                    trackedOriginalEffectShaders_.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                    return;
+                }
+            }
+            if (!originalEffectCapacityWarningLogged_[effectContractIndex]
+                     .exchange(true, std::memory_order_relaxed)) {
+                logging::warn(
+                    "Linear Lighting original Effect-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                    kEffectShaderContracts[effectContractIndex].name);
+            }
+            return;
+        }
+
         std::size_t ambientContractIndex = kDFLightAmbientContracts.size();
         for (std::size_t index = 0;
              index < kDFLightAmbientContracts.size();
@@ -1032,6 +1137,28 @@ namespace community_shaders::linear_lighting
             return { replacement, binding, false };
         }
 
+        if (binding.family == ReplacementShaderFamily::effect) {
+            if (binding.contractPlusOne == 0 ||
+                binding.contractPlusOne > effectReplacementShaders_.size()) {
+                inactiveShaderSelections_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            auto* replacement =
+                effectReplacementShaders_[binding.contractPlusOne - 1].Get();
+            if (!replacement) {
+                inactiveShaderSelections_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            effectReplacementBinds_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            return { replacement, binding, false };
+        }
+
         if (binding.family == ReplacementShaderFamily::dFLightAmbient &&
             binding.contractPlusOne > 0) {
             return selectDFLightAmbientShader(
@@ -1068,9 +1195,14 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= particleReplacementShaders_.size() &&
             binding.constantFlags == ReplacementPixelConstants_Frame;
+        const auto validEffect =
+            binding.family == ReplacementShaderFamily::effect &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= effectReplacementShaders_.size() &&
+            binding.constantFlags == ReplacementPixelConstants_Frame;
         if (!context || context != context_.Get() ||
             (!validMaterial && !validSky && !validDistantTree &&
-                !validParticle) ||
+                !validParticle && !validEffect) ||
             !frameBuffer_ ||
             (validMaterial && !geometryBuffer_)) {
             return ScopedReplacementPixelConstants{};
@@ -1109,6 +1241,11 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne <= particleReplacementShaders_.size()) {
             expectedShader =
                 particleReplacementShaders_[binding.contractPlusOne - 1].Get();
+        } else if (binding.family == ReplacementShaderFamily::effect &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= effectReplacementShaders_.size()) {
+            expectedShader =
+                effectReplacementShaders_[binding.contractPlusOne - 1].Get();
         }
         if (!context || context != context_.Get() || !expectedShader) {
             return 0;
@@ -1346,6 +1483,19 @@ namespace community_shaders::linear_lighting
                     std::memory_order_relaxed),
             .particleReplacementBinds =
                 particleReplacementBinds_.load(std::memory_order_relaxed),
+            .verifiedEffectShaderContracts =
+                static_cast<std::uint32_t>(kEffectShaderContracts.size()),
+            .matchingEffectShaderContractMask =
+                matchingEffectShaderContractMask_.load(
+                    std::memory_order_relaxed),
+            .matchingEffectShadersCreated =
+                matchingEffectShadersCreated_.load(
+                    std::memory_order_relaxed),
+            .trackedOriginalEffectShaders =
+                trackedOriginalEffectShaders_.load(
+                    std::memory_order_relaxed),
+            .effectReplacementBinds =
+                effectReplacementBinds_.load(std::memory_order_relaxed),
             .shaderSelectionCalls =
                 shaderSelectionCalls_.load(std::memory_order_relaxed),
             .rejectedShaderContexts =

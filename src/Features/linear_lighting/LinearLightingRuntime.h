@@ -26,6 +26,7 @@ namespace community_shaders::linear_lighting
         sky,
         distantTree,
         particle,
+        effect,
         dFLightAmbient,
     };
 
@@ -103,6 +104,11 @@ namespace community_shaders::linear_lighting
         std::uint32_t matchingParticleShadersCreated{};
         std::uint32_t trackedOriginalParticleShaders{};
         std::uint64_t particleReplacementBinds{};
+        std::uint32_t verifiedEffectShaderContracts{};
+        std::uint8_t matchingEffectShaderContractMask{};
+        std::uint32_t matchingEffectShadersCreated{};
+        std::uint32_t trackedOriginalEffectShaders{};
+        std::uint64_t effectReplacementBinds{};
         std::uint64_t shaderSelectionCalls{};
         std::uint64_t rejectedShaderContexts{};
         std::uint64_t inactiveShaderSelections{};
@@ -153,6 +159,7 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kSkyShaderContractCount = 8;
         static constexpr std::size_t kDistantTreeShaderContractCount = 1;
         static constexpr std::size_t kParticleShaderContractCount = 4;
+        static constexpr std::size_t kEffectShaderContractCount = 1;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t
@@ -271,6 +278,9 @@ namespace community_shaders::linear_lighting
             kParticleShaderContractCount>
             particleReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kEffectShaderContractCount>
+            effectReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientReplacementShaders_{};
         std::array<std::vector<std::byte>,
@@ -313,6 +323,14 @@ namespace community_shaders::linear_lighting
             originalParticleShaders_{};
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
                        kMaximumTrackedOriginalShadersPerContract>,
+            kEffectShaderContractCount>
+            originalEffectShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kEffectShaderContractCount>
+            originalEffectShaders_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientOriginalShaderOwners_{};
         std::array<std::array<std::atomic<ID3D11PixelShader*>,
@@ -337,6 +355,9 @@ namespace community_shaders::linear_lighting
         std::atomic_uint8_t matchingParticleShaderContractMask_{};
         std::atomic_uint32_t matchingParticleShadersCreated_{};
         std::atomic_uint32_t trackedOriginalParticleShaders_{};
+        std::atomic_uint8_t matchingEffectShaderContractMask_{};
+        std::atomic_uint32_t matchingEffectShadersCreated_{};
+        std::atomic_uint32_t trackedOriginalEffectShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};
         std::atomic_uint64_t rejectedShaderContexts_{};
         std::atomic_uint64_t inactiveShaderSelections_{};
@@ -345,6 +366,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t skyReplacementBinds_{};
         std::atomic_uint64_t distantTreeReplacementBinds_{};
         std::atomic_uint64_t particleReplacementBinds_{};
+        std::atomic_uint64_t effectReplacementBinds_{};
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
         std::atomic_uint64_t shaderBindingLookupFailures_{};
@@ -373,6 +395,8 @@ namespace community_shaders::linear_lighting
             originalDistantTreeCapacityWarningLogged_{};
         std::array<std::atomic_bool, kParticleShaderContractCount>
             originalParticleCapacityWarningLogged_{};
+        std::array<std::atomic_bool, kEffectShaderContractCount>
+            originalEffectCapacityWarningLogged_{};
         std::array<std::atomic_bool, kDFLightAmbientShaderContractCount>
             dFLightAmbientCapacityWarningLogged_{};
         std::atomic_bool shaderBindingLookupCapacityWarningLogged_{};

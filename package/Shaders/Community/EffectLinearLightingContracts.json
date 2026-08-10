@@ -1,0 +1,8 @@
+[
+  {
+    "name": "EffectDefault_00000000",
+    "descriptor": 0,
+    "aliases": [268435456],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_DEFAULT_PS"
+  }
+]

@@ -1,0 +1,93 @@
+foreach(variable IN ITEMS
+    LINEAR_LIGHTING_RUNTIME_SOURCE
+    LINEAR_LIGHTING_RUNTIME_HEADER
+    EFFECT_LINEAR_LIGHTING_SHADER_SOURCE
+    RESOURCE_SOURCE)
+  if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
+    message(FATAL_ERROR "${variable} is missing")
+  endif()
+endforeach()
+
+file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
+file(READ "${LINEAR_LIGHTING_RUNTIME_HEADER}" runtimeHeader)
+file(READ "${EFFECT_LINEAR_LIGHTING_SHADER_SOURCE}" shaderSource)
+file(READ "${RESOURCE_SOURCE}" resourceSource)
+
+foreach(required IN ITEMS
+    "GeneratedEffectLinearLightingContracts.inl"
+    "kEffectShaderContracts"
+    "effectReplacementShaders_"
+    "originalEffectShaders_"
+    "matchingEffectShaderContractMask_"
+    "ReplacementShaderFamily::effect"
+    "effectReplacementBinds_.fetch_add"
+    "validEffect")
+  string(FIND "${runtimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Effect Linear Lighting regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kEffectShaderContractCount = 1"
+    "matchingEffectShaderContractMask"
+    "effectReplacementBinds")
+  string(FIND "${runtimeHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Effect Linear Lighting regression: interface is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "#include \"../LinearLighting/LinearLighting.hlsli\""
+    "LinearLightingEffect(EffectBaseColor.xyz)"
+    "LinearLightingEffect(EffectPropertyColor.xyz)"
+    "LinearLightingEffect(input.color.xyz)"
+    "EffectAlphaTest.y - sampledAlpha"
+    "blendedColor *= otherEffectMult;"
+    "LinearLightingEffectAlpha(alpha)")
+  string(FIND "${shaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Effect Linear Lighting regression: shader is missing '${required}'")
+  endif()
+endforeach()
+
+string(FIND "${shaderSource}" "register(b8)" found)
+if(NOT found EQUAL -1)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: frame-only shader declares b8")
+endif()
+
+string(REGEX MATCHALL
+  "IDR_LINEAR_LIGHTING_EFFECT_[A-Z_]+_PS RCDATA"
+  effectResources "${resourceSource}")
+list(LENGTH effectResources effectResourceCount)
+if(NOT effectResourceCount EQUAL 1)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: expected one embedded shader")
+endif()
+
+string(FIND "${runtimeSource}"
+  "if (binding.family == ReplacementShaderFamily::effect)"
+  effectSelectionStart)
+string(FIND "${runtimeSource}"
+  "if (binding.family == ReplacementShaderFamily::dFLightAmbient"
+  effectSelectionEnd)
+if(effectSelectionStart EQUAL -1 OR effectSelectionEnd EQUAL -1 OR
+   NOT effectSelectionStart LESS effectSelectionEnd)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: family selection boundary is missing")
+endif()
+math(EXPR effectSelectionLength
+  "${effectSelectionEnd} - ${effectSelectionStart}")
+string(SUBSTRING "${runtimeSource}" ${effectSelectionStart}
+  ${effectSelectionLength} effectSelectionSource)
+string(FIND "${effectSelectionSource}"
+  "ReplacementPixelConstants_Geometry" found)
+if(NOT found EQUAL -1)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: selection requests geometry b8")
+endif()

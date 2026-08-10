@@ -301,3 +301,4 @@ IDR_LINEAR_LIGHTING_PARTICLE_DEFAULT_PS RCDATA "../package/Shaders/Community/Par
 IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_COLOR_PS RCDATA "../package/Shaders/Community/ParticleLinearLighting/ParticleGrayscaleToColor_00000001.dxbc"
 IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_ALPHA_PS RCDATA "../package/Shaders/Community/ParticleLinearLighting/ParticleGrayscaleToAlpha_00000002.dxbc"
 IDR_LINEAR_LIGHTING_PARTICLE_GRAYSCALE_COLOR_ALPHA_PS RCDATA "../package/Shaders/Community/ParticleLinearLighting/ParticleGrayscaleToColorAlpha_00000003.dxbc"
+IDR_LINEAR_LIGHTING_EFFECT_DEFAULT_PS RCDATA "../package/Shaders/Community/EffectLinearLighting/EffectDefault_00000000.dxbc"
