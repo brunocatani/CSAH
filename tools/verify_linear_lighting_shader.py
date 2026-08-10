@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 268:
-        fail("Linear Lighting manifest must contain exactly 268 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 273:
+        fail("Linear Lighting manifest must contain exactly 273 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -717,12 +717,12 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 135:
-        fail(f"expected 135 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 138:
+        fail(f"expected 138 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 39:
         fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
-    if instanced_contracts != 7:
-        fail(f"expected 7 instanced contracts, found {instanced_contracts}")
+    if instanced_contracts != 8:
+        fail(f"expected 8 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 28:
         fail(
             "expected 28 model-space-normal contracts, "
@@ -741,9 +741,9 @@ def verify_source_contracts(
             "expected 82 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
-    if landscape_lod_contracts != 9:
+    if landscape_lod_contracts != 12:
         fail(
-            "expected 9 landscape-LOD contracts, "
+            "expected 12 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
     if gradient_remap_contracts != 82:
@@ -773,8 +773,8 @@ def verify_source_contracts(
             "expected 14 combined glowmap/additional-alpha contracts, "
             f"found {combined_glowmap_additional_alpha_contracts}"
         )
-    if menu_screen_contracts != 3:
-        fail(f"expected 3 menu-screen contracts, found {menu_screen_contracts}")
+    if menu_screen_contracts != 8:
+        fail(f"expected 8 menu-screen contracts, found {menu_screen_contracts}")
     if pipboy_screen_contracts != 4:
         fail(
             f"expected 4 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
@@ -1150,7 +1150,14 @@ def verify(root: Path) -> None:
                 "#define LINEAR_LIGHTING_MENU_SCREEN 1" in source_text
                 and 4 in original["samplers"]
                 and 4 in original["textures"]
-                and 0 not in original["constant_buffers"],
+                and (
+                    0 not in original["constant_buffers"]
+                    or (
+                        "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1"
+                        in source_text
+                        and original["constant_buffers"].get(0) == 1
+                    )
+                ),
                 "#define LINEAR_LIGHTING_PIPBOY_SCREEN 1" in source_text
                 and original["constant_buffers"].get(0) == 1
                 and 4 in original["samplers"]

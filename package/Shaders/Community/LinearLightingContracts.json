@@ -266,5 +266,10 @@
   { "name": "AdditionalAlphaMaskCombinedAlphaTestSixMrt_L3_11000143", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_COMBINED_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "CombinedAlphaTestBlendFiveMrt_L4_10008142", "resource": "IDR_LINEAR_LIGHTING_COMBINED_ALPHA_TEST_BLEND_FIVE_MRT_PS" },
   { "name": "CombinedGradientRemapAlphaTestSixMrt_L4_14000142", "resource": "IDR_LINEAR_LIGHTING_COMBINED_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_PS" },
-  { "name": "AdditionalAlphaMaskCombinedGradientRemapAlphaTestSixMrt_L4_15000142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_COMBINED_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_PS" }
+  { "name": "AdditionalAlphaMaskCombinedGradientRemapAlphaTestSixMrt_L4_15000142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_COMBINED_GRADIENT_REMAP_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "LandscapeLodMenuScreenSixMrt_L4_00010202", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_MENU_SCREEN_SIX_MRT_PS" },
+  { "name": "LandscapeLodMenuScreenSixMrt_L3_00010203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_MENU_SCREEN_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "LandscapeLodMenuScreenInstancedSixMrt_L3_08010203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_MENU_SCREEN_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "LandLodBlendMenuScreenSixMrt_L4_02010002", "resource": "IDR_LINEAR_LIGHTING_LAND_LOD_BLEND_MENU_SCREEN_SIX_MRT_PS" },
+  { "name": "LandLodBlendMenuScreenSixMrt_L3_02010003", "resource": "IDR_LINEAR_LIGHTING_LAND_LOD_BLEND_MENU_SCREEN_SIX_MRT_VERTEX_COLOR_PS" }
 ]

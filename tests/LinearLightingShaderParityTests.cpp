@@ -323,6 +323,11 @@ namespace
         ShaderContract{ "CombinedAlphaTestBlendFiveMrt_L4_10008142", 5, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "CombinedGradientRemapAlphaTestSixMrt_L4_14000142", 6, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskCombinedGradientRemapAlphaTestSixMrt_L4_15000142", 6, false, false, false, true, false, true, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "LandscapeLodMenuScreenSixMrt_L4_00010202", 6, false, false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "LandscapeLodMenuScreenSixMrt_L3_00010203", 6, true, false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "LandscapeLodMenuScreenInstancedSixMrt_L3_08010203", 6, true, true, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "LandLodBlendMenuScreenSixMrt_L4_02010002", 6, false, false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "LandLodBlendMenuScreenSixMrt_L3_02010003", 6, true, false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
