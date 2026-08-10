@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 158:
-        fail("Linear Lighting manifest must contain exactly 158 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 162:
+        fail("Linear Lighting manifest must contain exactly 162 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -412,6 +412,7 @@ def verify_source_contracts(
     combined_gradient_remap_glowmap_contracts = 0
     combined_face_detail_additional_alpha_contracts = 0
     combined_face_detail_bone_tint_contracts = 0
+    combined_gradient_remap_bone_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -471,8 +472,13 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
         ):
             combined_face_detail_bone_tint_contracts += 1
-    if vertex_contracts != 76:
-        fail(f"expected 76 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" in source_text
+            and "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
+        ):
+            combined_gradient_remap_bone_tint_contracts += 1
+    if vertex_contracts != 78:
+        fail(f"expected 78 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -494,9 +500,9 @@ def verify_source_contracts(
             "expected 7 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 51:
+    if gradient_remap_contracts != 55:
         fail(
-            "expected 51 gradient-remap contracts, "
+            "expected 55 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
     if gradient_hair_contracts != 15:
@@ -509,8 +515,8 @@ def verify_source_contracts(
             "expected 1 projected LOD-object-alpha contract, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 20:
-        fail(f"expected 20 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 24:
+        fail(f"expected 24 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 5:
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "
@@ -545,6 +551,11 @@ def verify_source_contracts(
         fail(
             "expected 4 combined face-detail/bone-tint contracts, "
             f"found {combined_face_detail_bone_tint_contracts}"
+        )
+    if combined_gradient_remap_bone_tint_contracts != 16:
+        fail(
+            "expected 16 combined gradient-remap/bone-tint contracts, "
+            f"found {combined_gradient_remap_bone_tint_contracts}"
         )
 
 
@@ -608,6 +619,11 @@ def verify(root: Path) -> None:
     ):
         if token not in parity_text:
             fail(f"WARP parity is missing paired-eye coverage: {token}")
+    if "values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };" not in parity_text:
+        fail(
+            "WARP parity is missing the combined "
+            "bone-tint/gradient-remap material layout"
+        )
     parity_entries = re.findall(
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
         r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?'
@@ -783,7 +799,7 @@ def verify(root: Path) -> None:
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,
                 "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text
-                and original["constant_buffers"].get(2) in (7, 9)
+                and original["constant_buffers"].get(2) in (7, 8, 9)
                 and 13 in original["samplers"]
                 and 14 in original["samplers"]
                 and 13 in original["textures"]

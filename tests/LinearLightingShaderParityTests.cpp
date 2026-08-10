@@ -209,6 +209,10 @@ namespace
         ShaderContract{ "BoneTintSixMrt_L3_40000003", 6, true, false, false, false, false, false, false, true },
         ShaderContract{ "BoneTintSixMrt_L4NoEarlyDepth_40000006", 6, false, false, false, false, false, false, false, true },
         ShaderContract{ "BoneTintSixMrt_L3NoEarlyDepth_40000007", 6, true, false, false, false, false, false, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestSixMrt_L4_44000102", 6, false, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestSixMrt_L3_44000103", 6, true, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestSixMrt_L4NoEarlyDepth_44000106", 6, false, false, false, false, false, true, false, true },
+        ShaderContract{ "BoneTintGradientRemapAlphaTestSixMrt_L3NoEarlyDepth_44000107", 6, true, false, false, false, false, true, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -758,6 +762,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             };
             if (hasAdditionalAlphaMask) {
                 values[6] = maskParameters;
+                values[7] = depthParameters;
+            } else if (hasBoneTint) {
+                values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };
                 values[7] = depthParameters;
             } else {
                 values[6] = depthParameters;
