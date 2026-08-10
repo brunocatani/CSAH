@@ -68,6 +68,60 @@ EXPECTED_CONTRACTS = {
     0x40100004: ((1584, "7d9d49b8d11e48bdc7d5d94f4da2df2b"), ()),
     0x40100005: ((1728, "1aa660efd00568bf14947444cec280fe"), ()),
     0x50000044: ((1100, "cb079e03a80dc618d30ceef20abaa0ba"), ()),
+    0x00002004: ((1216, "e9462b25c930158800d787decc8772db"), (0x00A02004,)),
+    0x00002005: ((1388, "adcd590c482b3ae943abc230429e603d"), ()),
+    0x00002024: ((1208, "3d4bd19ef0df8e7a632cb946bbbfba83"), (0x00A02024,)),
+    0x00002025: ((1380, "5fb7bddab538381c29fbba209ef12665"), ()),
+    0x00002044: ((1344, "dc44b650cf4e698a66e2dcbfaed89d42"), ()),
+    0x00002045: ((1516, "9af5fbede25a5ab9b26cec921ae276e6"), ()),
+    0x00002085: ((1412, "d1080c7e87f2db5c893f86c0edcb5d2d"), (0x0000208D,)),
+    0x000020A5: ((1404, "ff6a9825d7a901aee211cbba19149be1"), (0x000020AD, 0x100020AD)),
+    0x00003004: ((1872, "aa1c16f9f6a470db4819aa883bd2e536"), (0x00A03004,)),
+    0x00003005: ((1984, "afda2c8ad2963e56a2b2791672f4a928"), (0x0000308D,)),
+    0x00003024: ((1864, "20413e57519e4690e734498352e15a31"), ()),
+    0x00003025: ((1976, "4575ebeb5bdadc0ba3fbca21fe1d34e4"), (0x000030A5, 0x000030AD, 0x100030AD)),
+    0x00004004: ((1172, "edde127d61717c40f9803895ff6fad11"), (0x00804014,)),
+    0x00004005: ((1344, "92358fd6791b09fa7518619715dca786"), (0x00804015, 0x10004005)),
+    0x00004024: ((1164, "35c2428e781a144c632911abe84c4c2a"), (0x00804034,)),
+    0x00004025: ((1336, "3f03b4e5a56c6df4388dcbb647c28d35"), (0x00804035,)),
+    0x00004044: ((1300, "1ab27e8c5a2b226a81526d356c4f32e7"), ()),
+    0x00004045: ((1472, "18ce62bdfc03123c5e59cdff555b0a3e"), (0x10004045,)),
+    0x000040A5: ((1360, "3b601017dd81c90c1449f175b1c517a0"), (0x000040AD,)),
+    0x00005004: ((1768, "205e45c5f5398643d56466fc97a27c2a"), ()),
+    0x00005005: ((1972, "e40b58d152c2805de1be59c75186c896"), (0x0000508D, 0x00805015, 0x10005005)),
+    0x00005021: ((1904, "ed592286d317f0f6377549858e778809"), ()),
+    0x00005024: ((1760, "33fb17a7b063e46efe9d91e302990a7f"), (0x10005024,)),
+    0x00005025: ((1964, "19a3483a1a4fbde26c7c3beed7784460"), (0x000050A5, 0x000050AD, 0x00805035, 0x10005025)),
+    0x00006004: ((1296, "c2c2d1b9d91cb25f73725db20bbc1f81"), ()),
+    0x00006005: ((1440, "6021bec6637759f5bca3e11487974daf"), (0x00806015, 0x00A06015, 0x10006005)),
+    0x00006024: ((1288, "78a384c5161b6dd3f3554ec699799d4a"), (0x00806034, 0x00A06024, 0x00A06034)),
+    0x00006025: ((1432, "f28c734106c3940ad9c660417bc795ec"), (0x00806035, 0x00A06035)),
+    0x00006044: ((1424, "89b4065963e8506451b6bb444aa85a66"), ()),
+    0x00006045: ((1568, "eee592b7bdafd36835ccdbee385aa28f"), ()),
+    0x00006085: ((1464, "17941c150ba2d57446a6bc12b059312c"), (0x0000608D,)),
+    0x000060A5: ((1456, "4d05c0f2c9abb33725fcf56c07959d0e"), (0x000060AD,)),
+    0x00007004: ((1920, "ef7424411be880d226b1427e2f65e0ad"), (0x00807014, 0x00A07014)),
+    0x00007005: ((1984, "24624dc6e32fa2cf2c84c6b30c5fa53e"), (0x00007085, 0x0000708D, 0x00807015, 0x00A07015, 0x00A0711D)),
+    0x00007021: ((1976, "eac1da611940b3ffce84c050881fa178"), (0x00007025, 0x000070AD, 0x00807035, 0x00A07035)),
+    0x00007024: ((1912, "f7127f6a895a698d3af3da7b671ec46d"), (0x00807034, 0x00A07034)),
+    0x40002005: ((1416, "138838fbca213e542b91e084101f5c77"), ()),
+    0x40002024: ((1236, "c8996d9df382dcfc24b1e66c9c0d3b0c"), ()),
+    0x40002025: ((1408, "602de34154b60204786d1447ee1ae975"), ()),
+    0x400020A5: ((1432, "33c5a42c6013fcd5b2a420f9dbc6a3ee"), (0x400020AD,)),
+    0x40003005: ((2012, "0cf3826d1ebaf9d3a6739dc3f42896eb"), (0x4000308D,)),
+    0x40003024: ((1892, "356b796f3a318ab945658204e123b55d"), ()),
+    0x40003025: ((2004, "716dcb373781bf1a79dd30a444cabefa"), (0x400030AD,)),
+    0x40004004: ((1200, "7e42ee7d4f31028bd7d9299024fc4085"), ()),
+    0x40004005: ((1372, "150bbfd14ba91d5deed65da4afff60ad"), (0x50004005,)),
+    0x40004025: ((1364, "b610abe6ad11aa98d878b7aee3c1b914"), (0x40804035,)),
+    0x40005004: ((1796, "69e4d2d452434de4df38a14194ce47c3"), ()),
+    0x40005024: ((1788, "19569850de9c394f8617f98e40e06ff7"), ()),
+    0x40005025: ((1992, "a01d2607f1475f7d9a96b4fd3f2c85d8"), (0x400050AD, 0x40805035)),
+    0x40006024: ((1316, "74b847ee00c5b06c5b7a0f91792aaca6"), (0x40A06034,)),
+    0x40006025: ((1460, "2750f1bda0b37c70ea9398f34e000135"), (0x40806035,)),
+    0x40006045: ((1596, "9f070a08d3b7cfea7a2716513f404b2d"), ()),
+    0x40007025: ((2004, "5781610bd42816eeb1ba66ccbaaa5aba"), (0x400070AD, 0x40807035)),
+    0x50004045: ((1500, "c1ce998ea4b89361010b986ca9638b63"), ()),
 }
 
 
@@ -81,7 +135,7 @@ def read_manifest(root: Path) -> list[dict[str, object]]:
     )
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, list) or len(value) != len(EXPECTED_CONTRACTS):
-        raise ContractError("Effect manifest must contain fifty-three contracts")
+        raise ContractError("Effect manifest must contain 107 contracts")
 
     names: set[str] = set()
     descriptors: set[int] = set()
@@ -185,13 +239,19 @@ def compile_candidates(
     required_source = (
         '#include "../LinearLighting/LinearLighting.hlsli"',
         "LinearLightingEffect(baseColor.xyz)",
+        "LinearLightingEffect(EffectBaseColor.xyz)",
         "LinearLightingEffect(EffectPropertyColor.xyz)",
         "(EFFECT_TECHNIQUE & 0x1)",
-        "(EFFECT_TECHNIQUE & 0x4)",
+        "(EFFECT_TECHNIQUE & 0x00006004)",
         "(EFFECT_TECHNIQUE & 0x20)",
         "(EFFECT_TECHNIQUE & 0x40)",
         "(EFFECT_TECHNIQUE & 0x1080)",
         "(EFFECT_TECHNIQUE & 0x1000)",
+        "(EFFECT_TECHNIQUE & 0x00002000)",
+        "(EFFECT_TECHNIQUE & 0x00004000)",
+        "EffectGrayscaleTexture.Sample(",
+        "EffectGrayscaleSampler,",
+        "EffectUnusedPerMaterial.x",
         "(EFFECT_TECHNIQUE & 0x00100000)",
         "(EFFECT_TECHNIQUE & 0x01000000)",
         "(EFFECT_TECHNIQUE & 0x40000000)",
@@ -304,7 +364,7 @@ def render_contracts(
     rows = [
         "// Generated by tools/generate_effect_linear_lighting_contracts.py.",
         "// Do not edit this file by hand.",
-        "constexpr std::array<EffectShaderContractDefinition, 53> "
+        "constexpr std::array<EffectShaderContractDefinition, 107> "
         "kEffectShaderContracts{ {",
     ]
     for entry in manifest:

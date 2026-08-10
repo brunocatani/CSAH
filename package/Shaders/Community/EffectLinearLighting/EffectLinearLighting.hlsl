@@ -59,11 +59,17 @@ cbuffer EffectPerGeometry : register(b2)
 };
 
 SamplerState EffectSampler : register(s0);
+#if (EFFECT_TECHNIQUE & 0x00006000) != 0
+SamplerState EffectGrayscaleSampler : register(s4);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
 SamplerState EffectPipboySampler : register(s6);
 #endif
 Texture2D<float4> EffectTexture : register(t0);
 Texture2D<float4> EffectDepthTexture : register(t3);
+#if (EFFECT_TECHNIQUE & 0x00006000) != 0
+Texture2D<float4> EffectGrayscaleTexture : register(t4);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
 Texture2D<float4> EffectPipboyTexture : register(t6);
 #endif
@@ -123,6 +129,71 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         discard;
     }
 #endif
+#if (EFFECT_TECHNIQUE & 0x00006000) != 0
+    float4 baseColor = float4(
+        LinearLightingEffect(EffectBaseColor.xyz),
+        EffectBaseColor.w);
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    baseColor.xyz *= LinearLightingEffectVertexColor(input.vertexColor).xyz;
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    baseColor.w *= input.vertexColor.w;
+#else
+    baseColor.w *= LinearLightingEffectVertexColor(input.vertexColor).w;
+#endif
+#endif
+#if (EFFECT_TECHNIQUE & 0x00006004) != 0
+    const float4 textureColor = EffectTexture.Sample(
+        EffectSampler,
+        input.texCoord.xy);
+#if (EFFECT_TECHNIQUE & 0x00002004) == 0x4
+    baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
+#endif
+#if (EFFECT_TECHNIQUE & 0x00004000) == 0
+    baseColor.w *= textureColor.w;
+#endif
+#endif
+#if (EFFECT_TECHNIQUE & 0x1000) != 0
+    const float softParticleFade = EffectSoftParticleFade(
+        input.position.xy,
+        input.particleData.z);
+#if (EFFECT_TECHNIQUE & 0x00004000) == 0
+    baseColor.w *= softParticleFade;
+#endif
+#endif
+#if (EFFECT_TECHNIQUE & 0x00002000) != 0
+    float grayscaleColorY =
+        pow(abs(EffectBaseColor.x), 1.0f / 2.2f) * input.texCoord.z;
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    grayscaleColorY *= input.vertexColor.x;
+#endif
+#if (EFFECT_TECHNIQUE & 0x1000) != 0
+    grayscaleColorY *= softParticleFade;
+#endif
+    const float2 grayscaleColorCoordinate = float2(
+        pow(abs(textureColor.y), 1.0f / 2.2f),
+        grayscaleColorY);
+    const float3 grayscaleColor = EffectUnusedPerMaterial.x *
+        EffectGrayscaleTexture.Sample(
+            EffectGrayscaleSampler,
+            grayscaleColorCoordinate).xyz;
+    baseColor.xyz = LinearLightingEffect(grayscaleColor);
+#endif
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    float grayscaleAlphaY =
+        pow(abs(EffectBaseColor.w), 1.0f / 2.2f) *
+        input.texCoord.z *
+        pow(abs(EffectPropertyColor.w), 1.0f / 2.2f);
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    grayscaleAlphaY *= input.vertexColor.w;
+#endif
+#if (EFFECT_TECHNIQUE & 0x1000) != 0
+    grayscaleAlphaY *= softParticleFade;
+#endif
+    const float grayscaleAlpha = EffectGrayscaleTexture.Sample(
+        EffectGrayscaleSampler,
+        float2(textureColor.w, grayscaleAlphaY)).w;
+#endif
+#else
     float4 baseColor = EffectBaseColor;
     baseColor.xyz = LinearLightingEffect(baseColor.xyz);
 #if (EFFECT_TECHNIQUE & 0x1) != 0
@@ -140,6 +211,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         input.position.xy,
         input.particleData.z);
 #endif
+#endif
     const float3 propertyColor =
         LinearLightingEffect(EffectPropertyColor.xyz);
     float3 lightColor = lerp(
@@ -153,7 +225,11 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #if (EFFECT_TECHNIQUE & 0x20) != 0
     float3 blendedColor = lightColor * (1.0f - fogFactor);
 #elif (EFFECT_TECHNIQUE & 0x40) != 0
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    const float alpha = grayscaleAlpha;
+#else
     const float alpha = baseColor.w * EffectPropertyColor.w;
+#endif
     const float outputAlpha = LinearLightingEffectAlpha(alpha);
     const float3 foggedMultiplyColor = lerp(
         lightColor,
@@ -169,9 +245,17 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #endif
 #if (EFFECT_TECHNIQUE & 0x40) == 0 || (EFFECT_TECHNIQUE & 0x20) != 0
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    float alpha = grayscaleAlpha;
+#else
     float alpha = baseColor.w * EffectPropertyColor.w;
+#endif
+#else
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    const float alpha = grayscaleAlpha;
 #else
     const float alpha = baseColor.w * EffectPropertyColor.w;
+#endif
 #endif
 #endif
     if (alpha - EffectAlphaTest.x < 0.0f) {
@@ -195,7 +279,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     alpha *= usePipboyAlpha ? EffectPipboyControls.z : 1.0f;
 #endif
     [branch] if (EffectAlphaTest.y < 1.0f) {
-#if (EFFECT_TECHNIQUE & 0x4) != 0
+#if (EFFECT_TECHNIQUE & 0x00006004) != 0
         const float sampledAlpha = textureColor.w;
 #else
         const float sampledAlpha = EffectTexture.Sample(

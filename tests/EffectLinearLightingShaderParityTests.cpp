@@ -38,12 +38,32 @@ namespace
     constexpr Pixel kPipboyTexture{ 0.25F, 0.5F, 0.75F, 0.65F };
     constexpr Pixel kPipboyControlsConverted{ 1.0F, 0.0F, 0.8F, 0.45F };
     constexpr Pixel kPipboyControlsRaw{ 0.0F, 1.0F, 0.6F, 0.4F };
+    constexpr std::array<Pixel, 16> kGrayscaleTexture{ {
+        { 0.11F, 0.21F, 0.31F, 0.17F },
+        { 0.14F, 0.24F, 0.34F, 0.27F },
+        { 0.18F, 0.28F, 0.38F, 0.37F },
+        { 0.22F, 0.32F, 0.42F, 0.47F },
+        { 0.26F, 0.36F, 0.46F, 0.23F },
+        { 0.30F, 0.40F, 0.50F, 0.33F },
+        { 0.34F, 0.44F, 0.54F, 0.43F },
+        { 0.38F, 0.48F, 0.58F, 0.53F },
+        { 0.42F, 0.52F, 0.62F, 0.29F },
+        { 0.46F, 0.56F, 0.66F, 0.39F },
+        { 0.50F, 0.60F, 0.70F, 0.49F },
+        { 0.54F, 0.64F, 0.74F, 0.59F },
+        { 0.58F, 0.68F, 0.78F, 0.35F },
+        { 0.62F, 0.72F, 0.82F, 0.45F },
+        { 0.66F, 0.76F, 0.86F, 0.55F },
+        { 0.70F, 0.80F, 0.90F, 0.65F },
+    } };
     constexpr Pixel kDepthParameters{ 0.0F, 1.0F, 1.0F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
     constexpr float kSoftParticleDepth = 0.75F;
     constexpr float kDepthTestValue = 0.25F;
+    constexpr float kGrayscaleInput = 0.65F;
+    constexpr float kBaseColorScale = 0.8F;
     static_assert(kDepthTestTexturePass[0] >= kDepthTestValue);
     static_assert(kDepthTestTextureFail[0] < kDepthTestValue);
 
@@ -82,6 +102,21 @@ namespace
             return (descriptor & 0x1000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool grayscaleColor() const noexcept
+        {
+            return (descriptor & 0x2000U) != 0;
+        }
+
+        [[nodiscard]] constexpr bool grayscaleAlpha() const noexcept
+        {
+            return (descriptor & 0x4000U) != 0;
+        }
+
+        [[nodiscard]] constexpr bool samplesBaseTexture() const noexcept
+        {
+            return textured() || grayscaleColor() || grayscaleAlpha();
+        }
+
         [[nodiscard]] constexpr bool depthTested() const noexcept
         {
             return (descriptor & 0x01000000U) != 0;
@@ -103,7 +138,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 53> kEffectContracts{ {
+    constexpr std::array<EffectContract, 107> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -157,6 +192,60 @@ namespace
         { "EffectTexturedPipboyPremultipliedAlpha_40100004", 0x40100004U },
         { "EffectVertexColorTexturedPipboyPremultipliedAlpha_40100005", 0x40100005U },
         { "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044", 0x50000044U },
+        { "EffectTexturedGrayscaleColor_00002004", 0x00002004U },
+        { "EffectVertexColorTexturedGrayscaleColor_00002005", 0x00002005U },
+        { "EffectTexturedAdditiveGrayscaleColor_00002024", 0x00002024U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColor_00002025", 0x00002025U },
+        { "EffectTexturedMultiplyBlendGrayscaleColor_00002044", 0x00002044U },
+        { "EffectVertexColorTexturedMultiplyBlendGrayscaleColor_00002045", 0x00002045U },
+        { "EffectVertexColorTexturedParticleGrayscaleColor_00002085", 0x00002085U },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColor_000020A5", 0x000020A5U },
+        { "EffectTexturedSoftGrayscaleColor_00003004", 0x00003004U },
+        { "EffectVertexColorTexturedSoftGrayscaleColor_00003005", 0x00003005U },
+        { "EffectTexturedAdditiveSoftGrayscaleColor_00003024", 0x00003024U },
+        { "EffectVertexColorTexturedAdditiveSoftGrayscaleColor_00003025", 0x00003025U },
+        { "EffectTexturedGrayscaleAlpha_00004004", 0x00004004U },
+        { "EffectVertexColorTexturedGrayscaleAlpha_00004005", 0x00004005U },
+        { "EffectTexturedAdditiveGrayscaleAlpha_00004024", 0x00004024U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleAlpha_00004025", 0x00004025U },
+        { "EffectTexturedMultiplyBlendGrayscaleAlpha_00004044", 0x00004044U },
+        { "EffectVertexColorTexturedMultiplyBlendGrayscaleAlpha_00004045", 0x00004045U },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleAlpha_000040A5", 0x000040A5U },
+        { "EffectTexturedSoftGrayscaleAlpha_00005004", 0x00005004U },
+        { "EffectVertexColorTexturedSoftGrayscaleAlpha_00005005", 0x00005005U },
+        { "EffectVertexColorAdditiveSoftGrayscaleAlpha_00005021", 0x00005021U },
+        { "EffectTexturedAdditiveSoftGrayscaleAlpha_00005024", 0x00005024U },
+        { "EffectVertexColorTexturedAdditiveSoftGrayscaleAlpha_00005025", 0x00005025U },
+        { "EffectTexturedGrayscaleColorAlpha_00006004", 0x00006004U },
+        { "EffectVertexColorTexturedGrayscaleColorAlpha_00006005", 0x00006005U },
+        { "EffectTexturedAdditiveGrayscaleColorAlpha_00006024", 0x00006024U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorAlpha_00006025", 0x00006025U },
+        { "EffectTexturedMultiplyBlendGrayscaleColorAlpha_00006044", 0x00006044U },
+        { "EffectVertexColorTexturedMultiplyBlendGrayscaleColorAlpha_00006045", 0x00006045U },
+        { "EffectVertexColorTexturedParticleGrayscaleColorAlpha_00006085", 0x00006085U },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlpha_000060A5", 0x000060A5U },
+        { "EffectTexturedSoftGrayscaleColorAlpha_00007004", 0x00007004U },
+        { "EffectVertexColorTexturedSoftGrayscaleColorAlpha_00007005", 0x00007005U },
+        { "EffectVertexColorAdditiveSoftGrayscaleColorAlpha_00007021", 0x00007021U },
+        { "EffectTexturedAdditiveSoftGrayscaleColorAlpha_00007024", 0x00007024U },
+        { "EffectVertexColorTexturedGrayscaleColorPremultipliedAlpha_40002005", 0x40002005U },
+        { "EffectTexturedAdditiveGrayscaleColorPremultipliedAlpha_40002024", 0x40002024U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorPremultipliedAlpha_40002025", 0x40002025U },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorPremultipliedAlpha_400020A5", 0x400020A5U },
+        { "EffectVertexColorTexturedSoftGrayscaleColorPremultipliedAlpha_40003005", 0x40003005U },
+        { "EffectTexturedAdditiveSoftGrayscaleColorPremultipliedAlpha_40003024", 0x40003024U },
+        { "EffectVertexColorTexturedAdditiveSoftGrayscaleColorPremultipliedAlpha_40003025", 0x40003025U },
+        { "EffectTexturedGrayscaleAlphaPremultipliedAlpha_40004004", 0x40004004U },
+        { "EffectVertexColorTexturedGrayscaleAlphaPremultipliedAlpha_40004005", 0x40004005U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleAlphaPremultipliedAlpha_40004025", 0x40004025U },
+        { "EffectTexturedSoftGrayscaleAlphaPremultipliedAlpha_40005004", 0x40005004U },
+        { "EffectTexturedAdditiveSoftGrayscaleAlphaPremultipliedAlpha_40005024", 0x40005024U },
+        { "EffectVertexColorTexturedAdditiveSoftGrayscaleAlphaPremultipliedAlpha_40005025", 0x40005025U },
+        { "EffectTexturedAdditiveGrayscaleColorAlphaPremultipliedAlpha_40006024", 0x40006024U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorAlphaPremultipliedAlpha_40006025", 0x40006025U },
+        { "EffectVertexColorTexturedMultiplyBlendGrayscaleColorAlphaPremultipliedAlpha_40006045", 0x40006045U },
+        { "EffectVertexColorTexturedAdditiveSoftGrayscaleColorAlphaPremultipliedAlpha_40007025", 0x40007025U },
+        { "EffectVertexColorTexturedMultiplyBlendGrayscaleAlphaPremultipliedAlpha_50004045", 0x50004045U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -167,7 +256,7 @@ namespace
     struct alignas(16) EffectPerMaterial
     {
         Pixel baseColor{};
-        Pixel unused{};
+        Pixel baseColorScale{};
         Pixel lightingInfluence{};
         Pixel unusedDepthTest{};
         Pixel depthTestParameters{};
@@ -282,7 +371,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     };
     VSOutput output;
     output.position = float4(positions[vertexId], 0.5, 1.0);
-    output.texCoord = float4(0.5, 0.5, 0.0, 0.0);
+    output.texCoord = float4(0.5, 0.5, 0.65, 0.0);
 #ifdef EFFECT_PIPBOY
     output.pipboyTexCoord = 0.0.xxxx;
     output.pipboyData = 0.0.xxx;
@@ -390,6 +479,36 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return view;
     }
 
+    ComPtr<ID3D11ShaderResourceView> createGrayscaleTexture(
+        ID3D11Device* device)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 4;
+        description.Height = 4;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{
+            kGrayscaleTexture.data(),
+            4 * sizeof(Pixel),
+            0
+        };
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device->CreateTexture2D(
+                &description, &initial, texture.GetAddressOf()),
+            "CreateTexture2D(grayscale shader resource)");
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device->CreateShaderResourceView(
+                texture.Get(), nullptr, view.GetAddressOf()),
+            "CreateShaderResourceView(grayscale)");
+        return view;
+    }
+
     RenderTarget createRenderTarget(ID3D11Device* device)
     {
         D3D11_TEXTURE2D_DESC description{};
@@ -434,6 +553,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* texture,
         ID3D11ShaderResourceView* depthTexture,
         ID3D11ShaderResourceView* depthTestTexture,
+        ID3D11ShaderResourceView* grayscaleTexture,
         ID3D11ShaderResourceView* pipboyTexture,
         ID3D11SamplerState* sampler)
     {
@@ -454,9 +574,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->PSSetShaderResources(0, 1, &texture);
         context->PSSetShaderResources(3, 1, &depthTexture);
+        context->PSSetShaderResources(4, 1, &grayscaleTexture);
         context->PSSetShaderResources(6, 1, &pipboyTexture);
         context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
+        context->PSSetSamplers(4, 1, &sampler);
         context->PSSetSamplers(6, 1, &sampler);
         context->Draw(3, 0);
 
@@ -472,6 +594,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* nullTexture{};
         context->PSSetShaderResources(0, 1, &nullTexture);
         context->PSSetShaderResources(3, 1, &nullTexture);
+        context->PSSetShaderResources(4, 1, &nullTexture);
         context->PSSetShaderResources(6, 1, &nullTexture);
         context->PSSetShaderResources(8, 1, &nullTexture);
         ID3D11RenderTargetView* nullTarget{};
@@ -527,19 +650,61 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return intersectionFade * cameraFade;
     }
 
+    Pixel sampleGrayscaleTexture(float u, float v)
+    {
+        const auto texel = [](float coordinate) {
+            return std::min(
+                3U,
+                static_cast<unsigned>(
+                    std::floor(std::max(0.0F, coordinate) * 4.0F)));
+        };
+        return kGrayscaleTexture[texel(v) * 4U + texel(u)];
+    }
+
+    Pixel grayscaleColorSample(const EffectContract& contract)
+    {
+        auto v = std::pow(kBaseColor[0], 1.0F / 2.2F) *
+            kGrayscaleInput;
+        if (contract.vertexColored()) {
+            v *= kVertexColor[0];
+        }
+        if (contract.soft()) {
+            v *= expectedSoftFade();
+        }
+        return sampleGrayscaleTexture(
+            std::pow(kTextureColor[1], 1.0F / 2.2F),
+            v);
+    }
+
+    float grayscaleAlphaSample(const EffectContract& contract)
+    {
+        auto v = std::pow(kBaseColor[3], 1.0F / 2.2F) *
+            kGrayscaleInput *
+            std::pow(kPropertyColor[3], 1.0F / 2.2F);
+        if (contract.vertexColored()) {
+            v *= kVertexColor[3];
+        }
+        if (contract.soft()) {
+            v *= expectedSoftFade();
+        }
+        return sampleGrayscaleTexture(kTextureColor[3], v)[3];
+    }
+
     Pixel expectedVanilla(
         const EffectContract& contract,
         const Pixel& pipboyControls = kPipboyControlsConverted,
         bool usePipboyAlpha = true)
     {
         Pixel result{};
-        auto alpha = kBaseColor[3] *
-            (contract.vertexColored() ?
-                    std::pow(kVertexColor[3], 2.2F) :
-                    1.0F) *
-            (contract.textured() ? kTextureColor[3] : 1.0F) *
-            kPropertyColor[3];
-        if (contract.soft()) {
+        auto alpha = contract.grayscaleAlpha() ?
+            grayscaleAlphaSample(contract) :
+            kBaseColor[3] *
+                (contract.vertexColored() ?
+                        std::pow(kVertexColor[3], 2.2F) :
+                        1.0F) *
+                (contract.samplesBaseTexture() ? kTextureColor[3] : 1.0F) *
+                kPropertyColor[3];
+        if (contract.soft() && !contract.grayscaleAlpha()) {
             alpha *= expectedSoftFade();
         }
         auto pipboyColor = kPipboyTexture;
@@ -556,12 +721,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             }
             outputAlpha *= usePipboyAlpha ? pipboyControls[2] : 1.0F;
         }
+        const auto grayscaleColor = grayscaleColorSample(contract);
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            const auto baseColor = kBaseColor[channel] *
-                (contract.vertexColored() ?
-                        std::pow(kVertexColor[channel], 2.2F) :
-                        1.0F) *
-                (contract.textured() ? kTextureColor[channel] : 1.0F);
+            const auto baseColor = contract.grayscaleColor() ?
+                grayscaleColor[channel] * kBaseColorScale :
+                kBaseColor[channel] *
+                    (contract.vertexColored() ?
+                            std::pow(kVertexColor[channel], 2.2F) :
+                            1.0F) *
+                    (contract.textured() ?
+                            kTextureColor[channel] :
+                            1.0F);
             const auto lightColor = baseColor +
                 kLightingInfluence *
                     (kPropertyColor[channel] * baseColor - baseColor);
@@ -599,11 +769,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool usePipboyAlpha = true)
     {
         Pixel result{};
-        auto rawAlpha = kBaseColor[3] *
-            (contract.vertexColored() ? kVertexColor[3] : 1.0F) *
-            (contract.textured() ? kTextureColor[3] : 1.0F) *
-            kPropertyColor[3];
-        if (contract.soft()) {
+        auto rawAlpha = contract.grayscaleAlpha() ?
+            grayscaleAlphaSample(contract) :
+            kBaseColor[3] *
+                (contract.vertexColored() ? kVertexColor[3] : 1.0F) *
+                (contract.samplesBaseTexture() ? kTextureColor[3] : 1.0F) *
+                kPropertyColor[3];
+        if (contract.soft() && !contract.grayscaleAlpha()) {
             rawAlpha *= expectedSoftFade();
         }
         auto pipboyColor = kPipboyTexture;
@@ -629,16 +801,27 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 settings.effectAlphaGamma);
         const auto fogFactor =
             std::pow(std::abs(kFogParam[3]), settings.fogAlphaGamma);
+        const auto grayscaleColor = grayscaleColorSample(contract);
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            auto base =
-                std::pow(std::abs(kBaseColor[channel]), settings.effectGamma);
-            if (contract.vertexColored()) {
-                base *= std::pow(
-                    std::abs(kVertexColor[channel]), settings.effectGamma);
-            }
-            if (contract.textured()) {
-                base *= std::pow(
-                    std::abs(kTextureColor[channel]), settings.effectGamma);
+            float base{};
+            if (contract.grayscaleColor()) {
+                base = std::pow(
+                    std::abs(grayscaleColor[channel] * kBaseColorScale),
+                    settings.effectGamma);
+            } else {
+                base = std::pow(
+                    std::abs(kBaseColor[channel]),
+                    settings.effectGamma);
+                if (contract.vertexColored()) {
+                    base *= std::pow(
+                        std::abs(kVertexColor[channel]),
+                        settings.effectGamma);
+                }
+                if (contract.textured()) {
+                    base *= std::pow(
+                        std::abs(kTextureColor[channel]),
+                        settings.effectGamma);
+                }
             }
             const auto property = std::pow(
                 std::abs(kPropertyColor[channel]), settings.effectGamma);
@@ -701,6 +884,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         techniqueConstants.depthParameters = kDepthParameters;
         EffectPerMaterial materialConstants{};
         materialConstants.baseColor = kBaseColor;
+        materialConstants.baseColorScale[0] = kBaseColorScale;
         materialConstants.lightingInfluence[0] = kLightingInfluence;
         materialConstants.lightingInfluence[1] = kSoftDepthScale;
         materialConstants.depthTestParameters[0] = 1.0F;
@@ -744,6 +928,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             createTexture(device.Get(), kDepthTestTexturePass);
         const auto depthTestTextureFail =
             createTexture(device.Get(), kDepthTestTextureFail);
+        const auto grayscaleTexture = createGrayscaleTexture(device.Get());
         const auto pipboyTexture = createTexture(device.Get(), kPipboyTexture);
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -801,19 +986,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 vanillaShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
             const auto disabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
             const auto enabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), enabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
 
             const std::string label = contract.name;
             passed &= compare(
@@ -835,14 +1020,14 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTextureFail.Get(),
-                    pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
                 const auto replacementDiscard = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTextureFail.Get(),
-                    pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
                 constexpr Pixel discarded{};
                 passed &= compare(
                     vanillaDiscard,
@@ -860,21 +1045,21 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
                 const auto disabledRawPipboy = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
                 const auto enabledRawPipboy = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     enabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
                 passed &= compare(
                     vanillaRawPipboy,
                     expectedVanilla(
@@ -900,7 +1085,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All fifty-three Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 107 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
