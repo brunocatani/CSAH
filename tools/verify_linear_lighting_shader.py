@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 120:
-        fail("Linear Lighting manifest must contain exactly 120 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 125:
+        fail("Linear Lighting manifest must contain exactly 125 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -303,6 +303,21 @@ def verify_source_contracts(
                 "six-MRT shader is missing gradient-remap contract: "
                 f"{token}"
             )
+
+    for token in (
+        "LinearLightingDiffuse(menuScreen)",
+        "(-screenDirection.xy / screenDepth) + (tangentNormal.xy * 2.0)",
+        "float2(screenOffset.x, -screenOffset.y) * cb0[0].y",
+        "pow(TexScreen.Sample(SampScreen, screenUv).xyz, 2.2)",
+        "pipboyScreen * cb0[0].z",
+        "pipboyScreen * cb0[0].w",
+        "LINEAR_LIGHTING_PIPBOY_SCREEN ? 0.015686 : 1.0",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing screen-material contract: "
+                f"{token}"
+            )
     for token in (
         "TexGradientRemap.SampleLevel",
         "pow(diffuse.y, 0.454545)",
@@ -344,6 +359,8 @@ def verify_source_contracts(
     lod_object_alpha_contracts = 0
     bone_tint_contracts = 0
     combined_glowmap_additional_alpha_contracts = 0
+    menu_screen_contracts = 0
+    pipboy_screen_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -375,12 +392,16 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
         ):
             combined_glowmap_additional_alpha_contracts += 1
-    if vertex_contracts != 63:
-        fail(f"expected 63 COLOR0 contracts, found {vertex_contracts}")
+        if "#define LINEAR_LIGHTING_MENU_SCREEN 1" in source_text:
+            menu_screen_contracts += 1
+        if "#define LINEAR_LIGHTING_PIPBOY_SCREEN 1" in source_text:
+            pipboy_screen_contracts += 1
+    if vertex_contracts != 66:
+        fail(f"expected 66 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 20:
         fail(f"expected 20 glowmap contracts, found {glowmap_contracts}")
-    if instanced_contracts != 6:
-        fail(f"expected 6 instanced contracts, found {instanced_contracts}")
+    if instanced_contracts != 7:
+        fail(f"expected 7 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 9:
         fail(
             "expected 9 model-space-normal contracts, "
@@ -419,6 +440,12 @@ def verify_source_contracts(
         fail(
             "expected 5 combined glowmap/additional-alpha contracts, "
             f"found {combined_glowmap_additional_alpha_contracts}"
+        )
+    if menu_screen_contracts != 3:
+        fail(f"expected 3 menu-screen contracts, found {menu_screen_contracts}")
+    if pipboy_screen_contracts != 2:
+        fail(
+            f"expected 2 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
         )
 
 
@@ -475,11 +502,25 @@ def verify(root: Path) -> None:
         r'ShaderContract\{\s*"([^"]+)",\s*(\d+),\s*(true|false),\s*'
         r'(true|false)(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
-        str, tuple[int, bool, bool, bool, bool, bool, bool, bool, bool]
+        str,
+        tuple[
+            int,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+        ],
     ] = {}
     for (
         name,
@@ -492,6 +533,8 @@ def verify(root: Path) -> None:
         has_gradient_remap,
         has_gradient_hair,
         has_bone_tint,
+        has_menu_screen,
+        has_pipboy_screen,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -505,6 +548,8 @@ def verify(root: Path) -> None:
             has_gradient_remap == "true",
             has_gradient_hair == "true",
             has_bone_tint == "true",
+            has_menu_screen == "true",
+            has_pipboy_screen == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -623,6 +668,18 @@ def verify(root: Path) -> None:
                 and 14 in original["textures"]
                 and any(
                     semantic[0] == "COLOR" and semantic[1] == 1
+                    for semantic in original["input_signature"]
+                ),
+                "#define LINEAR_LIGHTING_MENU_SCREEN 1" in source_text
+                and 4 in original["samplers"]
+                and 4 in original["textures"]
+                and 0 not in original["constant_buffers"],
+                "#define LINEAR_LIGHTING_PIPBOY_SCREEN 1" in source_text
+                and original["constant_buffers"].get(0) == 1
+                and 4 in original["samplers"]
+                and 4 in original["textures"]
+                and any(
+                    semantic[0] == "TEXCOORD" and semantic[1] == 6
                     for semantic in original["input_signature"]
                 ),
             )

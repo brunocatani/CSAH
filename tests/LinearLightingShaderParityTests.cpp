@@ -43,6 +43,8 @@ namespace
         bool hasGradientRemap{};
         bool hasGradientHair{};
         bool hasBoneTint{};
+        bool hasMenuScreen{};
+        bool hasPipboyScreen{};
     };
 
     constexpr std::array kShaderContracts{
@@ -166,6 +168,11 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskGlowmapAlphaTestSixMrt_L4_01004102", 6, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGlowmapAlphaTestSixMrt_L3_01004103", 6, true, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGlowmapTessellatedAlphaTestSixMrt_L3_01084103", 6, true, false, true, true },
+        ShaderContract{ "MenuScreenSixMrt_L4_00010002", 6, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "MenuScreenSixMrt_L3_00010003", 6, true, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "MenuScreenInstancedSixMrt_L3_08010003", 6, true, true, false, false, false, false, false, false, true, false },
+        ShaderContract{ "PipboyScreenSixMrt_L4_00800002", 6, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "PipboyScreenSixMrt_L3_00800003", 6, true, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -238,6 +245,12 @@ namespace
     constexpr Pixel kNormalTexture{ 0.35F, 0.65F, 0.2F, 0.8F };
     constexpr Pixel kSpecularTexture{ 0.45F, 0.7F, 0.15F, 0.9F };
     constexpr Pixel kGlowTexture{ 0.6F, 0.4F, 0.2F, 1.0F };
+    constexpr std::array<Pixel, 4> kScreenTexture{
+        Pixel{ 0.12F, 0.34F, 0.56F, 1.0F },
+        Pixel{ 0.78F, 0.23F, 0.45F, 1.0F },
+        Pixel{ 0.65F, 0.42F, 0.18F, 1.0F },
+        Pixel{ 0.31F, 0.73F, 0.27F, 1.0F },
+    };
     constexpr Pixel kVertexColor{ 0.8F, 0.7F, 0.6F, 0.9F };
     constexpr Pixel kEmitColor{ 0.3F, 0.45F, 0.6F, 0.2F };
     constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
@@ -357,7 +370,8 @@ namespace
         bool isInstanced,
         bool usesTessellatedInputs,
         bool hasLandscapeLod,
-        bool hasBoneTint)
+        bool hasBoneTint,
+        bool hasPipboyScreen)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -382,6 +396,9 @@ struct VSOutput
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
+#endif
+#if HAS_PIPBOY_SCREEN
+    float3 screenDirection : TEXCOORD6;
 #endif
 #if HAS_BONE_TINT
     float4 boneTintColor : COLOR1;
@@ -424,6 +441,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
+#if HAS_PIPBOY_SCREEN
+    output.screenDirection = float3(0.2, -0.4, -1.0);
+#endif
 #if HAS_BONE_TINT
     output.boneTintColor = float4(0.2, 0.3, 0.4, 0.625);
 #endif
@@ -447,6 +467,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 usesTessellatedInputs ? "1" : "0" },
             { "HAS_LANDSCAPE_LOD", hasLandscapeLod ? "1" : "0" },
             { "HAS_BONE_TINT", hasBoneTint ? "1" : "0" },
+            { "HAS_PIPBOY_SCREEN", hasPipboyScreen ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -792,6 +813,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasGradientRemap,
         bool hasGradientHair,
         bool hasBoneTint,
+        bool hasPipboyScreen,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -824,9 +846,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const std::array<std::array<float, 4>, 1> landscapeLodGlobalsData{
             std::array<float, 4>{ 0.0F, 0.0F, 64.0F, -32.0F },
         };
+        const std::array<std::array<float, 4>, 1> pipboyScreenGlobalsData{
+            std::array<float, 4>{ 0.2F, 0.5F, 0.7F, 0.4F },
+        };
         const auto landscapeLodGlobalsBuffer = createConstantBuffer(
             device,
             landscapeLodGlobalsData);
+        const auto pipboyScreenGlobalsBuffer = createConstantBuffer(
+            device,
+            pipboyScreenGlobalsData);
 
         const std::array<Pixel, 4> texturePixels{
             kDiffuseTexture,
@@ -859,6 +887,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto boneTintPalette = createTexture2x2(
             device,
             kBoneTintPalette);
+        const auto screenTexture = createTexture2x2(device, kScreenTexture);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -911,6 +940,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             0,
             static_cast<UINT>(samplers.size()),
             samplers.data());
+        auto* rawScreenTexture = screenTexture.Get();
+        auto* rawScreenSampler = sampler.Get();
+        context.PSSetShaderResources(4, 1, &rawScreenTexture);
+        context.PSSetSamplers(4, 1, &rawScreenSampler);
         auto* rawAdditionalAlphaTexture = additionalAlphaTexture.Get();
         auto* rawAdditionalAlphaNoise = additionalAlphaNoise.Get();
         context.PSSetShaderResources(12, 1, &rawAdditionalAlphaTexture);
@@ -948,8 +981,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         auto* rawLinearGeometry = linearGeometryBuffer.Get();
         auto* rawInstance = instanceBuffer.Get();
         auto* rawLandscapeLodGlobals = landscapeLodGlobalsBuffer.Get();
+        auto* rawPipboyScreenGlobals = pipboyScreenGlobalsBuffer.Get();
         if (hasLandscapeLod) {
             context.PSSetConstantBuffers(0, 1, &rawLandscapeLodGlobals);
+        } else if (hasPipboyScreen) {
+            context.PSSetConstantBuffers(0, 1, &rawPipboyScreenGlobals);
         }
         context.PSSetConstantBuffers(2, 1, &rawMaterial);
         context.PSSetConstantBuffers(5, 1, &rawFrame);
@@ -969,9 +1005,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             static_cast<UINT>(nullViews.size()),
             nullViews.data());
         ID3D11ShaderResourceView* nullView{};
+        context.PSSetShaderResources(4, 1, &nullView);
         context.PSSetShaderResources(12, 1, &nullView);
         context.PSSetShaderResources(15, 1, &nullView);
         ID3D11SamplerState* nullSampler{};
+        context.PSSetSamplers(4, 1, &nullSampler);
         context.PSSetSamplers(12, 1, &nullSampler);
         if (hasGradientRemap) {
             context.PSSetShaderResources(5, 1, &nullView);
@@ -987,6 +1025,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetShaderResources(13, 1, &nullView);
             context.PSSetSamplers(13, 1, &nullSampler);
             context.PSSetSamplers(15, 1, &nullSampler);
+            ID3D11Buffer* nullBuffer{};
+            context.PSSetConstantBuffers(0, 1, &nullBuffer);
+        } else if (hasPipboyScreen) {
             ID3D11Buffer* nullBuffer{};
             context.PSSetConstantBuffers(0, 1, &nullBuffer);
         }
@@ -1090,10 +1131,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     diffuse *= kVertexColor[channel];
                 }
             }
-            expected[0][channel] = fade * transformedValue(
+            auto transformedDiffuse = transformedValue(
                 diffuse,
                 lightingCase.colorGamma,
                 lightingCase.vanillaDiffuseColorMult);
+            constexpr auto screenTexel = 2u;
+            if (contract.hasMenuScreen) {
+                transformedDiffuse += transformedValue(
+                    kScreenTexture[screenTexel][channel],
+                    lightingCase.colorGamma,
+                    lightingCase.vanillaDiffuseColorMult);
+            }
+            expected[0][channel] = fade * transformedDiffuse;
+            const auto pipboyScreen = std::pow(
+                kScreenTexture[screenTexel][channel],
+                2.2F);
+            if (contract.hasPipboyScreen) {
+                expected[0][channel] += pipboyScreen * 0.7F;
+            }
             if (contract.hasBoneTint) {
                 constexpr auto boneTintPaletteTexel = 1u;
                 expected[0][channel] += transformedValue(
@@ -1116,6 +1171,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kGlowTexture[channel],
                     lightingCase.glowmapGamma,
                     lightingCase.glowmapMult);
+            }
+            if (contract.hasPipboyScreen) {
+                emission += pipboyScreen * 0.4F;
             }
             expected[4][channel] = emission;
         }
@@ -1147,19 +1205,21 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 32> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 64> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
             const auto usesTessellatedInputs = (index & 4u) != 0;
             const auto hasLandscapeLod = (index & 8u) != 0;
             const auto hasBoneTint = (index & 16u) != 0;
+            const auto hasPipboyScreen = (index & 32u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
                 usesTessellatedInputs,
                 hasLandscapeLod,
-                hasBoneTint);
+                hasBoneTint,
+                hasPipboyScreen);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -1173,7 +1233,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             ", tessellated inputs" :
                             ", standard inputs") +
                     (hasLandscapeLod ? ", landscape LOD" : "") +
-                    (hasBoneTint ? ", COLOR1)" : ")"));
+                    (hasBoneTint ? ", COLOR1" : "") +
+                    (hasPipboyScreen ? ", Pip-Boy TEXCOORD6)" : ")"));
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -1214,7 +1275,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (contract.isInstanced ? 2u : 0u) |
                 (contract.usesTessellatedInputs ? 4u : 0u) |
                 (contract.hasLandscapeLod ? 8u : 0u) |
-                (contract.hasBoneTint ? 16u : 0u)].Get();
+                (contract.hasBoneTint ? 16u : 0u) |
+                (contract.hasPipboyScreen ? 32u : 0u)].Get();
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
                 const auto vanilla = render(
@@ -1230,7 +1292,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
-                    contract.hasBoneTint);
+                    contract.hasBoneTint,
+                    contract.hasPipboyScreen);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1244,7 +1307,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
-                    contract.hasBoneTint);
+                    contract.hasBoneTint,
+                    contract.hasPipboyScreen);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1268,7 +1332,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
-                    contract.hasBoneTint);
+                    contract.hasBoneTint,
+                    contract.hasPipboyScreen);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1292,7 +1357,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasLandscapeLod,
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
-                    contract.hasBoneTint);
+                    contract.hasBoneTint,
+                    contract.hasPipboyScreen);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1343,6 +1409,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasGradientRemap,
                         contract.hasGradientHair,
                         contract.hasBoneTint,
+                        contract.hasPipboyScreen,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1358,6 +1425,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasGradientRemap,
                         contract.hasGradientHair,
                         contract.hasBoneTint,
+                        contract.hasPipboyScreen,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

@@ -10,12 +10,28 @@
 #define LINEAR_LIGHTING_GRADIENT_REMAP 0
 #endif
 
+#ifndef LINEAR_LIGHTING_MENU_SCREEN
+#define LINEAR_LIGHTING_MENU_SCREEN 0
+#endif
+
+#ifndef LINEAR_LIGHTING_PIPBOY_SCREEN
+#define LINEAR_LIGHTING_PIPBOY_SCREEN 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
 
 #if LINEAR_LIGHTING_GRADIENT_REMAP && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Combined gradient-remap and landscape-LOD layouts require separate verified contracts.
+#endif
+
+#if LINEAR_LIGHTING_MENU_SCREEN && LINEAR_LIGHTING_PIPBOY_SCREEN
+#error Menu-screen and Pip-Boy-screen shaders use distinct material contracts.
+#endif
+
+#if LINEAR_LIGHTING_PIPBOY_SCREEN && LINEAR_LIGHTING_LANDSCAPE_LOD
+#error Pip-Boy-screen and landscape-LOD shaders use incompatible b0 contracts.
 #endif
 
 cbuffer PerMaterial : register(b2)
@@ -31,6 +47,11 @@ cbuffer PerMaterial : register(b2)
 
 #if LINEAR_LIGHTING_LANDSCAPE_LOD
 cbuffer LandscapeLodGlobals : register(b0)
+{
+    float4 cb0[1];
+};
+#elif LINEAR_LIGHTING_PIPBOY_SCREEN
+cbuffer PipboyScreenGlobals : register(b0)
 {
     float4 cb0[1];
 };
@@ -68,6 +89,9 @@ Texture2D<float4> TexLandscapeLodNormal : register(t15);
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 Texture2D<float4> TexGradientRemap : register(t5);
 #endif
+#if LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN
+Texture2D<float4> TexScreen : register(t4);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -89,6 +113,9 @@ SamplerState SampLandscapeLodNormal : register(s15);
 #endif
 #if LINEAR_LIGHTING_GRADIENT_REMAP
 SamplerState SampGradientRemap : register(s5);
+#endif
+#if LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN
+SamplerState SampScreen : register(s4);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -160,6 +187,9 @@ struct PSInput
 #if LINEAR_LIGHTING_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
+#endif
+#if LINEAR_LIGHTING_PIPBOY_SCREEN
+    float3 screenDirection : TEXCOORD6;
 #endif
 #if LINEAR_LIGHTING_INSTANCED
     uint instanceDataIndex : COLOR2;
@@ -257,7 +287,13 @@ PSOutput PSMain(PSInput input)
     float fade = (LINEAR_LIGHTING_MATERIAL_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_MATERIAL_PROPERTIES.w * cb12[50].x) + 1.0);
+#if LINEAR_LIGHTING_MENU_SCREEN
+    float3 menuScreen = TexScreen.Sample(SampScreen, uv).xyz;
+    output.target0.xyz = fade * (
+        LinearLightingDiffuse(diffuse) + LinearLightingDiffuse(menuScreen));
+#elif !LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+#endif
     output.target0.w = cb2[0].z;
 
     float3 sourceNormal = normalize(input.normal);
@@ -299,6 +335,20 @@ PSOutput PSMain(PSInput input)
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));
     float3 tangentNormal = float3(tangentNormalXY, input.isFrontFace ? tangentNormalZ : -tangentNormalZ);
+#endif
+
+#if LINEAR_LIGHTING_PIPBOY_SCREEN
+    float3 screenDirection = normalize(-input.screenDirection);
+    float screenDepth = dot(screenDirection, tangentNormal);
+    float2 screenOffset =
+        (-screenDirection.xy / screenDepth) + (tangentNormal.xy * 2.0);
+    screenOffset *= cb0[0].x;
+    float2 screenUv = uv +
+        (float2(screenOffset.x, -screenOffset.y) * cb0[0].y);
+    float3 pipboyScreen = pow(TexScreen.Sample(SampScreen, screenUv).xyz, 2.2);
+    output.target0.xyz =
+        (fade * LinearLightingDiffuse(diffuse)) +
+        (pipboyScreen * cb0[0].z);
 #endif
 
     float3 projectedNormal;
@@ -363,8 +413,11 @@ PSOutput PSMain(PSInput input)
     output.target3.z = cb2[0].w * 0.01;
     emitColor = cb2[1].xyz;
 #endif
-    output.target3.w = 1.0;
-#if LINEAR_LIGHTING_TEXTURED_EMISSION
+    output.target3.w = LINEAR_LIGHTING_PIPBOY_SCREEN ? 0.015686 : 1.0;
+#if LINEAR_LIGHTING_PIPBOY_SCREEN
+    output.target4.xyz =
+        (pipboyScreen * cb0[0].w) + LinearLightingEmitColor(emitColor);
+#elif LINEAR_LIGHTING_TEXTURED_EMISSION
     float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);
     output.target4.xyz = LinearLightingEmitColor(emitColor) * glow;
 #else
