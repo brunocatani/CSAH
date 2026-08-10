@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 114:
-        fail("Linear Lighting manifest must contain exactly 114 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 120:
+        fail("Linear Lighting manifest must contain exactly 120 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -343,6 +343,7 @@ def verify_source_contracts(
     gradient_hair_contracts = 0
     lod_object_alpha_contracts = 0
     bone_tint_contracts = 0
+    combined_glowmap_additional_alpha_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -369,10 +370,15 @@ def verify_source_contracts(
             lod_object_alpha_contracts += 1
         if "#define LINEAR_LIGHTING_BONE_TINTING 1" in source_text:
             bone_tint_contracts += 1
-    if vertex_contracts != 60:
-        fail(f"expected 60 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 14:
-        fail(f"expected 14 glowmap contracts, found {glowmap_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text
+            and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
+        ):
+            combined_glowmap_additional_alpha_contracts += 1
+    if vertex_contracts != 63:
+        fail(f"expected 63 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 20:
+        fail(f"expected 20 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 6:
         fail(f"expected 6 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 9:
@@ -380,11 +386,11 @@ def verify_source_contracts(
             "expected 9 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 14:
-        fail(f"expected 14 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 31:
+    if tessellated_contracts != 16:
+        fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
+    if additional_alpha_mask_contracts != 36:
         fail(
-            "expected 31 additional-alpha-mask contracts, "
+            "expected 36 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 7:
@@ -409,6 +415,11 @@ def verify_source_contracts(
         )
     if bone_tint_contracts != 12:
         fail(f"expected 12 bone-tint contracts, found {bone_tint_contracts}")
+    if combined_glowmap_additional_alpha_contracts != 5:
+        fail(
+            "expected 5 combined glowmap/additional-alpha contracts, "
+            f"found {combined_glowmap_additional_alpha_contracts}"
+        )
 
 
 def verify(root: Path) -> None:
