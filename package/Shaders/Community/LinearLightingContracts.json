@@ -140,5 +140,9 @@
   { "name": "GradientRemapGlowmapSixMrt_L4_04004002", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_GLOWMAP_SIX_MRT_PS" },
   { "name": "GradientRemapGlowmapSixMrt_L3_04004003", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_GLOWMAP_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "GradientRemapGlowmapAlphaTestSixMrt_L4_04004102", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_GLOWMAP_ALPHA_TEST_SIX_MRT_PS" },
-  { "name": "GradientRemapGlowmapAlphaTestSixMrt_L3_04004103", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_GLOWMAP_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" }
+  { "name": "GradientRemapGlowmapAlphaTestSixMrt_L3_04004103", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_GLOWMAP_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskFaceDetailSixMrt_L4_81000042", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskFaceDetailAlphaTestSixMrt_L4_81000142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskFaceDetailModelSpaceNormalsSixMrt_L4_81002042", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskFaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_81002142", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_FACE_DETAIL_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" }
 ]
