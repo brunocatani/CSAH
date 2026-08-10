@@ -14,9 +14,15 @@
 #define LINEAR_LIGHTING_SKIN_TINT 0
 #endif
 
+#ifndef LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_SKIN_TINT
+#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    float4 cb2[11];
+#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[10];
 #else
     float4 cb2[9];
@@ -36,6 +42,10 @@ Texture2D<float4> TexSpecular : register(t2);
 Texture2D<float4> TexMeatCuffDiffuse : register(t9);
 Texture2D<float4> TexMeatCuffNormal : register(t10);
 Texture2D<float4> TexMeatCuffSpecular : register(t11);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+Texture2D<float4> TexAdditionalAlpha : register(t12);
+Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
+#endif
 
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
@@ -43,19 +53,32 @@ SamplerState SampSpecular : register(s2);
 SamplerState SampMeatCuffDiffuse : register(s9);
 SamplerState SampMeatCuffNormal : register(s10);
 SamplerState SampMeatCuffSpecular : register(s11);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+SamplerState SampAdditionalAlpha : register(s12);
+#endif
 
 #if LINEAR_LIGHTING_SKIN_TINT
 #define LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[7]
 #define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_Y cb2[8]
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK cb2[9]
+#define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[10]
+#else
 #define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[9]
+#endif
 #else
 #define LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[6]
 #define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_Y cb2[7]
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK cb2[8]
+#define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[9]
+#else
 #define LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[8]
+#endif
 #endif
 
 struct PSInput
@@ -89,6 +112,31 @@ struct PSOutput
 PSOutput PSMain(PSInput input)
 {
     PSOutput output;
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    const float2 baseUv = float2(
+        input.currentPosition.w,
+        input.previousPosition.w);
+    if (LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK.y != 0.0)
+    {
+        const float2 coordinateSign =
+            (input.position.xy >= -input.position.xy) ?
+            float2(1.0, 1.0) : float2(-1.0, -1.0);
+        const int2 noiseCoordinate = int2(
+            frac(input.position.xy * coordinateSign * 0.25) *
+            coordinateSign * 4.0);
+        const float noise = TexAdditionalAlphaNoise.Load(
+            int3(noiseCoordinate, 0)).x;
+        clip((LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK.y *
+            (0.5 - noise)) +
+            LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK.z - 0.5);
+    }
+    if (LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK.w != 0.0)
+    {
+        const float additionalAlpha = TexAdditionalAlpha.Sample(
+            SampAdditionalAlpha, baseUv).w;
+        clip(LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK.x - additionalAlpha);
+    }
+#endif
     const float3 surfaceTangent = normalize(input.tangent);
     const float3 surfaceBitangent = normalize(input.bitangent);
     const float3 surfaceNormal = normalize(input.normal);
@@ -117,9 +165,11 @@ PSOutput PSMain(PSInput input)
     const float2 cuffNormalXY =
         (TexMeatCuffNormal.Sample(
             SampMeatCuffNormal, cuffNormalUv).xy * 2.0) - 1.0;
+#if !LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     const float2 baseUv = float2(
         input.currentPosition.w,
         input.previousPosition.w);
+#endif
     const float4 baseDiffuseSample = TexDiffuse.Sample(SampDiffuse, baseUv);
     const float3 baseNormalSample = TexNormal.Sample(SampNormal, baseUv).xyz;
     const float2 baseSpecularSample = TexSpecular.Sample(

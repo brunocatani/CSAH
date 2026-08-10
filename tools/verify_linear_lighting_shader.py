@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 231:
-        fail("Linear Lighting manifest must contain exactly 231 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 243:
+        fail("Linear Lighting manifest must contain exactly 243 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -245,6 +245,9 @@ def verify_source_contracts(
         "LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[5]",
         "LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[6]",
         "LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[10]",
+        "LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK cb2[9]",
+        "TexAdditionalAlphaNoise.Load",
+        "SampAdditionalAlpha, input.uv",
         "diffuse = lerp(diffuse, skinTint, cb2[2].w)",
         "LinearLightingDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
@@ -273,6 +276,9 @@ def verify_source_contracts(
         "LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[6]",
         "LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[7]",
         "LINEAR_LIGHTING_MEAT_CUFF_DEPTH cb2[9]",
+        "LINEAR_LIGHTING_MEAT_CUFF_ALPHA_MASK cb2[8]",
+        "TexAdditionalAlphaNoise.Load",
+        "SampAdditionalAlpha, baseUv",
         "lerp(diffuseSample.xyz, skinTint, cb2[3].w)",
         "clip(-1.0)",
         "clip(alpha - 0.015686)",
@@ -640,28 +646,28 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 115:
-        fail(f"expected 115 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 123:
+        fail(f"expected 123 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 31:
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 24:
+    if model_space_normal_contracts != 28:
         fail(
-            "expected 24 model-space-normal contracts, "
+            "expected 28 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 23:
-        fail(f"expected 23 tessellated contracts, found {tessellated_contracts}")
-    if dismemberment_contracts != 6:
+    if tessellated_contracts != 29:
+        fail(f"expected 29 tessellated contracts, found {tessellated_contracts}")
+    if dismemberment_contracts != 12:
         fail(
-            f"expected 6 dismemberment contracts, found {dismemberment_contracts}"
+            f"expected 12 dismemberment contracts, found {dismemberment_contracts}"
         )
-    if meat_cuff_contracts != 6:
-        fail(f"expected 6 meat-cuff contracts, found {meat_cuff_contracts}")
-    if additional_alpha_mask_contracts != 58:
+    if meat_cuff_contracts != 12:
+        fail(f"expected 12 meat-cuff contracts, found {meat_cuff_contracts}")
+    if additional_alpha_mask_contracts != 70:
         fail(
-            "expected 58 additional-alpha-mask contracts, "
+            "expected 70 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -704,11 +710,11 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 16:
         fail(f"expected 16 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 20:
-        fail(f"expected 20 skin-tint contracts, found {skin_tint_contracts}")
-    if combined_skin_tint_additional_alpha_contracts != 4:
+    if skin_tint_contracts != 26:
+        fail(f"expected 26 skin-tint contracts, found {skin_tint_contracts}")
+    if combined_skin_tint_additional_alpha_contracts != 10:
         fail(
-            "expected 4 combined skin-tint/additional-alpha contracts, "
+            "expected 10 combined skin-tint/additional-alpha contracts, "
             f"found {combined_skin_tint_additional_alpha_contracts}"
         )
     if combined_gradient_remap_glowmap_contracts != 9:
@@ -1080,7 +1086,7 @@ def verify(root: Path) -> None:
                 and "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1"
                 in source_text,
                 "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
-                and original["constant_buffers"].get(2) in (7, 8, 10, 11),
+                and original["constant_buffers"].get(2) in (7, 8, 10, 11, 12),
                 "#define LINEAR_LIGHTING_HAIR 1" in source_text
                 and (
                     (
@@ -1129,7 +1135,12 @@ def verify(root: Path) -> None:
                 ),
                 "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text
                 and original["constant_buffers"].get(2)
-                == (11 if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text else 10)
+                == 10
+                + int("#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text)
+                + int(
+                    "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
+                    in source_text
+                )
                 and all(slot in original["samplers"] for slot in (9, 10, 11))
                 and all(slot in original["textures"] for slot in (9, 10, 11))
                 and any(
@@ -1139,7 +1150,12 @@ def verify(root: Path) -> None:
                 "#define LINEAR_LIGHTING_MEAT_CUFF 1" in source_text
                 and len(original["outputs"]) == 5
                 and original["constant_buffers"].get(2)
-                == (10 if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text else 9)
+                == 9
+                + int("#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text)
+                + int(
+                    "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
+                    in source_text
+                )
                 and original["constant_buffers"].get(12) == 51
                 and all(slot in original["samplers"] for slot in (9, 10, 11))
                 and all(slot in original["textures"] for slot in (9, 10, 11))

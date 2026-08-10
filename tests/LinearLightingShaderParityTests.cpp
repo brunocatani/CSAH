@@ -285,6 +285,18 @@ namespace
         ShaderContract{ "MeatCuffSkinTintProjectedFiveMrt_L4_00448042", 5, false, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "MeatCuffSkinTintProjectedFiveMrt_L3_00448043", 5, true, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "MeatCuffSkinTintModelSpaceNormalsProjectedFiveMrt_L3_0044A043", 5, true, false, false, false, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentTessellatedSixMrt_L4NoEarlyDepth_01280046", 6, false, false, true, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentTessellatedSixMrt_L3_01280043", 6, true, false, true, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentModelSpaceNormalsTessellatedSixMrt_L3_01282043", 6, true, false, true, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentSkinTintTessellatedSixMrt_L4NoEarlyDepth_012C0046", 6, false, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentSkinTintTessellatedSixMrt_L3_012C0043", 6, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskDismembermentSkinTintModelSpaceNormalsTessellatedSixMrt_L3_012C2043", 6, true, false, true, true, false, false, false, false, false, false, false, false, true, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffProjectedFiveMrt_L4NoEarlyDepth_01408046", 5, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffProjectedFiveMrt_L3_01408043", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffModelSpaceNormalsProjectedFiveMrt_L3_0140A043", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintProjectedFiveMrt_L4NoEarlyDepth_01448046", 5, false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintProjectedFiveMrt_L3_01448043", 5, true, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintModelSpaceNormalsProjectedFiveMrt_L3_0144A043", 5, true, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -871,12 +883,22 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
                 values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
                 values[8] = { 0.0F, 0.0F, -1.0F, 0.0F };
-                values[10] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[10] = maskParameters;
+                    values[11] = depthParameters;
+                } else {
+                    values[10] = depthParameters;
+                }
             } else {
                 values[5] = { 1.0F, 0.0F, 0.0F, 0.0F };
                 values[6] = { 0.0F, 1.0F, 0.0F, 0.0F };
                 values[7] = { 0.0F, 0.0F, -1.0F, 0.0F };
-                values[9] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[9] = maskParameters;
+                    values[10] = depthParameters;
+                } else {
+                    values[9] = depthParameters;
+                }
             }
             return values;
         }
@@ -890,13 +912,23 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 values[5] = {};
                 values[7] = { 1.0F, 0.0F, 0.0F, 0.0F };
                 values[8] = { 0.0F, 1.0F, 0.0F, 0.0F };
-                values[9] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[9] = maskParameters;
+                    values[10] = depthParameters;
+                } else {
+                    values[9] = depthParameters;
+                }
             } else {
                 values[5] = values[4];
                 values[4] = {};
                 values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
                 values[7] = { 0.0F, 1.0F, 0.0F, 0.0F };
-                values[8] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[8] = maskParameters;
+                    values[9] = depthParameters;
+                } else {
+                    values[8] = depthParameters;
+                }
             }
             return values;
         }

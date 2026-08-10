@@ -18,9 +18,15 @@
 #define LINEAR_LIGHTING_SKIN_TINT 0
 #endif
 
+#ifndef LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_SKIN_TINT
+#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    float4 cb2[12];
+#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[11];
 #else
     float4 cb2[10];
@@ -40,6 +46,10 @@ Texture2D<float4> TexSpecular : register(t2);
 Texture2D<float4> TexDismembermentDiffuse : register(t9);
 Texture2D<float4> TexDismembermentNormal : register(t10);
 Texture2D<float4> TexDismembermentSpecular : register(t11);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+Texture2D<float4> TexAdditionalAlpha : register(t12);
+Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
+#endif
 
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
@@ -47,6 +57,9 @@ SamplerState SampSpecular : register(s2);
 SamplerState SampDismembermentDiffuse : register(s9);
 SamplerState SampDismembermentNormal : register(s10);
 SamplerState SampDismembermentSpecular : register(s11);
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+SamplerState SampAdditionalAlpha : register(s12);
+#endif
 
 #if LINEAR_LIGHTING_SKIN_TINT
 #define LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION cb2[3]
@@ -54,14 +67,24 @@ SamplerState SampDismembermentSpecular : register(s11);
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[6]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Y cb2[7]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Z cb2[8]
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK cb2[10]
+#define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[11]
+#else
 #define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[10]
+#endif
 #else
 #define LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION cb2[2]
 #define LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES cb2[4]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[5]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Y cb2[6]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_Z cb2[7]
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#define LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK cb2[9]
+#define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[10]
+#else
 #define LINEAR_LIGHTING_DISMEMBERMENT_DEPTH cb2[9]
+#endif
 #endif
 
 struct PSInput
@@ -95,6 +118,28 @@ struct PSOutput
 PSOutput PSMain(PSInput input)
 {
     PSOutput output;
+#if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+    if (LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK.y != 0.0)
+    {
+        const float2 coordinateSign =
+            (input.position.xy >= -input.position.xy) ?
+            float2(1.0, 1.0) : float2(-1.0, -1.0);
+        const int2 noiseCoordinate = int2(
+            frac(input.position.xy * coordinateSign * 0.25) *
+            coordinateSign * 4.0);
+        const float noise = TexAdditionalAlphaNoise.Load(
+            int3(noiseCoordinate, 0)).x;
+        clip((LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK.y *
+            (0.5 - noise)) +
+            LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK.z - 0.5);
+    }
+    if (LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK.w != 0.0)
+    {
+        const float additionalAlpha = TexAdditionalAlpha.Sample(
+            SampAdditionalAlpha, input.uv).w;
+        clip(LINEAR_LIGHTING_DISMEMBERMENT_ALPHA_MASK.x - additionalAlpha);
+    }
+#endif
     const bool useDismemberment = input.dismembermentSelector.y > 0.0;
 
     float2 specularSample;
