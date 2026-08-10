@@ -45,6 +45,8 @@ namespace
         bool hasBoneTint{};
         bool hasMenuScreen{};
         bool hasPipboyScreen{};
+        bool hasFaceDetail{};
+        bool faceUsesModelSpaceNormals{};
     };
 
     constexpr std::array kShaderContracts{
@@ -173,6 +175,11 @@ namespace
         ShaderContract{ "MenuScreenInstancedSixMrt_L3_08010003", 6, true, true, false, false, false, false, false, false, true, false },
         ShaderContract{ "PipboyScreenSixMrt_L4_00800002", 6, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "PipboyScreenSixMrt_L3_00800003", 6, true, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailSixMrt_L4_80000042", 6, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailSixMrt_L3_80000043", 6, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailAlphaTestSixMrt_L4_80000142", 6, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailModelSpaceNormalsSixMrt_L4_80002042", 6, false, false, false, false, false, false, false, false, false, false, true, true },
+        ShaderContract{ "FaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_80002142", 6, false, false, false, false, false, false, false, false, false, false, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -251,6 +258,7 @@ namespace
         Pixel{ 0.65F, 0.42F, 0.18F, 1.0F },
         Pixel{ 0.31F, 0.73F, 0.27F, 1.0F },
     };
+    constexpr Pixel kFaceDetailTexture{ 0.2F, 0.7F, 0.4F, 0.85F };
     constexpr Pixel kVertexColor{ 0.8F, 0.7F, 0.6F, 0.9F };
     constexpr Pixel kEmitColor{ 0.3F, 0.45F, 0.6F, 0.2F };
     constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
@@ -371,7 +379,8 @@ namespace
         bool usesTessellatedInputs,
         bool hasLandscapeLod,
         bool hasBoneTint,
-        bool hasPipboyScreen)
+        bool hasPipboyScreen,
+        bool hasFaceDetail)
     {
         constexpr std::string_view source = R"(
 struct VSOutput
@@ -399,6 +408,8 @@ struct VSOutput
 #endif
 #if HAS_PIPBOY_SCREEN
     float3 screenDirection : TEXCOORD6;
+#elif HAS_FACE_DETAIL
+    float faceFactor : TEXCOORD6;
 #endif
 #if HAS_BONE_TINT
     float4 boneTintColor : COLOR1;
@@ -443,6 +454,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #endif
 #if HAS_PIPBOY_SCREEN
     output.screenDirection = float3(0.2, -0.4, -1.0);
+#elif HAS_FACE_DETAIL
+    output.faceFactor = 0.6;
 #endif
 #if HAS_BONE_TINT
     output.boneTintColor = float4(0.2, 0.3, 0.4, 0.625);
@@ -468,6 +481,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_LANDSCAPE_LOD", hasLandscapeLod ? "1" : "0" },
             { "HAS_BONE_TINT", hasBoneTint ? "1" : "0" },
             { "HAS_PIPBOY_SCREEN", hasPipboyScreen ? "1" : "0" },
+            { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
             { nullptr, nullptr },
         };
         const auto result = D3DCompile(
@@ -888,6 +902,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device,
             kBoneTintPalette);
         const auto screenTexture = createTexture2x2(device, kScreenTexture);
+        const auto faceDetailTexture = createTexture(
+            device,
+            kFaceDetailTexture);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -944,6 +961,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         auto* rawScreenSampler = sampler.Get();
         context.PSSetShaderResources(4, 1, &rawScreenTexture);
         context.PSSetSamplers(4, 1, &rawScreenSampler);
+        auto* rawFaceDetailTexture = faceDetailTexture.Get();
+        auto* rawFaceDetailSampler = sampler.Get();
+        context.PSSetShaderResources(8, 1, &rawFaceDetailTexture);
+        context.PSSetSamplers(8, 1, &rawFaceDetailSampler);
         auto* rawAdditionalAlphaTexture = additionalAlphaTexture.Get();
         auto* rawAdditionalAlphaNoise = additionalAlphaNoise.Get();
         context.PSSetShaderResources(12, 1, &rawAdditionalAlphaTexture);
@@ -1006,10 +1027,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             nullViews.data());
         ID3D11ShaderResourceView* nullView{};
         context.PSSetShaderResources(4, 1, &nullView);
+        context.PSSetShaderResources(8, 1, &nullView);
         context.PSSetShaderResources(12, 1, &nullView);
         context.PSSetShaderResources(15, 1, &nullView);
         ID3D11SamplerState* nullSampler{};
         context.PSSetSamplers(4, 1, &nullSampler);
+        context.PSSetSamplers(8, 1, &nullSampler);
         context.PSSetSamplers(12, 1, &nullSampler);
         if (hasGradientRemap) {
             context.PSSetShaderResources(5, 1, &nullView);
@@ -1131,6 +1154,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     diffuse *= kVertexColor[channel];
                 }
             }
+            if (contract.hasFaceDetail) {
+                constexpr auto faceFactor = 0.6F;
+                const auto faceDiffuseMask =
+                    contract.faceUsesModelSpaceNormals ?
+                    (kFaceDetailTexture[3] * 2.0F) - 1.0F :
+                    kFaceDetailTexture[3];
+                diffuse *= 1.0F -
+                    ((1.0F - faceDiffuseMask) * faceFactor * 0.3F);
+            }
             auto transformedDiffuse = transformedValue(
                 diffuse,
                 lightingCase.colorGamma,
@@ -1205,7 +1237,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 64> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 128> vertexShaders;
         for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
@@ -1213,13 +1245,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto hasLandscapeLod = (index & 8u) != 0;
             const auto hasBoneTint = (index & 16u) != 0;
             const auto hasPipboyScreen = (index & 32u) != 0;
+            const auto hasFaceDetail = (index & 64u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
                 usesTessellatedInputs,
                 hasLandscapeLod,
                 hasBoneTint,
-                hasPipboyScreen);
+                hasPipboyScreen,
+                hasFaceDetail);
             require(
                 device->CreateVertexShader(
                     bytecode->GetBufferPointer(),
@@ -1234,7 +1268,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             ", standard inputs") +
                     (hasLandscapeLod ? ", landscape LOD" : "") +
                     (hasBoneTint ? ", COLOR1" : "") +
-                    (hasPipboyScreen ? ", Pip-Boy TEXCOORD6)" : ")"));
+                    (hasPipboyScreen ? ", Pip-Boy TEXCOORD6" : "") +
+                    (hasFaceDetail ? ", face TEXCOORD6)" : ")"));
         }
 
         const auto verified = root / "package" / "Shaders" / "Community" /
@@ -1276,7 +1311,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (contract.usesTessellatedInputs ? 4u : 0u) |
                 (contract.hasLandscapeLod ? 8u : 0u) |
                 (contract.hasBoneTint ? 16u : 0u) |
-                (contract.hasPipboyScreen ? 32u : 0u)].Get();
+                (contract.hasPipboyScreen ? 32u : 0u) |
+                (contract.hasFaceDetail ? 64u : 0u)].Get();
             for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                  ++caseIndex) {
                 const auto vanilla = render(

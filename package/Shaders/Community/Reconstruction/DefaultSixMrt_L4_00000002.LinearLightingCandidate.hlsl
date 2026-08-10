@@ -18,6 +18,10 @@
 #define LINEAR_LIGHTING_PIPBOY_SCREEN 0
 #endif
 
+#ifndef LINEAR_LIGHTING_FACE_DETAIL
+#define LINEAR_LIGHTING_FACE_DETAIL 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
@@ -92,6 +96,9 @@ Texture2D<float4> TexGradientRemap : register(t5);
 #if LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN
 Texture2D<float4> TexScreen : register(t4);
 #endif
+#if LINEAR_LIGHTING_FACE_DETAIL
+Texture2D<float4> TexFaceDetail : register(t8);
+#endif
 
 #ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
@@ -116,6 +123,9 @@ SamplerState SampGradientRemap : register(s5);
 #endif
 #if LINEAR_LIGHTING_MENU_SCREEN || LINEAR_LIGHTING_PIPBOY_SCREEN
 SamplerState SampScreen : register(s4);
+#endif
+#if LINEAR_LIGHTING_FACE_DETAIL
+SamplerState SampFaceDetail : register(s8);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
@@ -190,6 +200,8 @@ struct PSInput
 #endif
 #if LINEAR_LIGHTING_PIPBOY_SCREEN
     float3 screenDirection : TEXCOORD6;
+#elif LINEAR_LIGHTING_FACE_DETAIL
+    float faceFactor : TEXCOORD6;
 #endif
 #if LINEAR_LIGHTING_INSTANCED
     uint instanceDataIndex : COLOR2;
@@ -284,6 +296,15 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_VERTEX_COLOR && !LINEAR_LIGHTING_GRADIENT_REMAP
     diffuse *= input.vertexColor.xyz;
 #endif
+#if LINEAR_LIGHTING_FACE_DETAIL
+    float4 faceDetail = TexFaceDetail.Sample(SampFaceDetail, uv);
+#if LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+    float faceDiffuseMask = faceDetail.w * 2.0 - 1.0;
+#else
+    float faceDiffuseMask = faceDetail.w;
+#endif
+    diffuse *= 1.0 - ((1.0 - faceDiffuseMask) * input.faceFactor * 0.3);
+#endif
     float fade = (LINEAR_LIGHTING_MATERIAL_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_MATERIAL_PROPERTIES.w * cb12[50].x) + 1.0);
@@ -325,16 +346,48 @@ PSOutput PSMain(PSInput input)
         dot(detailBitangent, landscapeLodNormal),
         input.isFrontFace ? detailNormalContribution : -detailNormalContribution);
 #elif LINEAR_LIGHTING_MODEL_SPACE_NORMALS
+#if LINEAR_LIGHTING_FACE_DETAIL
+    float3 detailModelNormal =
+        (TexNormal.Sample(SampNormal, uv).xzy * 2.0) - 1.0;
+    float3 faceModelNormal = (faceDetail.xzy * 2.0) - 1.0;
+    float3 modelNormal = lerp(
+        detailModelNormal,
+        faceModelNormal,
+        input.faceFactor);
+#else
     float3 modelNormal = (TexNormal.Sample(SampNormal, uv).xyz * 2.0) - 1.0;
+#endif
     float3 tangentNormal = float3(
+#if LINEAR_LIGHTING_FACE_DETAIL
+        modelNormal.x,
+        modelNormal.y,
+        input.isFrontFace ? modelNormal.z : -modelNormal.z);
+#else
         modelNormal.x,
         modelNormal.z,
         input.isFrontFace ? modelNormal.y : -modelNormal.y);
+#endif
 #else
     float2 normalSample = TexNormal.Sample(SampNormal, uv).xy;
     float2 tangentNormalXY = (normalSample * 2.0) - 1.0;
     float tangentNormalZ = sqrt(1.0 - min(dot(tangentNormalXY, tangentNormalXY), 1.0));
+#if LINEAR_LIGHTING_FACE_DETAIL
+    float2 faceNormalXY = (faceDetail.xy * 2.0) - 1.0;
+    float faceNormalZ = sqrt(
+        1.0 - min(dot(faceNormalXY, faceNormalXY), 1.0));
+    float3 faceNormal = normalize(lerp(
+        float3(0.0, 0.0, 1.0),
+        float3(faceNormalXY, faceNormalZ),
+        input.faceFactor));
+    float3 combinedNormal = normalize(float3(
+        faceNormal.xy + tangentNormalXY,
+        tangentNormalZ));
+    float3 tangentNormal = float3(
+        combinedNormal.xy,
+        input.isFrontFace ? combinedNormal.z : -combinedNormal.z);
+#else
     float3 tangentNormal = float3(tangentNormalXY, input.isFrontFace ? tangentNormalZ : -tangentNormalZ);
+#endif
 #endif
 
 #if LINEAR_LIGHTING_PIPBOY_SCREEN
@@ -413,7 +466,13 @@ PSOutput PSMain(PSInput input)
     output.target3.z = cb2[0].w * 0.01;
     emitColor = cb2[1].xyz;
 #endif
-    output.target3.w = LINEAR_LIGHTING_PIPBOY_SCREEN ? 0.015686 : 1.0;
+#if LINEAR_LIGHTING_FACE_DETAIL
+    output.target3.w = 0.019608;
+#elif LINEAR_LIGHTING_PIPBOY_SCREEN
+    output.target3.w = 0.015686;
+#else
+    output.target3.w = 1.0;
+#endif
 #if LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target4.xyz =
         (pipboyScreen * cb0[0].w) + LinearLightingEmitColor(emitColor);

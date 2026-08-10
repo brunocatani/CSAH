@@ -123,5 +123,10 @@
   { "name": "MenuScreenSixMrt_L3_00010003", "resource": "IDR_LINEAR_LIGHTING_MENU_SCREEN_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "MenuScreenInstancedSixMrt_L3_08010003", "resource": "IDR_LINEAR_LIGHTING_MENU_SCREEN_INSTANCED_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "PipboyScreenSixMrt_L4_00800002", "resource": "IDR_LINEAR_LIGHTING_PIPBOY_SCREEN_SIX_MRT_PS" },
-  { "name": "PipboyScreenSixMrt_L3_00800003", "resource": "IDR_LINEAR_LIGHTING_PIPBOY_SCREEN_SIX_MRT_VERTEX_COLOR_PS" }
+  { "name": "PipboyScreenSixMrt_L3_00800003", "resource": "IDR_LINEAR_LIGHTING_PIPBOY_SCREEN_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "FaceDetailSixMrt_L4_80000042", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_SIX_MRT_PS" },
+  { "name": "FaceDetailSixMrt_L3_80000043", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "FaceDetailAlphaTestSixMrt_L4_80000142", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "FaceDetailModelSpaceNormalsSixMrt_L4_80002042", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "FaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_80002142", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_MODEL_SPACE_NORMALS_ALPHA_TEST_SIX_MRT_PS" }
 ]
