@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 177:
-        fail("Linear Lighting manifest must contain exactly 177 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 179:
+        fail("Linear Lighting manifest must contain exactly 179 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -304,6 +304,17 @@ def verify_source_contracts(
         if token not in base_source_texts[1]:
             fail(
                 "six-MRT shader is missing landscape-LOD contract: "
+                f"{token}"
+            )
+    for token in (
+        "TexLandscapeLodDiffuse.Sample",
+        "TexLandscapeLodNormal.Sample",
+        "mappedDiffuse *= landscapeLodDiffuse",
+        "cross(float3(1.0, 0.0, 0.0), detailNormal)",
+    ):
+        if token not in base_source_texts[0]:
+            fail(
+                "projected shader is missing landscape-LOD contract: "
                 f"{token}"
             )
     for token in (
@@ -503,8 +514,8 @@ def verify_source_contracts(
                     "the verified normal-map XY channels"
                 )
             standalone_lod_object_contracts += 1
-    if vertex_contracts != 82:
-        fail(f"expected 82 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 83:
+        fail(f"expected 83 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -521,9 +532,9 @@ def verify_source_contracts(
             "expected 44 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
-    if landscape_lod_contracts != 7:
+    if landscape_lod_contracts != 9:
         fail(
-            "expected 7 landscape-LOD contracts, "
+            "expected 9 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
     if gradient_remap_contracts != 55:

@@ -228,6 +228,8 @@ namespace
         ShaderContract{ "LodObjectProjectedFiveMrt_L3NoEarlyDepth_00018807", 5, true, false },
         ShaderContract{ "LodObjectAlphaTestProjectedFiveMrt_L4_00018902", 5, false, false },
         ShaderContract{ "LodObjectAlphaTestProjectedFiveMrt_L4NoEarlyDepth_00018906", 5, false, false },
+        ShaderContract{ "LandscapeLodBlendFiveMrt_L4_00008202", 5, false, false, false, false, true },
+        ShaderContract{ "LandscapeLodBlendFiveMrt_L3_00008203", 5, true, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t

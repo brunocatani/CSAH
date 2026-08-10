@@ -175,5 +175,7 @@
   { "name": "LodObjectProjectedFiveMrt_L4NoEarlyDepth_00018806", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" },
   { "name": "LodObjectProjectedFiveMrt_L3NoEarlyDepth_00018807", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_PROJECTED_FIVE_MRT_VERTEX_COLOR_NO_EARLY_DEPTH_PS" },
   { "name": "LodObjectAlphaTestProjectedFiveMrt_L4_00018902", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_ALPHA_TEST_PROJECTED_FIVE_MRT_PS" },
-  { "name": "LodObjectAlphaTestProjectedFiveMrt_L4NoEarlyDepth_00018906", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_ALPHA_TEST_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" }
+  { "name": "LodObjectAlphaTestProjectedFiveMrt_L4NoEarlyDepth_00018906", "resource": "IDR_LINEAR_LIGHTING_LOD_OBJECT_ALPHA_TEST_PROJECTED_FIVE_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "LandscapeLodBlendFiveMrt_L4_00008202", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_BLEND_FIVE_MRT_PS" },
+  { "name": "LandscapeLodBlendFiveMrt_L3_00008203", "resource": "IDR_LINEAR_LIGHTING_LANDSCAPE_LOD_BLEND_FIVE_MRT_VERTEX_COLOR_PS" }
 ]
