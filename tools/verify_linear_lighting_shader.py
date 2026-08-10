@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 213:
-        fail("Linear Lighting manifest must contain exactly 213 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 216:
+        fail("Linear Lighting manifest must contain exactly 216 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -576,8 +576,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 106:
-        fail(f"expected 106 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 107:
+        fail(f"expected 107 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 31:
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -587,8 +587,8 @@ def verify_source_contracts(
             "expected 19 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 16:
-        fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
+    if tessellated_contracts != 17:
+        fail(f"expected 17 tessellated contracts, found {tessellated_contracts}")
     if additional_alpha_mask_contracts != 58:
         fail(
             "expected 58 additional-alpha-mask contracts, "
@@ -634,8 +634,8 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 13:
         fail(f"expected 13 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 11:
-        fail(f"expected 11 skin-tint contracts, found {skin_tint_contracts}")
+    if skin_tint_contracts != 14:
+        fail(f"expected 14 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 4:
         fail(
             "expected 4 combined skin-tint/additional-alpha contracts, "
