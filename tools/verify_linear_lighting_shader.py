@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 204:
-        fail("Linear Lighting manifest must contain exactly 204 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 209:
+        fail("Linear Lighting manifest must contain exactly 209 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -434,6 +434,7 @@ def verify_source_contracts(
     skin_tint_contracts = 0
     combined_skin_tint_additional_alpha_contracts = 0
     combined_gradient_remap_glowmap_contracts = 0
+    combined_gradient_remap_glowmap_additional_alpha_contracts = 0
     combined_face_detail_additional_alpha_contracts = 0
     combined_face_detail_bone_tint_contracts = 0
     combined_gradient_remap_bone_tint_contracts = 0
@@ -525,6 +526,8 @@ def verify_source_contracts(
             and "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text
         ):
             combined_gradient_remap_glowmap_contracts += 1
+            if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
+                combined_gradient_remap_glowmap_additional_alpha_contracts += 1
         if (
             "#define LINEAR_LIGHTING_FACE_DETAIL 1" in source_text
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
@@ -570,10 +573,10 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 100:
-        fail(f"expected 100 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 24:
-        fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
+    if vertex_contracts != 104:
+        fail(f"expected 104 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 29:
+        fail(f"expected 29 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 19:
@@ -583,9 +586,9 @@ def verify_source_contracts(
         )
     if tessellated_contracts != 16:
         fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 51:
+    if additional_alpha_mask_contracts != 54:
         fail(
-            "expected 51 additional-alpha-mask contracts, "
+            "expected 54 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -593,9 +596,9 @@ def verify_source_contracts(
             "expected 9 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 67:
+    if gradient_remap_contracts != 72:
         fail(
-            "expected 67 gradient-remap contracts, "
+            "expected 72 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
     if gradient_hair_contracts != 27:
@@ -610,9 +613,9 @@ def verify_source_contracts(
         )
     if bone_tint_contracts != 38:
         fail(f"expected 38 bone-tint contracts, found {bone_tint_contracts}")
-    if combined_glowmap_additional_alpha_contracts != 5:
+    if combined_glowmap_additional_alpha_contracts != 8:
         fail(
-            "expected 5 combined glowmap/additional-alpha contracts, "
+            "expected 8 combined glowmap/additional-alpha contracts, "
             f"found {combined_glowmap_additional_alpha_contracts}"
         )
     if menu_screen_contracts != 3:
@@ -630,10 +633,16 @@ def verify_source_contracts(
             "expected 4 combined skin-tint/additional-alpha contracts, "
             f"found {combined_skin_tint_additional_alpha_contracts}"
         )
-    if combined_gradient_remap_glowmap_contracts != 4:
+    if combined_gradient_remap_glowmap_contracts != 9:
         fail(
-            "expected 4 combined gradient-remap/glowmap contracts, "
+            "expected 9 combined gradient-remap/glowmap contracts, "
             f"found {combined_gradient_remap_glowmap_contracts}"
+        )
+    if combined_gradient_remap_glowmap_additional_alpha_contracts != 3:
+        fail(
+            "expected 3 gradient-remap/glowmap/additional-alpha contracts, "
+            "found "
+            f"{combined_gradient_remap_glowmap_additional_alpha_contracts}"
         )
     if combined_face_detail_additional_alpha_contracts != 4:
         fail(

@@ -256,6 +256,11 @@ namespace
         ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L4NoEarlyDepth_44024106", 6, false, false, false, false, false, true, true, true, false, false, false, false, false, true },
         ShaderContract{ "BoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_44024107", 6, true, false, false, false, false, true, true, true, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskBoneTintGradientRemapGlowmapHairAlphaTestSixMrt_L3NoEarlyDepth_45024103", 6, true, false, false, true, false, true, true, true, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapSixMrt_L3NoEarlyDepth_04004007", 6, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapGlowmapAlphaTestSixMrt_L3NoEarlyDepth_04004107", 6, true, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapSixMrt_L4NoEarlyDepth_05004002", 6, false, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapSixMrt_L3NoEarlyDepth_05004003", 6, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapAlphaTestSixMrt_L3NoEarlyDepth_05004103", 6, true, false, false, true, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
