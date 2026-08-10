@@ -30,7 +30,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kEffectShaderContractCount = 16"
+    "kEffectShaderContractCount = 22"
     "EffectContractMask matchingEffectShaderContractMask"
     "AtomicEffectContractMask matchingEffectShaderContractMask_"
     "matchingEffectShaderContractMask"
@@ -49,6 +49,7 @@ foreach(required IN ITEMS
     "(EFFECT_TECHNIQUE & 0x1)"
     "(EFFECT_TECHNIQUE & 0x4)"
     "(EFFECT_TECHNIQUE & 0x20)"
+    "(EFFECT_TECHNIQUE & 0x40)"
     "(EFFECT_TECHNIQUE & 0x40000000)"
     "LinearLightingFog(input.fogParam.xyz)"
     "LinearLightingFogAlpha(input.fogParam.w)"
@@ -73,9 +74,9 @@ string(REGEX MATCHALL
   "IDR_LINEAR_LIGHTING_EFFECT_[A-Z_]+_PS RCDATA"
   effectResources "${resourceSource}")
 list(LENGTH effectResources effectResourceCount)
-if(NOT effectResourceCount EQUAL 16)
+if(NOT effectResourceCount EQUAL 22)
   message(FATAL_ERROR
-    "Effect Linear Lighting regression: expected sixteen embedded shaders")
+    "Effect Linear Lighting regression: expected twenty-two embedded shaders")
 endif()
 
 string(FIND "${runtimeSource}"

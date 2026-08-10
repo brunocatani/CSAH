@@ -68,12 +68,24 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     const float fogFactor = LinearLightingFogAlpha(input.fogParam.w);
 #if (EFFECT_TECHNIQUE & 0x20) != 0
     float3 blendedColor = lightColor * (1.0f - fogFactor);
+#elif (EFFECT_TECHNIQUE & 0x40) != 0
+    const float alpha = baseColor.w * EffectPropertyColor.w;
+    const float outputAlpha = LinearLightingEffectAlpha(alpha);
+    const float3 foggedMultiplyColor = lerp(
+        lightColor,
+        1.0f.xxx,
+        saturate(1.5f * fogFactor));
+    float3 blendedColor = lerp(
+        1.0f.xxx,
+        foggedMultiplyColor,
+        outputAlpha);
 #else
     const float3 fogColor = LinearLightingFog(input.fogParam.xyz);
     float3 blendedColor = lerp(lightColor, fogColor, fogFactor);
 #endif
-
+#if (EFFECT_TECHNIQUE & 0x40) == 0 || (EFFECT_TECHNIQUE & 0x20) != 0
     const float alpha = baseColor.w * EffectPropertyColor.w;
+#endif
     if (alpha - EffectAlphaTest.x < 0.0f) {
         discard;
     }
@@ -90,7 +102,9 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         }
     }
 
+#if (EFFECT_TECHNIQUE & 0x40) == 0 || (EFFECT_TECHNIQUE & 0x20) != 0
     const float outputAlpha = LinearLightingEffectAlpha(alpha);
+#endif
 #if (EFFECT_TECHNIQUE & 0x40000000) != 0
     blendedColor *= outputAlpha;
 #endif

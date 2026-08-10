@@ -41,26 +41,33 @@ namespace
         bool vertexColored;
         bool textured;
         bool additive;
+        bool multiplyBlend;
         bool premultipliedAlpha;
     };
 
-    constexpr std::array<EffectContract, 16> kEffectContracts{ {
-        { "EffectDefault_00000000", false, false, false, false },
-        { "EffectVertexColor_00000001", true, false, false, false },
-        { "EffectTextured_00000004", false, true, false, false },
-        { "EffectVertexColorTextured_00000005", true, true, false, false },
-        { "EffectAdditive_00000020", false, false, true, false },
-        { "EffectVertexColorAdditive_00000021", true, false, true, false },
-        { "EffectTexturedAdditive_00000024", false, true, true, false },
-        { "EffectVertexColorTexturedAdditive_00000025", true, true, true, false },
-        { "EffectPremultipliedAlpha_40000000", false, false, false, true },
-        { "EffectVertexColorPremultipliedAlpha_40000001", true, false, false, true },
-        { "EffectTexturedPremultipliedAlpha_40000004", false, true, false, true },
-        { "EffectVertexColorTexturedPremultipliedAlpha_40000005", true, true, false, true },
-        { "EffectAdditivePremultipliedAlpha_40000020", false, false, true, true },
-        { "EffectVertexColorAdditivePremultipliedAlpha_40000021", true, false, true, true },
-        { "EffectTexturedAdditivePremultipliedAlpha_40000024", false, true, true, true },
-        { "EffectVertexColorTexturedAdditivePremultipliedAlpha_40000025", true, true, true, true },
+    constexpr std::array<EffectContract, 22> kEffectContracts{ {
+        { "EffectDefault_00000000", false, false, false, false, false },
+        { "EffectVertexColor_00000001", true, false, false, false, false },
+        { "EffectTextured_00000004", false, true, false, false, false },
+        { "EffectVertexColorTextured_00000005", true, true, false, false, false },
+        { "EffectAdditive_00000020", false, false, true, false, false },
+        { "EffectVertexColorAdditive_00000021", true, false, true, false, false },
+        { "EffectTexturedAdditive_00000024", false, true, true, false, false },
+        { "EffectVertexColorTexturedAdditive_00000025", true, true, true, false, false },
+        { "EffectMultiplyBlend_00000040", false, false, false, true, false },
+        { "EffectVertexColorMultiplyBlend_00000041", true, false, false, true, false },
+        { "EffectTexturedMultiplyBlend_00000044", false, true, false, true, false },
+        { "EffectVertexColorTexturedMultiplyBlend_00000045", true, true, false, true, false },
+        { "EffectPremultipliedAlpha_40000000", false, false, false, false, true },
+        { "EffectVertexColorPremultipliedAlpha_40000001", true, false, false, false, true },
+        { "EffectTexturedPremultipliedAlpha_40000004", false, true, false, false, true },
+        { "EffectVertexColorTexturedPremultipliedAlpha_40000005", true, true, false, false, true },
+        { "EffectAdditivePremultipliedAlpha_40000020", false, false, true, false, true },
+        { "EffectVertexColorAdditivePremultipliedAlpha_40000021", true, false, true, false, true },
+        { "EffectTexturedAdditivePremultipliedAlpha_40000024", false, true, true, false, true },
+        { "EffectVertexColorTexturedAdditivePremultipliedAlpha_40000025", true, true, true, false, true },
+        { "EffectVertexColorTexturedMultiplyBlendPremultipliedAlpha_40000045", true, true, false, true, true },
+        { "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044", false, true, false, true, true },
     } };
 
     struct alignas(16) EffectPerMaterial
@@ -364,10 +371,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto lightColor = baseColor +
                 kLightingInfluence *
                     (kPropertyColor[channel] * baseColor - baseColor);
-            result[channel] = contract.additive ?
-                lightColor * (1.0F - kFogParam[3]) :
-                lightColor +
+            if (contract.additive) {
+                result[channel] = lightColor * (1.0F - kFogParam[3]);
+            } else if (contract.multiplyBlend) {
+                const auto fogFactor =
+                    std::clamp(1.5F * kFogParam[3], 0.0F, 1.0F);
+                const auto foggedColor =
+                    lightColor + fogFactor * (1.0F - lightColor);
+                result[channel] = 1.0F + alpha * (foggedColor - 1.0F);
+            } else {
+                result[channel] = lightColor +
                     kFogParam[3] * (kFogParam[channel] - lightColor);
+            }
             if (contract.premultipliedAlpha) {
                 result[channel] *= alpha;
             }
@@ -407,6 +422,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 settings.otherEffectMultiplier;
             if (contract.additive) {
                 result[channel] = lightColor * (1.0F - fogFactor);
+            } else if (contract.multiplyBlend) {
+                const auto multiplyFogFactor =
+                    std::clamp(1.5F * fogFactor, 0.0F, 1.0F);
+                const auto foggedColor = lightColor +
+                    multiplyFogFactor * (1.0F - lightColor);
+                result[channel] =
+                    1.0F + outputAlpha * (foggedColor - 1.0F);
             } else {
                 const auto fogColor =
                     std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
@@ -535,7 +557,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All sixteen Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All twenty-two Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
