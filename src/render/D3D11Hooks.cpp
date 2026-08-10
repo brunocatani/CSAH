@@ -559,7 +559,9 @@ namespace community_shaders::render
                                        contractPlusOne);
             qualificationLastBindingState.store(state, std::memory_order_relaxed);
             qualificationBindingStateChecks.fetch_add(1, std::memory_order_relaxed);
-            if (state == linear_lighting::PipelineBinding_All) {
+            if ((state &
+                    linear_lighting::PipelineBinding_SelectedReplacement) !=
+                0) {
                 qualificationBindingVerifiedContractMask.set(
                     contractPlusOne - 1,
                     std::memory_order_release);
@@ -619,6 +621,16 @@ namespace community_shaders::render
                     1,
                     std::memory_order_relaxed);
             }
+        }
+
+        [[nodiscard]] linear_lighting::ScopedReplacementPixelConstants
+        scopeActiveReplacementPixelConstants(
+            ID3D11DeviceContext* context) noexcept
+        {
+            return linear_lighting::Runtime::get()
+                .scopeReplacementPixelConstants(
+                    context,
+                    activeReplacementContractPlusOne);
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -719,11 +731,13 @@ namespace community_shaders::render
                 return;
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
+                activeReplacementContractPlusOne = 0;
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
+                activeReplacementContractPlusOne = 0;
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
@@ -739,6 +753,7 @@ namespace community_shaders::render
                 selection.shader,
                 classInstances,
                 classInstanceCount);
+            activeReplacementContractPlusOne = selection.contractPlusOne;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
                 return;
@@ -746,7 +761,6 @@ namespace community_shaders::render
             activeQualificationSessionId =
                 qualificationActivatedSessionId.load(
                     std::memory_order_acquire);
-            activeReplacementContractPlusOne = selection.contractPlusOne;
             if (selection.contractPlusOne != 0) {
                 recordQualificationBinding(
                     context,
@@ -760,6 +774,8 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            const auto constants =
+                scopeActiveReplacementPixelConstants(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
                     1,
@@ -780,6 +796,8 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            const auto constants =
+                scopeActiveReplacementPixelConstants(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
                 recordQualificationDraw(context);
@@ -797,6 +815,8 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const auto constants =
+                scopeActiveReplacementPixelConstants(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
                     1,
@@ -821,6 +841,8 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const auto constants =
+                scopeActiveReplacementPixelConstants(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
                     1,

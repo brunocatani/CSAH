@@ -84,6 +84,7 @@ set(QUALIFICATION_SOURCE
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.cpp")
 set(PLUGIN_SOURCE "${SOURCE_DIR}/XSEPlugin.cpp")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
+include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -96,6 +97,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
+  "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
   "${QUALIFICATION_SOURCE}"
@@ -132,6 +134,14 @@ add_custom_target(VerifyD3D11Hooks ALL
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   COMMENT "Verifying D3D11 method-detour ownership contract"
+  VERBATIM)
+
+add_custom_target(VerifyLinearLightingConstantScope ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
+  COMMENT "Verifying Linear Lighting constant-buffer restoration contract"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingQualification ALL
@@ -217,6 +227,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyLinearLightingConstantScope
   VerifyLinearLightingContracts
   VerifyLinearLightingQualification
   VerifyWristPanel)
@@ -350,6 +361,10 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.D3D11HookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
+
+  add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake'")
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingQualificationSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command

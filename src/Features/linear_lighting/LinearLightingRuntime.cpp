@@ -89,6 +89,38 @@ namespace community_shaders::linear_lighting
         }
     }
 
+    ScopedReplacementPixelConstants::ScopedReplacementPixelConstants(
+        ID3D11DeviceContext* context,
+        ID3D11Buffer* frameBuffer,
+        ID3D11Buffer* geometryBuffer,
+        std::atomic_uint64_t* restoreCounter) noexcept :
+        context_(context),
+        restoreCounter_(restoreCounter)
+    {
+        ID3D11Buffer* previousFrameBuffer{};
+        ID3D11Buffer* previousGeometryBuffer{};
+        context_->PSGetConstantBuffers(5, 1, &previousFrameBuffer);
+        context_->PSGetConstantBuffers(8, 1, &previousGeometryBuffer);
+        previousFrameBuffer_.Attach(previousFrameBuffer);
+        previousGeometryBuffer_.Attach(previousGeometryBuffer);
+
+        context_->PSSetConstantBuffers(5, 1, &frameBuffer);
+        context_->PSSetConstantBuffers(8, 1, &geometryBuffer);
+    }
+
+    ScopedReplacementPixelConstants::~ScopedReplacementPixelConstants() noexcept
+    {
+        if (!context_) {
+            return;
+        }
+
+        auto* previousFrameBuffer = previousFrameBuffer_.Get();
+        auto* previousGeometryBuffer = previousGeometryBuffer_.Get();
+        context_->PSSetConstantBuffers(5, 1, &previousFrameBuffer);
+        context_->PSSetConstantBuffers(8, 1, &previousGeometryBuffer);
+        restoreCounter_->fetch_add(1, std::memory_order_relaxed);
+    }
+
     Runtime& Runtime::get() noexcept
     {
         static Runtime instance;
@@ -324,10 +356,6 @@ namespace community_shaders::linear_lighting
             return { requested, 0 };
         }
 
-        ID3D11Buffer* frame = frameBuffer_.Get();
-        ID3D11Buffer* geometry = geometryBuffer_.Get();
-        context->PSSetConstantBuffers(5, 1, &frame);
-        context->PSSetConstantBuffers(8, 1, &geometry);
         auto noContractObserved = 0u;
         firstReplacementContractPlusOne_.compare_exchange_strong(
             noContractObserved,
@@ -336,6 +364,24 @@ namespace community_shaders::linear_lighting
             std::memory_order_relaxed);
         replacementBinds_.fetch_add(1, std::memory_order_relaxed);
         return { replacement, replacementContractPlusOne };
+    }
+
+    ScopedReplacementPixelConstants Runtime::scopeReplacementPixelConstants(
+        ID3D11DeviceContext* context,
+        std::uint32_t contractPlusOne) noexcept
+    {
+        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+            contractPlusOne > replacementShaders_.size() || !frameBuffer_ ||
+            !geometryBuffer_) {
+            return ScopedReplacementPixelConstants{};
+        }
+
+        replacementConstantScopes_.fetch_add(1, std::memory_order_relaxed);
+        return ScopedReplacementPixelConstants(
+            context,
+            frameBuffer_.Get(),
+            geometryBuffer_.Get(),
+            &replacementConstantRestores_);
     }
 
     std::uint32_t Runtime::inspectReplacementPipelineState(
@@ -443,14 +489,12 @@ namespace community_shaders::linear_lighting
         }
 
         // FO4VR performs geometry setup while a previous or vanilla pixel
-        // shader can still be active. Publish the independent b8 data at the
-        // geometry boundary; selectPixelShader binds it whenever the matching
-        // replacement is selected for the draw.
+        // shader can still be active. Update the private b8 resource here,
+        // but bind it only inside a replacement draw so vanilla stereo state
+        // is never overwritten between draws.
         GeometryData data{};
         data.emissiveMultiplier = emissiveMultiplier;
         context->UpdateSubresource(geometryBuffer_.Get(), 0, nullptr, &data, 0, 0);
-        ID3D11Buffer* geometry = geometryBuffer_.Get();
-        context->PSSetConstantBuffers(8, 1, &geometry);
         geometryUpdates_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -505,6 +549,10 @@ namespace community_shaders::linear_lighting
             .unmatchedShaderSelections =
                 unmatchedShaderSelections_.load(std::memory_order_relaxed),
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
+            .replacementConstantScopes =
+                replacementConstantScopes_.load(std::memory_order_relaxed),
+            .replacementConstantRestores =
+                replacementConstantRestores_.load(std::memory_order_relaxed),
             .geometryUpdates = geometryUpdates_.load(std::memory_order_relaxed),
             .rejectedGeometryUpdates = rejectedGeometryUpdates_.load(std::memory_order_relaxed),
             .geometryResourceRejects =

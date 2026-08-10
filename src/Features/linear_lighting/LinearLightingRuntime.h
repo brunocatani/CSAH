@@ -13,6 +13,41 @@
 
 namespace community_shaders::linear_lighting
 {
+    class Runtime;
+
+    // Owns the temporary pixel-constant-buffer state for one replacement
+    // draw. The immediate context is non-owning and the scope must remain
+    // inside the intercepted draw call.
+    class ScopedReplacementPixelConstants final
+    {
+    public:
+        ScopedReplacementPixelConstants() noexcept = default;
+        ~ScopedReplacementPixelConstants() noexcept;
+
+        ScopedReplacementPixelConstants(
+            const ScopedReplacementPixelConstants&) = delete;
+        ScopedReplacementPixelConstants(
+            ScopedReplacementPixelConstants&&) = delete;
+        ScopedReplacementPixelConstants& operator=(
+            const ScopedReplacementPixelConstants&) = delete;
+        ScopedReplacementPixelConstants& operator=(
+            ScopedReplacementPixelConstants&&) = delete;
+
+    private:
+        friend class Runtime;
+
+        ScopedReplacementPixelConstants(
+            ID3D11DeviceContext* context,
+            ID3D11Buffer* frameBuffer,
+            ID3D11Buffer* geometryBuffer,
+            std::atomic_uint64_t* restoreCounter) noexcept;
+
+        ID3D11DeviceContext* context_{};
+        Microsoft::WRL::ComPtr<ID3D11Buffer> previousFrameBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> previousGeometryBuffer_;
+        std::atomic_uint64_t* restoreCounter_{};
+    };
+
     struct RuntimeSnapshot
     {
         bool enabled{};
@@ -28,6 +63,8 @@ namespace community_shaders::linear_lighting
         std::uint64_t inactiveShaderSelections{};
         std::uint64_t unmatchedShaderSelections{};
         std::uint64_t replacementBinds{};
+        std::uint64_t replacementConstantScopes{};
+        std::uint64_t replacementConstantRestores{};
         std::uint64_t geometryUpdates{};
         std::uint64_t rejectedGeometryUpdates{};
         std::uint64_t geometryResourceRejects{};
@@ -84,6 +121,14 @@ namespace community_shaders::linear_lighting
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
+
+        // Captures the engine's current b5/b8 bindings, installs the private
+        // replacement buffers for one draw, and restores the exact captured
+        // state at scope exit.
+        [[nodiscard]] ScopedReplacementPixelConstants
+        scopeReplacementPixelConstants(
+            ID3D11DeviceContext* context,
+            std::uint32_t contractPlusOne) noexcept;
 
         // Sampled by the qualification hooks only. D3D11 Get calls retain the
         // observed interfaces, which this method releases before returning.
@@ -155,6 +200,8 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t inactiveShaderSelections_{};
         std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
+        std::atomic_uint64_t replacementConstantScopes_{};
+        std::atomic_uint64_t replacementConstantRestores_{};
         std::atomic_uint64_t geometryUpdates_{};
         std::atomic_uint64_t rejectedGeometryUpdates_{};
         std::atomic_uint64_t geometryResourceRejects_{};
