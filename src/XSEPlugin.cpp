@@ -77,7 +77,7 @@ namespace
             const auto pointLight = community_shaders::linear_lighting::
                 dFTiledPointLightHookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, geometryCellOwned={}, dFLightPowOwned={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientPowModified={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightPowOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientPowModified={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
@@ -87,8 +87,10 @@ namespace
                 linearLighting.shaderSelectionCalls,
                 linearLighting.replacementBinds,
                 d3d.pixelShaderBindDetourEnabled,
-                geometry.vtableCellOwned,
+                geometry.techniqueVtableCellOwned,
+                geometry.geometryVtableCellOwned,
                 geometry.dFLightPowCallsitesOwned,
+                geometry.techniqueCalls,
                 geometry.calls,
                 geometry.acceptedUpdates,
                 geometry.rejectedSources,

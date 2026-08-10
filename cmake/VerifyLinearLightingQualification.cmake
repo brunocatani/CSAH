@@ -60,7 +60,7 @@ foreach(required IN ITEMS
     "MoveFileExW"
     "MOVEFILE_REPLACE_EXISTING"
     "capture.sample.sessionActivated"
-    "{ \"schemaVersion\", 4 }"
+    "{ \"schemaVersion\", 5 }"
     "point_light_hook_unowned"
     "dflight_pow_callsites_unowned"
     "no_ambient_producer_proof"

@@ -52,6 +52,7 @@ namespace community_shaders::diagnostics
             std::uint64_t generation{};
             std::uint64_t d3dSessionId{};
             std::uint64_t startedTickMilliseconds{};
+            std::uint64_t techniqueCallsBaseline{};
             std::uint64_t geometryCallsBaseline{};
             std::uint64_t geometryAcceptedBaseline{};
             std::uint64_t geometrySourceRejectedBaseline{};
@@ -396,7 +397,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 4 },
+                    { "schemaVersion", 5 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -445,6 +446,10 @@ namespace community_shaders::diagnostics
                                 capture.runtime.replacementConstantScopes },
                             { "replacementConstantRestores",
                                 capture.runtime.replacementConstantRestores },
+                            { "dFLightTechniqueCalls",
+                                delta(
+                                    capture.geometry.techniqueCalls,
+                                    session.techniqueCallsBaseline) },
                             { "geometryCalls",
                                 capture.sample.geometryCalls },
                             { "geometryAccepted",
@@ -542,6 +547,12 @@ namespace community_shaders::diagnostics
                                     .qualificationDrawDetoursOwned },
                             { "geometryHookOwned",
                                 capture.geometry.vtableCellOwned },
+                            { "dFLightTechniqueVtableOwned",
+                                capture.geometry
+                                    .techniqueVtableCellOwned },
+                            { "dFLightGeometryVtableOwned",
+                                capture.geometry
+                                    .geometryVtableCellOwned },
                             { "dFLightPowCallsitesOwned",
                                 capture.geometry
                                     .dFLightPowCallsitesOwned },
@@ -697,6 +708,7 @@ namespace community_shaders::diagnostics
                         .generation = session_.generation + 1,
                         .d3dSessionId = d3dSessionId,
                         .startedTickMilliseconds = GetTickCount64(),
+                        .techniqueCallsBaseline = geometry.techniqueCalls,
                         .geometryCallsBaseline = geometry.calls,
                         .geometryAcceptedBaseline = geometry.acceptedUpdates,
                         .geometrySourceRejectedBaseline =

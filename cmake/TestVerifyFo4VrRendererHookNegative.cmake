@@ -26,6 +26,26 @@ if(identityResult EQUAL 0)
     "Renderer validator accepted a changed native pow-thunk identity")
 endif()
 
+set(techniqueIdentityFixture "${validSource}")
+string(REPLACE
+  "kTechniqueSetupFunctionRva = 0x02922810"
+  "kTechniqueSetupFunctionRva = 0x02922811"
+  techniqueIdentityFixture "${techniqueIdentityFixture}")
+set(techniqueIdentityFixturePath
+  "${TEST_OUTPUT_DIR}/renderer_technique_identity_invalid.cpp")
+file(WRITE "${techniqueIdentityFixturePath}" "${techniqueIdentityFixture}")
+execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    "-DRENDERER_HOOK_SOURCE=${techniqueIdentityFixturePath}"
+    -P "${RENDERER_VALIDATOR}"
+  RESULT_VARIABLE techniqueIdentityResult
+  OUTPUT_QUIET
+  ERROR_QUIET)
+if(techniqueIdentityResult EQUAL 0)
+  message(FATAL_ERROR
+    "Renderer validator accepted a changed DFLight technique identity")
+endif()
+
 set(signatureFixture "${validSource}")
 string(REPLACE
   "std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 }"

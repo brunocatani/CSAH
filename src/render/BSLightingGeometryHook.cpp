@@ -23,10 +23,14 @@ namespace community_shaders::render
     {
         // Independently derived from raw Fallout4VR.exe 1.2.72 disassembly.
         // The active VR renderer constructs the BSDF lighting object at
-        // 0x14291D6B0 and publishes this vtable. Its slot 9 routine owns both
-        // the geometry constant-buffer transaction and the native DFLight
-        // ambient/directional RGB producer paths scoped below.
+        // 0x14291D6B0 and publishes this vtable. Raw FO4VR disassembly and the
+        // DFLight macro emitter independently establish that slot 3 owns the
+        // active technique-light transaction while slot 9 owns the geometry
+        // transaction. Both phases contain matching ambient/directional RGB
+        // producers and must share the same descriptor scope.
         constexpr std::uintptr_t kBSDFLightShaderVtableRva = 0x030BF3C8;
+        constexpr std::size_t kTechniqueSetupSlot = 3;
+        constexpr std::uintptr_t kTechniqueSetupFunctionRva = 0x02922810;
         constexpr std::size_t kGeometrySetupSlot = 9;
         constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0291DCA0;
         constexpr std::size_t kDFLightDescriptorOffset = 0x48;
@@ -61,15 +65,42 @@ namespace community_shaders::render
             {}
         };
 
-        constexpr std::array<PowCallsite, 3> kAmbientPowCallsites{
+        constexpr std::array<PowCallsite, 6> kAmbientPowCallsites{
+            PowCallsite{ 0x02922B47, 0x0006EC5C },
+            PowCallsite{ 0x02922B5B, 0x0006EC48 },
+            PowCallsite{ 0x02922B6F, 0x0006EC34 },
             PowCallsite{ 0x0291E138, 0x0007366B },
             PowCallsite{ 0x0291E14C, 0x00073657 },
             PowCallsite{ 0x0291E160, 0x00073643 },
         };
-        constexpr std::array<PowCallsite, 3> kDirectionalPowCallsites{
+        constexpr std::array<PowCallsite, 6> kDirectionalPowCallsites{
+            PowCallsite{ 0x029232E9, 0x0006E4BA },
+            PowCallsite{ 0x029232FD, 0x0006E4A6 },
+            PowCallsite{ 0x02923311, 0x0006E492 },
             PowCallsite{ 0x0291E9E7, 0x00072DBC },
             PowCallsite{ 0x0291E9FB, 0x00072DA8 },
             PowCallsite{ 0x0291EA0F, 0x00072D94 },
+        };
+
+        constexpr std::array<std::byte, 45> kTechniqueSetupSignature{
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
+            std::byte{ 0x24 }, std::byte{ 0x08 },
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x54 },
+            std::byte{ 0x24 }, std::byte{ 0x10 },
+            std::byte{ 0x55 }, std::byte{ 0x56 }, std::byte{ 0x57 },
+            std::byte{ 0x41 }, std::byte{ 0x54 },
+            std::byte{ 0x41 }, std::byte{ 0x55 },
+            std::byte{ 0x41 }, std::byte{ 0x56 },
+            std::byte{ 0x41 }, std::byte{ 0x57 },
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0xAC },
+            std::byte{ 0x24 }, std::byte{ 0xD0 }, std::byte{ 0xFD },
+            std::byte{ 0xFF }, std::byte{ 0xFF },
+            std::byte{ 0x48 }, std::byte{ 0x81 }, std::byte{ 0xEC },
+            std::byte{ 0x30 }, std::byte{ 0x03 }, std::byte{ 0x00 },
+            std::byte{ 0x00 },
+            std::byte{ 0x44 }, std::byte{ 0x0F }, std::byte{ 0x29 },
+            std::byte{ 0xAC }, std::byte{ 0x24 }, std::byte{ 0xB0 },
+            std::byte{ 0x02 }, std::byte{ 0x00 }, std::byte{ 0x00 },
         };
 
         constexpr std::array<std::byte, 41> kGeometrySetupSignature{
@@ -96,6 +127,11 @@ namespace community_shaders::render
             std::byte{ 0xB2 }, std::byte{ 0x2B }, std::byte{ 0x00 },
         };
 
+        using TechniqueSetupFunction = void(__fastcall*)(
+            void* receiver,
+            void* pass,
+            void* compiledProgram,
+            void* techniqueState);
         using GeometrySetupFunction = void(__fastcall*)(
             void* receiver,
             void* pass,
@@ -104,8 +140,10 @@ namespace community_shaders::render
             float value,
             float exponent);
 
+        TechniqueSetupFunction originalTechniqueSetup{};
         GeometrySetupFunction originalGeometrySetup{};
         NativeScalarPowFunction originalNativeScalarPow{};
+        void** techniqueSetupCell{};
         void** geometrySetupCell{};
         const std::byte* lightingState{};
         std::byte* executableImage{};
@@ -125,6 +163,7 @@ namespace community_shaders::render
                 linear_lighting::kVanillaDFLightGamma) };
         std::atomic_uint32_t desiredAmbientMultiplierBits{
             std::bit_cast<std::uint32_t>(1.0f) };
+        std::atomic_uint64_t techniqueCalls{};
         std::atomic_uint64_t calls{};
         std::atomic_uint64_t acceptedUpdates{};
         std::atomic_uint64_t rejectedSources{};
@@ -606,10 +645,8 @@ namespace community_shaders::render
             return true;
         }
 
-        void __fastcall hookGeometrySetup(
-            void* receiver,
-            void* pass,
-            void* compiledProgram) noexcept
+        [[nodiscard]] std::uint32_t readAndRecordDFLightDescriptor(
+            const void* pass) noexcept
         {
             std::uint32_t descriptor{};
             if (pass) {
@@ -631,10 +668,37 @@ namespace community_shaders::render
                 otherDescriptors.fetch_add(1, std::memory_order_relaxed);
                 break;
             }
+            return descriptor;
+        }
+
+        void __fastcall hookTechniqueSetup(
+            void* receiver,
+            void* pass,
+            void* compiledProgram,
+            void* techniqueState) noexcept
+        {
+            const auto descriptor = readAndRecordDFLightDescriptor(pass);
+            {
+                DFLightDescriptorScope descriptorScope(descriptor);
+                originalTechniqueSetup(
+                    receiver,
+                    pass,
+                    compiledProgram,
+                    techniqueState);
+            }
+            techniqueCalls.fetch_add(1, std::memory_order_release);
+        }
+
+        void __fastcall hookGeometrySetup(
+            void* receiver,
+            void* pass,
+            void* compiledProgram) noexcept
+        {
+            const auto descriptor = readAndRecordDFLightDescriptor(pass);
 
             // Preserve the engine's complete selector-2 map/write/unmap/bind
             // transaction exactly once. The descriptor scope exists only for
-            // the six verified native pow calls reached by this transaction.
+            // the verified native pow calls reached by this transaction.
             {
                 DFLightDescriptorScope descriptorScope(descriptor);
                 originalGeometrySetup(receiver, pass, compiledProgram);
@@ -700,6 +764,8 @@ namespace community_shaders::render
         if (kBSDFLightShaderVtableRva +
                     (kGeometrySetupSlot + 1) * sizeof(void*) >
                 imageSize ||
+            kTechniqueSetupFunctionRva + kTechniqueSetupSignature.size() >
+                imageSize ||
             kGeometrySetupFunctionRva + kGeometrySetupSignature.size() >
                 imageSize ||
             kLightingStateAccessorRva +
@@ -718,17 +784,33 @@ namespace community_shaders::render
             return false;
         }
 
-        auto** cell = reinterpret_cast<void**>(
+        auto** techniqueCell = reinterpret_cast<void**>(
+            image + kBSDFLightShaderVtableRva +
+            kTechniqueSetupSlot * sizeof(void*));
+        auto** geometryCell = reinterpret_cast<void**>(
             image + kBSDFLightShaderVtableRva +
             kGeometrySetupSlot * sizeof(void*));
-        auto* expected = image + kGeometrySetupFunctionRva;
+        auto* expectedTechnique = image + kTechniqueSetupFunctionRva;
+        auto* expectedGeometry = image + kGeometrySetupFunctionRva;
         const auto* accessor = image + kLightingStateAccessorRva;
         const auto* state = image + kLightingStateRva;
         const auto* nativePow = image + kNativeScalarPowThunkRva;
-        if (!isReadableRange(cell, sizeof(*cell)) || *cell != expected ||
-            !isExecutableRange(expected, kGeometrySetupSignature.size()) ||
+        if (!isReadableRange(techniqueCell, sizeof(*techniqueCell)) ||
+            *techniqueCell != expectedTechnique ||
+            !isExecutableRange(
+                expectedTechnique,
+                kTechniqueSetupSignature.size()) ||
             std::memcmp(
-                expected,
+                expectedTechnique,
+                kTechniqueSetupSignature.data(),
+                kTechniqueSetupSignature.size()) != 0 ||
+            !isReadableRange(geometryCell, sizeof(*geometryCell)) ||
+            *geometryCell != expectedGeometry ||
+            !isExecutableRange(
+                expectedGeometry,
+                kGeometrySetupSignature.size()) ||
+            std::memcmp(
+                expectedGeometry,
                 kGeometrySetupSignature.data(),
                 kGeometrySetupSignature.size()) != 0 ||
             !isExecutableRange(
@@ -875,40 +957,70 @@ namespace community_shaders::render
             return false;
         }
 
+        originalTechniqueSetup =
+            reinterpret_cast<TechniqueSetupFunction>(expectedTechnique);
         originalGeometrySetup =
-            reinterpret_cast<GeometrySetupFunction>(expected);
+            reinterpret_cast<GeometrySetupFunction>(expectedGeometry);
         lightingState = state;
         if (!patchPointer(
-                cell,
-                expected,
-                reinterpret_cast<void*>(&hookGeometrySetup))) {
+                techniqueCell,
+                expectedTechnique,
+                reinterpret_cast<void*>(&hookTechniqueSetup))) {
+            originalTechniqueSetup = nullptr;
             originalGeometrySetup = nullptr;
             lightingState = nullptr;
             const auto restored = restorePowCallsites(patchedCallsites);
             releaseProducerPatchStateIfRestored(restored);
             logging::error(
-                "BSDF lighting geometry vtable patch failed (producer restored={}); Linear Lighting remains vanilla.",
+                "BSDF lighting technique vtable patch failed (producer restored={}); Linear Lighting remains vanilla.",
                 restored);
             return false;
         }
+        if (!patchPointer(
+                geometryCell,
+                expectedGeometry,
+                reinterpret_cast<void*>(&hookGeometrySetup))) {
+            const auto techniqueRestored = patchPointer(
+                techniqueCell,
+                reinterpret_cast<void*>(&hookTechniqueSetup),
+                expectedTechnique);
+            const auto producerRestored = techniqueRestored &&
+                restorePowCallsites(patchedCallsites);
+            releaseProducerPatchStateIfRestored(producerRestored);
+            if (techniqueRestored) {
+                originalTechniqueSetup = nullptr;
+            }
+            originalGeometrySetup = nullptr;
+            lightingState = nullptr;
+            logging::error(
+                "BSDF lighting geometry vtable patch failed (techniqueRestored={}, producerRestored={}); Linear Lighting remains vanilla.",
+                techniqueRestored,
+                producerRestored);
+            return false;
+        }
 
-        geometrySetupCell = cell;
+        techniqueSetupCell = techniqueCell;
+        geometrySetupCell = geometryCell;
         producerOwnershipReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         linear_lighting::Runtime::get().setGeometryProviderReady(true);
         logging::info(
-            "Installed verified Fallout4VR BSDF lighting hook (vtable slot 9, six DFLight ambient/directional pow callsites, renderer state RVA 0x068787F0 +0x1BC).");
+            "Installed verified Fallout4VR BSDF lighting hook (vtable slots 3/9, twelve DFLight ambient/directional pow callsites, renderer state RVA 0x068787F0 +0x1BC).");
         return true;
     }
 
     bool validateBSLightingGeometryHook(const char* trigger) noexcept
     {
         const auto hookInstalled = installed.load(std::memory_order_acquire);
-        const auto vtableOwned = hookInstalled &&
+        const auto techniqueVtableOwned = hookInstalled &&
+            readPointerCell(techniqueSetupCell) ==
+                reinterpret_cast<void*>(&hookTechniqueSetup);
+        const auto geometryVtableOwned = hookInstalled &&
             readPointerCell(geometrySetupCell) ==
                 reinterpret_cast<void*>(&hookGeometrySetup);
         const auto powOwned = hookInstalled && dFLightPowCallsitesOwned();
-        const auto owned = vtableOwned && powOwned;
+        const auto owned =
+            techniqueVtableOwned && geometryVtableOwned && powOwned;
         producerOwnershipReady.store(owned, std::memory_order_release);
         if (!owned && hookInstalled) {
             linear_lighting::Runtime::get().setGeometryProviderReady(false);
@@ -918,9 +1030,10 @@ namespace community_shaders::render
                 1;
             if ((failures & (failures - 1)) == 0) {
                 logging::error(
-                    "BSDF lighting hook ownership validation failed at '{}' (vtableOwned={}, dFLightPowCallsitesOwned={}, failures={}); geometry and DFLight producers are fail-closed.",
+                    "BSDF lighting hook ownership validation failed at '{}' (techniqueVtableOwned={}, geometryVtableOwned={}, dFLightPowCallsitesOwned={}, failures={}); geometry and DFLight producers are fail-closed.",
                     trigger ? trigger : "unknown",
-                    vtableOwned,
+                    techniqueVtableOwned,
+                    geometryVtableOwned,
                     powOwned,
                     failures);
             }
@@ -957,13 +1070,21 @@ namespace community_shaders::render
             producerOwnershipReady.load(std::memory_order_acquire);
         const auto producerActive = producerOwned &&
             desiredProducerEnabled.load(std::memory_order_acquire);
+        const auto techniqueOwned = hookInstalled &&
+            readPointerCell(techniqueSetupCell) ==
+                reinterpret_cast<void*>(&hookTechniqueSetup);
+        const auto geometryOwned = hookInstalled &&
+            readPointerCell(geometrySetupCell) ==
+                reinterpret_cast<void*>(&hookGeometrySetup);
         return {
             .installed = hookInstalled,
-            .vtableCellOwned = hookInstalled &&
-                readPointerCell(geometrySetupCell) ==
-                    reinterpret_cast<void*>(&hookGeometrySetup),
+            .vtableCellOwned = techniqueOwned && geometryOwned,
+            .techniqueVtableCellOwned = techniqueOwned,
+            .geometryVtableCellOwned = geometryOwned,
             .dFLightPowCallsitesOwned = producerOwned,
             .dFLightProducerEnabled = producerActive,
+            .techniqueCalls =
+                techniqueCalls.load(std::memory_order_acquire),
             .calls = calls.load(std::memory_order_acquire),
             .acceptedUpdates = acceptedUpdates.load(std::memory_order_relaxed),
             .rejectedSources = rejectedSources.load(std::memory_order_relaxed),

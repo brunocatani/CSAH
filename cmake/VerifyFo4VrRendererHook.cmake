@@ -7,6 +7,8 @@ file(READ "${RENDERER_HOOK_SOURCE}" source)
 
 foreach(required IN ITEMS
     "kBSDFLightShaderVtableRva = 0x030BF3C8"
+    "kTechniqueSetupSlot = 3"
+    "kTechniqueSetupFunctionRva = 0x02922810"
     "kGeometrySetupSlot = 9"
     "kGeometrySetupFunctionRva = 0x0291DCA0"
     "kDFLightDescriptorOffset = 0x48"
@@ -14,12 +16,19 @@ foreach(required IN ITEMS
     "kLightingStateRva = 0x068787F0"
     "kLightingStateEmissiveMultiplierOffset = 0x1BC"
     "kNativeScalarPowThunkRva = 0x029917A8"
+    "PowCallsite{ 0x02922B47, 0x0006EC5C }"
+    "PowCallsite{ 0x02922B5B, 0x0006EC48 }"
+    "PowCallsite{ 0x02922B6F, 0x0006EC34 }"
+    "PowCallsite{ 0x029232E9, 0x0006E4BA }"
+    "PowCallsite{ 0x029232FD, 0x0006E4A6 }"
+    "PowCallsite{ 0x02923311, 0x0006E492 }"
     "PowCallsite{ 0x0291E138, 0x0007366B }"
     "PowCallsite{ 0x0291E14C, 0x00073657 }"
     "PowCallsite{ 0x0291E160, 0x00073643 }"
     "PowCallsite{ 0x0291E9E7, 0x00072DBC }"
     "PowCallsite{ 0x0291E9FB, 0x00072DA8 }"
     "PowCallsite{ 0x0291EA0F, 0x00072D94 }"
+    "kTechniqueSetupSignature"
     "kGeometrySetupSignature"
     "kLightingStateAccessorSignature"
     "kNativeScalarPowThunkSignature"
@@ -44,6 +53,8 @@ foreach(required IN ITEMS
     "calls.load(std::memory_order_acquire)"
     "recordStage(GeometrySourceStage::lightingState)"
     "recordStage(GeometrySourceStage::emissiveMultiplier)"
+    "originalTechniqueSetup("
+    "techniqueCalls.fetch_add(1, std::memory_order_release)"
     "originalGeometrySetup(receiver, pass, compiledProgram)"
     "updateGeometryEmissive(")
   string(FIND "${source}" "${required}" found)

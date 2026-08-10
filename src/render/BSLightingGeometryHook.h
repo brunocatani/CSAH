@@ -20,8 +20,11 @@ namespace community_shaders::render
     {
         bool installed{};
         bool vtableCellOwned{};
+        bool techniqueVtableCellOwned{};
+        bool geometryVtableCellOwned{};
         bool dFLightPowCallsitesOwned{};
         bool dFLightProducerEnabled{};
+        std::uint64_t techniqueCalls{};
         std::uint64_t calls{};
         std::uint64_t acceptedUpdates{};
         std::uint64_t rejectedSources{};
