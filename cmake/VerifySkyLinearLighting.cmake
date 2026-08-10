@@ -81,9 +81,9 @@ if(NOT skyResourceCount EQUAL 8)
 endif()
 
 string(FIND "${runtimeSource}"
-  "skyReplacementBinds_.fetch_add" skySelectionStart)
+  "if (binding.family == ReplacementShaderFamily::sky)" skySelectionStart)
 string(FIND "${runtimeSource}"
-  "const auto ambientSelection" skySelectionEnd)
+  "if (binding.family == ReplacementShaderFamily::distantTree)" skySelectionEnd)
 if(skySelectionStart EQUAL -1 OR skySelectionEnd EQUAL -1 OR
    NOT skySelectionStart LESS skySelectionEnd)
   message(FATAL_ERROR

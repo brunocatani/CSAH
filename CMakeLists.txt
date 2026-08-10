@@ -110,6 +110,20 @@ file(GLOB SKY_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/SkyLinearLighting/*.dxbc")
 file(GLOB SKY_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedSkyLinearLighting/*.dxbc")
+set(DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/DistantTreeLinearLightingContracts.json")
+set(DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_distant_tree_linear_lighting_contracts.py")
+set(DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedDistantTreeLinearLightingContract.inl")
+set(DISTANT_TREE_LINEAR_LIGHTING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/DistantTreeLinearLighting/DistantTreeLinearLighting.hlsl")
+set(FIXED_SHADER_BINDING_LOOKUP_HEADER
+  "${SOURCE_DIR}/Features/linear_lighting/FixedShaderBindingLookup.h")
+file(GLOB DISTANT_TREE_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/DistantTreeLinearLighting/*.dxbc")
+file(GLOB DISTANT_TREE_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedDistantTreeLinearLighting/*.dxbc")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
@@ -117,6 +131,8 @@ include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
 include("${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
+include("${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake")
+include("${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
@@ -150,10 +166,19 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SKY_LINEAR_LIGHTING_SHADER_SOURCE}"
   ${SKY_LINEAR_LIGHTING_SHADER_ASSETS}
   ${SKY_LINEAR_LIGHTING_VERIFIED_ASSETS}
+  "${DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
+  "${DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+  "${DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+  "${DISTANT_TREE_LINEAR_LIGHTING_SHADER_SOURCE}"
+  "${FIXED_SHADER_BINDING_LOOKUP_HEADER}"
+  ${DISTANT_TREE_LINEAR_LIGHTING_SHADER_ASSETS}
+  ${DISTANT_TREE_LINEAR_LIGHTING_VERIFIED_ASSETS}
   "${SOURCE_DIR}/support/NearAllocation.h"
   "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake"
   "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake"
-  "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
+  "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake"
+  "${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake"
+  "${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
   COMMAND "${CMAKE_COMMAND}"
@@ -232,6 +257,25 @@ add_custom_target(VerifySkyLinearLighting ALL
   COMMENT "Verifying frame-only Sky Linear Lighting ownership"
   VERBATIM)
 
+add_custom_target(VerifyDistantTreeLinearLighting ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DDISTANT_TREE_LINEAR_LIGHTING_SHADER_SOURCE=${DISTANT_TREE_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake"
+  COMMENT "Verifying frame-only DistantTree Linear Lighting ownership"
+  VERBATIM)
+
+add_custom_target(VerifyFixedShaderBindingLookup ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DFIXED_SHADER_BINDING_LOOKUP_HEADER=${FIXED_SHADER_BINDING_LOOKUP_HEADER}"
+    -P "${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake"
+  COMMENT "Verifying allocation-free shader-binding lookup"
+  VERBATIM)
+
 set(LINEAR_LIGHTING_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/LinearLightingContracts.json")
 set(LINEAR_LIGHTING_CONTRACT_GENERATOR
@@ -263,6 +307,15 @@ add_custom_target(VerifySkyLinearLightingContracts ALL
     --output "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying FO4VR Sky Linear Lighting contracts"
+  VERBATIM)
+
+add_custom_target(VerifyDistantTreeLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+    --check
+  COMMENT "Verifying FO4VR DistantTree Linear Lighting contract"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -311,8 +364,10 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/DxbcChecksum.h"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
+  "${FIXED_SHADER_BINDING_LOOKUP_HEADER}"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
   "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
   "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
@@ -333,9 +388,12 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyDistantTreeLinearLighting
+  VerifyDistantTreeLinearLightingContracts
   VerifyDFLightAmbientReplacement
   VerifyDFLightAmbientContracts
   VerifyDFTiledPointLightHook
+  VerifyFixedShaderBindingLookup
   VerifyLinearLightingConstantScope
   VerifyLinearLightingContracts
   VerifyLinearLightingQualification
@@ -458,6 +516,19 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore)
   add_test(NAME FO4VRCommunityShaders.LinearLightingSettings
     COMMAND FO4VRCommunityShadersLinearLightingSettingsTests)
+
+  add_executable(FO4VRCommunityShadersFixedShaderBindingLookupTests
+    "${ROOT_DIR}/tests/FixedShaderBindingLookupTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.FixedShaderBindingLookup
+    COMMAND FO4VRCommunityShadersFixedShaderBindingLookupTests)
 
   add_test(NAME FO4VRCommunityShaders.LoaderSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
@@ -678,6 +749,12 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --output "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
+  add_test(NAME FO4VRCommunityShaders.DistantTreeLinearLightingRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+      --check)
   add_executable(FO4VRCommunityShadersSkyLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/SkyLinearLightingShaderParityTests.cpp")
   target_compile_features(
@@ -696,6 +773,26 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore d3d11 d3dcompiler)
   add_test(NAME FO4VRCommunityShaders.SkyLinearLightingShaderParity
     COMMAND FO4VRCommunityShadersSkyLinearLightingShaderParityTests
+      "${ROOT_DIR}")
+  add_executable(FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/DistantTreeLinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_definitions(
+    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    FO4VRCommunityShadersCore d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.DistantTreeLinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests
       "${ROOT_DIR}")
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"

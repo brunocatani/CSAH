@@ -197,6 +197,7 @@ namespace community_shaders::ui
         std::uint64_t lastPublishedDiagnosticsRevision{};
         linear_lighting_telemetry::State telemetryLogState{};
         bool skyReplacementReported{};
+        bool distantTreeReplacementReported{};
 
         void pushLatestSnapshot() noexcept;
         void ensureView() noexcept;
@@ -593,7 +594,9 @@ namespace community_shaders::ui
                 (qualification.reasonMask << 9) ^
                 (static_cast<std::uint64_t>(qualification.state) << 10) ^
                 (static_cast<std::uint64_t>(
-                     qualification.fullyVerifiedContracts) << 13);
+                     qualification.fullyVerifiedContracts) << 13) ^
+                (runtime.distantTreeReplacementBinds << 45) ^
+                (runtime.shaderBindingLookupFailures << 46);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -628,6 +631,15 @@ namespace community_shaders::ui
                         { "skyCoverageComplete",
                             runtime.verifiedSkyShaderContracts ==
                                 linear_lighting::Runtime::kSkyShaderContractCount },
+                        { "verifiedDistantTreeShaderContracts",
+                            runtime.verifiedDistantTreeShaderContracts },
+                        { "expectedDistantTreeShaderContracts",
+                            linear_lighting::Runtime::
+                                kDistantTreeShaderContractCount },
+                        { "distantTreeCoverageComplete",
+                            runtime.verifiedDistantTreeShaderContracts ==
+                                linear_lighting::Runtime::
+                                    kDistantTreeShaderContractCount },
                     } },
                 { "qualification",
                     {
@@ -662,6 +674,16 @@ namespace community_shaders::ui
                             runtime.trackedOriginalSkyShaders },
                         { "skyReplacementBinds",
                             runtime.skyReplacementBinds },
+                        { "matchingDistantTreeShaders",
+                            runtime.matchingDistantTreeShadersCreated },
+                        { "matchingDistantTreeShaderMask",
+                            runtime.matchingDistantTreeShaderContractMask },
+                        { "trackedDistantTreeShaders",
+                            runtime.trackedOriginalDistantTreeShaders },
+                        { "distantTreeReplacementBinds",
+                            runtime.distantTreeReplacementBinds },
+                        { "shaderBindingLookupFailures",
+                            runtime.shaderBindingLookupFailures },
                         { "shaderSelections", runtime.shaderSelectionCalls },
                         { "rejectedShaderContexts",
                             runtime.rejectedShaderContexts },
@@ -835,7 +857,7 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, matchingDistantTreeShaders={}, trackedDistantTreeShaders={}, shaderBindingLookupFailures={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
@@ -844,6 +866,9 @@ namespace community_shaders::ui
                     runtime.trackedOriginalShaders,
                     runtime.matchingSkyShadersCreated,
                     runtime.trackedOriginalSkyShaders,
+                    runtime.matchingDistantTreeShadersCreated,
+                    runtime.trackedOriginalDistantTreeShaders,
+                    runtime.shaderBindingLookupFailures,
                     d3d.pixelShaderBindDetourEnabled,
                     geometry.vtableCellOwned,
                     d3d.pixelShaderBindCalls,
@@ -877,6 +902,18 @@ namespace community_shaders::ui
                     runtime.matchingSkyShaderContractMask,
                     runtime.skyReplacementBinds,
                     runtime.frameDataUploads);
+            }
+            if (!distantTreeReplacementReported &&
+                runtime.distantTreeReplacementBinds > 0) {
+                distantTreeReplacementReported = true;
+                logging::info(
+                    "Linear Lighting first DistantTree replacement proof: matchingShaders={}, trackedShaders={}, contractMask=0x{:02X}, replacementBinds={}, frameDataUploads={}, shaderBindingLookupFailures={}.",
+                    runtime.matchingDistantTreeShadersCreated,
+                    runtime.trackedOriginalDistantTreeShaders,
+                    runtime.matchingDistantTreeShaderContractMask,
+                    runtime.distantTreeReplacementBinds,
+                    runtime.frameDataUploads,
+                    runtime.shaderBindingLookupFailures);
             }
             if (events.firstGeometryCall) {
                 logging::info(

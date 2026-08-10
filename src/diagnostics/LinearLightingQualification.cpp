@@ -65,6 +65,7 @@ namespace community_shaders::diagnostics
             std::uint64_t ambientTransformPassThroughBaseline{};
             std::uint64_t ambientReplacementBindsBaseline{};
             std::uint64_t skyReplacementBindsBaseline{};
+            std::uint64_t distantTreeReplacementBindsBaseline{};
             std::uint64_t directionalPowCallsBaseline{};
             std::uint64_t directionalPowModifiedBaseline{};
             std::uint64_t directionalPowPassThroughBaseline{};
@@ -402,7 +403,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 7 },
+                    { "schemaVersion", 8 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -459,6 +460,26 @@ namespace community_shaders::diagnostics
                                 delta(
                                     capture.runtime.skyReplacementBinds,
                                     session.skyReplacementBindsBaseline) },
+                            { "verifiedDistantTreeShaderContracts",
+                                capture.runtime
+                                    .verifiedDistantTreeShaderContracts },
+                            { "matchingDistantTreeShaderContractMask",
+                                capture.runtime
+                                    .matchingDistantTreeShaderContractMask },
+                            { "matchingDistantTreeShadersCreated",
+                                capture.runtime
+                                    .matchingDistantTreeShadersCreated },
+                            { "trackedOriginalDistantTreeShaders",
+                                capture.runtime
+                                    .trackedOriginalDistantTreeShaders },
+                            { "distantTreeReplacementBinds",
+                                delta(
+                                    capture.runtime
+                                        .distantTreeReplacementBinds,
+                                    session
+                                        .distantTreeReplacementBindsBaseline) },
+                            { "shaderBindingLookupFailures",
+                                capture.runtime.shaderBindingLookupFailures },
                             { "verifiedDFLightAmbientShaderContracts",
                                 capture.runtime
                                     .verifiedDFLightAmbientShaderContracts },
@@ -779,6 +800,8 @@ namespace community_shaders::diagnostics
                             runtime.dFLightAmbientReplacementBinds,
                         .skyReplacementBindsBaseline =
                             runtime.skyReplacementBinds,
+                        .distantTreeReplacementBindsBaseline =
+                            runtime.distantTreeReplacementBinds,
                         .directionalPowCallsBaseline =
                             geometry.directionalPowCalls,
                         .directionalPowModifiedBaseline =

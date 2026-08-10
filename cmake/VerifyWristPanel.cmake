@@ -38,6 +38,7 @@ foreach(required IN ITEMS
     "Linear Lighting D3D bind-hook proof:"
     "Linear Lighting first replacement proof:"
     "Linear Lighting first Sky replacement proof:"
+    "Linear Lighting first DistantTree replacement proof:"
     "Linear Lighting geometry-call proof:"
     "Linear Lighting geometry proof:"
     "validateD3D11ShaderHooks(\"GameDataReady\")"
@@ -49,6 +50,8 @@ foreach(required IN ITEMS
     "FO4VR Linear Lighting shader coverage"
     "dfPrepassCoverageComplete"
     "skyCoverageComplete"
+    "distantTreeCoverageComplete"
+    "shaderBindingLookupFailures"
     "std::atomic_bool diagnosticsEnabled{ true }"
     "scene %s | qualification %s | proof %u/%u"
     "wrist_provider_retry::Gate"
@@ -73,6 +76,8 @@ foreach(required IN ITEMS
     "metric(\"Observed proof\""
     "metric(\"World lifecycle\""
     "metric(\"Render session\""
+    "metric(\"DistantTree binds\""
+    "metric(\"Binding lookup\""
     "bounded, leased, automatic start"
     "QUAL \${qualificationLabel}")
   string(FIND "${viewSource}" "${required}" found)

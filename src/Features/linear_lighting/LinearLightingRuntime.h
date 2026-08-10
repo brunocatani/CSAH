@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/linear_lighting/LinearLightingContractMask.h"
+#include "Features/linear_lighting/FixedShaderBindingLookup.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
 #include <d3d11.h>
@@ -23,6 +24,7 @@ namespace community_shaders::linear_lighting
         none,
         material,
         sky,
+        distantTree,
         dFLightAmbient,
     };
 
@@ -90,6 +92,11 @@ namespace community_shaders::linear_lighting
         std::uint32_t matchingSkyShadersCreated{};
         std::uint32_t trackedOriginalSkyShaders{};
         std::uint64_t skyReplacementBinds{};
+        std::uint32_t verifiedDistantTreeShaderContracts{};
+        std::uint8_t matchingDistantTreeShaderContractMask{};
+        std::uint32_t matchingDistantTreeShadersCreated{};
+        std::uint32_t trackedOriginalDistantTreeShaders{};
+        std::uint64_t distantTreeReplacementBinds{};
         std::uint64_t shaderSelectionCalls{};
         std::uint64_t rejectedShaderContexts{};
         std::uint64_t inactiveShaderSelections{};
@@ -97,6 +104,7 @@ namespace community_shaders::linear_lighting
         std::uint64_t replacementBinds{};
         std::uint64_t replacementConstantScopes{};
         std::uint64_t replacementConstantRestores{};
+        std::uint64_t shaderBindingLookupFailures{};
         std::uint32_t verifiedDFLightAmbientShaderContracts{};
         std::uint64_t matchingDFLightAmbientContractMask{};
         std::uint64_t readyDFLightAmbientContractMask{};
@@ -137,7 +145,9 @@ namespace community_shaders::linear_lighting
     public:
         static constexpr std::size_t kShaderContractCount = 288;
         static constexpr std::size_t kSkyShaderContractCount = 8;
+        static constexpr std::size_t kDistantTreeShaderContractCount = 1;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
+        static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t
             kMaximumTrackedOriginalShadersPerContract = 8;
         static_assert(kShaderContractCount <= kContractMaskCapacity);
@@ -222,8 +232,12 @@ namespace community_shaders::linear_lighting
             Microsoft::WRL::ComPtr<ID3D11PixelShader>& replacement) noexcept;
         [[nodiscard]] bool rebuildDFLightAmbientReplacements(
             float ambientGamma) noexcept;
+        [[nodiscard]] bool registerShaderBinding(
+            ID3D11PixelShader* shader,
+            ReplacementShaderBinding binding) noexcept;
         [[nodiscard]] PixelShaderSelection selectDFLightAmbientShader(
-            ID3D11PixelShader* requested) noexcept;
+            ID3D11PixelShader* requested,
+            std::size_t contractIndex) noexcept;
         void applyQueuedSettingsForRenderBoundary() noexcept;
         void publishFrameData() noexcept;
 
@@ -243,6 +257,9 @@ namespace community_shaders::linear_lighting
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kSkyShaderContractCount>
             skyReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kDistantTreeShaderContractCount>
+            distantTreeReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientReplacementShaders_{};
@@ -270,12 +287,22 @@ namespace community_shaders::linear_lighting
             originalSkyShaders_{};
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
                        kMaximumTrackedOriginalShadersPerContract>,
+            kDistantTreeShaderContractCount>
+            originalDistantTreeShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kDistantTreeShaderContractCount>
+            originalDistantTreeShaders_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientOriginalShaderOwners_{};
         std::array<std::array<std::atomic<ID3D11PixelShader*>,
                        kMaximumTrackedOriginalShadersPerContract>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientOriginalShaders_{};
+        FixedShaderBindingLookup<kShaderBindingLookupCapacity>
+            shaderBindingLookup_{};
         CreatePixelShaderFunction createPixelShader_{};
         std::atomic_bool enabled_{};
         std::atomic_bool gpuResourcesReady_{};
@@ -286,14 +313,19 @@ namespace community_shaders::linear_lighting
         std::atomic_uint16_t matchingSkyShaderContractMask_{};
         std::atomic_uint32_t matchingSkyShadersCreated_{};
         std::atomic_uint32_t trackedOriginalSkyShaders_{};
+        std::atomic_uint8_t matchingDistantTreeShaderContractMask_{};
+        std::atomic_uint32_t matchingDistantTreeShadersCreated_{};
+        std::atomic_uint32_t trackedOriginalDistantTreeShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};
         std::atomic_uint64_t rejectedShaderContexts_{};
         std::atomic_uint64_t inactiveShaderSelections_{};
         std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t skyReplacementBinds_{};
+        std::atomic_uint64_t distantTreeReplacementBinds_{};
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
+        std::atomic_uint64_t shaderBindingLookupFailures_{};
         std::atomic_uint64_t matchingDFLightAmbientContractMask_{};
         std::atomic_uint64_t readyDFLightAmbientContractMask_{};
         std::atomic_uint32_t dFLightAmbientGammaBits_{
@@ -315,8 +347,11 @@ namespace community_shaders::linear_lighting
             originalCapacityWarningLogged_{};
         std::array<std::atomic_bool, kSkyShaderContractCount>
             originalSkyCapacityWarningLogged_{};
+        std::array<std::atomic_bool, kDistantTreeShaderContractCount>
+            originalDistantTreeCapacityWarningLogged_{};
         std::array<std::atomic_bool, kDFLightAmbientShaderContractCount>
             dFLightAmbientCapacityWarningLogged_{};
+        std::atomic_bool shaderBindingLookupCapacityWarningLogged_{};
         std::mutex shaderRegistryMutex_;
         std::mutex queuedSettingsMutex_;
         Settings queuedSettings_{};

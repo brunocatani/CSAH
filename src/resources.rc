@@ -296,3 +296,4 @@ IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_5_PS RCDATA "../package/Shaders/Community/SkyL
 IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_6_PS RCDATA "../package/Shaders/Community/SkyLinearLighting/SkyTechnique6_00000006.dxbc"
 IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_7_PS RCDATA "../package/Shaders/Community/SkyLinearLighting/SkyTechnique7_00000007.dxbc"
 IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_8_PS RCDATA "../package/Shaders/Community/SkyLinearLighting/SkyTechnique8_00000008.dxbc"
+IDR_LINEAR_LIGHTING_DISTANT_TREE_BLOCK_PS RCDATA "../package/Shaders/Community/DistantTreeLinearLighting/DistantTreeBlock_00000000.dxbc"
