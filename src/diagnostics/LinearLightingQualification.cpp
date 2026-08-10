@@ -10,6 +10,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
+#include <bit>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
@@ -31,6 +33,18 @@ namespace community_shaders::diagnostics
         constexpr std::uint64_t kQualificationTimeoutMilliseconds = 20'000;
         constexpr const wchar_t* kQualificationReportFileName =
             L"FO4VRCommunityShaders.LinearLightingQualification.json";
+
+        std::atomic<LinearLightingQualificationState> publicState{
+            LinearLightingQualificationState::waitingForWorld };
+        std::atomic_uint64_t publicGeneration{};
+        std::atomic_uint64_t publicElapsedMilliseconds{};
+        std::atomic_uint64_t publicReasonMask{};
+        std::atomic_uint32_t publicFullyVerifiedContracts{};
+        std::atomic_uint32_t publicExpectedContracts{
+            static_cast<std::uint32_t>(
+                linear_lighting::Runtime::kShaderContractCount) };
+        std::atomic_bool publicWorldLifecycleReached{};
+        std::atomic_bool publicRenderThreadActivated{};
 
         struct Session
         {
@@ -54,6 +68,66 @@ namespace community_shaders::diagnostics
             Sample sample;
             std::uint64_t elapsedMilliseconds{};
         };
+
+        [[nodiscard]] std::uint32_t contractCount(
+            const linear_lighting::ContractMask& mask) noexcept
+        {
+            std::uint32_t result{};
+            for (const auto word : mask) {
+                result += static_cast<std::uint32_t>(std::popcount(word));
+            }
+            return result;
+        }
+
+        void publishPublicStatus(
+            LinearLightingQualificationState state,
+            const Session& session,
+            const Capture& capture,
+            const Evaluation& evaluation,
+            bool worldLifecycleReached) noexcept
+        {
+            publicGeneration.store(
+                session.generation,
+                std::memory_order_relaxed);
+            publicElapsedMilliseconds.store(
+                capture.elapsedMilliseconds,
+                std::memory_order_relaxed);
+            publicReasonMask.store(
+                evaluation.reasonMask,
+                std::memory_order_relaxed);
+            publicFullyVerifiedContracts.store(
+                contractCount(evaluation.fullyVerifiedContractMask),
+                std::memory_order_relaxed);
+            publicExpectedContracts.store(
+                capture.sample.expectedShaderContracts,
+                std::memory_order_relaxed);
+            publicWorldLifecycleReached.store(
+                worldLifecycleReached,
+                std::memory_order_relaxed);
+            publicRenderThreadActivated.store(
+                capture.sample.sessionActivated,
+                std::memory_order_relaxed);
+            publicState.store(state, std::memory_order_release);
+        }
+
+        void publishArmedSession(const Session& session) noexcept
+        {
+            publicGeneration.store(
+                session.generation,
+                std::memory_order_relaxed);
+            publicElapsedMilliseconds.store(0, std::memory_order_relaxed);
+            publicReasonMask.store(0, std::memory_order_relaxed);
+            publicFullyVerifiedContracts.store(0, std::memory_order_relaxed);
+            publicExpectedContracts.store(
+                static_cast<std::uint32_t>(
+                    linear_lighting::Runtime::kShaderContractCount),
+                std::memory_order_relaxed);
+            publicWorldLifecycleReached.store(true, std::memory_order_relaxed);
+            publicRenderThreadActivated.store(false, std::memory_order_relaxed);
+            publicState.store(
+                LinearLightingQualificationState::running,
+                std::memory_order_release);
+        }
 
         [[nodiscard]] std::uint64_t delta(
             std::uint64_t value,
@@ -445,6 +519,12 @@ namespace community_shaders::diagnostics
                         startupCapture.sample,
                         false);
                     startupEvaluation.status = Status::waiting;
+                    publishPublicStatus(
+                        LinearLightingQualificationState::waitingForWorld,
+                        startupSession,
+                        startupCapture,
+                        startupEvaluation,
+                        false);
                     if (!writeReport(
                             startupSession,
                             startupCapture,
@@ -487,6 +567,7 @@ namespace community_shaders::diagnostics
                             runtime.rejectedGeometryUpdates,
                         .trigger = trigger ? trigger : "unknown",
                     };
+                    publishArmedSession(session_);
                     logging::info(
                         "Linear Lighting automated qualification session {} armed at world lifecycle '{}' (D3D session {}, timeout {} ms).",
                         session_.generation,
@@ -539,6 +620,20 @@ namespace community_shaders::diagnostics
                     const auto evaluation = qualification_model::evaluate(
                         capture.sample,
                         timedOut);
+                    const auto publicQualificationState =
+                        !capture.sample.sessionActivated ?
+                        LinearLightingQualificationState::running :
+                        (evaluation.status == Status::passed ?
+                                LinearLightingQualificationState::passed :
+                                (evaluation.status == Status::failed ?
+                                        LinearLightingQualificationState::failed :
+                                        LinearLightingQualificationState::running));
+                    publishPublicStatus(
+                        publicQualificationState,
+                        session,
+                        capture,
+                        evaluation,
+                        true);
                     if (runningReportGeneration != session.generation) {
                         auto runningEvaluation = evaluation;
                         runningEvaluation.status = Status::waiting;
@@ -578,6 +673,12 @@ namespace community_shaders::diagnostics
                             qualification_model::evaluate(
                                 capture.sample,
                                 true);
+                        publishPublicStatus(
+                            LinearLightingQualificationState::failed,
+                            session,
+                            capture,
+                            timeoutEvaluation,
+                            true);
                         if (!writeReport(
                                 session,
                                 capture,
@@ -612,5 +713,41 @@ namespace community_shaders::diagnostics
     void beginLinearLightingQualificationSession(const char* trigger) noexcept
     {
         QualificationReporter::get().beginSession(trigger);
+    }
+
+    LinearLightingQualificationSnapshot
+    linearLightingQualificationSnapshot() noexcept
+    {
+        const auto state = publicState.load(std::memory_order_acquire);
+        return {
+            .state = state,
+            .generation = publicGeneration.load(std::memory_order_relaxed),
+            .elapsedMilliseconds = publicElapsedMilliseconds.load(
+                std::memory_order_relaxed),
+            .reasonMask = publicReasonMask.load(std::memory_order_relaxed),
+            .fullyVerifiedContracts = publicFullyVerifiedContracts.load(
+                std::memory_order_relaxed),
+            .expectedContracts = publicExpectedContracts.load(
+                std::memory_order_relaxed),
+            .worldLifecycleReached = publicWorldLifecycleReached.load(
+                std::memory_order_relaxed),
+            .renderThreadActivated = publicRenderThreadActivated.load(
+                std::memory_order_relaxed),
+        };
+    }
+
+    const char* linearLightingQualificationStateName(
+        LinearLightingQualificationState state) noexcept
+    {
+        switch (state) {
+        case LinearLightingQualificationState::running:
+            return "running";
+        case LinearLightingQualificationState::passed:
+            return "passed";
+        case LinearLightingQualificationState::failed:
+            return "failed";
+        default:
+            return "waiting_for_world";
+        }
     }
 }

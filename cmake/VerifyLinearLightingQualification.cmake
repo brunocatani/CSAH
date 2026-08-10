@@ -63,7 +63,15 @@ foreach(required IN ITEMS
     "{ \"schemaVersion\", 2 }"
     "least-significant-first"
     "matchingShaderContractMaskWords"
-    "fullyVerifiedContractMaskWords")
+    "fullyVerifiedContractMaskWords"
+    "publishPublicStatus"
+    "publishArmedSession"
+    "LinearLightingQualificationState::waitingForWorld"
+    "LinearLightingQualificationState::running"
+    "LinearLightingQualificationState::passed"
+    "LinearLightingQualificationState::failed"
+    "publicFullyVerifiedContracts"
+    "linearLightingQualificationSnapshot")
   string(FIND "${qualificationSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR

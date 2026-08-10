@@ -420,8 +420,8 @@
           <h3>Runtime interlocks</h3>
           <div id="statusGrid" class="status-grid"></div>
           <div class="diagnostic-row">
-            <span>ROCK developer overlay<br>bounded, leased, off by default</span>
-            <button id="diagnosticsButton" type="button">Overlay off</button>
+            <span>ROCK developer overlay<br>bounded, leased, automatic start</span>
+            <button id="diagnosticsButton" type="button">Overlay on</button>
           </div>
         </div>
 
@@ -495,12 +495,13 @@
       const hooks = model.hooks || {};
       const wrist = model.wrist || {};
       const coverage = model.coverage || {};
+      const qualification = model.qualification || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
       master.classList.toggle("on", enabled);
       master.setAttribute("aria-checked", String(enabled));
-      document.getElementById("masterState").textContent = enabled ? "VERIFIED SLICE ARMED" : "VANILLA PASS-THROUGH";
+      document.getElementById("masterState").textContent = enabled ? "FULL LINEAR LIGHTING ARMED" : "VANILLA PASS-THROUGH";
 
       for (const control of controls) {
         const input = document.getElementById(control.key);
@@ -512,11 +513,20 @@
 
       document.getElementById("coverageName").textContent = coverage.label || "No verified shader slice";
       const verifiedContracts = coverage.verifiedShaderContracts || 0;
+      const expectedContracts = coverage.expectedShaderContracts || qualification.expectedContracts || 0;
+      const qualificationState = qualification.state || "waiting_for_world";
+      const qualificationLabel = qualificationState.replace(/_/g, " ").toUpperCase();
+      const qualificationClass = qualificationState === "passed" ? "good" : (qualificationState === "failed" ? "bad" : "wait");
+      const reasonMask = Number(qualification.reasonMask || 0);
       document.getElementById("coverageNote").textContent = coverage.fullFeaturePort
-        ? `${verifiedContracts} shader contracts verified. Linear Lighting coverage is complete.`
+        ? `${verifiedContracts}/${expectedContracts} shader contracts reconstructed and statically verified. Runtime qualification: ${qualificationLabel}${reasonMask ? ` (reason 0x${reasonMask.toString(16).toUpperCase()})` : ""}.`
         : `${verifiedContracts} shader contract${verifiedContracts === 1 ? "" : "s"} verified. This panel exposes only controls active in that slice; staged controls remain locked.`;
 
       document.getElementById("statusGrid").innerHTML = [
+        metric("Qualification", qualificationLabel, qualificationClass),
+        metric("Observed proof", `${qualification.fullyVerifiedContracts || 0}/${qualification.expectedContracts || expectedContracts}`, qualification.fullyVerifiedContracts ? "good" : "wait"),
+        metric("World lifecycle", qualification.worldLifecycleReached ? "REACHED" : "MENU WAIT", qualification.worldLifecycleReached ? "good" : "wait"),
+        metric("Render session", qualification.renderThreadActivated ? "ACTIVE" : "WAIT", qualification.renderThreadActivated ? "good" : "wait"),
         metric("D3D device", runtime.gpuReady ? "READY" : "WAIT", runtime.gpuReady ? "good" : "wait"),
         metric("Geometry hook", hooks.geometryInstalled ? "VERIFIED" : "CLOSED", hooks.geometryInstalled ? "good" : "bad"),
         metric("Shader matches", String(runtime.matchingShaders || 0), runtime.matchingShaders ? "good" : "wait"),
@@ -529,7 +539,7 @@
       diagnosticButton.disabled = !wrist.overlayAvailable;
       diagnosticButton.classList.toggle("active", !!wrist.overlayEnabled);
       diagnosticButton.textContent = wrist.overlayEnabled ? "Overlay on" : (wrist.overlayAvailable ? "Overlay off" : "Unavailable");
-      document.getElementById("footerState").textContent = `LOCAL-ONLY · UI REV ${model.revision || "—"} · ROCK ${wrist.rock ? "LINKED" : "WAIT"}`;
+      document.getElementById("footerState").textContent = `LOCAL-ONLY · UI REV ${model.revision || "—"} · ROCK ${wrist.rock ? "LINKED" : "WAIT"} · QUAL ${qualificationLabel}`;
     }
 
     function toggleEnabled() {

@@ -9,9 +9,14 @@ if(NOT DEFINED LINEAR_LIGHTING_RUNTIME_SOURCE OR
     NOT EXISTS "${LINEAR_LIGHTING_RUNTIME_SOURCE}")
   message(FATAL_ERROR "LINEAR_LIGHTING_RUNTIME_SOURCE is missing")
 endif()
+if(NOT DEFINED WRIST_PANEL_VIEW_SOURCE OR
+    NOT EXISTS "${WRIST_PANEL_VIEW_SOURCE}")
+  message(FATAL_ERROR "WRIST_PANEL_VIEW_SOURCE is missing")
+endif()
 file(READ "${WRIST_PANEL_SOURCE}" source)
 file(READ "${WRIST_PANEL_POSE_SOURCE}" poseSource)
 file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
+file(READ "${WRIST_PANEL_VIEW_SOURCE}" viewSource)
 
 foreach(required IN ITEMS
     "NetworkAccessPolicy::LocalOnly"
@@ -38,6 +43,11 @@ foreach(required IN ITEMS
     "validateD3D11ShaderHooks(\"GameSessionReady\")"
     "validateD3D11ShaderHooks(\"WristDomReady\")"
     "validateD3D11ShaderHooks(\"WristAction\")"
+    "diagnostics::linearLightingQualificationSnapshot()"
+    "linearLightingQualificationStateName"
+    "Complete FO4VR DFPrepass corpus"
+    "std::atomic_bool diagnosticsEnabled{ true }"
+    "scene %s | qualification %s | proof %u/%u"
     "wrist_provider_retry::Gate"
     "PrismaProbeFailure::SceneDepthPending"
     "attemptPrismaInitialization(\"GameDataReady\")"
@@ -49,6 +59,23 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Wrist-panel source regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "FULL LINEAR LIGHTING ARMED"
+    "const qualification = model.qualification || {}"
+    "Runtime qualification:"
+    "metric(\"Qualification\""
+    "metric(\"Observed proof\""
+    "metric(\"World lifecycle\""
+    "metric(\"Render session\""
+    "bounded, leased, automatic start"
+    "QUAL \${qualificationLabel}")
+  string(FIND "${viewSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Wrist-panel view regression: missing '${required}'")
   endif()
 endforeach()
 

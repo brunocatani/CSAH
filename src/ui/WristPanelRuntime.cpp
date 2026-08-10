@@ -5,6 +5,7 @@
 #include "ROCKProviderApi.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "diagnostics/LinearLightingQualification.h"
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
@@ -174,7 +175,7 @@ namespace community_shaders::ui
         std::atomic_uint64_t ownerToken{};
         std::atomic_uint64_t frameCallbackToken{};
         std::atomic_bool overlayCapability{};
-        std::atomic_bool diagnosticsEnabled{};
+        std::atomic_bool diagnosticsEnabled{ true };
         std::atomic_bool overlayPublished{};
         RockProviderDebugOverlayTextV1 overlayText{};
 
@@ -577,12 +578,19 @@ namespace community_shaders::ui
             const auto runtime = linear_lighting::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
+            const auto qualification =
+                diagnostics::linearLightingQualificationSnapshot();
             return runtime.replacementBinds ^ (runtime.geometryUpdates << 1) ^
                 (geometry.calls << 2) ^ (d3d.pixelShaderBindCalls << 3) ^
                 (static_cast<std::uint64_t>(geometry.vtableCellOwned) << 4) ^
                 (static_cast<std::uint64_t>(
-                     d3d.pixelShaderBindDetourEnabled) << 5) ^
-                (d3d.shaderHookValidationFailures << 6);
+                      d3d.pixelShaderBindDetourEnabled) << 5) ^
+                (d3d.shaderHookValidationFailures << 6) ^
+                (qualification.generation << 7) ^
+                (qualification.reasonMask << 8) ^
+                (static_cast<std::uint64_t>(qualification.state) << 9) ^
+                (static_cast<std::uint64_t>(
+                     qualification.fullyVerifiedContracts) << 12);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -595,15 +603,39 @@ namespace community_shaders::ui
             const auto runtime = linear_lighting::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
+            const auto qualification =
+                diagnostics::linearLightingQualificationSnapshot();
             nlohmann::json model{
                 { "revision", uiRevision.load(std::memory_order_acquire) },
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Captured opaque: default + envmap / five + six MRT" },
+                        { "label", "Complete FO4VR DFPrepass corpus" },
                         { "verifiedShaderContracts",
                             runtime.verifiedShaderContracts },
-                        { "fullFeaturePort", false },
+                        { "expectedShaderContracts",
+                            linear_lighting::Runtime::kShaderContractCount },
+                        { "fullFeaturePort",
+                            runtime.verifiedShaderContracts ==
+                                linear_lighting::Runtime::kShaderContractCount },
+                    } },
+                { "qualification",
+                    {
+                        { "state",
+                            diagnostics::linearLightingQualificationStateName(
+                                qualification.state) },
+                        { "generation", qualification.generation },
+                        { "elapsedMilliseconds",
+                            qualification.elapsedMilliseconds },
+                        { "reasonMask", qualification.reasonMask },
+                        { "fullyVerifiedContracts",
+                            qualification.fullyVerifiedContracts },
+                        { "expectedContracts",
+                            qualification.expectedContracts },
+                        { "worldLifecycleReached",
+                            qualification.worldLifecycleReached },
+                        { "renderThreadActivated",
+                            qualification.renderThreadActivated },
                     } },
                 { "runtime",
                     {
@@ -1042,6 +1074,15 @@ namespace community_shaders::ui
                 const auto runtime = linear_lighting::Runtime::get().snapshot();
                 const auto geometry = render::geometryHookSnapshot();
                 const auto d3d = render::d3d11HookSnapshot();
+                const auto qualification =
+                    diagnostics::linearLightingQualificationSnapshot();
+                const auto worldAvailable = rock::provider::hasLifecycleFlag(
+                    snapshot.lifecycleFlags,
+                    RockProviderLifecycleFlag::WorldAvailable);
+                const auto* presentationState = snapshot.configBlocking != 0 ?
+                    "CONFIG" :
+                    (snapshot.menuBlocking != 0 ?
+                            "MENU" : (worldAvailable ? "WORLD" : "WAIT"));
                 overlayText = {};
                 overlayText.x = 18.0f;
                 overlayText.y = 280.0f;
@@ -1054,11 +1095,17 @@ namespace community_shaders::ui
                     overlayText.text,
                     sizeof(overlayText.text),
                     "COMMUNITY SHADERS / LINEAR LIGHTING\n"
+                    "scene %s | qualification %s | proof %u/%u\n"
                     "enabled %u | gpu %u | geometry %u | candidates %u\n"
                     "replacement binds %llu | geometry updates %llu\n"
                     "D3D PS binds %llu | detour %u | validation failures %llu\n"
                     "install failures %llu | context rejects %llu | hook recursions %llu\n"
-                    "geometry calls %llu | owned %u | stage %u",
+                    "geometry calls %llu | owned %u | stage %u | reason 0x%llX",
+                    presentationState,
+                    diagnostics::linearLightingQualificationStateName(
+                        qualification.state),
+                    qualification.fullyVerifiedContracts,
+                    qualification.expectedContracts,
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
@@ -1077,7 +1124,9 @@ namespace community_shaders::ui
                         d3d.pixelShaderBindRecursions),
                     static_cast<unsigned long long>(geometry.calls),
                     geometry.vtableCellOwned,
-                    static_cast<std::uint32_t>(geometry.deepestStage));
+                    static_cast<std::uint32_t>(geometry.deepestStage),
+                    static_cast<unsigned long long>(
+                        qualification.reasonMask));
             }
             RockProviderDebugOverlayPublicationV1 publication{};
             publication.textCount = 1;
