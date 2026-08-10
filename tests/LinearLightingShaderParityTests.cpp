@@ -47,6 +47,7 @@ namespace
         bool hasPipboyScreen{};
         bool hasFaceDetail{};
         bool faceUsesModelSpaceNormals{};
+        bool hasSkinTint{};
     };
 
     constexpr std::array kShaderContracts{
@@ -180,6 +181,10 @@ namespace
         ShaderContract{ "FaceDetailAlphaTestSixMrt_L4_80000142", 6, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "FaceDetailModelSpaceNormalsSixMrt_L4_80002042", 6, false, false, false, false, false, false, false, false, false, false, true, true },
         ShaderContract{ "FaceDetailModelSpaceNormalsAlphaTestSixMrt_L4_80002142", 6, false, false, false, false, false, false, false, false, false, false, true, true },
+        ShaderContract{ "SkinTintCharacterLightMaskSixMrt_L4_00040002", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "SkinTintVertexColorSixMrt_L3_00040003", 6, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "SkinTintAlphaTestSixMrt_L4_00040102", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "SkinTintCharacterLightMaskModelSpaceNormalsSixMrt_L4_00042002", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -259,6 +264,7 @@ namespace
         Pixel{ 0.31F, 0.73F, 0.27F, 1.0F },
     };
     constexpr Pixel kFaceDetailTexture{ 0.2F, 0.7F, 0.4F, 0.85F };
+    constexpr Pixel kSkinTintColor{ 0.2F, 0.65F, 0.9F, 0.7F };
     constexpr Pixel kVertexColor{ 0.8F, 0.7F, 0.6F, 0.9F };
     constexpr Pixel kEmitColor{ 0.3F, 0.45F, 0.6F, 0.2F };
     constexpr Pixel kInstanceEmitColor{ 0.55F, 0.25F, 0.7F, 0.2F };
@@ -651,6 +657,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasGradientRemap,
         bool hasGradientHair,
         bool hasBoneTint,
+        bool hasSkinTint,
         AdditionalAlphaCase additionalAlphaCase)
     {
         std::array<std::array<float, 4>, 9> values{};
@@ -729,6 +736,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             } else {
                 values[6] = depthParameters;
             }
+            return values;
+        }
+        if (hasSkinTint) {
+            values[2] = kSkinTintColor;
+            values[3] = { 0.85F, 0.55F, -1.0F, 0.0F };
+            values[4] = {};
+            values[5] = {
+                1.0F,
+                1.0F,
+                0.4F,
+                caseIndex == 2 ? -1.0F : 0.6F,
+            };
+            values[6] = depthParameters;
             return values;
         }
         if (hasAdditionalAlphaMask) {
@@ -828,6 +848,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasGradientHair,
         bool hasBoneTint,
         bool hasPipboyScreen,
+        bool hasSkinTint,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -838,6 +859,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasGradientRemap,
             hasGradientHair,
             hasBoneTint,
+            hasSkinTint,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -1121,6 +1143,22 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return std::pow(std::abs(value), gamma) * multiplier;
     }
 
+    [[nodiscard]] float skinTintValue(
+        float diffuse,
+        float tint,
+        float opacity)
+    {
+        const auto baseGamma = std::pow(std::abs(diffuse), 0.454545F);
+        const auto tintGamma = std::pow(std::abs(tint), 0.454545F);
+        const auto blendedGamma = tintGamma < 0.5F ?
+            (2.0F * baseGamma * tintGamma) +
+                (baseGamma * baseGamma * (1.0F - (2.0F * tintGamma))) :
+            (std::sqrt(baseGamma) * ((2.0F * tintGamma) - 1.0F)) +
+                (2.0F * baseGamma * (1.0F - tintGamma));
+        const auto tinted = std::pow(std::abs(blendedGamma), 2.2F);
+        return diffuse + ((tinted - diffuse) * opacity);
+    }
+
     [[nodiscard]] RenderResult makeEnabledExpected(
         const ShaderContract& contract,
         std::size_t caseIndex,
@@ -1153,6 +1191,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 if (contract.hasVertexColor) {
                     diffuse *= kVertexColor[channel];
                 }
+            }
+            if (contract.hasSkinTint) {
+                diffuse = skinTintValue(
+                    diffuse,
+                    kSkinTintColor[channel],
+                    kSkinTintColor[3]);
             }
             if (contract.hasFaceDetail) {
                 constexpr auto faceFactor = 0.6F;
@@ -1329,7 +1373,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
                     contract.hasBoneTint,
-                    contract.hasPipboyScreen);
+                    contract.hasPipboyScreen,
+                    contract.hasSkinTint);
                 const auto disabled = render(
                     *device.Get(),
                     *context.Get(),
@@ -1344,7 +1389,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
                     contract.hasBoneTint,
-                    contract.hasPipboyScreen);
+                    contract.hasPipboyScreen,
+                    contract.hasSkinTint);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1369,7 +1415,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
                     contract.hasBoneTint,
-                    contract.hasPipboyScreen);
+                    contract.hasPipboyScreen,
+                    contract.hasSkinTint);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1394,7 +1441,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasGradientRemap,
                     contract.hasGradientHair,
                     contract.hasBoneTint,
-                    contract.hasPipboyScreen);
+                    contract.hasPipboyScreen,
+                    contract.hasSkinTint);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -1446,6 +1494,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasGradientHair,
                         contract.hasBoneTint,
                         contract.hasPipboyScreen,
+                        contract.hasSkinTint,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1462,6 +1511,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasGradientHair,
                         contract.hasBoneTint,
                         contract.hasPipboyScreen,
+                        contract.hasSkinTint,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,

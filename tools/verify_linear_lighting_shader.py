@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 130:
-        fail("Linear Lighting manifest must contain exactly 130 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 134:
+        fail("Linear Lighting manifest must contain exactly 134 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -333,6 +333,22 @@ def verify_source_contracts(
                 f"{token}"
             )
     for token in (
+        "float3 skinTintGamma = pow(abs(cb2[2].xyz), 0.454545)",
+        "float3 skinBaseGamma = pow(abs(diffuse), 0.454545)",
+        "skinBaseGamma * skinBaseGamma * (1.0 - (2.0 * skinTintGamma))",
+        "sqrt(skinBaseGamma) * ((2.0 * skinTintGamma) - 1.0)",
+        "(skinTintGamma < 0.5) ? skinTintDark : skinTintLight",
+        "float3 tintedDiffuse = pow(abs(skinTintBlend), 2.2)",
+        "diffuse = lerp(diffuse, tintedDiffuse, cb2[2].w)",
+        "#if LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT",
+        "output.target3.w = 0.019608;",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing skin-tint contract: "
+                f"{token}"
+            )
+    for token in (
         "TexGradientRemap.SampleLevel",
         "pow(diffuse.y, 0.454545)",
         "gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0",
@@ -376,6 +392,7 @@ def verify_source_contracts(
     menu_screen_contracts = 0
     pipboy_screen_contracts = 0
     face_detail_contracts = 0
+    skin_tint_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -413,15 +430,17 @@ def verify_source_contracts(
             pipboy_screen_contracts += 1
         if "#define LINEAR_LIGHTING_FACE_DETAIL 1" in source_text:
             face_detail_contracts += 1
-    if vertex_contracts != 67:
-        fail(f"expected 67 COLOR0 contracts, found {vertex_contracts}")
+        if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text:
+            skin_tint_contracts += 1
+    if vertex_contracts != 68:
+        fail(f"expected 68 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 20:
         fail(f"expected 20 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 11:
+    if model_space_normal_contracts != 12:
         fail(
-            "expected 11 model-space-normal contracts, "
+            "expected 12 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 16:
@@ -466,6 +485,8 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 5:
         fail(f"expected 5 face-detail contracts, found {face_detail_contracts}")
+    if skin_tint_contracts != 4:
+        fail(f"expected 4 skin-tint contracts, found {skin_tint_contracts}")
 
 
 def verify(root: Path) -> None:
@@ -523,13 +544,15 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
+        r'(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
         str,
         tuple[
             int,
+            bool,
             bool,
             bool,
             bool,
@@ -559,6 +582,7 @@ def verify(root: Path) -> None:
         has_pipboy_screen,
         has_face_detail,
         face_uses_model_space_normals,
+        has_skin_tint,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -576,6 +600,7 @@ def verify(root: Path) -> None:
             has_pipboy_screen == "true",
             has_face_detail == "true",
             face_uses_model_space_normals == "true",
+            has_skin_tint == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -720,6 +745,8 @@ def verify(root: Path) -> None:
                 "#define LINEAR_LIGHTING_FACE_DETAIL 1" in source_text
                 and "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1"
                 in source_text,
+                "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+                and original["constant_buffers"].get(2) == 7,
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(

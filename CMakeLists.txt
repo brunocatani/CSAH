@@ -466,10 +466,10 @@ if(BUILD_FO4VR_CS_TESTS)
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
       --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
       --known-dir "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
-      --expect-total 130
-      --expect-unique 130
-      --expect-target-shape 130
-      --expect-known 130)
+      --expect-total 134
+      --expect-unique 134
+      --expect-target-shape 134
+      --expect-known 134)
   add_test(NAME FO4VRCommunityShaders.LinearLightingFxpParser
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_census_linear_lighting_fxp.py")

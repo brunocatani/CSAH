@@ -22,6 +22,10 @@
 #define LINEAR_LIGHTING_FACE_DETAIL 0
 #endif
 
+#ifndef LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_SKIN_TINT 0
+#endif
+
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_LANDSCAPE_LOD
 #error Additional alpha masking and landscape LOD use incompatible t15 contracts.
 #endif
@@ -38,11 +42,15 @@
 #error Pip-Boy-screen and landscape-LOD shaders use incompatible b0 contracts.
 #endif
 
+#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_GRADIENT_REMAP
+#error Skin-tint and gradient-remap shaders use distinct cb2[2] contracts.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && LINEAR_LIGHTING_GRADIENT_REMAP
     float4 cb2[8];
-#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP
+#elif LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT
     float4 cb2[7];
 #else
     float4 cb2[6];
@@ -160,7 +168,7 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[6]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[7]
-#elif LINEAR_LIGHTING_GRADIENT_REMAP
+#elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT
 #define LINEAR_LIGHTING_MATERIAL_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_MATERIAL_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[6]
@@ -295,6 +303,20 @@ PSOutput PSMain(PSInput input)
 #endif
 #if LINEAR_LIGHTING_VERTEX_COLOR && !LINEAR_LIGHTING_GRADIENT_REMAP
     diffuse *= input.vertexColor.xyz;
+#endif
+#if LINEAR_LIGHTING_SKIN_TINT
+    float3 skinTintGamma = pow(abs(cb2[2].xyz), 0.454545);
+    float3 skinBaseGamma = pow(abs(diffuse), 0.454545);
+    float3 skinTintDark =
+        (2.0 * skinBaseGamma * skinTintGamma) +
+        (skinBaseGamma * skinBaseGamma * (1.0 - (2.0 * skinTintGamma)));
+    float3 skinTintLight =
+        (sqrt(skinBaseGamma) * ((2.0 * skinTintGamma) - 1.0)) +
+        (2.0 * skinBaseGamma * (1.0 - skinTintGamma));
+    float3 skinTintBlend =
+        (skinTintGamma < 0.5) ? skinTintDark : skinTintLight;
+    float3 tintedDiffuse = pow(abs(skinTintBlend), 2.2);
+    diffuse = lerp(diffuse, tintedDiffuse, cb2[2].w);
 #endif
 #if LINEAR_LIGHTING_FACE_DETAIL
     float4 faceDetail = TexFaceDetail.Sample(SampFaceDetail, uv);
@@ -466,7 +488,7 @@ PSOutput PSMain(PSInput input)
     output.target3.z = cb2[0].w * 0.01;
     emitColor = cb2[1].xyz;
 #endif
-#if LINEAR_LIGHTING_FACE_DETAIL
+#if LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT
     output.target3.w = 0.019608;
 #elif LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target3.w = 0.015686;
