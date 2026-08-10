@@ -72,6 +72,30 @@
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_PS"
   },
   {
+    "name": "EffectVertexColorParticle_00000081",
+    "descriptor": 129,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_PARTICLE_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticle_00000085",
+    "descriptor": 133,
+    "aliases": [141],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PARTICLE_PS"
+  },
+  {
+    "name": "EffectTexturedParticle_0000008C",
+    "descriptor": 140,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_PARTICLE_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticle_000000A5",
+    "descriptor": 165,
+    "aliases": [173],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_PARTICLE_PS"
+  },
+  {
     "name": "EffectPremultipliedAlpha_40000000",
     "descriptor": 1073741824,
     "aliases": [],
@@ -124,6 +148,18 @@
     "descriptor": 1073741893,
     "aliases": [1342177349],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticlePremultipliedAlpha_40000085",
+    "descriptor": 1073741957,
+    "aliases": [1073741965],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PARTICLE_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticlePremultipliedAlpha_400000A5",
+    "descriptor": 1073741989,
+    "aliases": [1073741997],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_PARTICLE_PREMULTIPLIED_ALPHA_PS"
   },
   {
     "name": "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044",

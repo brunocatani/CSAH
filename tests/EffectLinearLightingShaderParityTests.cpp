@@ -43,31 +43,38 @@ namespace
         bool additive;
         bool multiplyBlend;
         bool premultipliedAlpha;
+        bool particle;
     };
 
-    constexpr std::array<EffectContract, 22> kEffectContracts{ {
-        { "EffectDefault_00000000", false, false, false, false, false },
-        { "EffectVertexColor_00000001", true, false, false, false, false },
-        { "EffectTextured_00000004", false, true, false, false, false },
-        { "EffectVertexColorTextured_00000005", true, true, false, false, false },
-        { "EffectAdditive_00000020", false, false, true, false, false },
-        { "EffectVertexColorAdditive_00000021", true, false, true, false, false },
-        { "EffectTexturedAdditive_00000024", false, true, true, false, false },
-        { "EffectVertexColorTexturedAdditive_00000025", true, true, true, false, false },
-        { "EffectMultiplyBlend_00000040", false, false, false, true, false },
-        { "EffectVertexColorMultiplyBlend_00000041", true, false, false, true, false },
-        { "EffectTexturedMultiplyBlend_00000044", false, true, false, true, false },
-        { "EffectVertexColorTexturedMultiplyBlend_00000045", true, true, false, true, false },
-        { "EffectPremultipliedAlpha_40000000", false, false, false, false, true },
-        { "EffectVertexColorPremultipliedAlpha_40000001", true, false, false, false, true },
-        { "EffectTexturedPremultipliedAlpha_40000004", false, true, false, false, true },
-        { "EffectVertexColorTexturedPremultipliedAlpha_40000005", true, true, false, false, true },
-        { "EffectAdditivePremultipliedAlpha_40000020", false, false, true, false, true },
-        { "EffectVertexColorAdditivePremultipliedAlpha_40000021", true, false, true, false, true },
-        { "EffectTexturedAdditivePremultipliedAlpha_40000024", false, true, true, false, true },
-        { "EffectVertexColorTexturedAdditivePremultipliedAlpha_40000025", true, true, true, false, true },
-        { "EffectVertexColorTexturedMultiplyBlendPremultipliedAlpha_40000045", true, true, false, true, true },
-        { "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044", false, true, false, true, true },
+    constexpr std::array<EffectContract, 28> kEffectContracts{ {
+        { "EffectDefault_00000000", false, false, false, false, false, false },
+        { "EffectVertexColor_00000001", true, false, false, false, false, false },
+        { "EffectTextured_00000004", false, true, false, false, false, false },
+        { "EffectVertexColorTextured_00000005", true, true, false, false, false, false },
+        { "EffectAdditive_00000020", false, false, true, false, false, false },
+        { "EffectVertexColorAdditive_00000021", true, false, true, false, false, false },
+        { "EffectTexturedAdditive_00000024", false, true, true, false, false, false },
+        { "EffectVertexColorTexturedAdditive_00000025", true, true, true, false, false, false },
+        { "EffectMultiplyBlend_00000040", false, false, false, true, false, false },
+        { "EffectVertexColorMultiplyBlend_00000041", true, false, false, true, false, false },
+        { "EffectTexturedMultiplyBlend_00000044", false, true, false, true, false, false },
+        { "EffectVertexColorTexturedMultiplyBlend_00000045", true, true, false, true, false, false },
+        { "EffectVertexColorParticle_00000081", true, false, false, false, false, true },
+        { "EffectVertexColorTexturedParticle_00000085", true, true, false, false, false, true },
+        { "EffectTexturedParticle_0000008C", false, true, false, false, false, true },
+        { "EffectVertexColorTexturedAdditiveParticle_000000A5", true, true, true, false, false, true },
+        { "EffectPremultipliedAlpha_40000000", false, false, false, false, true, false },
+        { "EffectVertexColorPremultipliedAlpha_40000001", true, false, false, false, true, false },
+        { "EffectTexturedPremultipliedAlpha_40000004", false, true, false, false, true, false },
+        { "EffectVertexColorTexturedPremultipliedAlpha_40000005", true, true, false, false, true, false },
+        { "EffectAdditivePremultipliedAlpha_40000020", false, false, true, false, true, false },
+        { "EffectVertexColorAdditivePremultipliedAlpha_40000021", true, false, true, false, true, false },
+        { "EffectTexturedAdditivePremultipliedAlpha_40000024", false, true, true, false, true, false },
+        { "EffectVertexColorTexturedAdditivePremultipliedAlpha_40000025", true, true, true, false, true, false },
+        { "EffectVertexColorTexturedMultiplyBlendPremultipliedAlpha_40000045", true, true, false, true, true, false },
+        { "EffectVertexColorTexturedParticlePremultipliedAlpha_40000085", true, true, false, false, true, true },
+        { "EffectVertexColorTexturedAdditiveParticlePremultipliedAlpha_400000A5", true, true, true, false, true, true },
+        { "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044", false, true, false, true, true, false },
     } };
 
     struct alignas(16) EffectPerMaterial
@@ -140,7 +147,8 @@ namespace
 
     ComPtr<ID3D11VertexShader> createVertexShader(
         ID3D11Device* device,
-        bool vertexColored)
+        bool vertexColored,
+        bool particle)
     {
         constexpr char source[] = R"(
 struct VSOutput
@@ -151,6 +159,9 @@ struct VSOutput
     float4 vertexColor : COLOR0;
 #endif
     float4 color : COLOR1;
+#ifdef EFFECT_PARTICLE
+    float3 particleData : TEXCOORD5;
+#endif
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
     float clipDistance : SV_ClipDistance0;
@@ -170,6 +181,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.vertexColor = float4(0.55, 0.75, 0.35, 0.6);
 #endif
     output.color = float4(0.65, 0.8, 0.45, 0.7);
+#ifdef EFFECT_PARTICLE
+    output.particleData = float3(0.2, 0.4, 0.6);
+#endif
     output.eyeIndex = 0;
     output.cullDistance = 1.0;
     output.clipDistance = 1.0;
@@ -178,15 +192,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        const D3D_SHADER_MACRO vertexColorMacros[]{
-            { "EFFECT_VERTEX_COLOR", "1" },
-            { nullptr, nullptr },
-        };
+        std::array<D3D_SHADER_MACRO, 3> macros{};
+        std::size_t macroCount = 0;
+        if (vertexColored) {
+            macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
+        }
+        if (particle) {
+            macros[macroCount++] = { "EFFECT_PARTICLE", "1" };
+        }
         const auto result = D3DCompile(
             source,
             sizeof(source) - 1,
             "EffectLinearLightingParityVS",
-            vertexColored ? vertexColorMacros : nullptr,
+            macroCount != 0 ? macros.data() : nullptr,
             nullptr,
             "VSMain",
             "vs_5_0",
@@ -508,14 +526,22 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             "CreateSamplerState");
 
         const auto defaultVertexShader =
-            createVertexShader(device.Get(), false);
+            createVertexShader(device.Get(), false, false);
         const auto vertexColorVertexShader =
-            createVertexShader(device.Get(), true);
+            createVertexShader(device.Get(), true, false);
+        const auto particleVertexShader =
+            createVertexShader(device.Get(), false, true);
+        const auto vertexColorParticleVertexShader =
+            createVertexShader(device.Get(), true, true);
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
-            auto* vertexShader = contract.vertexColored ?
-                vertexColorVertexShader.Get() :
-                defaultVertexShader.Get();
+            auto* vertexShader = contract.particle ?
+                (contract.vertexColored ?
+                        vertexColorParticleVertexShader.Get() :
+                        particleVertexShader.Get()) :
+                (contract.vertexColored ?
+                        vertexColorVertexShader.Get() :
+                        defaultVertexShader.Get());
             const auto vanillaShader = createPixelShader(
                 device.Get(),
                 root /
@@ -557,7 +583,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All twenty-two Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All twenty-eight Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

@@ -12,6 +12,9 @@ struct EffectPixelInput
     float4 vertexColor : COLOR0;
 #endif
     float4 fogParam : COLOR1;
+#if (EFFECT_TECHNIQUE & 0x80) != 0
+    float3 particleData : TEXCOORD5;
+#endif
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
     float clipDistance : SV_ClipDistance0;
