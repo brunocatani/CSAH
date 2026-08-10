@@ -12,12 +12,17 @@ struct EffectPixelInput
     float4 vertexColor : COLOR0;
 #endif
     float4 fogParam : COLOR1;
-#if (EFFECT_TECHNIQUE & 0x80) != 0
+#if (EFFECT_TECHNIQUE & 0x1080) != 0
     float3 particleData : TEXCOORD5;
 #endif
     uint eyeIndex : EYEINDEX0;
     float cullDistance : SV_CullDistance0;
     float clipDistance : SV_ClipDistance0;
+};
+
+cbuffer EffectPerTechnique : register(b0)
+{
+    float4 EffectDepthParameters : packoffset(c0);
 };
 
 cbuffer EffectPerMaterial : register(b1)
@@ -36,6 +41,7 @@ cbuffer EffectPerGeometry : register(b2)
 
 SamplerState EffectSampler : register(s0);
 Texture2D<float4> EffectTexture : register(t0);
+Texture2D<float4> EffectDepthTexture : register(t3);
 
 float4 LinearLightingEffectVertexColor(float4 color)
 {
@@ -43,6 +49,28 @@ float4 LinearLightingEffectVertexColor(float4 color)
         return float4(LinearLightingEffect(color.xyz), color.w);
     }
     return exp2(log2(color) * 2.2f);
+}
+
+float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
+{
+    const float deviceDepth = 1.0f - EffectDepthTexture.Load(
+        int3(int2(pixelPosition), 0)).x;
+    const float sceneDepth = mad(
+        deviceDepth,
+        EffectDepthParameters.z,
+        EffectDepthParameters.y);
+    const float cameraFadeDepth = mad(
+        EffectDepthParameters.y,
+        EffectDepthParameters.z,
+        EffectDepthParameters.y);
+    const float2 scaledDepth = EffectLightingInfluence.yy /
+        float2(sceneDepth, cameraFadeDepth);
+    const float intersectionFade = saturate(
+        scaledDepth.x - particleDepth);
+    float cameraFade = saturate(particleDepth - scaledDepth.y);
+    cameraFade = saturate((cameraFade - 0.075f) * 2.352941176470588f);
+    cameraFade = cameraFade * cameraFade * (3.0f - 2.0f * cameraFade);
+    return intersectionFade * cameraFade;
 }
 
 float4 PSMain(EffectPixelInput input) : SV_Target0
@@ -58,6 +86,11 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         input.texCoord.xy);
     baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
     baseColor.w *= textureColor.w;
+#endif
+#if (EFFECT_TECHNIQUE & 0x1000) != 0
+    baseColor.w *= EffectSoftParticleFade(
+        input.position.xy,
+        input.particleData.z);
 #endif
     const float3 propertyColor =
         LinearLightingEffect(EffectPropertyColor.xyz);
