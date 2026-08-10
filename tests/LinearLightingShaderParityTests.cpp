@@ -297,6 +297,14 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintProjectedFiveMrt_L4NoEarlyDepth_01448046", 5, false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintProjectedFiveMrt_L3_01448043", 5, true, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskMeatCuffSkinTintModelSpaceNormalsProjectedFiveMrt_L3_0144A043", 5, true, false, false, true, false, false, false, false, false, false, false, false, true, false, false, true },
+        ShaderContract{ "GlowmapDismembermentTessellatedSixMrt_L4NoEarlyDepth_00284046", 6, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "GlowmapDismembermentTessellatedSixMrt_L3_00284043", 6, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskGlowmapDismembermentTessellatedSixMrt_L4NoEarlyDepth_01284046", 6, false, false, true, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskGlowmapDismembermentTessellatedSixMrt_L3_01284043", 6, true, false, true, true, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "GlowmapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_0040C046", 5, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "GlowmapMeatCuffProjectedFiveMrt_L3_0040C043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGlowmapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_0140C046", 5, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGlowmapMeatCuffProjectedFiveMrt_L3_0140C043", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t

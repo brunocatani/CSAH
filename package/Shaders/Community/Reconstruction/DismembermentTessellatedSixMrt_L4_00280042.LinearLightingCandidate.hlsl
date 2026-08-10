@@ -22,6 +22,10 @@
 #define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 0
 #endif
 
+#ifndef LINEAR_LIGHTING_TEXTURED_EMISSION
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
 #if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
@@ -43,6 +47,9 @@ cbuffer PerGeometry : register(b12)
 Texture2D<float4> TexDiffuse : register(t0);
 Texture2D<float4> TexNormal : register(t1);
 Texture2D<float4> TexSpecular : register(t2);
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+Texture2D<float4> TexGlow : register(t3);
+#endif
 Texture2D<float4> TexDismembermentDiffuse : register(t9);
 Texture2D<float4> TexDismembermentNormal : register(t10);
 Texture2D<float4> TexDismembermentSpecular : register(t11);
@@ -54,6 +61,9 @@ Texture2D<float4> TexAdditionalAlphaNoise : register(t15);
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
 SamplerState SampSpecular : register(s2);
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+SamplerState SampGlow : register(s3);
+#endif
 SamplerState SampDismembermentDiffuse : register(s9);
 SamplerState SampDismembermentNormal : register(s10);
 SamplerState SampDismembermentSpecular : register(s11);
@@ -278,6 +288,12 @@ PSOutput PSMain(PSInput input)
 #else
     output.target3.w = 1.0;
 #endif
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+    const float3 glow =
+        LinearLightingGlowmap(TexGlow.Sample(SampGlow, input.uv).xyz);
+    output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz) * glow;
+#else
     output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
+#endif
     return output;
 }

@@ -1,0 +1,4 @@
+#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1
+#define LINEAR_LIGHTING_DISMEMBERMENT 1
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 1
+#include "DismembermentTessellatedSixMrt_L4_00280042.LinearLightingCandidate.hlsl"
