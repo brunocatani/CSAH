@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 209:
-        fail("Linear Lighting manifest must contain exactly 209 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 211:
+        fail("Linear Lighting manifest must contain exactly 211 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -430,6 +430,7 @@ def verify_source_contracts(
     combined_glowmap_additional_alpha_contracts = 0
     menu_screen_contracts = 0
     pipboy_screen_contracts = 0
+    combined_pipboy_additional_alpha_contracts = 0
     face_detail_contracts = 0
     skin_tint_contracts = 0
     combined_skin_tint_additional_alpha_contracts = 0
@@ -512,6 +513,8 @@ def verify_source_contracts(
             menu_screen_contracts += 1
         if "#define LINEAR_LIGHTING_PIPBOY_SCREEN 1" in source_text:
             pipboy_screen_contracts += 1
+            if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
+                combined_pipboy_additional_alpha_contracts += 1
         if "#define LINEAR_LIGHTING_FACE_DETAIL 1" in source_text:
             face_detail_contracts += 1
         if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text:
@@ -573,8 +576,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 104:
-        fail(f"expected 104 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 105:
+        fail(f"expected 105 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 29:
         fail(f"expected 29 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -586,9 +589,9 @@ def verify_source_contracts(
         )
     if tessellated_contracts != 16:
         fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 54:
+    if additional_alpha_mask_contracts != 56:
         fail(
-            "expected 54 additional-alpha-mask contracts, "
+            "expected 56 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -620,9 +623,14 @@ def verify_source_contracts(
         )
     if menu_screen_contracts != 3:
         fail(f"expected 3 menu-screen contracts, found {menu_screen_contracts}")
-    if pipboy_screen_contracts != 2:
+    if pipboy_screen_contracts != 4:
         fail(
-            f"expected 2 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
+            f"expected 4 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
+        )
+    if combined_pipboy_additional_alpha_contracts != 2:
+        fail(
+            "expected 2 combined Pip-Boy/additional-alpha contracts, "
+            f"found {combined_pipboy_additional_alpha_contracts}"
         )
     if face_detail_contracts != 13:
         fail(f"expected 13 face-detail contracts, found {face_detail_contracts}")

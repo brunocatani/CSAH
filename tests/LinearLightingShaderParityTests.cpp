@@ -261,6 +261,8 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapSixMrt_L4NoEarlyDepth_05004002", 6, false, false, false, true, false, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapSixMrt_L3NoEarlyDepth_05004003", 6, true, false, false, true, false, true },
         ShaderContract{ "AdditionalAlphaMaskGradientRemapGlowmapAlphaTestSixMrt_L3NoEarlyDepth_05004103", 6, true, false, false, true, false, true },
+        ShaderContract{ "AdditionalAlphaMaskPipboyScreenSixMrt_L4NoEarlyDepth_01800002", 6, false, false, false, true, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskPipboyScreenSixMrt_L3NoEarlyDepth_01800003", 6, true, false, false, true, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
