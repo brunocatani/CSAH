@@ -268,6 +268,9 @@ namespace
         ShaderContract{ "SkinTintSixMrt_L4NoEarlyDepth_00040006", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "SkinTintAlphaTestSixMrt_L4NoEarlyDepth_00040106", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "SkinTintTessellatedSixMrt_L3_000C0003", 6, true, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailSixMrt_L4NoEarlyDepth_80000046", 6, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailAlphaTestSixMrt_L4NoEarlyDepth_80000146", 6, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailModelSpaceNormalsSixMrt_L4NoEarlyDepth_80002046", 6, false, false, false, false, false, false, false, false, false, false, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t

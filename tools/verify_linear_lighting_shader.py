@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 216:
-        fail("Linear Lighting manifest must contain exactly 216 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 219:
+        fail("Linear Lighting manifest must contain exactly 219 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -582,9 +582,9 @@ def verify_source_contracts(
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 19:
+    if model_space_normal_contracts != 20:
         fail(
-            "expected 19 model-space-normal contracts, "
+            "expected 20 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 17:
@@ -632,8 +632,8 @@ def verify_source_contracts(
             "expected 2 combined Pip-Boy/additional-alpha contracts, "
             f"found {combined_pipboy_additional_alpha_contracts}"
         )
-    if face_detail_contracts != 13:
-        fail(f"expected 13 face-detail contracts, found {face_detail_contracts}")
+    if face_detail_contracts != 16:
+        fail(f"expected 16 face-detail contracts, found {face_detail_contracts}")
     if skin_tint_contracts != 14:
         fail(f"expected 14 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 4:

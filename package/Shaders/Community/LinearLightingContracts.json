@@ -214,5 +214,8 @@
   { "name": "AdditionalAlphaMaskGlowmapBlendFiveMrt_L3_0100C003", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_GLOWMAP_BLEND_FIVE_MRT_VERTEX_COLOR_PS" },
   { "name": "SkinTintSixMrt_L4NoEarlyDepth_00040006", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_SIX_MRT_NO_EARLY_DEPTH_PS" },
   { "name": "SkinTintAlphaTestSixMrt_L4NoEarlyDepth_00040106", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_ALPHA_TEST_SIX_MRT_NO_EARLY_DEPTH_PS" },
-  { "name": "SkinTintTessellatedSixMrt_L3_000C0003", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" }
+  { "name": "SkinTintTessellatedSixMrt_L3_000C0003", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "FaceDetailSixMrt_L4NoEarlyDepth_80000046", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_SIX_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "FaceDetailAlphaTestSixMrt_L4NoEarlyDepth_80000146", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_ALPHA_TEST_SIX_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "FaceDetailModelSpaceNormalsSixMrt_L4NoEarlyDepth_80002046", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_NO_EARLY_DEPTH_PS" }
 ]
