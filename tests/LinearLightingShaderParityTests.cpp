@@ -333,6 +333,12 @@ namespace
         ShaderContract{ "LandscapeFourLayerSixMrt_L3_00000023", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
         ShaderContract{ "LandscapeFourLayerLodBlendSixMrt_L3_02000023", 6, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
         ShaderContract{ "InstancedLandscapeFourLayerLodBlendSixMrt_L3_0A000023", 6, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true, true },
+        ShaderContract{ "BoneTintGlowmapAlphaTestSixMrt_L3NoEarlyDepth_40004107", 6, true, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false },
+        ShaderContract{ "BoneTintFaceDetailSixMrt_L4NoEarlyDepth_C0000046", 6, false, false, false, false, false, false, false, true, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "BoneTintGradientRemapGlowmapAlphaTestSixMrt_L3_44004103", 6, true, false, false, false, false, true, false, true, false, false, false, false, false, false, false, false, false, false, false },
+        ShaderContract{ "AdditionalAlphaMaskBoneTintFaceDetailSixMrt_L4NoEarlyDepth_C1000042", 6, false, false, false, true, false, false, false, true, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "AdditionalAlphaMaskBoneTintBlendFiveMrt_L3NoEarlyDepth_41008003", 5, true, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false },
+        ShaderContract{ "AdditionalAlphaMaskBoneTintSkinTintSixMrt_L4NoEarlyDepth_41040002", 6, false, false, false, true, false, false, false, true, false, false, false, false, true, false, false, false, false, false, false },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -1333,7 +1339,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 0.4F,
                 caseIndex == 2 ? -1.0F : 0.6F,
             };
-            if (hasAdditionalAlphaMask) {
+            if (hasAdditionalAlphaMask && hasBoneTint) {
+                values[6] = maskParameters;
+                values[7] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                values[8] = depthParameters;
+            } else if (hasAdditionalAlphaMask) {
                 values[6] = maskParameters;
                 values[7] = depthParameters;
             } else if (hasBoneTint) {
@@ -1347,11 +1357,23 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (hasBoneTint) {
             if (mrtCount == 5) {
                 values[5] = values[4];
-                values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };
-                values[7] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[6] = maskParameters;
+                    values[7] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                    values[8] = depthParameters;
+                } else {
+                    values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                    values[7] = depthParameters;
+                }
             } else {
-                values[5] = { 1.25F, 0.0F, 0.0F, 0.0F };
-                values[6] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[5] = maskParameters;
+                    values[6] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                    values[7] = depthParameters;
+                } else {
+                    values[5] = { 1.25F, 0.0F, 0.0F, 0.0F };
+                    values[6] = depthParameters;
+                }
             }
             return values;
         }

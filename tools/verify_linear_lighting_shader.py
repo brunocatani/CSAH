@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 276:
-        fail("Linear Lighting manifest must contain exactly 276 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 282:
+        fail("Linear Lighting manifest must contain exactly 282 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -539,6 +539,19 @@ def verify_source_contracts(
                 f"{token}"
             )
     for token in (
+        "LINEAR_LIGHTING_BONE_TINTING && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK",
+        "#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[5]",
+        "#define LINEAR_LIGHTING_BONE_TINT_ROW cb2[6]",
+        "#define LINEAR_LIGHTING_ALPHA_MASK_PARAMETERS cb2[6]",
+        "#define LINEAR_LIGHTING_BONE_TINT_ROW cb2[7]",
+        "#define LINEAR_LIGHTING_DEPTH_PARAMETERS cb2[8]",
+    ):
+        if token not in base_source_texts[1]:
+            fail(
+                "six-MRT shader is missing combined bone/mask layout: "
+                f"{token}"
+            )
+    for token in (
         "TexGradientRemap.SampleLevel",
         "pow(diffuse.y, 0.454545)",
         "gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0",
@@ -555,6 +568,7 @@ def verify_source_contracts(
         "TexAdditionalAlphaNoise.Load",
         "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[6]",
         "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]",
+        "#define LINEAR_LIGHTING_PROJECTED_BONE_TINT_ROW cb2[7]",
         "clip(LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.x - additionalAlpha)",
         "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]",
         "#define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]",
@@ -747,10 +761,10 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 141:
-        fail(f"expected 141 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 39:
-        fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
+    if vertex_contracts != 144:
+        fail(f"expected 144 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 41:
+        fail(f"expected 41 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 8:
         fail(f"expected 8 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 28:
@@ -766,9 +780,9 @@ def verify_source_contracts(
         )
     if meat_cuff_contracts != 20:
         fail(f"expected 20 meat-cuff contracts, found {meat_cuff_contracts}")
-    if additional_alpha_mask_contracts != 82:
+    if additional_alpha_mask_contracts != 85:
         fail(
-            "expected 82 additional-alpha-mask contracts, "
+            "expected 85 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 14:
@@ -776,9 +790,9 @@ def verify_source_contracts(
             "expected 14 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 82:
+    if gradient_remap_contracts != 83:
         fail(
-            "expected 82 gradient-remap contracts, "
+            "expected 83 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
     if combined_material_contracts != 7:
@@ -806,8 +820,8 @@ def verify_source_contracts(
             "expected 9 projected LOD-object-alpha contracts, "
             f"found {lod_object_alpha_contracts}"
         )
-    if bone_tint_contracts != 38:
-        fail(f"expected 38 bone-tint contracts, found {bone_tint_contracts}")
+    if bone_tint_contracts != 44:
+        fail(f"expected 44 bone-tint contracts, found {bone_tint_contracts}")
     if combined_glowmap_additional_alpha_contracts != 14:
         fail(
             "expected 14 combined glowmap/additional-alpha contracts, "
@@ -824,18 +838,18 @@ def verify_source_contracts(
             "expected 2 combined Pip-Boy/additional-alpha contracts, "
             f"found {combined_pipboy_additional_alpha_contracts}"
         )
-    if face_detail_contracts != 16:
-        fail(f"expected 16 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 26:
-        fail(f"expected 26 skin-tint contracts, found {skin_tint_contracts}")
-    if combined_skin_tint_additional_alpha_contracts != 10:
+    if face_detail_contracts != 18:
+        fail(f"expected 18 face-detail contracts, found {face_detail_contracts}")
+    if skin_tint_contracts != 27:
+        fail(f"expected 27 skin-tint contracts, found {skin_tint_contracts}")
+    if combined_skin_tint_additional_alpha_contracts != 11:
         fail(
-            "expected 10 combined skin-tint/additional-alpha contracts, "
+            "expected 11 combined skin-tint/additional-alpha contracts, "
             f"found {combined_skin_tint_additional_alpha_contracts}"
         )
-    if combined_gradient_remap_glowmap_contracts != 9:
+    if combined_gradient_remap_glowmap_contracts != 10:
         fail(
-            "expected 9 combined gradient-remap/glowmap contracts, "
+            "expected 10 combined gradient-remap/glowmap contracts, "
             f"found {combined_gradient_remap_glowmap_contracts}"
         )
     if combined_gradient_remap_glowmap_additional_alpha_contracts != 3:
@@ -844,29 +858,29 @@ def verify_source_contracts(
             "found "
             f"{combined_gradient_remap_glowmap_additional_alpha_contracts}"
         )
-    if combined_face_detail_additional_alpha_contracts != 4:
+    if combined_face_detail_additional_alpha_contracts != 5:
         fail(
-            "expected 4 combined face-detail/additional-alpha contracts, "
+            "expected 5 combined face-detail/additional-alpha contracts, "
             f"found {combined_face_detail_additional_alpha_contracts}"
         )
-    if combined_face_detail_bone_tint_contracts != 4:
+    if combined_face_detail_bone_tint_contracts != 6:
         fail(
-            "expected 4 combined face-detail/bone-tint contracts, "
+            "expected 6 combined face-detail/bone-tint contracts, "
             f"found {combined_face_detail_bone_tint_contracts}"
         )
-    if combined_gradient_remap_bone_tint_contracts != 21:
+    if combined_gradient_remap_bone_tint_contracts != 22:
         fail(
-            "expected 21 combined gradient-remap/bone-tint contracts, "
+            "expected 22 combined gradient-remap/bone-tint contracts, "
             f"found {combined_gradient_remap_bone_tint_contracts}"
         )
-    if combined_skin_tint_bone_tint_contracts != 3:
+    if combined_skin_tint_bone_tint_contracts != 4:
         fail(
-            "expected 3 combined skin-tint/bone-tint contracts, "
+            "expected 4 combined skin-tint/bone-tint contracts, "
             f"found {combined_skin_tint_bone_tint_contracts}"
         )
-    if standalone_projected_bone_tint_contracts != 6:
+    if standalone_projected_bone_tint_contracts != 7:
         fail(
-            "expected 6 standalone projected bone-tint contracts, "
+            "expected 7 standalone projected bone-tint contracts, "
             f"found {standalone_projected_bone_tint_contracts}"
         )
     if standalone_lod_object_contracts != 6:
@@ -1226,7 +1240,7 @@ def verify(root: Path) -> None:
                 and "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1"
                 in source_text,
                 "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
-                and original["constant_buffers"].get(2) in (7, 8, 10, 11, 12),
+                and original["constant_buffers"].get(2) in (7, 8, 9, 10, 11, 12),
                 "#define LINEAR_LIGHTING_HAIR 1" in source_text
                 and (
                     (
