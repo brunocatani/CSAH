@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 282:
-        fail("Linear Lighting manifest must contain exactly 282 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 288:
+        fail("Linear Lighting manifest must contain exactly 288 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -565,6 +565,40 @@ def verify_source_contracts(
                 f"{token}"
             )
     for token in (
+        "#if LINEAR_LIGHTING_TESSELLATED_INPUTS",
+        "float2 uv = input.uv",
+        "float3 skinTintGamma = pow(abs(cb2[3].xyz), 0.454545)",
+        "mappedDiffuse = lerp(mappedDiffuse, tintedDiffuse, cb2[3].w)",
+        "LinearLightingDiffuse(menuScreen)",
+    ):
+        if token not in base_source_texts[0]:
+            fail(
+                "projected shader is missing final singleton contract: "
+                f"{token}"
+            )
+    if "LinearLightingEmitColor(emitColor) * glow" not in base_source_texts[1]:
+        fail("six-MRT shader is missing combined Pip-Boy/glow emission")
+
+    untextured_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "UntexturedSixMrt_L4_00000000.LinearLightingCandidate.hlsl"
+    )
+    untextured_source_text = untextured_source.read_text(encoding="utf-8")
+    for token in (
+        "float4 cb2[6]",
+        "float4 cb12[71]",
+        "asfloat(uint2(0x7FC00000u, 0x7FC00000u))",
+        "LinearLightingDiffuse(float3(1.0, 1.0, 1.0))",
+        "LinearLightingEmitColor(cb2[1].xyz)",
+        "input.eyeIndex * 4u",
+    ):
+        if token not in untextured_source_text:
+            fail(f"untextured shader is missing verified contract: {token}")
+    for token in (
         "TexAdditionalAlphaNoise.Load",
         "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[6]",
         "#define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]",
@@ -761,10 +795,10 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 144:
-        fail(f"expected 144 COLOR0 contracts, found {vertex_contracts}")
-    if glowmap_contracts != 41:
-        fail(f"expected 41 glowmap contracts, found {glowmap_contracts}")
+    if vertex_contracts != 147:
+        fail(f"expected 147 COLOR0 contracts, found {vertex_contracts}")
+    if glowmap_contracts != 42:
+        fail(f"expected 42 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 8:
         fail(f"expected 8 instanced contracts, found {instanced_contracts}")
     if model_space_normal_contracts != 28:
@@ -772,8 +806,8 @@ def verify_source_contracts(
             "expected 28 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 37:
-        fail(f"expected 37 tessellated contracts, found {tessellated_contracts}")
+    if tessellated_contracts != 38:
+        fail(f"expected 38 tessellated contracts, found {tessellated_contracts}")
     if dismemberment_contracts != 22:
         fail(
             f"expected 22 dismemberment contracts, found {dismemberment_contracts}"
@@ -827,21 +861,21 @@ def verify_source_contracts(
             "expected 14 combined glowmap/additional-alpha contracts, "
             f"found {combined_glowmap_additional_alpha_contracts}"
         )
-    if menu_screen_contracts != 8:
-        fail(f"expected 8 menu-screen contracts, found {menu_screen_contracts}")
-    if pipboy_screen_contracts != 4:
+    if menu_screen_contracts != 9:
+        fail(f"expected 9 menu-screen contracts, found {menu_screen_contracts}")
+    if pipboy_screen_contracts != 5:
         fail(
-            f"expected 4 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
+            f"expected 5 Pip-Boy-screen contracts, found {pipboy_screen_contracts}"
         )
     if combined_pipboy_additional_alpha_contracts != 2:
         fail(
             "expected 2 combined Pip-Boy/additional-alpha contracts, "
             f"found {combined_pipboy_additional_alpha_contracts}"
         )
-    if face_detail_contracts != 18:
-        fail(f"expected 18 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 27:
-        fail(f"expected 27 skin-tint contracts, found {skin_tint_contracts}")
+    if face_detail_contracts != 19:
+        fail(f"expected 19 face-detail contracts, found {face_detail_contracts}")
+    if skin_tint_contracts != 29:
+        fail(f"expected 29 skin-tint contracts, found {skin_tint_contracts}")
     if combined_skin_tint_additional_alpha_contracts != 11:
         fail(
             "expected 11 combined skin-tint/additional-alpha contracts, "
@@ -993,6 +1027,8 @@ def verify(root: Path) -> None:
         "values[55] =",
         "values[67] =",
         "paired-eye fixture produced identical motion vectors",
+        "usesDiffuseTexture",
+        "std::isnan(lhs) && std::isnan(rhs)",
     ):
         if token not in parity_text:
             fail(f"WARP parity is missing paired-eye coverage: {token}")
@@ -1180,10 +1216,7 @@ def verify(root: Path) -> None:
                 len(original["outputs"]),
                 "#define LINEAR_LIGHTING_VERTEX_COLOR 1" in source_text,
                 13 in original["constant_buffers"],
-                any(
-                    semantic[0] == "POSITION" and semantic[1] == 1
-                    for semantic in original["input_signature"]
-                ),
+                "#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1" in source_text,
                 12 in original["samplers"]
                 and 12 in original["textures"]
                 and 15 in original["textures"],

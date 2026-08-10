@@ -633,8 +633,15 @@ PSOutput PSMain(PSInput input)
     output.target3.w = 1.0;
 #endif
 #if LINEAR_LIGHTING_PIPBOY_SCREEN
+#if LINEAR_LIGHTING_TEXTURED_EMISSION
+    float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);
+    output.target4.xyz =
+        (pipboyScreen * cb0[0].w) +
+        (LinearLightingEmitColor(emitColor) * glow);
+#else
     output.target4.xyz =
         (pipboyScreen * cb0[0].w) + LinearLightingEmitColor(emitColor);
+#endif
 #elif LINEAR_LIGHTING_TEXTURED_EMISSION
     float3 glow = LinearLightingGlowmap(TexGlow.Sample(SampGlow, uv).xyz);
     output.target4.xyz = LinearLightingEmitColor(emitColor) * glow;

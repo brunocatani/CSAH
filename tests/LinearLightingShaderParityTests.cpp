@@ -339,6 +339,12 @@ namespace
         ShaderContract{ "AdditionalAlphaMaskBoneTintFaceDetailSixMrt_L4NoEarlyDepth_C1000042", 6, false, false, false, true, false, false, false, true, false, false, true, false, false, false, false, false, false, false, false },
         ShaderContract{ "AdditionalAlphaMaskBoneTintBlendFiveMrt_L3NoEarlyDepth_41008003", 5, true, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false },
         ShaderContract{ "AdditionalAlphaMaskBoneTintSkinTintSixMrt_L4NoEarlyDepth_41040002", 6, false, false, false, true, false, false, false, true, false, false, false, false, true, false, false, false, false, false, false },
+        ShaderContract{ "TessellatedAlphaTestBlendFiveMrt_L3NoEarlyDepth_00088103", 5, true, false, true },
+        ShaderContract{ "SkinTintBlendFiveMrt_L3_00048003", 5, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "UntexturedSixMrt_L4_00000000", 6, false, false },
+        ShaderContract{ "GlowmapPipboyScreenSixMrt_L4_00804002", 6, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "MenuScreenBlendFiveMrt_L3_00018003", 5, true, false, false, false, false, false, false, false, true },
+        ShaderContract{ "FaceDetailSkinTintSixMrt_L4_80040042", 6, false, false, false, false, false, false, false, false, false, false, true, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -1330,6 +1336,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return values;
         }
         if (hasSkinTint) {
+            if (mrtCount == 5) {
+                values[3] = kSkinTintColor;
+                values[4] = { 0.85F, 0.55F, -1.0F, 0.0F };
+                values[6] = {
+                    1.0F,
+                    1.0F,
+                    0.4F,
+                    caseIndex == 2 ? -1.0F : 0.6F,
+                };
+                values[7] = depthParameters;
+                return values;
+            }
             values[2] = kSkinTintColor;
             values[3] = { 0.85F, 0.55F, -1.0F, 0.0F };
             values[4] = {};
@@ -1936,6 +1954,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
     [[nodiscard]] bool approximatelyEqual(float lhs, float rhs)
     {
+        if (std::isnan(lhs) || std::isnan(rhs)) {
+            return std::isnan(lhs) && std::isnan(rhs);
+        }
         if (!std::isfinite(lhs) || !std::isfinite(rhs)) {
             return false;
         }
@@ -2012,6 +2033,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const ShaderContract& contract,
         std::size_t caseIndex,
         bool usesGlowmap,
+        bool usesDiffuseTexture,
         bool useDismemberment,
         std::uint32_t surfaceVariant,
         const RenderResult& vanilla,
@@ -2058,7 +2080,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     kDismembermentDiffuseTexture[1][channel] :
                     (contract.hasMeatCuff ?
                             kDismembermentDiffuseTexture[meatCuffTexel][channel] :
-                            kDiffuseTexture[channel]);
+                            (usesDiffuseTexture ?
+                                    kDiffuseTexture[channel] : 1.0F));
                 if (contract.hasLandscapeLod) {
                     diffuse *=
                         (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
@@ -2247,6 +2270,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto usesGlowmap = usesTextureSlot(vanillaBytes, 3) &&
                 !contract.hasStandaloneHair &&
                 !contract.hasLandscapeLayers;
+            const auto usesDiffuseTexture = usesTextureSlot(vanillaBytes, 0);
             ComPtr<ID3D11PixelShader> vanillaShader;
             ComPtr<ID3D11PixelShader> replacementShader;
             require(
@@ -2428,6 +2452,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract,
                     caseIndex,
                     usesGlowmap,
+                    usesDiffuseTexture,
                     useDismemberment,
                     surfaceVariant,
                     vanilla,

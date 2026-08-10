@@ -1,0 +1,3 @@
+#define LINEAR_LIGHTING_PIPBOY_SCREEN 1
+#define LINEAR_LIGHTING_TEXTURED_EMISSION 1
+#include "DefaultSixMrt_L4_00000002.LinearLightingCandidate.hlsl"

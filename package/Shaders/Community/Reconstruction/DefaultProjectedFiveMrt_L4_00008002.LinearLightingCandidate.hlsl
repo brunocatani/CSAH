@@ -30,8 +30,35 @@
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
 #endif
 
+#ifndef LINEAR_LIGHTING_MENU_SCREEN
+#define LINEAR_LIGHTING_MENU_SCREEN 0
+#endif
+
+#ifndef LINEAR_LIGHTING_SKIN_TINT
+#define LINEAR_LIGHTING_SKIN_TINT 0
+#endif
+
+#ifndef LINEAR_LIGHTING_TESSELLATED_INPUTS
+#define LINEAR_LIGHTING_TESSELLATED_INPUTS 0
+#endif
+
 #if LINEAR_LIGHTING_GRADIENT_HAIR && !LINEAR_LIGHTING_GRADIENT_REMAP
 #error Gradient hair requires the verified gradient-remap material layout.
+#endif
+
+#if LINEAR_LIGHTING_SKIN_TINT && \
+    (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_BONE_TINTING || \
+    LINEAR_LIGHTING_HAIR || LINEAR_LIGHTING_LANDSCAPE_LOD || \
+    LINEAR_LIGHTING_LOD_OBJECT_ALPHA || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK)
+#error Projected skin tint requires its verified standalone material layout.
+#endif
+
+#if LINEAR_LIGHTING_MENU_SCREEN && \
+    (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_BONE_TINTING || \
+    LINEAR_LIGHTING_HAIR || LINEAR_LIGHTING_LANDSCAPE_LOD || \
+    LINEAR_LIGHTING_LOD_OBJECT_ALPHA || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
+    LINEAR_LIGHTING_TEXTURED_EMISSION)
+#error Projected menu screen requires its verified standalone material layout.
 #endif
 
 #if LINEAR_LIGHTING_BONE_TINTING && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && \
@@ -74,7 +101,8 @@ cbuffer PerMaterial : register(b2)
     (LINEAR_LIGHTING_BONE_TINTING && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK)
     float4 cb2[9];
 #elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK || \
-    LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_HAIR
+    LINEAR_LIGHTING_BONE_TINTING || LINEAR_LIGHTING_HAIR || \
+    LINEAR_LIGHTING_SKIN_TINT
     float4 cb2[8];
 #else
     float4 cb2[7];
@@ -117,6 +145,9 @@ Texture2D<float4> TexBoneTintPalette : register(t14);
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 Texture2D<float4> TexGlow : register(t3);
 #endif
+#if LINEAR_LIGHTING_MENU_SCREEN
+Texture2D<float4> TexScreen : register(t4);
+#endif
 
 SamplerState SampDiffuse : register(s0);
 SamplerState SampNormal : register(s1);
@@ -137,6 +168,9 @@ SamplerState SampBoneTintPalette : register(s14);
 #endif
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
+#endif
+#if LINEAR_LIGHTING_MENU_SCREEN
+SamplerState SampScreen : register(s4);
 #endif
 
 #ifndef LINEAR_LIGHTING_VERTEX_COLOR
@@ -192,7 +226,7 @@ SamplerState SampGlow : register(s3);
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_ALPHA_MASK cb2[7]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[8]
-#elif LINEAR_LIGHTING_GRADIENT_REMAP
+#elif LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT
 #define LINEAR_LIGHTING_PROJECTED_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_PROJECTED_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_PROJECTED_DEPTH cb2[7]
@@ -215,6 +249,15 @@ SamplerState SampGlow : register(s3);
 struct PSInput
 {
     float4 position : SV_POSITION;
+#if LINEAR_LIGHTING_TESSELLATED_INPUTS
+    float2 uv : TEXCOORD0;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    float4 vertexColor : COLOR0;
+#endif
+    float3 tangent : TEXCOORD1;
+    float3 bitangent : TEXCOORD2;
+    float3 normal : TEXCOORD3;
+#else
     float3 tangent : TEXCOORD0;
     float3 bitangent : TEXCOORD1;
     float3 normal : TEXCOORD2;
@@ -222,6 +265,7 @@ struct PSInput
     float4 texCoord4 : TEXCOORD4;
 #if LINEAR_LIGHTING_VERTEX_COLOR
     float4 vertexColor : COLOR0;
+#endif
 #endif
 #if LINEAR_LIGHTING_BONE_TINTING
     float4 boneTintColor : COLOR1;
@@ -249,7 +293,11 @@ PSOutput PSMain(PSInput input)
 {
     PSOutput output;
 
+#if LINEAR_LIGHTING_TESSELLATED_INPUTS
+    float2 uv = input.uv;
+#else
     float2 uv = float2(input.texCoord3.w, input.texCoord4.w);
+#endif
 #if LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     if (LINEAR_LIGHTING_PROJECTED_ALPHA_MASK.y != 0.0)
     {
@@ -313,6 +361,21 @@ PSOutput PSMain(PSInput input)
     float3 mappedDiffuse = diffuse.xyz;
 #endif
 
+#if LINEAR_LIGHTING_SKIN_TINT
+    float3 skinTintGamma = pow(abs(cb2[3].xyz), 0.454545);
+    float3 skinBaseGamma = pow(abs(mappedDiffuse), 0.454545);
+    float3 skinTintDark =
+        (2.0 * skinBaseGamma * skinTintGamma) +
+        (skinBaseGamma * skinBaseGamma * (1.0 - (2.0 * skinTintGamma)));
+    float3 skinTintLight =
+        (sqrt(skinBaseGamma) * ((2.0 * skinTintGamma) - 1.0)) +
+        (2.0 * skinBaseGamma * (1.0 - skinTintGamma));
+    float3 skinTintBlend =
+        (skinTintGamma < 0.5) ? skinTintDark : skinTintLight;
+    float3 tintedDiffuse = pow(abs(skinTintBlend), 2.2);
+    mappedDiffuse = lerp(mappedDiffuse, tintedDiffuse, cb2[3].w);
+#endif
+
 #if LINEAR_LIGHTING_LANDSCAPE_LOD
     float2 landscapeLodBase = input.landscapeLodCoordinates + cb0[0].zw;
     float3 landscapeLodDiffuse = TexLandscapeLodDiffuse.Sample(
@@ -337,6 +400,11 @@ PSOutput PSMain(PSInput input)
         ((-LINEAR_LIGHTING_PROJECTED_PROPERTIES.w * cb12[50].x) + 1.0);
 #if LINEAR_LIGHTING_HAIR
     output.target0.xyz = float3(0.0, 0.0, 0.0);
+#elif LINEAR_LIGHTING_MENU_SCREEN
+    float3 menuScreen = TexScreen.Sample(SampScreen, uv).xyz;
+    output.target0.xyz = fade * (
+        LinearLightingDiffuse(mappedDiffuse) +
+        LinearLightingDiffuse(menuScreen));
 #else
     output.target0.xyz = fade * LinearLightingDiffuse(mappedDiffuse);
 #endif
@@ -421,6 +489,8 @@ PSOutput PSMain(PSInput input)
     output.target3.w = pow(alpha, 0.1);
 #elif LINEAR_LIGHTING_GRADIENT_HAIR || LINEAR_LIGHTING_HAIR
     output.target3.w = saturate(max(alpha, 0.019608));
+#elif LINEAR_LIGHTING_SKIN_TINT
+    output.target3.w = 0.019608;
 #else
     output.target3.w = alpha;
 #endif
