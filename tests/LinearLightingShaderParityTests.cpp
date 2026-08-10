@@ -240,6 +240,10 @@ namespace
         ShaderContract{ "HairProjectedFiveMrt_L3_00028003", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "HairAlphaTestProjectedFiveMrt_L3_00028103", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "HairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_00028107", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskHairAlphaTestSixMrt_L3NoEarlyDepth_01020103", 6, true, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskHairAlphaTestSixMrt_L4NoEarlyDepth_01020106", 6, false, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskHairProjectedFiveMrt_L3NoEarlyDepth_01028003", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskHairAlphaTestProjectedFiveMrt_L3NoEarlyDepth_01028103", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -803,10 +807,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (mrtCount == 5) {
                 values[6] = values[4];
                 values[4] = { 0.85F, 0.55F, -1.0F, 0.0F };
-                values[7] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[7] = maskParameters;
+                    values[8] = depthParameters;
+                } else {
+                    values[7] = depthParameters;
+                }
             } else {
                 values[5] = values[4];
-                values[6] = depthParameters;
+                if (hasAdditionalAlphaMask) {
+                    values[6] = maskParameters;
+                    values[7] = depthParameters;
+                } else {
+                    values[6] = depthParameters;
+                }
             }
             return values;
         }

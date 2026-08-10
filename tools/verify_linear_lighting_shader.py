@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 188:
-        fail("Linear Lighting manifest must contain exactly 188 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 192:
+        fail("Linear Lighting manifest must contain exactly 192 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -439,6 +439,7 @@ def verify_source_contracts(
     standalone_lod_object_contracts = 0
     standalone_projected_model_space_contracts = 0
     standalone_hair_contracts = 0
+    combined_hair_additional_alpha_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -467,6 +468,11 @@ def verify_source_contracts(
             bone_tint_contracts += 1
         if "#define LINEAR_LIGHTING_HAIR 1" in source_text:
             standalone_hair_contracts += 1
+        if (
+            "#define LINEAR_LIGHTING_HAIR 1" in source_text
+            and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
+        ):
+            combined_hair_additional_alpha_contracts += 1
         if (
             "#define LINEAR_LIGHTING_TEXTURED_EMISSION 1" in source_text
             and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
@@ -535,8 +541,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 90:
-        fail(f"expected 90 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 93:
+        fail(f"expected 93 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 24:
         fail(f"expected 24 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -548,9 +554,9 @@ def verify_source_contracts(
         )
     if tessellated_contracts != 16:
         fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 44:
+    if additional_alpha_mask_contracts != 48:
         fail(
-            "expected 44 additional-alpha-mask contracts, "
+            "expected 48 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -635,10 +641,15 @@ def verify_source_contracts(
             "expected 2 standalone projected model-space contracts, "
             f"found {standalone_projected_model_space_contracts}"
         )
-    if standalone_hair_contracts != 7:
+    if standalone_hair_contracts != 11:
         fail(
-            "expected 7 standalone hair contracts, "
+            "expected 11 standalone hair contracts, "
             f"found {standalone_hair_contracts}"
+        )
+    if combined_hair_additional_alpha_contracts != 4:
+        fail(
+            "expected 4 combined hair/additional-alpha contracts, "
+            f"found {combined_hair_additional_alpha_contracts}"
         )
 
 
@@ -924,7 +935,13 @@ def verify(root: Path) -> None:
                 and (
                     (
                         len(original["outputs"]) == 6
-                        and original["constant_buffers"].get(2) == 7
+                        and original["constant_buffers"].get(2)
+                        == (
+                            8
+                            if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
+                            in source_text
+                            else 7
+                        )
                         and 3 in original["samplers"]
                         and 3 in original["textures"]
                         and 2 not in original["samplers"]
@@ -932,7 +949,13 @@ def verify(root: Path) -> None:
                     )
                     or (
                         len(original["outputs"]) == 5
-                        and original["constant_buffers"].get(2) == 8
+                        and original["constant_buffers"].get(2)
+                        == (
+                            9
+                            if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
+                            in source_text
+                            else 8
+                        )
                         and 2 in original["samplers"]
                         and 2 in original["textures"]
                         and any(
