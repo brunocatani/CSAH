@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 219:
-        fail("Linear Lighting manifest must contain exactly 219 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 222:
+        fail("Linear Lighting manifest must contain exactly 222 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -227,6 +227,32 @@ def verify_source_contracts(
         projected_source.read_text(encoding="utf-8"),
         six_mrt_source.read_text(encoding="utf-8"),
     ]
+    dismemberment_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "DismembermentTessellatedSixMrt_L4_00280042.LinearLightingCandidate.hlsl"
+    )
+    dismemberment_source_text = dismemberment_source.read_text(encoding="utf-8")
+    for token in (
+        "float4 cb2[10]",
+        "Texture2D<float4> TexDismembermentDiffuse : register(t9)",
+        "Texture2D<float4> TexDismembermentNormal : register(t10)",
+        "Texture2D<float4> TexDismembermentSpecular : register(t11)",
+        "input.dismembermentSelector.y > 0.0",
+        "dot(cb2[5].xyz, tangentNormal)",
+        "dot(cb2[6].xyz, tangentNormal)",
+        "min(dot(cb2[7].xyz, tangentNormal), 0.0)",
+        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingEmitColor(cb2[1].xyz)",
+        "input.eyeIndex * 4u",
+    ):
+        if token not in dismemberment_source_text:
+            fail(f"dismemberment shader is missing verified contract: {token}")
+    if "[earlydepthstencil]" in dismemberment_source_text:
+        fail("baseline dismemberment shaders must preserve no-early-depth behavior")
     shared_text = shared.read_text(encoding="utf-8")
     if any("enableGammaCorrection" in text for text in base_source_texts) or (
         "enableGammaCorrection" in shared_text
@@ -449,6 +475,7 @@ def verify_source_contracts(
     combined_gradient_hair_bone_tint_contracts = 0
     combined_gradient_hair_additional_alpha_contracts = 0
     combined_gradient_hair_additional_alpha_bone_tint_contracts = 0
+    dismemberment_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -463,6 +490,8 @@ def verify_source_contracts(
             model_space_normal_contracts += 1
         if "#define LINEAR_LIGHTING_TESSELLATED_INPUTS 1" in source_text:
             tessellated_contracts += 1
+        if "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text:
+            dismemberment_contracts += 1
         if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
             additional_alpha_mask_contracts += 1
         if "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1" in source_text:
@@ -576,19 +605,23 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 107:
-        fail(f"expected 107 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 109:
+        fail(f"expected 109 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 31:
         fail(f"expected 31 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 20:
+    if model_space_normal_contracts != 21:
         fail(
-            "expected 20 model-space-normal contracts, "
+            "expected 21 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 17:
-        fail(f"expected 17 tessellated contracts, found {tessellated_contracts}")
+    if tessellated_contracts != 20:
+        fail(f"expected 20 tessellated contracts, found {tessellated_contracts}")
+    if dismemberment_contracts != 3:
+        fail(
+            f"expected 3 dismemberment contracts, found {dismemberment_contracts}"
+        )
     if additional_alpha_mask_contracts != 58:
         fail(
             "expected 58 additional-alpha-mask contracts, "
@@ -772,8 +805,11 @@ def verify(root: Path) -> None:
     for token in (
         "output.eyeIndex = TEST_EYE_INDEX;",
         '{ "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" }',
-        "std::array<ComPtr<ID3D11VertexShader>, 256>",
+        "std::array<ComPtr<ID3D11VertexShader>, 1024>",
         "for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex)",
+        "output.dismembermentSelector = float2(",
+        '{ "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" }',
+        "for (std::uint32_t layerIndex = 0; layerIndex < layerCount;",
         "values[55] =",
         "values[67] =",
         "paired-eye fixture produced identical motion vectors",
@@ -792,13 +828,15 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
-        r'(?:,\s*(true|false))?(?:,\s*(true|false))?\s*\}',
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
+        r'(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
     parity_contracts: dict[
         str,
         tuple[
             int,
+            bool,
             bool,
             bool,
             bool,
@@ -832,6 +870,7 @@ def verify(root: Path) -> None:
         face_uses_model_space_normals,
         has_skin_tint,
         has_standalone_hair,
+        has_dismemberment,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -851,6 +890,7 @@ def verify(root: Path) -> None:
             face_uses_model_space_normals == "true",
             has_skin_tint == "true",
             has_standalone_hair == "true",
+            has_dismemberment == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -1043,6 +1083,14 @@ def verify(root: Path) -> None:
                             for semantic in original["input_signature"]
                         )
                     )
+                ),
+                "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text
+                and original["constant_buffers"].get(2) == 10
+                and all(slot in original["samplers"] for slot in (9, 10, 11))
+                and all(slot in original["textures"] for slot in (9, 10, 11))
+                and any(
+                    semantic[0] == "TEXCOORD" and semantic[1] == 5
+                    for semantic in original["input_signature"]
                 ),
             )
             if parity_contracts[label] != expected_parity_metadata:

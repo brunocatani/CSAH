@@ -49,6 +49,7 @@ namespace
         bool faceUsesModelSpaceNormals{};
         bool hasSkinTint{};
         bool hasStandaloneHair{};
+        bool hasDismemberment{};
     };
 
     constexpr std::array kShaderContracts{
@@ -271,6 +272,9 @@ namespace
         ShaderContract{ "FaceDetailSixMrt_L4NoEarlyDepth_80000046", 6, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "FaceDetailAlphaTestSixMrt_L4NoEarlyDepth_80000146", 6, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "FaceDetailModelSpaceNormalsSixMrt_L4NoEarlyDepth_80002046", 6, false, false, false, false, false, false, false, false, false, false, true, true },
+        ShaderContract{ "DismembermentTessellatedSixMrt_L4_00280042", 6, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "DismembermentTessellatedSixMrt_L3_00280043", 6, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "DismembermentModelSpaceNormalsTessellatedSixMrt_L3_00282043", 6, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -343,6 +347,9 @@ namespace
     constexpr Pixel kNormalTexture{ 0.35F, 0.65F, 0.2F, 0.8F };
     constexpr Pixel kSpecularTexture{ 0.45F, 0.7F, 0.15F, 0.9F };
     constexpr Pixel kGlowTexture{ 0.6F, 0.4F, 0.2F, 1.0F };
+    constexpr Pixel kDismembermentDiffuseTexture{ 0.7F, 0.2F, 0.4F, 0.65F };
+    constexpr Pixel kDismembermentNormalTexture{ 0.6F, 0.4F, 0.3F, 0.8F };
+    constexpr Pixel kDismembermentSpecularTexture{ 0.25F, 0.8F, 0.35F, 0.9F };
     constexpr std::array<Pixel, 4> kScreenTexture{
         Pixel{ 0.12F, 0.34F, 0.56F, 1.0F },
         Pixel{ 0.78F, 0.23F, 0.45F, 1.0F },
@@ -473,6 +480,8 @@ namespace
         bool hasBoneTint,
         bool hasPipboyScreen,
         bool hasFaceDetail,
+        bool hasDismemberment,
+        bool useDismemberment,
         std::uint32_t eyeIndex)
     {
         constexpr std::string_view source = R"(
@@ -481,12 +490,18 @@ struct VSOutput
     float4 position : SV_POSITION;
 #if USES_TESSELLATED_INPUTS
     float2 uv : TEXCOORD0;
+#if HAS_DISMEMBERMENT
+    float2 dismembermentUv : TEXCOORD4;
+#endif
 #if HAS_VERTEX_COLOR
     float4 vertexColor : COLOR0;
 #endif
     float3 tangent : TEXCOORD1;
     float3 bitangent : TEXCOORD2;
     float3 normal : TEXCOORD3;
+#if HAS_DISMEMBERMENT
+    float2 dismembermentSelector : TEXCOORD5;
+#endif
     float4 currentPosition : POSITION1;
     float4 previousPosition : POSITION2;
 #else
@@ -530,6 +545,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.position = float4(positions[vertexId], 0.5, 1.0);
 #if USES_TESSELLATED_INPUTS
     output.uv = float2(0.25, 0.75);
+#if HAS_DISMEMBERMENT
+    output.dismembermentUv = float2(0.75, 0.25);
+    output.dismembermentSelector = float2(
+        0.0,
+        USE_DISMEMBERMENT_LAYER ? 1.0 : -1.0);
+#endif
     output.tangent = float3(1.0, 0.0, 0.0);
     output.bitangent = float3(0.0, 1.0, 0.0);
     output.normal = float3(0.0, 0.0, -1.0);
@@ -575,6 +596,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_BONE_TINT", hasBoneTint ? "1" : "0" },
             { "HAS_PIPBOY_SCREEN", hasPipboyScreen ? "1" : "0" },
             { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
+            { "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" },
+            { "USE_DISMEMBERMENT_LAYER", useDismemberment ? "1" : "0" },
             { "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" },
             { nullptr, nullptr },
         };
@@ -738,7 +761,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return result;
     }
 
-    [[nodiscard]] std::array<std::array<float, 4>, 9> makeMaterialData(
+    [[nodiscard]] std::array<std::array<float, 4>, 10> makeMaterialData(
         UINT mrtCount,
         std::size_t caseIndex,
         bool hasAdditionalAlphaMask,
@@ -747,9 +770,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasBoneTint,
         bool hasSkinTint,
         bool hasStandaloneHair,
+        bool hasDismemberment,
         AdditionalAlphaCase additionalAlphaCase)
     {
-        std::array<std::array<float, 4>, 9> values{};
+        std::array<std::array<float, 4>, 10> values{};
         const auto switchValue = caseIndex == 0 ? 0.0F : 0.35F;
         values[0] = { 0.4F, 0.7F, 0.25F, 0.8F };
         values[1] = { 0.3F, 0.45F, 0.6F, 0.2F };
@@ -782,6 +806,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 maskParameters = { 0.0F, 1.0F, 0.0F, 0.0F };
                 break;
             }
+        }
+        if (hasDismemberment) {
+            values[5] = { 1.0F, 0.0F, 0.0F, 0.0F };
+            values[6] = { 0.0F, 1.0F, 0.0F, 0.0F };
+            values[7] = { 0.0F, 0.0F, -1.0F, 0.0F };
+            values[9] = depthParameters;
+            return values;
         }
         if (hasGradientRemap) {
             if (mrtCount == 5) {
@@ -992,6 +1023,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasPipboyScreen,
         bool hasSkinTint,
         bool hasStandaloneHair,
+        bool hasDismemberment,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled)
     {
@@ -1004,6 +1036,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasBoneTint,
             hasSkinTint,
             hasStandaloneHair,
+            hasDismemberment,
             additionalAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
         const auto instanceData = makeInstanceData();
@@ -1071,6 +1104,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto faceDetailTexture = createTexture(
             device,
             kFaceDetailTexture);
+        const auto dismembermentDiffuseTexture = createTexture(
+            device,
+            kDismembermentDiffuseTexture);
+        const auto dismembermentNormalTexture = createTexture(
+            device,
+            kDismembermentNormalTexture);
+        const auto dismembermentSpecularTexture = createTexture(
+            device,
+            kDismembermentSpecularTexture);
 
         D3D11_SAMPLER_DESC samplerDescription{};
         samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -1161,6 +1203,27 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetSamplers(13, 1, &rawBoneTintSampler);
             context.PSSetSamplers(14, 1, &rawBoneTintSampler);
         }
+        if (hasDismemberment) {
+            const std::array<ID3D11ShaderResourceView*, 3>
+                rawDismembermentTextures{
+                    dismembermentDiffuseTexture.Get(),
+                    dismembermentNormalTexture.Get(),
+                    dismembermentSpecularTexture.Get(),
+                };
+            const std::array<ID3D11SamplerState*, 3> dismembermentSamplers{
+                sampler.Get(),
+                sampler.Get(),
+                sampler.Get(),
+            };
+            context.PSSetShaderResources(
+                9,
+                static_cast<UINT>(rawDismembermentTextures.size()),
+                rawDismembermentTextures.data());
+            context.PSSetSamplers(
+                9,
+                static_cast<UINT>(dismembermentSamplers.size()),
+                dismembermentSamplers.data());
+        }
 
         auto* rawMaterial = materialBuffer.Get();
         auto* rawGeometry = geometryBuffer.Get();
@@ -1200,6 +1263,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.PSSetSamplers(4, 1, &nullSampler);
         context.PSSetSamplers(8, 1, &nullSampler);
         context.PSSetSamplers(12, 1, &nullSampler);
+        if (hasDismemberment) {
+            constexpr std::array<ID3D11ShaderResourceView*, 3>
+                nullDismembermentTextures{};
+            constexpr std::array<ID3D11SamplerState*, 3>
+                nullDismembermentSamplers{};
+            context.PSSetShaderResources(
+                9,
+                static_cast<UINT>(nullDismembermentTextures.size()),
+                nullDismembermentTextures.data());
+            context.PSSetSamplers(
+                9,
+                static_cast<UINT>(nullDismembermentSamplers.size()),
+                nullDismembermentSamplers.data());
+        }
         if (hasGradientRemap) {
             context.PSSetShaderResources(5, 1, &nullView);
             context.PSSetSamplers(5, 1, &nullSampler);
@@ -1309,6 +1386,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const ShaderContract& contract,
         std::size_t caseIndex,
         bool usesGlowmap,
+        bool useDismemberment,
         const RenderResult& vanilla,
         const LinearLightingCase& lightingCase)
     {
@@ -1329,12 +1407,14 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     diffuse *= kDiffuseTexture[1] * 1.8F;
                 }
             } else {
-                diffuse = kDiffuseTexture[channel];
+                diffuse = useDismemberment ?
+                    kDismembermentDiffuseTexture[channel] :
+                    kDiffuseTexture[channel];
                 if (contract.hasLandscapeLod) {
                     diffuse *=
                         (kLandscapeLodDiffuse[channel] * 3.777778F) - 2.006F;
                 }
-                if (contract.hasVertexColor) {
+                if (contract.hasVertexColor && !useDismemberment) {
                     diffuse *= kVertexColor[channel];
                 }
             }
@@ -1429,8 +1509,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 256> vertexShaders;
-        for (std::size_t index = 0; index < vertexShaders.size(); ++index) {
+        std::array<ComPtr<ID3D11VertexShader>, 1024> vertexShaders;
+        const auto getVertexShader = [&device, &vertexShaders] (
+                                         std::size_t index) {
+            if (vertexShaders[index].Get() != nullptr) {
+                return vertexShaders[index].Get();
+            }
             const auto hasVertexColor = (index & 1u) != 0;
             const auto isInstanced = (index & 2u) != 0;
             const auto usesTessellatedInputs = (index & 4u) != 0;
@@ -1438,7 +1522,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto hasBoneTint = (index & 16u) != 0;
             const auto hasPipboyScreen = (index & 32u) != 0;
             const auto hasFaceDetail = (index & 64u) != 0;
-            const auto eyeIndex = static_cast<std::uint32_t>(index >> 7u);
+            const auto hasDismemberment = (index & 128u) != 0;
+            const auto eyeIndex = static_cast<std::uint32_t>(
+                (index >> 8u) & 1u);
+            const auto useDismemberment = (index & 512u) != 0;
             const auto bytecode = compileVertexShader(
                 hasVertexColor,
                 isInstanced,
@@ -1447,6 +1534,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 hasBoneTint,
                 hasPipboyScreen,
                 hasFaceDetail,
+                hasDismemberment,
+                useDismemberment,
                 eyeIndex);
             require(
                 device->CreateVertexShader(
@@ -1464,8 +1553,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasBoneTint ? ", COLOR1" : "") +
                     (hasPipboyScreen ? ", Pip-Boy TEXCOORD6" : "") +
                     (hasFaceDetail ? ", face TEXCOORD6" : "") +
+                    (hasDismemberment ? ", dismemberment inputs" : "") +
+                    (useDismemberment ? ", dismemberment layer" : "") +
                     ", eye " + std::to_string(eyeIndex) + ")");
-        }
+            return vertexShaders[index].Get();
+        };
 
         const auto verified = root / "package" / "Shaders" / "Community" /
             "VerifiedLinearLighting";
@@ -1501,9 +1593,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::string("CreatePixelShader(replacement ") +
                     std::string(contract.name) + ")");
 
-            Pixel leftEyeMotion{};
+            std::array<Pixel, 2> leftEyeMotion{};
             for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex) {
-                auto* vertexShader = vertexShaders[
+                const auto layerCount = contract.hasDismemberment ? 2u : 1u;
+                for (std::uint32_t layerIndex = 0; layerIndex < layerCount;
+                     ++layerIndex) {
+                const auto useDismemberment = layerIndex != 0;
+                auto* vertexShader = getVertexShader(
                     (contract.hasVertexColor ? 1u : 0u) |
                     (contract.isInstanced ? 2u : 0u) |
                     (contract.usesTessellatedInputs ? 4u : 0u) |
@@ -1511,7 +1607,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (contract.hasBoneTint ? 16u : 0u) |
                     (contract.hasPipboyScreen ? 32u : 0u) |
                     (contract.hasFaceDetail ? 64u : 0u) |
-                    (static_cast<std::size_t>(eyeIndex) << 7u)].Get();
+                    (contract.hasDismemberment ? 128u : 0u) |
+                    (static_cast<std::size_t>(eyeIndex) << 8u) |
+                    (useDismemberment ? 512u : 0u));
                 for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                      ++caseIndex) {
                 const auto vanilla = render(
@@ -1530,13 +1628,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
-                    contract.hasStandaloneHair);
+                    contract.hasStandaloneHair,
+                    contract.hasDismemberment);
                 if (contract.mrtCount == 6 && caseIndex == 0) {
                     if (eyeIndex == 0) {
-                        leftEyeMotion = vanilla[5];
+                        leftEyeMotion[layerIndex] = vanilla[5];
                     } else if (
-                        approximatelyEqual(leftEyeMotion[0], vanilla[5][0]) &&
-                        approximatelyEqual(leftEyeMotion[1], vanilla[5][1])) {
+                        approximatelyEqual(
+                            leftEyeMotion[layerIndex][0], vanilla[5][0]) &&
+                        approximatelyEqual(
+                            leftEyeMotion[layerIndex][1], vanilla[5][1])) {
                         failures.push_back(
                             std::string(contract.name) +
                             " paired-eye fixture produced identical motion vectors");
@@ -1558,7 +1659,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
-                    contract.hasStandaloneHair);
+                    contract.hasStandaloneHair,
+                    contract.hasDismemberment);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -1586,7 +1688,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
-                    contract.hasStandaloneHair);
+                    contract.hasStandaloneHair,
+                    contract.hasDismemberment);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -1614,11 +1717,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasBoneTint,
                     contract.hasPipboyScreen,
                     contract.hasSkinTint,
-                    contract.hasStandaloneHair);
+                    contract.hasStandaloneHair,
+                    contract.hasDismemberment);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
                     usesGlowmap,
+                    useDismemberment,
                     vanilla,
                     kTransformedCase);
                 mismatch = compare(
@@ -1669,6 +1774,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasPipboyScreen,
                         contract.hasSkinTint,
                         contract.hasStandaloneHair,
+                        contract.hasDismemberment,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -1687,6 +1793,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasPipboyScreen,
                         contract.hasSkinTint,
                         contract.hasStandaloneHair,
+                        contract.hasDismemberment,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,
@@ -1707,6 +1814,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     }
                 }
                 }
+            }
             }
         }
         if (!failures.empty()) {

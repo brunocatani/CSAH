@@ -217,5 +217,8 @@
   { "name": "SkinTintTessellatedSixMrt_L3_000C0003", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "FaceDetailSixMrt_L4NoEarlyDepth_80000046", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_SIX_MRT_NO_EARLY_DEPTH_PS" },
   { "name": "FaceDetailAlphaTestSixMrt_L4NoEarlyDepth_80000146", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_ALPHA_TEST_SIX_MRT_NO_EARLY_DEPTH_PS" },
-  { "name": "FaceDetailModelSpaceNormalsSixMrt_L4NoEarlyDepth_80002046", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_NO_EARLY_DEPTH_PS" }
+  { "name": "FaceDetailModelSpaceNormalsSixMrt_L4NoEarlyDepth_80002046", "resource": "IDR_LINEAR_LIGHTING_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_NO_EARLY_DEPTH_PS" },
+  { "name": "DismembermentTessellatedSixMrt_L4_00280042", "resource": "IDR_LINEAR_LIGHTING_DISMEMBERMENT_TESSELLATED_SIX_MRT_PS" },
+  { "name": "DismembermentTessellatedSixMrt_L3_00280043", "resource": "IDR_LINEAR_LIGHTING_DISMEMBERMENT_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "DismembermentModelSpaceNormalsTessellatedSixMrt_L3_00282043", "resource": "IDR_LINEAR_LIGHTING_DISMEMBERMENT_MODEL_SPACE_NORMALS_TESSELLATED_SIX_MRT_VERTEX_COLOR_PS" }
 ]
