@@ -39,6 +39,15 @@ namespace community_shaders::linear_lighting
             DFLightAmbientGammaOffsets gammaOffsets{};
         };
 
+        struct SkyShaderContractDefinition
+        {
+            const char* name{};
+            std::uint32_t descriptor{};
+            int resourceId{};
+            DxbcIdentity original{};
+            DxbcIdentity replacement{};
+        };
+
         struct DFLightAmbientDescriptorContract
         {
             std::uint32_t descriptor{};
@@ -46,6 +55,7 @@ namespace community_shaders::linear_lighting
         };
 
         #include "Features/linear_lighting/GeneratedLinearLightingContracts.inl"
+        #include "Features/linear_lighting/GeneratedSkyLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
         struct EmbeddedShader
@@ -111,19 +121,24 @@ namespace community_shaders::linear_lighting
         ID3D11DeviceContext* context,
         ID3D11Buffer* frameBuffer,
         ID3D11Buffer* geometryBuffer,
+        std::uint8_t constantFlags,
         std::atomic_uint64_t* restoreCounter) noexcept :
         context_(context),
+        constantFlags_(constantFlags),
         restoreCounter_(restoreCounter)
     {
-        ID3D11Buffer* previousFrameBuffer{};
-        ID3D11Buffer* previousGeometryBuffer{};
-        context_->PSGetConstantBuffers(5, 1, &previousFrameBuffer);
-        context_->PSGetConstantBuffers(8, 1, &previousGeometryBuffer);
-        previousFrameBuffer_.Attach(previousFrameBuffer);
-        previousGeometryBuffer_.Attach(previousGeometryBuffer);
-
-        context_->PSSetConstantBuffers(5, 1, &frameBuffer);
-        context_->PSSetConstantBuffers(8, 1, &geometryBuffer);
+        if ((constantFlags_ & ReplacementPixelConstants_Frame) != 0) {
+            ID3D11Buffer* previousFrameBuffer{};
+            context_->PSGetConstantBuffers(5, 1, &previousFrameBuffer);
+            previousFrameBuffer_.Attach(previousFrameBuffer);
+            context_->PSSetConstantBuffers(5, 1, &frameBuffer);
+        }
+        if ((constantFlags_ & ReplacementPixelConstants_Geometry) != 0) {
+            ID3D11Buffer* previousGeometryBuffer{};
+            context_->PSGetConstantBuffers(8, 1, &previousGeometryBuffer);
+            previousGeometryBuffer_.Attach(previousGeometryBuffer);
+            context_->PSSetConstantBuffers(8, 1, &geometryBuffer);
+        }
     }
 
     ScopedReplacementPixelConstants::~ScopedReplacementPixelConstants() noexcept
@@ -132,10 +147,14 @@ namespace community_shaders::linear_lighting
             return;
         }
 
-        auto* previousFrameBuffer = previousFrameBuffer_.Get();
-        auto* previousGeometryBuffer = previousGeometryBuffer_.Get();
-        context_->PSSetConstantBuffers(5, 1, &previousFrameBuffer);
-        context_->PSSetConstantBuffers(8, 1, &previousGeometryBuffer);
+        if ((constantFlags_ & ReplacementPixelConstants_Frame) != 0) {
+            auto* previousFrameBuffer = previousFrameBuffer_.Get();
+            context_->PSSetConstantBuffers(5, 1, &previousFrameBuffer);
+        }
+        if ((constantFlags_ & ReplacementPixelConstants_Geometry) != 0) {
+            auto* previousGeometryBuffer = previousGeometryBuffer_.Get();
+            context_->PSSetConstantBuffers(8, 1, &previousGeometryBuffer);
+        }
         restoreCounter_->fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -182,7 +201,9 @@ namespace community_shaders::linear_lighting
 
             gpuResourcesReady_.store(true, std::memory_order_release);
             logging::info(
-                "Linear Lighting GPU resources ready; active shader replacement remains {}.",
+                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}); active shader replacement remains {}.",
+                kShaderContracts.size(),
+                kSkyShaderContracts.size(),
                 enabled_.load(std::memory_order_relaxed) ? "enabled" : "disabled");
         } catch (const std::exception& error) {
             logging::error(
@@ -204,6 +225,7 @@ namespace community_shaders::linear_lighting
             ID3D11PixelShader**)) noexcept
     {
         static_assert(kShaderContracts.size() == kShaderContractCount);
+        static_assert(kSkyShaderContracts.size() == kSkyShaderContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContracts.size()>
             replacements{};
@@ -230,6 +252,40 @@ namespace community_shaders::linear_lighting
             if (FAILED(result)) {
                 logging::error(
                     "Linear Lighting replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    contract.name,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSkyShaderContracts.size()>
+            skyReplacements{};
+        for (std::size_t index = 0;
+             index < kSkyShaderContracts.size();
+             ++index) {
+            const auto& contract = kSkyShaderContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacement.size,
+                    contract.replacement.checksum)) {
+                logging::error(
+                    "Linear Lighting embedded Sky replacement '{}' is missing or invalid.",
+                    contract.name);
+                return false;
+            }
+
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                skyReplacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Linear Lighting Sky replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
                     contract.name,
                     static_cast<std::uint32_t>(result));
                 return false;
@@ -274,6 +330,7 @@ namespace community_shaders::linear_lighting
 
         settings_ = safeSettings;
         replacementShaders_ = std::move(replacements);
+        skyReplacementShaders_ = std::move(skyReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
         enabled_.store(settings_.enabled, std::memory_order_release);
@@ -438,6 +495,50 @@ namespace community_shaders::linear_lighting
             return;
         }
 
+        std::size_t skyContractIndex = kSkyShaderContracts.size();
+        for (std::size_t index = 0;
+             index < kSkyShaderContracts.size();
+             ++index) {
+            const auto& identity = kSkyShaderContracts[index].original;
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                skyContractIndex = index;
+                break;
+            }
+        }
+        if (skyContractIndex != kSkyShaderContracts.size()) {
+            matchingSkyShaderContractMask_.fetch_or(
+                static_cast<std::uint16_t>(1u << skyContractIndex),
+                std::memory_order_relaxed);
+            matchingSkyShadersCreated_.fetch_add(1, std::memory_order_relaxed);
+            std::scoped_lock lock(shaderRegistryMutex_);
+            auto& owners = originalSkyShaderOwners_[skyContractIndex];
+            auto& slots = originalSkyShaders_[skyContractIndex];
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                if (slots[index].load(std::memory_order_relaxed) == shader) {
+                    return;
+                }
+                if (!owners[index]) {
+                    owners[index] = shader;
+                    slots[index].store(shader, std::memory_order_release);
+                    trackedOriginalSkyShaders_.fetch_add(
+                        1, std::memory_order_relaxed);
+                    return;
+                }
+            }
+            if (!originalSkyCapacityWarningLogged_[skyContractIndex].exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Linear Lighting original Sky-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                    kSkyShaderContracts[skyContractIndex].name);
+            }
+            return;
+        }
+
         std::size_t ambientContractIndex = kDFLightAmbientContracts.size();
         for (std::size_t index = 0;
              index < kDFLightAmbientContracts.size();
@@ -538,20 +639,28 @@ namespace community_shaders::linear_lighting
 
                 std::scoped_lock lock(shaderRegistryMutex_);
                 if (slot.load(std::memory_order_relaxed) != requested) {
-                    return { requested, 0, false };
+                    return { requested, {}, false };
                 }
                 auto* replacement =
                     dFLightAmbientReplacementShaders_[contractIndex].Get();
                 if (!replacement) {
-                    return { requested, 0, false };
+                    return { requested, {}, false };
                 }
                 replacement->AddRef();
                 dFLightAmbientReplacementBinds_.fetch_add(
                     1, std::memory_order_relaxed);
-                return { replacement, 0, true };
+                return {
+                    replacement,
+                    {
+                        ReplacementShaderFamily::dFLightAmbient,
+                        static_cast<std::uint32_t>(contractIndex + 1),
+                        ReplacementPixelConstants_None,
+                    },
+                    true,
+                };
             }
         }
-        return { requested, 0, false };
+        return { requested, {}, false };
     }
 
     PixelShaderSelection Runtime::selectPixelShader(
@@ -562,7 +671,7 @@ namespace community_shaders::linear_lighting
         const auto isCapturedContext = context == context_.Get();
         if (!isCapturedContext) {
             rejectedShaderContexts_.fetch_add(1, std::memory_order_relaxed);
-            return { requested, 0 };
+            return { requested, {} };
         }
 
         if (currentlyRequestedShader_.Get() != requested) {
@@ -572,10 +681,9 @@ namespace community_shaders::linear_lighting
 
         if (!requested ||
             !enabled_.load(std::memory_order_acquire) ||
-            !gpuResourcesReady_.load(std::memory_order_acquire) ||
-            !geometryProviderReady_.load(std::memory_order_acquire)) {
+            !gpuResourcesReady_.load(std::memory_order_acquire)) {
             inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            return { requested, 0 };
+            return { requested, {} };
         }
 
         ID3D11PixelShader* replacement = nullptr;
@@ -592,33 +700,87 @@ namespace community_shaders::linear_lighting
                 }
             }
         }
-        if (!replacement) {
-            const auto ambientSelection =
-                selectDFLightAmbientShader(requested);
-            if (ambientSelection.shader != requested) {
-                return ambientSelection;
+        if (replacement) {
+            if (!geometryProviderReady_.load(std::memory_order_acquire)) {
+                inactiveShaderSelections_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { requested, {} };
             }
-            unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
-            return { requested, 0, false };
+
+            auto noContractObserved = 0u;
+            firstReplacementContractPlusOne_.compare_exchange_strong(
+                noContractObserved,
+                replacementContractPlusOne,
+                std::memory_order_release,
+                std::memory_order_relaxed);
+            replacementBinds_.fetch_add(1, std::memory_order_relaxed);
+            return {
+                replacement,
+                {
+                    ReplacementShaderFamily::material,
+                    replacementContractPlusOne,
+                    ReplacementPixelConstants_Frame |
+                        ReplacementPixelConstants_Geometry,
+                },
+                false,
+            };
         }
 
-        auto noContractObserved = 0u;
-        firstReplacementContractPlusOne_.compare_exchange_strong(
-            noContractObserved,
-            replacementContractPlusOne,
-            std::memory_order_release,
-            std::memory_order_relaxed);
-        replacementBinds_.fetch_add(1, std::memory_order_relaxed);
-        return { replacement, replacementContractPlusOne, false };
+        for (std::size_t contractIndex = 0;
+             contractIndex < originalSkyShaders_.size();
+             ++contractIndex) {
+            for (const auto& slot : originalSkyShaders_[contractIndex]) {
+                if (slot.load(std::memory_order_acquire) != requested) {
+                    continue;
+                }
+                auto* skyReplacement =
+                    skyReplacementShaders_[contractIndex].Get();
+                if (!skyReplacement) {
+                    inactiveShaderSelections_.fetch_add(
+                        1, std::memory_order_relaxed);
+                    return { requested, {} };
+                }
+                skyReplacementBinds_.fetch_add(1, std::memory_order_relaxed);
+                return {
+                    skyReplacement,
+                    {
+                        ReplacementShaderFamily::sky,
+                        static_cast<std::uint32_t>(contractIndex + 1),
+                        ReplacementPixelConstants_Frame,
+                    },
+                    false,
+                };
+            }
+        }
+
+        const auto ambientSelection = selectDFLightAmbientShader(requested);
+        if (ambientSelection.shader != requested) {
+            return ambientSelection;
+        }
+        unmatchedShaderSelections_.fetch_add(1, std::memory_order_relaxed);
+        return { requested, {}, false };
     }
 
     ScopedReplacementPixelConstants Runtime::scopeReplacementPixelConstants(
         ID3D11DeviceContext* context,
-        std::uint32_t contractPlusOne) noexcept
+        ReplacementShaderBinding binding) noexcept
     {
-        if (!context || context != context_.Get() || contractPlusOne == 0 ||
-            contractPlusOne > replacementShaders_.size() || !frameBuffer_ ||
-            !geometryBuffer_) {
+        const auto frameAndGeometry = static_cast<std::uint8_t>(
+            ReplacementPixelConstants_Frame |
+            ReplacementPixelConstants_Geometry);
+        const auto validMaterial =
+            binding.family == ReplacementShaderFamily::material &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= replacementShaders_.size() &&
+            binding.constantFlags == frameAndGeometry;
+        const auto validSky =
+            binding.family == ReplacementShaderFamily::sky &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= skyReplacementShaders_.size() &&
+            binding.constantFlags == ReplacementPixelConstants_Frame;
+        if (!context || context != context_.Get() ||
+            (!validMaterial && !validSky) || !frameBuffer_ ||
+            (validMaterial && !geometryBuffer_)) {
             return ScopedReplacementPixelConstants{};
         }
 
@@ -626,16 +788,28 @@ namespace community_shaders::linear_lighting
         return ScopedReplacementPixelConstants(
             context,
             frameBuffer_.Get(),
-            geometryBuffer_.Get(),
+            validMaterial ? geometryBuffer_.Get() : nullptr,
+            binding.constantFlags,
             &replacementConstantRestores_);
     }
 
     std::uint32_t Runtime::inspectReplacementPipelineState(
         ID3D11DeviceContext* context,
-        std::uint32_t contractPlusOne) const noexcept
+        ReplacementShaderBinding binding) const noexcept
     {
-        if (!context || context != context_.Get() || contractPlusOne == 0 ||
-            contractPlusOne > replacementShaders_.size()) {
+        ID3D11PixelShader* expectedShader{};
+        if (binding.family == ReplacementShaderFamily::material &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= replacementShaders_.size()) {
+            expectedShader =
+                replacementShaders_[binding.contractPlusOne - 1].Get();
+        } else if (binding.family == ReplacementShaderFamily::sky &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= skyReplacementShaders_.size()) {
+            expectedShader =
+                skyReplacementShaders_[binding.contractPlusOne - 1].Get();
+        }
+        if (!context || context != context_.Get() || !expectedShader) {
             return 0;
         }
 
@@ -643,17 +817,23 @@ namespace community_shaders::linear_lighting
         ID3D11Buffer* observedFrame{};
         ID3D11Buffer* observedGeometry{};
         context->PSGetShader(&observedShader, nullptr, nullptr);
-        context->PSGetConstantBuffers(5, 1, &observedFrame);
-        context->PSGetConstantBuffers(8, 1, &observedGeometry);
+        if ((binding.constantFlags & ReplacementPixelConstants_Frame) != 0) {
+            context->PSGetConstantBuffers(5, 1, &observedFrame);
+        }
+        if ((binding.constantFlags & ReplacementPixelConstants_Geometry) != 0) {
+            context->PSGetConstantBuffers(8, 1, &observedGeometry);
+        }
 
         std::uint32_t state{};
-        if (observedShader == replacementShaders_[contractPlusOne - 1].Get()) {
+        if (observedShader == expectedShader) {
             state |= PipelineBinding_SelectedReplacement;
         }
-        if (observedFrame == frameBuffer_.Get()) {
+        if ((binding.constantFlags & ReplacementPixelConstants_Frame) != 0 &&
+            observedFrame == frameBuffer_.Get()) {
             state |= PipelineBinding_FrameBuffer;
         }
-        if (observedGeometry == geometryBuffer_.Get()) {
+        if ((binding.constantFlags & ReplacementPixelConstants_Geometry) != 0 &&
+            observedGeometry == geometryBuffer_.Get()) {
             state |= PipelineBinding_GeometryBuffer;
         }
 
@@ -824,6 +1004,19 @@ namespace community_shaders::linear_lighting
             .firstReplacementContractPlusOne =
                 firstReplacementContractPlusOne_.load(
                     std::memory_order_acquire),
+            .verifiedSkyShaderContracts =
+                static_cast<std::uint32_t>(kSkyShaderContracts.size()),
+            .matchingSkyShaderContractMask =
+                matchingSkyShaderContractMask_.load(
+                    std::memory_order_relaxed),
+            .matchingSkyShadersCreated =
+                matchingSkyShadersCreated_.load(
+                    std::memory_order_relaxed),
+            .trackedOriginalSkyShaders =
+                trackedOriginalSkyShaders_.load(
+                    std::memory_order_relaxed),
+            .skyReplacementBinds =
+                skyReplacementBinds_.load(std::memory_order_relaxed),
             .shaderSelectionCalls =
                 shaderSelectionCalls_.load(std::memory_order_relaxed),
             .rejectedShaderContexts =

@@ -130,7 +130,8 @@ namespace community_shaders::render
         std::atomic_uint32_t qualificationLastDrawState{};
         thread_local bool insidePSSetShaderHook{};
         thread_local std::uint64_t activeQualificationSessionId{};
-        thread_local std::uint32_t activeReplacementContractPlusOne{};
+        thread_local linear_lighting::ReplacementShaderBinding
+            activeReplacementBinding{};
 
         class RecursionGuard final
         {
@@ -503,7 +504,7 @@ namespace community_shaders::render
                     requested,
                     std::memory_order_release);
                 activeQualificationSessionId = requested;
-                activeReplacementContractPlusOne = 0;
+                activeReplacementBinding = {};
                 qualificationSessionActive.store(
                     true,
                     std::memory_order_release);
@@ -512,8 +513,13 @@ namespace community_shaders::render
         }
 
         [[nodiscard]] linear_lighting::ContractBit qualificationContractBit(
-            std::uint32_t contractPlusOne) noexcept
+            linear_lighting::ReplacementShaderBinding binding) noexcept
         {
+            if (binding.family !=
+                linear_lighting::ReplacementShaderFamily::material) {
+                return {};
+            }
+            const auto contractPlusOne = binding.contractPlusOne;
             return contractPlusOne > 0 &&
                     contractPlusOne <=
                         linear_lighting::Runtime::kShaderContractCount ?
@@ -523,15 +529,16 @@ namespace community_shaders::render
 
         void recordQualificationBinding(
             ID3D11DeviceContext* context,
-            std::uint32_t contractPlusOne) noexcept
+            linear_lighting::ReplacementShaderBinding binding) noexcept
         {
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
                 return;
             }
-            const auto bit = qualificationContractBit(contractPlusOne);
+            const auto bit = qualificationContractBit(binding);
             if (!bit) {
                 return;
             }
+            const auto contractPlusOne = binding.contractPlusOne;
 
             qualificationReplacementShaderBinds.fetch_add(
                 1,
@@ -557,7 +564,7 @@ namespace community_shaders::render
             const auto state = linear_lighting::Runtime::get()
                                    .inspectReplacementPipelineState(
                                        context,
-                                       contractPlusOne);
+                                       binding);
             qualificationLastBindingState.store(state, std::memory_order_relaxed);
             qualificationBindingStateChecks.fetch_add(1, std::memory_order_relaxed);
             if ((state &
@@ -584,10 +591,12 @@ namespace community_shaders::render
                 return;
             }
             const auto bit = qualificationContractBit(
-                activeReplacementContractPlusOne);
+                activeReplacementBinding);
             if (!bit) {
                 return;
             }
+            const auto contractPlusOne =
+                activeReplacementBinding.contractPlusOne;
 
             qualificationReplacementDrawCalls.fetch_add(
                 1,
@@ -602,7 +611,7 @@ namespace community_shaders::render
                 return;
             }
             if (qualificationDrawVerifiedContractMask.test(
-                    activeReplacementContractPlusOne - 1,
+                    contractPlusOne - 1,
                     std::memory_order_relaxed)) {
                 return;
             }
@@ -610,12 +619,12 @@ namespace community_shaders::render
             const auto state = linear_lighting::Runtime::get()
                                    .inspectReplacementPipelineState(
                                        context,
-                                       activeReplacementContractPlusOne);
+                                       activeReplacementBinding);
             qualificationLastDrawState.store(state, std::memory_order_relaxed);
             qualificationDrawStateChecks.fetch_add(1, std::memory_order_relaxed);
             if (state == linear_lighting::PipelineBinding_All) {
                 qualificationDrawVerifiedContractMask.set(
-                    activeReplacementContractPlusOne - 1,
+                    contractPlusOne - 1,
                     std::memory_order_release);
             } else {
                 qualificationDrawStateFailures.fetch_add(
@@ -631,7 +640,7 @@ namespace community_shaders::render
             return linear_lighting::Runtime::get()
                 .scopeReplacementPixelConstants(
                     context,
-                    activeReplacementContractPlusOne);
+                    activeReplacementBinding);
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -732,13 +741,13 @@ namespace community_shaders::render
                 return;
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
-                activeReplacementContractPlusOne = 0;
+                activeReplacementBinding = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
-                activeReplacementContractPlusOne = 0;
+                activeReplacementBinding = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
@@ -757,7 +766,7 @@ namespace community_shaders::render
             if (selection.retainedForBind && selection.shader) {
                 selection.shader->Release();
             }
-            activeReplacementContractPlusOne = selection.contractPlusOne;
+            activeReplacementBinding = selection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
                 return;
@@ -765,10 +774,11 @@ namespace community_shaders::render
             activeQualificationSessionId =
                 qualificationActivatedSessionId.load(
                     std::memory_order_acquire);
-            if (selection.contractPlusOne != 0) {
+            if (selection.binding.family ==
+                linear_lighting::ReplacementShaderFamily::material) {
                 recordQualificationBinding(
                     context,
-                    selection.contractPlusOne);
+                    selection.binding);
             }
         }
 

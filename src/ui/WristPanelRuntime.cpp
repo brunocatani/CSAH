@@ -196,6 +196,7 @@ namespace community_shaders::ui
         std::uint64_t lastPublishedUiRevision{};
         std::uint64_t lastPublishedDiagnosticsRevision{};
         linear_lighting_telemetry::State telemetryLogState{};
+        bool skyReplacementReported{};
 
         void pushLatestSnapshot() noexcept;
         void ensureView() noexcept;
@@ -580,17 +581,19 @@ namespace community_shaders::ui
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
                 diagnostics::linearLightingQualificationSnapshot();
-            return runtime.replacementBinds ^ (runtime.geometryUpdates << 1) ^
-                (geometry.calls << 2) ^ (d3d.pixelShaderBindCalls << 3) ^
-                (static_cast<std::uint64_t>(geometry.vtableCellOwned) << 4) ^
+            return runtime.replacementBinds ^
+                (runtime.skyReplacementBinds << 1) ^
+                (runtime.geometryUpdates << 2) ^
+                (geometry.calls << 3) ^ (d3d.pixelShaderBindCalls << 4) ^
+                (static_cast<std::uint64_t>(geometry.vtableCellOwned) << 5) ^
                 (static_cast<std::uint64_t>(
-                      d3d.pixelShaderBindDetourEnabled) << 5) ^
-                (d3d.shaderHookValidationFailures << 6) ^
-                (qualification.generation << 7) ^
-                (qualification.reasonMask << 8) ^
-                (static_cast<std::uint64_t>(qualification.state) << 9) ^
+                      d3d.pixelShaderBindDetourEnabled) << 6) ^
+                (d3d.shaderHookValidationFailures << 7) ^
+                (qualification.generation << 8) ^
+                (qualification.reasonMask << 9) ^
+                (static_cast<std::uint64_t>(qualification.state) << 10) ^
                 (static_cast<std::uint64_t>(
-                     qualification.fullyVerifiedContracts) << 12);
+                     qualification.fullyVerifiedContracts) << 13);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -610,14 +613,21 @@ namespace community_shaders::ui
                 { "settings", settingsJson(settings) },
                 { "coverage",
                     {
-                        { "label", "Complete FO4VR DFPrepass corpus" },
+                        { "label", "FO4VR Linear Lighting shader coverage" },
                         { "verifiedShaderContracts",
                             runtime.verifiedShaderContracts },
                         { "expectedShaderContracts",
                             linear_lighting::Runtime::kShaderContractCount },
-                        { "fullFeaturePort",
+                        { "dfPrepassCoverageComplete",
                             runtime.verifiedShaderContracts ==
                                 linear_lighting::Runtime::kShaderContractCount },
+                        { "verifiedSkyShaderContracts",
+                            runtime.verifiedSkyShaderContracts },
+                        { "expectedSkyShaderContracts",
+                            linear_lighting::Runtime::kSkyShaderContractCount },
+                        { "skyCoverageComplete",
+                            runtime.verifiedSkyShaderContracts ==
+                                linear_lighting::Runtime::kSkyShaderContractCount },
                     } },
                 { "qualification",
                     {
@@ -644,6 +654,14 @@ namespace community_shaders::ui
                         { "geometryReady", runtime.geometryProviderReady },
                         { "matchingShaders", runtime.matchingShadersCreated },
                         { "trackedShaders", runtime.trackedOriginalShaders },
+                        { "matchingSkyShaders",
+                            runtime.matchingSkyShadersCreated },
+                        { "matchingSkyShaderMask",
+                            runtime.matchingSkyShaderContractMask },
+                        { "trackedSkyShaders",
+                            runtime.trackedOriginalSkyShaders },
+                        { "skyReplacementBinds",
+                            runtime.skyReplacementBinds },
                         { "shaderSelections", runtime.shaderSelectionCalls },
                         { "rejectedShaderContexts",
                             runtime.rejectedShaderContexts },
@@ -817,13 +835,15 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
                     runtime.frameDataUploads,
                     runtime.matchingShadersCreated,
                     runtime.trackedOriginalShaders,
+                    runtime.matchingSkyShadersCreated,
+                    runtime.trackedOriginalSkyShaders,
                     d3d.pixelShaderBindDetourEnabled,
                     geometry.vtableCellOwned,
                     d3d.pixelShaderBindCalls,
@@ -846,6 +866,16 @@ namespace community_shaders::ui
                     runtime.firstReplacementContractPlusOne ?
                         runtime.firstReplacementContractPlusOne - 1 : 0,
                     runtime.replacementBinds,
+                    runtime.frameDataUploads);
+            }
+            if (!skyReplacementReported && runtime.skyReplacementBinds > 0) {
+                skyReplacementReported = true;
+                logging::info(
+                    "Linear Lighting first Sky replacement proof: matchingShaders={}, trackedShaders={}, contractMask=0x{:04X}, replacementBinds={}, frameDataUploads={}.",
+                    runtime.matchingSkyShadersCreated,
+                    runtime.trackedOriginalSkyShaders,
+                    runtime.matchingSkyShaderContractMask,
+                    runtime.skyReplacementBinds,
                     runtime.frameDataUploads);
             }
             if (events.firstGeometryCall) {

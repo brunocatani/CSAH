@@ -64,6 +64,7 @@ namespace community_shaders::diagnostics
             std::uint64_t ambientTransformPreparedBaseline{};
             std::uint64_t ambientTransformPassThroughBaseline{};
             std::uint64_t ambientReplacementBindsBaseline{};
+            std::uint64_t skyReplacementBindsBaseline{};
             std::uint64_t directionalPowCallsBaseline{};
             std::uint64_t directionalPowModifiedBaseline{};
             std::uint64_t directionalPowPassThroughBaseline{};
@@ -401,7 +402,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 6 },
+                    { "schemaVersion", 7 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -446,6 +447,18 @@ namespace community_shaders::diagnostics
                                 capture.runtime.matchingShadersCreated },
                             { "trackedOriginalShaders",
                                 capture.runtime.trackedOriginalShaders },
+                            { "verifiedSkyShaderContracts",
+                                capture.runtime.verifiedSkyShaderContracts },
+                            { "matchingSkyShaderContractMask",
+                                capture.runtime.matchingSkyShaderContractMask },
+                            { "matchingSkyShadersCreated",
+                                capture.runtime.matchingSkyShadersCreated },
+                            { "trackedOriginalSkyShaders",
+                                capture.runtime.trackedOriginalSkyShaders },
+                            { "skyReplacementBinds",
+                                delta(
+                                    capture.runtime.skyReplacementBinds,
+                                    session.skyReplacementBindsBaseline) },
                             { "verifiedDFLightAmbientShaderContracts",
                                 capture.runtime
                                     .verifiedDFLightAmbientShaderContracts },
@@ -764,6 +777,8 @@ namespace community_shaders::diagnostics
                             geometry.ambientTransformPassThrough,
                         .ambientReplacementBindsBaseline =
                             runtime.dFLightAmbientReplacementBinds,
+                        .skyReplacementBindsBaseline =
+                            runtime.skyReplacementBinds,
                         .directionalPowCallsBaseline =
                             geometry.directionalPowCalls,
                         .directionalPowModifiedBaseline =

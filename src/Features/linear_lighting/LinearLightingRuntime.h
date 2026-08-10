@@ -18,6 +18,28 @@ namespace community_shaders::linear_lighting
 {
     class Runtime;
 
+    enum class ReplacementShaderFamily : std::uint8_t
+    {
+        none,
+        material,
+        sky,
+        dFLightAmbient,
+    };
+
+    enum ReplacementPixelConstantFlag : std::uint8_t
+    {
+        ReplacementPixelConstants_None = 0,
+        ReplacementPixelConstants_Frame = 1u << 0,
+        ReplacementPixelConstants_Geometry = 1u << 1,
+    };
+
+    struct ReplacementShaderBinding
+    {
+        ReplacementShaderFamily family{ ReplacementShaderFamily::none };
+        std::uint32_t contractPlusOne{};
+        std::uint8_t constantFlags{};
+    };
+
     // Owns the temporary pixel-constant-buffer state for one replacement
     // draw. The immediate context is non-owning and the scope must remain
     // inside the intercepted draw call.
@@ -43,9 +65,11 @@ namespace community_shaders::linear_lighting
             ID3D11DeviceContext* context,
             ID3D11Buffer* frameBuffer,
             ID3D11Buffer* geometryBuffer,
+            std::uint8_t constantFlags,
             std::atomic_uint64_t* restoreCounter) noexcept;
 
         ID3D11DeviceContext* context_{};
+        std::uint8_t constantFlags_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousFrameBuffer_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousGeometryBuffer_;
         std::atomic_uint64_t* restoreCounter_{};
@@ -61,6 +85,11 @@ namespace community_shaders::linear_lighting
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
         std::uint32_t firstReplacementContractPlusOne{};
+        std::uint32_t verifiedSkyShaderContracts{};
+        std::uint16_t matchingSkyShaderContractMask{};
+        std::uint32_t matchingSkyShadersCreated{};
+        std::uint32_t trackedOriginalSkyShaders{};
+        std::uint64_t skyReplacementBinds{};
         std::uint64_t shaderSelectionCalls{};
         std::uint64_t rejectedShaderContexts{};
         std::uint64_t inactiveShaderSelections{};
@@ -99,7 +128,7 @@ namespace community_shaders::linear_lighting
     struct PixelShaderSelection
     {
         ID3D11PixelShader* shader{};
-        std::uint32_t contractPlusOne{};
+        ReplacementShaderBinding binding{};
         bool retainedForBind{};
     };
 
@@ -107,6 +136,7 @@ namespace community_shaders::linear_lighting
     {
     public:
         static constexpr std::size_t kShaderContractCount = 288;
+        static constexpr std::size_t kSkyShaderContractCount = 8;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t
             kMaximumTrackedOriginalShadersPerContract = 8;
@@ -138,19 +168,19 @@ namespace community_shaders::linear_lighting
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
 
-        // Captures the engine's current b5/b8 bindings, installs the private
-        // replacement buffers for one draw, and restores the exact captured
-        // state at scope exit.
+        // Captures only the constant-buffer slots owned by the selected
+        // replacement family, installs the private buffers for one draw, and
+        // restores the exact captured state at scope exit.
         [[nodiscard]] ScopedReplacementPixelConstants
         scopeReplacementPixelConstants(
             ID3D11DeviceContext* context,
-            std::uint32_t contractPlusOne) noexcept;
+            ReplacementShaderBinding binding) noexcept;
 
         // Sampled by the qualification hooks only. D3D11 Get calls retain the
         // observed interfaces, which this method releases before returning.
         [[nodiscard]] std::uint32_t inspectReplacementPipelineState(
             ID3D11DeviceContext* context,
-            std::uint32_t contractPlusOne) const noexcept;
+            ReplacementShaderBinding binding) const noexcept;
 
         [[nodiscard]] std::uint64_t geometryUpdateGeneration() const noexcept;
         [[nodiscard]] bool dFLightAmbientDescriptorReady(
@@ -211,6 +241,9 @@ namespace community_shaders::linear_lighting
             kShaderContractCount>
             replacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSkyShaderContractCount>
+            skyReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientReplacementShaders_{};
         std::array<std::vector<std::byte>,
@@ -229,6 +262,14 @@ namespace community_shaders::linear_lighting
             originalShaders_{};
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
                        kMaximumTrackedOriginalShadersPerContract>,
+            kSkyShaderContractCount>
+            originalSkyShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kSkyShaderContractCount>
+            originalSkyShaders_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientOriginalShaderOwners_{};
         std::array<std::array<std::atomic<ID3D11PixelShader*>,
@@ -242,11 +283,15 @@ namespace community_shaders::linear_lighting
         AtomicContractMask matchingShaderContractMask_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
+        std::atomic_uint16_t matchingSkyShaderContractMask_{};
+        std::atomic_uint32_t matchingSkyShadersCreated_{};
+        std::atomic_uint32_t trackedOriginalSkyShaders_{};
         std::atomic_uint64_t shaderSelectionCalls_{};
         std::atomic_uint64_t rejectedShaderContexts_{};
         std::atomic_uint64_t inactiveShaderSelections_{};
         std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
+        std::atomic_uint64_t skyReplacementBinds_{};
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
         std::atomic_uint64_t matchingDFLightAmbientContractMask_{};
@@ -268,6 +313,8 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t frameDataUploads_{};
         std::array<std::atomic_bool, kShaderContractCount>
             originalCapacityWarningLogged_{};
+        std::array<std::atomic_bool, kSkyShaderContractCount>
+            originalSkyCapacityWarningLogged_{};
         std::array<std::atomic_bool, kDFLightAmbientShaderContractCount>
             dFLightAmbientCapacityWarningLogged_{};
         std::mutex shaderRegistryMutex_;

@@ -1,0 +1,42 @@
+[
+  {
+    "name": "SkyTechnique1_00000001",
+    "descriptor": 1,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_1_PS"
+  },
+  {
+    "name": "SkyTechnique2_00000002",
+    "descriptor": 2,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_2_PS"
+  },
+  {
+    "name": "SkyTechnique3_00000003",
+    "descriptor": 3,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_3_PS"
+  },
+  {
+    "name": "SkyTechnique4_00000004",
+    "descriptor": 4,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_4_PS"
+  },
+  {
+    "name": "SkyTechnique5_00000005",
+    "descriptor": 5,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_5_PS"
+  },
+  {
+    "name": "SkyTechnique6_00000006",
+    "descriptor": 6,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_6_PS"
+  },
+  {
+    "name": "SkyTechnique7_00000007",
+    "descriptor": 7,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_7_PS"
+  },
+  {
+    "name": "SkyTechnique8_00000008",
+    "descriptor": 8,
+    "resource": "IDR_LINEAR_LIGHTING_SKY_TECHNIQUE_8_PS"
+  }
+]

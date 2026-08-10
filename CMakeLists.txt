@@ -97,12 +97,26 @@ set(DFLIGHT_AMBIENT_PATCH_HEADER
   "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
 file(GLOB DFLIGHT_AMBIENT_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedDFLightAmbient/*.dxbc")
+set(SKY_LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/SkyLinearLightingContracts.json")
+set(SKY_LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_sky_linear_lighting_contracts.py")
+set(SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedSkyLinearLightingContracts.inl")
+set(SKY_LINEAR_LIGHTING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/SkyLinearLighting/SkyLinearLighting.hlsl")
+set(RESOURCE_SOURCE "${SOURCE_DIR}/resources.rc")
+file(GLOB SKY_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/SkyLinearLighting/*.dxbc")
+file(GLOB SKY_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedSkyLinearLighting/*.dxbc")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
+include("${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
@@ -130,9 +144,16 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${DFLIGHT_AMBIENT_CONTRACT_GENERATOR}"
   "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
   ${DFLIGHT_AMBIENT_SHADER_ASSETS}
+  "${SKY_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
+  "${SKY_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+  "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${SKY_LINEAR_LIGHTING_SHADER_SOURCE}"
+  ${SKY_LINEAR_LIGHTING_SHADER_ASSETS}
+  ${SKY_LINEAR_LIGHTING_VERIFIED_ASSETS}
   "${SOURCE_DIR}/support/NearAllocation.h"
   "${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake"
-  "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
+  "${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake"
+  "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
 
 add_custom_target(VerifyFo4VrLoader ALL
   COMMAND "${CMAKE_COMMAND}"
@@ -200,6 +221,17 @@ add_custom_target(VerifyDFLightAmbientReplacement ALL
   COMMENT "Verifying exact DFLight ambient replacement contract"
   VERBATIM)
 
+add_custom_target(VerifySkyLinearLighting ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DSKY_LINEAR_LIGHTING_SHADER_SOURCE=${SKY_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake"
+  COMMENT "Verifying frame-only Sky Linear Lighting ownership"
+  VERBATIM)
+
 set(LINEAR_LIGHTING_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/LinearLightingContracts.json")
 set(LINEAR_LIGHTING_CONTRACT_GENERATOR
@@ -222,6 +254,15 @@ add_custom_target(VerifyDFLightAmbientContracts ALL
     --output "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying generated DFLight ambient shader identities"
+  VERBATIM)
+
+add_custom_target(VerifySkyLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${SKY_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying FO4VR Sky Linear Lighting contracts"
   VERBATIM)
 
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
@@ -271,6 +312,7 @@ add_library(${PROJECT_NAME} SHARED
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.h"
   "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
   "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
@@ -297,6 +339,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyLinearLightingConstantScope
   VerifyLinearLightingContracts
   VerifyLinearLightingQualification
+  VerifySkyLinearLighting
+  VerifySkyLinearLightingContracts
   VerifyWristPanel)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -628,6 +672,31 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --output "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
       --check)
+  add_test(NAME FO4VRCommunityShaders.SkyLinearLightingRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${SKY_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+      --check)
+  add_executable(FO4VRCommunityShadersSkyLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/SkyLinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_definitions(
+    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    FO4VRCommunityShadersCore d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.SkyLinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersSkyLinearLightingShaderParityTests
+      "${ROOT_DIR}")
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"

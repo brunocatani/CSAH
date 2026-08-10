@@ -16,6 +16,10 @@ foreach(required IN ITEMS
     "PSGetConstantBuffers(8, 1, &previousGeometryBuffer)"
     "PSSetConstantBuffers(5, 1, &previousFrameBuffer)"
     "PSSetConstantBuffers(8, 1, &previousGeometryBuffer)"
+    "constantFlags_ & ReplacementPixelConstants_Frame"
+    "constantFlags_ & ReplacementPixelConstants_Geometry"
+    "binding.family == ReplacementShaderFamily::sky"
+    "validMaterial ? geometryBuffer_.Get() : nullptr"
     "scopeReplacementPixelConstants(")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
@@ -62,7 +66,7 @@ if(NOT found EQUAL -1)
 endif()
 
 foreach(required IN ITEMS
-    "activeReplacementContractPlusOne = selection.contractPlusOne"
+    "activeReplacementBinding = selection.binding"
     "scopeActiveReplacementPixelConstants("
     "PipelineBinding_SelectedReplacement")
   string(FIND "${hookSource}" "${required}" found)

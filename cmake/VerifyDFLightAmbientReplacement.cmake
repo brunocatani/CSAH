@@ -24,7 +24,8 @@ foreach(required IN ITEMS
     "readyDFLightAmbientContractMask_"
     "dFLightAmbientDescriptorReady("
     "replacement->AddRef()"
-    "return { replacement, 0, true };"
+    "ReplacementShaderFamily::dFLightAmbient"
+    "ReplacementPixelConstants_None"
     "rebuildDFLightAmbientReplacements(next.ambientGamma)")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
