@@ -305,6 +305,14 @@ namespace
         ShaderContract{ "GlowmapMeatCuffProjectedFiveMrt_L3_0040C043", 5, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGlowmapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_0140C046", 5, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "AdditionalAlphaMaskGlowmapMeatCuffProjectedFiveMrt_L3_0140C043", 5, true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapDismembermentTessellatedSixMrt_L4NoEarlyDepth_04280046", 6, false, false, true, false, false, true, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "GradientRemapDismembermentTessellatedSixMrt_L3_04280043", 6, true, false, true, false, false, true, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapDismembermentTessellatedSixMrt_L4NoEarlyDepth_05280046", 6, false, false, true, true, false, true, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapDismembermentTessellatedSixMrt_L3_05280043", 6, true, false, true, true, false, true, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "GradientRemapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_04408046", 5, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapMeatCuffProjectedFiveMrt_L3_04408043", 5, true, false, false, false, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapMeatCuffProjectedFiveMrt_L4NoEarlyDepth_05408046", 5, false, false, false, true, false, true, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskGradientRemapMeatCuffProjectedFiveMrt_L3_05408043", 5, true, false, false, true, false, true, false, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -884,8 +892,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             }
         }
         if (hasDismemberment) {
-            if (hasSkinTint) {
-                values[2] = kSkinTintColor;
+            if (hasSkinTint || hasGradientRemap) {
+                values[2] = hasSkinTint ? kSkinTintColor :
+                    std::array<float, 4>{ 0.55F, 0.0F, 0.0F, 0.0F };
                 values[3] = { 0.9F, 0.6F, 0.0F, 0.0F };
                 values[5] = values[4];
                 values[6] = { 1.0F, 0.0F, 0.0F, 0.0F };
@@ -913,10 +922,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (hasMeatCuff) {
             values[2][0] = meatCuffAlphaCase == MeatCuffAlphaCase::pass ?
                 values[2][0] : 0.01F;
-            if (hasSkinTint) {
+            if (hasSkinTint || hasGradientRemap) {
                 values[6] = values[4];
                 values[4] = values[3];
-                values[3] = kSkinTintColor;
+                values[3] = hasSkinTint ? kSkinTintColor :
+                    std::array<float, 4>{ 0.55F, 0.0F, 0.0F, 0.0F };
                 values[5] = {};
                 values[7] = { 1.0F, 0.0F, 0.0F, 0.0F };
                 values[8] = { 0.0F, 1.0F, 0.0F, 0.0F };
@@ -1531,7 +1541,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             kInstanceEmitColor : kEmitColor;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             float diffuse{};
-            if (contract.hasGradientRemap) {
+            if (contract.hasGradientRemap && !useDismemberment &&
+                !contract.hasMeatCuff) {
                 const auto gradientTexel = contract.hasVertexColor ? 1u : 3u;
                 diffuse = kGradientRemapTexture[gradientTexel][channel];
                 if (contract.hasGradientHair && contract.mrtCount == 5) {

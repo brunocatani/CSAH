@@ -26,11 +26,21 @@
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
 #endif
 
+#ifndef LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_GRADIENT_REMAP 0
+#endif
+
+#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_GRADIENT_REMAP
+#error Combined dismemberment skin tint and gradient remap are not verified.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if (LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP) && \
+    LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[12];
-#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP || \
+    LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[11];
 #else
     float4 cb2[10];
@@ -50,6 +60,9 @@ Texture2D<float4> TexSpecular : register(t2);
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 Texture2D<float4> TexGlow : register(t3);
 #endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+Texture2D<float4> TexGradientRemap : register(t5);
+#endif
 Texture2D<float4> TexDismembermentDiffuse : register(t9);
 Texture2D<float4> TexDismembermentNormal : register(t10);
 Texture2D<float4> TexDismembermentSpecular : register(t11);
@@ -64,6 +77,9 @@ SamplerState SampSpecular : register(s2);
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
 #endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+SamplerState SampGradientRemap : register(s5);
+#endif
 SamplerState SampDismembermentDiffuse : register(s9);
 SamplerState SampDismembermentNormal : register(s10);
 SamplerState SampDismembermentSpecular : register(s11);
@@ -71,7 +87,7 @@ SamplerState SampDismembermentSpecular : register(s11);
 SamplerState SampAdditionalAlpha : register(s12);
 #endif
 
-#if LINEAR_LIGHTING_SKIN_TINT
+#if LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_DISMEMBERMENT_INTERPOLATION cb2[3]
 #define LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES cb2[5]
 #define LINEAR_LIGHTING_DISMEMBERMENT_BASIS_X cb2[6]
@@ -152,6 +168,19 @@ PSOutput PSMain(PSInput input)
 #endif
     const bool useDismemberment = input.dismembermentSelector.y > 0.0;
 
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    const float gradientRemapSource =
+        TexDiffuse.Sample(SampDiffuse, input.uv).y;
+    float gradientRemapRow = cb2[2].x;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0;
+#endif
+    const float4 gradientRemap = TexGradientRemap.SampleLevel(
+        SampGradientRemap,
+        float2(pow(gradientRemapSource, 0.454545), gradientRemapRow),
+        0.0);
+#endif
+
     float2 specularSample;
     float3 projectedNormal;
     if (useDismemberment)
@@ -174,6 +203,9 @@ PSOutput PSMain(PSInput input)
     else
     {
         specularSample = TexSpecular.Sample(SampSpecular, input.uv).xy;
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+        specularSample.y *= gradientRemap.w;
+#endif
 #if LINEAR_LIGHTING_MODEL_SPACE_NORMALS
         const float3 modelNormal =
             (TexNormal.Sample(SampNormal, input.uv).xyz * 2.0) - 1.0;
@@ -243,6 +275,9 @@ PSOutput PSMain(PSInput input)
     }
     else
     {
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+        diffuse = gradientRemap.xyz;
+#else
         diffuse = TexDiffuse.Sample(SampDiffuse, input.uv).xyz;
 #if LINEAR_LIGHTING_VERTEX_COLOR
         diffuse *= input.vertexColor.xyz;
@@ -261,6 +296,7 @@ PSOutput PSMain(PSInput input)
             (skinTintGamma < 0.5) ? skinTintDark : skinTintLight;
         const float3 skinTint = pow(abs(skinTintGammaResult), 2.2);
         diffuse = lerp(diffuse, skinTint, cb2[2].w);
+#endif
 #endif
     }
     const float fade = (LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.w == -1.0) ?

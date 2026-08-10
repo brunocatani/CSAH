@@ -1,0 +1,3 @@
+#define LINEAR_LIGHTING_MEAT_CUFF 1
+#define LINEAR_LIGHTING_GRADIENT_REMAP 1
+#include "MeatCuffProjectedFiveMrt_L4_00408042.LinearLightingCandidate.hlsl"

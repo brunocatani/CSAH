@@ -22,11 +22,21 @@
 #define LINEAR_LIGHTING_TEXTURED_EMISSION 0
 #endif
 
+#ifndef LINEAR_LIGHTING_GRADIENT_REMAP
+#define LINEAR_LIGHTING_GRADIENT_REMAP 0
+#endif
+
+#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_GRADIENT_REMAP
+#error Combined meat-cuff skin tint and gradient remap are not verified.
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
-#if LINEAR_LIGHTING_SKIN_TINT && LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#if (LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP) && \
+    LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[11];
-#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
+#elif LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP || \
+    LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK
     float4 cb2[10];
 #else
     float4 cb2[9];
@@ -46,6 +56,9 @@ Texture2D<float4> TexSpecular : register(t2);
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 Texture2D<float4> TexGlow : register(t3);
 #endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+Texture2D<float4> TexGradientRemap : register(t5);
+#endif
 Texture2D<float4> TexMeatCuffDiffuse : register(t9);
 Texture2D<float4> TexMeatCuffNormal : register(t10);
 Texture2D<float4> TexMeatCuffSpecular : register(t11);
@@ -60,6 +73,9 @@ SamplerState SampSpecular : register(s2);
 #if LINEAR_LIGHTING_TEXTURED_EMISSION
 SamplerState SampGlow : register(s3);
 #endif
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+SamplerState SampGradientRemap : register(s5);
+#endif
 SamplerState SampMeatCuffDiffuse : register(s9);
 SamplerState SampMeatCuffNormal : register(s10);
 SamplerState SampMeatCuffSpecular : register(s11);
@@ -67,7 +83,7 @@ SamplerState SampMeatCuffSpecular : register(s11);
 SamplerState SampAdditionalAlpha : register(s12);
 #endif
 
-#if LINEAR_LIGHTING_SKIN_TINT
+#if LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_GRADIENT_REMAP
 #define LINEAR_LIGHTING_MEAT_CUFF_INTERPOLATION cb2[4]
 #define LINEAR_LIGHTING_MEAT_CUFF_PROPERTIES cb2[6]
 #define LINEAR_LIGHTING_MEAT_CUFF_ORIENTATION_X cb2[7]
@@ -184,6 +200,17 @@ PSOutput PSMain(PSInput input)
     const float3 baseNormalSample = TexNormal.Sample(SampNormal, baseUv).xyz;
     const float2 baseSpecularSample = TexSpecular.Sample(
         SampSpecular, baseUv).xy;
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+    const float gradientRemapSource = baseDiffuseSample.y;
+    float gradientRemapRow = cb2[3].x;
+#if LINEAR_LIGHTING_VERTEX_COLOR
+    gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0;
+#endif
+    const float4 gradientRemap = TexGradientRemap.SampleLevel(
+        SampGradientRemap,
+        float2(pow(gradientRemapSource, 0.454545), gradientRemapRow),
+        0.0);
+#endif
 
     float3 projectedNormal;
     if (invalidCuffIndex)
@@ -206,7 +233,13 @@ PSOutput PSMain(PSInput input)
             dot(surfaceTangent, tangentNormal),
             dot(surfaceBitangent, tangentNormal),
             dot(surfaceNormal, tangentNormal));
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+        diffuseSample.xyz = gradientRemap.xyz;
+        diffuseSample.w = baseDiffuseSample.w;
 #if LINEAR_LIGHTING_VERTEX_COLOR
+        diffuseSample.w *= input.vertexColor.w;
+#endif
+#elif LINEAR_LIGHTING_VERTEX_COLOR
         diffuseSample = baseDiffuseSample * input.vertexColor;
 #endif
 #if LINEAR_LIGHTING_SKIN_TINT
@@ -231,9 +264,14 @@ PSOutput PSMain(PSInput input)
 #endif
         clip(-1.0);
 #if !LINEAR_LIGHTING_VERTEX_COLOR && !LINEAR_LIGHTING_SKIN_TINT
+#if !LINEAR_LIGHTING_GRADIENT_REMAP
         diffuseSample = baseDiffuseSample;
 #endif
+#endif
         specularSample = baseSpecularSample;
+#if LINEAR_LIGHTING_GRADIENT_REMAP
+        specularSample.y *= gradientRemap.w;
+#endif
     }
     else
     {

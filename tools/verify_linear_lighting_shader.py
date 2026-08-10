@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 251:
-        fail("Linear Lighting manifest must contain exactly 251 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 259:
+        fail("Linear Lighting manifest must contain exactly 259 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -249,6 +249,10 @@ def verify_source_contracts(
         "TexAdditionalAlphaNoise.Load",
         "SampAdditionalAlpha, input.uv",
         "LinearLightingGlowmap(TexGlow.Sample(SampGlow, input.uv).xyz)",
+        "TexGradientRemap.SampleLevel",
+        "gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0",
+        "specularSample.y *= gradientRemap.w",
+        "diffuse = gradientRemap.xyz",
         "diffuse = lerp(diffuse, skinTint, cb2[2].w)",
         "LinearLightingDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
@@ -281,6 +285,10 @@ def verify_source_contracts(
         "TexAdditionalAlphaNoise.Load",
         "SampAdditionalAlpha, baseUv",
         "LinearLightingGlowmap(TexGlow.Sample(SampGlow, baseUv).xyz)",
+        "TexGradientRemap.SampleLevel",
+        "gradientRemapRow += pow(input.vertexColor.x, 0.454545) - 1.0",
+        "diffuseSample.xyz = gradientRemap.xyz",
+        "specularSample.y *= gradientRemap.w",
         "lerp(diffuseSample.xyz, skinTint, cb2[3].w)",
         "clip(-1.0)",
         "clip(alpha - 0.015686)",
@@ -648,8 +656,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 127:
-        fail(f"expected 127 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 131:
+        fail(f"expected 131 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 39:
         fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
@@ -659,17 +667,17 @@ def verify_source_contracts(
             "expected 28 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
-    if tessellated_contracts != 33:
-        fail(f"expected 33 tessellated contracts, found {tessellated_contracts}")
-    if dismemberment_contracts != 16:
+    if tessellated_contracts != 37:
+        fail(f"expected 37 tessellated contracts, found {tessellated_contracts}")
+    if dismemberment_contracts != 20:
         fail(
-            f"expected 16 dismemberment contracts, found {dismemberment_contracts}"
+            f"expected 20 dismemberment contracts, found {dismemberment_contracts}"
         )
-    if meat_cuff_contracts != 16:
-        fail(f"expected 16 meat-cuff contracts, found {meat_cuff_contracts}")
-    if additional_alpha_mask_contracts != 74:
+    if meat_cuff_contracts != 20:
+        fail(f"expected 20 meat-cuff contracts, found {meat_cuff_contracts}")
+    if additional_alpha_mask_contracts != 78:
         fail(
-            "expected 74 additional-alpha-mask contracts, "
+            "expected 78 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 9:
@@ -677,9 +685,9 @@ def verify_source_contracts(
             "expected 9 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
-    if gradient_remap_contracts != 72:
+    if gradient_remap_contracts != 80:
         fail(
-            "expected 72 gradient-remap contracts, "
+            "expected 80 gradient-remap contracts, "
             f"found {gradient_remap_contracts}"
         )
     if gradient_hair_contracts != 27:
@@ -1049,7 +1057,9 @@ def verify(root: Path) -> None:
                 and 15 in original["samplers"]
                 and 13 in original["textures"]
                 and 15 in original["textures"],
-                original["constant_buffers"].get(2) in (7, 8, 9)
+                "#define LINEAR_LIGHTING_GRADIENT_REMAP 1" in source_text
+                and original["constant_buffers"].get(2)
+                in (7, 8, 9, 10, 11, 12)
                 and 5 in original["samplers"]
                 and 5 in original["textures"],
                 "#define LINEAR_LIGHTING_GRADIENT_HAIR 1" in source_text,
@@ -1138,7 +1148,11 @@ def verify(root: Path) -> None:
                 "#define LINEAR_LIGHTING_DISMEMBERMENT 1" in source_text
                 and original["constant_buffers"].get(2)
                 == 10
-                + int("#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text)
+                + int(
+                    "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+                    or "#define LINEAR_LIGHTING_GRADIENT_REMAP 1"
+                    in source_text
+                )
                 + int(
                     "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
                     in source_text
@@ -1153,7 +1167,11 @@ def verify(root: Path) -> None:
                 and len(original["outputs"]) == 5
                 and original["constant_buffers"].get(2)
                 == 9
-                + int("#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text)
+                + int(
+                    "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+                    or "#define LINEAR_LIGHTING_GRADIENT_REMAP 1"
+                    in source_text
+                )
                 + int(
                     "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1"
                     in source_text
