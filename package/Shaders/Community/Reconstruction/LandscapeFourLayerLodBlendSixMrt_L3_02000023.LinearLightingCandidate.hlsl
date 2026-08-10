@@ -1,0 +1,4 @@
+#define LINEAR_LIGHTING_VERTEX_COLOR 1
+#define LINEAR_LIGHTING_LANDSCAPE_LOD 1
+#define LINEAR_LIGHTING_LAND_LOD_BLEND 1
+#include "LandscapeFourLayerSixMrt_L3_00000023.LinearLightingCandidate.hlsl"

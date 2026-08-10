@@ -52,6 +52,8 @@ namespace
         bool hasDismemberment{};
         bool hasMeatCuff{};
         bool hasCombinedMaterial{};
+        bool hasLandscapeLayers{};
+        bool hasInstancedLandscapeLayers{};
     };
 
     constexpr std::array kShaderContracts{
@@ -328,6 +330,9 @@ namespace
         ShaderContract{ "LandscapeLodMenuScreenInstancedSixMrt_L3_08010203", 6, true, true, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false },
         ShaderContract{ "LandLodBlendMenuScreenSixMrt_L4_02010002", 6, false, false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false },
         ShaderContract{ "LandLodBlendMenuScreenSixMrt_L3_02010003", 6, true, false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false },
+        ShaderContract{ "LandscapeFourLayerSixMrt_L3_00000023", 6, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "LandscapeFourLayerLodBlendSixMrt_L3_02000023", 6, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true, false },
+        ShaderContract{ "InstancedLandscapeFourLayerLodBlendSixMrt_L3_0A000023", 6, true, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, true, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -439,6 +444,32 @@ namespace
     constexpr Pixel kAdditionalAlphaNoise{ 0.75F, 0.0F, 0.0F, 0.0F };
     constexpr Pixel kLandscapeLodDiffuse{ 0.65F, 0.7F, 0.75F, 1.0F };
     constexpr Pixel kLandscapeLodNormal{ 0.6F, 0.4F, 0.0F, 1.0F };
+    constexpr std::array<Pixel, 4> kLandscapeDiffuseLayers{
+        Pixel{ 0.1F, 0.5F, 0.75F, 1.0F },
+        Pixel{ 0.65F, 0.2F, 0.4F, 1.0F },
+        Pixel{ 0.3F, 0.8F, 0.25F, 1.0F },
+        Pixel{ 0.9F, 0.35F, 0.6F, 1.0F },
+    };
+    constexpr std::array<Pixel, 4> kLandscapeNormalLayers{
+        Pixel{ 0.45F, 0.55F, 0.0F, 1.0F },
+        Pixel{ 0.6F, 0.45F, 0.0F, 1.0F },
+        Pixel{ 0.4F, 0.65F, 0.0F, 1.0F },
+        Pixel{ 0.55F, 0.35F, 0.0F, 1.0F },
+    };
+    constexpr std::array<Pixel, 4> kLandscapeSpecularLayers{
+        Pixel{ 0.2F, 0.35F, 0.0F, 1.0F },
+        Pixel{ 0.45F, 0.7F, 0.0F, 1.0F },
+        Pixel{ 0.65F, 0.25F, 0.0F, 1.0F },
+        Pixel{ 0.3F, 0.8F, 0.0F, 1.0F },
+    };
+    constexpr std::array<float, 4> kLandscapeLayerWeights{
+        0.4F,
+        0.3F,
+        0.2F,
+        0.1F,
+    };
+    constexpr Pixel kLandscapeLodMultiplier{ 0.9F, 0.8F, 0.7F, 1.0F };
+    constexpr float kLandscapeLodBlend = 0.35F;
     constexpr Pixel kBoneTintLookup{ 0.1F, 0.75F, 0.2F, 0.6F };
     constexpr Pixel kBoneTintVertexColor{ 0.2F, 0.3F, 0.4F, 0.625F };
     constexpr std::array<Pixel, 4> kBoneTintPalette{
@@ -556,6 +587,8 @@ namespace
         bool hasFaceDetail,
         bool hasDismemberment,
         bool hasCombinedMaterial,
+        bool hasLandscapeLayers,
+        bool hasInstancedLandscapeLayers,
         bool useDismemberment,
         bool hasMeatCuff,
         std::uint32_t meatCuffCase,
@@ -593,6 +626,14 @@ struct VSOutput
     float4 vertexColor : COLOR0;
 #endif
 #endif
+#if HAS_INSTANCED_LANDSCAPE_LAYERS
+    nointerpolation uint landscapeRecordIndex : COLOR2;
+#endif
+#if HAS_LANDSCAPE_LAYERS
+    float2 lodMultiplierUv : TEXCOORD6;
+    float4 landscapeLayerWeights : TEXCOORD7;
+    float3 landscapeLodCoordinatesAndBlend : TEXCOORD8;
+#endif
 #if HAS_MEAT_CUFF
     float2 cuffIndex : TEXCOORD6;
     float3 cuffOrientation : TEXCOORD7;
@@ -610,11 +651,11 @@ struct VSOutput
 #if IS_INSTANCED || HAS_COMBINED_MATERIAL
     nointerpolation uint instanceDataIndex : COLOR2;
 #endif
-#if HAS_LANDSCAPE_LOD && !IS_INSTANCED
+#if HAS_LANDSCAPE_LOD && !IS_INSTANCED && !HAS_LANDSCAPE_LAYERS
     float2 landscapeLodCoordinates : TEXCOORD9;
 #endif
     nointerpolation uint eyeIndex : EYEINDEX;
-#if HAS_LANDSCAPE_LOD && IS_INSTANCED
+#if HAS_LANDSCAPE_LOD && IS_INSTANCED && !HAS_LANDSCAPE_LAYERS
     float2 landscapeLodCoordinates : TEXCOORD9;
 #endif
 };
@@ -653,6 +694,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if HAS_VERTEX_COLOR
     output.vertexColor = float4(0.8, 0.7, 0.6, 0.9);
 #endif
+#if HAS_INSTANCED_LANDSCAPE_LAYERS
+    output.landscapeRecordIndex = 0;
+#endif
+#if HAS_LANDSCAPE_LAYERS
+    output.lodMultiplierUv = float2(0.25, 0.75);
+    output.landscapeLayerWeights = float4(0.4, 0.3, 0.2, 0.1);
+    output.landscapeLodCoordinatesAndBlend =
+        float3(128.0, 256.0, 0.35);
+#endif
 #if HAS_MEAT_CUFF
     output.cuffIndex = float2(TEST_MEAT_CUFF_INDEX, 0.0);
     output.cuffOrientation = float3(
@@ -673,7 +723,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #if IS_INSTANCED || HAS_COMBINED_MATERIAL
     output.instanceDataIndex = IS_INSTANCED ? 2 : 0;
 #endif
-#if HAS_LANDSCAPE_LOD
+#if HAS_LANDSCAPE_LOD && !HAS_LANDSCAPE_LAYERS
     output.landscapeLodCoordinates = float2(128.0, 256.0);
 #endif
     output.eyeIndex = TEST_EYE_INDEX;
@@ -697,6 +747,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             { "HAS_FACE_DETAIL", hasFaceDetail ? "1" : "0" },
             { "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" },
             { "HAS_COMBINED_MATERIAL", hasCombinedMaterial ? "1" : "0" },
+            { "HAS_LANDSCAPE_LAYERS", hasLandscapeLayers ? "1" : "0" },
+            { "HAS_INSTANCED_LANDSCAPE_LAYERS",
+                hasInstancedLandscapeLayers ? "1" : "0" },
             { "USE_DISMEMBERMENT_LAYER", useDismemberment ? "1" : "0" },
             { "HAS_MEAT_CUFF", hasMeatCuff ? "1" : "0" },
             { "TEST_MEAT_CUFF_INDEX", meatCuffIndex },
@@ -761,6 +814,26 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         float value;
     };
     static_assert(sizeof(CombinedDepthData) == 100);
+
+    struct LandscapeLayerIndicesData
+    {
+        std::array<float, 4> reserved0;
+        std::array<float, 2> reserved1;
+        std::uint32_t lodTextureSlice;
+        std::uint32_t diffuse0;
+        std::uint32_t normal0;
+        std::uint32_t specular0;
+        std::uint32_t diffuse1;
+        std::uint32_t normal1;
+        std::uint32_t specular1;
+        std::uint32_t diffuse2;
+        std::uint32_t normal2;
+        std::uint32_t specular2;
+        std::uint32_t diffuse3;
+        std::uint32_t normal3;
+        std::uint32_t specular3;
+    };
+    static_assert(sizeof(LandscapeLayerIndicesData) == 76);
 
     template <class T>
     [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createStructuredBuffer(
@@ -887,6 +960,46 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return view;
     }
 
+    [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTextureArray(
+        ID3D11Device& device,
+        const std::array<Pixel, 4>& pixels)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 1;
+        description.Height = 1;
+        description.MipLevels = 1;
+        description.ArraySize = static_cast<UINT>(pixels.size());
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        std::array<D3D11_SUBRESOURCE_DATA, 4> initial{};
+        for (std::size_t index = 0; index < initial.size(); ++index) {
+            initial[index].pSysMem = pixels[index].data();
+            initial[index].SysMemPitch = kFloat4Size;
+        }
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device.CreateTexture2D(&description, initial.data(), &texture),
+            "CreateTexture2D(four-slice array input)");
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+        viewDescription.Format = description.Format;
+        viewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        viewDescription.Texture2DArray.MostDetailedMip = 0;
+        viewDescription.Texture2DArray.MipLevels = 1;
+        viewDescription.Texture2DArray.FirstArraySlice = 0;
+        viewDescription.Texture2DArray.ArraySize = description.ArraySize;
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device.CreateShaderResourceView(
+                texture.Get(),
+                &viewDescription,
+                &view),
+            "CreateShaderResourceView(four-slice array input)");
+        return view;
+    }
+
     [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createTexture2x2Array(
         ID3D11Device& device,
         const std::array<Pixel, 4>& pixels)
@@ -1005,6 +1118,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasDismemberment,
         bool hasMeatCuff,
         bool hasCombinedMaterial,
+        bool hasLandscapeLayers,
         AdditionalAlphaCase additionalAlphaCase,
         MeatCuffAlphaCase meatCuffAlphaCase)
     {
@@ -1049,6 +1163,19 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (hasAdditionalAlphaMask) {
                 values[flagsIndex + 1u] = maskParameters;
             }
+            return values;
+        }
+        if (hasLandscapeLayers) {
+            values[3] = { 1.0F, 0.0F, 0.0F, 0.0F };
+            for (std::size_t index = 4; index < 8; ++index) {
+                values[index] = {
+                    1.0F,
+                    1.0F,
+                    0.4F,
+                    caseIndex == 2 ? -1.0F : 0.6F,
+                };
+            }
+            values[8] = depthParameters;
             return values;
         }
         if (hasDismemberment) {
@@ -1336,6 +1463,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool hasDismemberment,
         bool hasMeatCuff,
         bool hasCombinedMaterial,
+        bool hasLandscapeLayers,
+        bool hasInstancedLandscapeLayers,
         AdditionalAlphaCase additionalAlphaCase =
             AdditionalAlphaCase::disabled,
         MeatCuffAlphaCase meatCuffAlphaCase = MeatCuffAlphaCase::pass)
@@ -1352,6 +1481,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             hasDismemberment,
             hasMeatCuff,
             hasCombinedMaterial,
+            hasLandscapeLayers,
             additionalAlphaCase,
             meatCuffAlphaCase);
         const auto geometryData = makeGeometryData(caseIndex);
@@ -1425,6 +1555,31 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 combinedDepthData.data(),
                 combinedDepthData.size(),
             });
+        const std::array landscapeLayerIndicesData{
+            LandscapeLayerIndicesData{
+                .reserved0 = {},
+                .reserved1 = {},
+                .lodTextureSlice = 2,
+                .diffuse0 = 0,
+                .normal0 = 0,
+                .specular0 = 0,
+                .diffuse1 = 1,
+                .normal1 = 1,
+                .specular1 = 1,
+                .diffuse2 = 2,
+                .normal2 = 2,
+                .specular2 = 2,
+                .diffuse3 = 3,
+                .normal3 = 3,
+                .specular3 = 3,
+            },
+        };
+        const auto landscapeLayerIndicesView = createStructuredBuffer(
+            device,
+            std::span<const LandscapeLayerIndicesData>{
+                landscapeLayerIndicesData.data(),
+                landscapeLayerIndicesData.size(),
+            });
 
         const std::array<Pixel, 4> texturePixels{
             kDiffuseTexture,
@@ -1440,6 +1595,42 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 createTexture(device, texturePixels[index]);
             rawTextureViews[index] = textureViews[index].Get();
         }
+        std::array<ComPtr<ID3D11ShaderResourceView>, 12>
+            landscapeLayerViews;
+        std::array<ID3D11ShaderResourceView*, 12> rawLandscapeLayerViews{};
+        for (std::size_t index = 0; index < 4; ++index) {
+            landscapeLayerViews[index] = createTexture(
+                device, kLandscapeDiffuseLayers[index]);
+            landscapeLayerViews[index + 4] = createTexture(
+                device, kLandscapeNormalLayers[index]);
+            landscapeLayerViews[index + 8] = createTexture(
+                device, kLandscapeSpecularLayers[index]);
+        }
+        for (std::size_t index = 0; index < landscapeLayerViews.size();
+             ++index) {
+            rawLandscapeLayerViews[index] = landscapeLayerViews[index].Get();
+        }
+        const std::array<ComPtr<ID3D11ShaderResourceView>, 4>
+            instancedLandscapeLayerViews{
+                createTextureArray(device, kLandscapeDiffuseLayers),
+                createTextureArray(device, kLandscapeNormalLayers),
+                createTextureArray(device, kLandscapeSpecularLayers),
+                createTextureArray(
+                    device,
+                    std::array<Pixel, 4>{
+                        Pixel{ 0.3F, 0.4F, 0.5F, 1.0F },
+                        Pixel{ 0.6F, 0.7F, 0.8F, 1.0F },
+                        kLandscapeLodMultiplier,
+                        Pixel{ 0.2F, 0.3F, 0.4F, 1.0F },
+                    }),
+            };
+        const std::array<ID3D11ShaderResourceView*, 4>
+            rawInstancedLandscapeLayerViews{
+                instancedLandscapeLayerViews[0].Get(),
+                instancedLandscapeLayerViews[1].Get(),
+                instancedLandscapeLayerViews[2].Get(),
+                instancedLandscapeLayerViews[3].Get(),
+            };
         const auto additionalAlphaTexture = createTexture(
             device,
             kAdditionalAlphaTexture);
@@ -1519,22 +1710,43 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context.VSSetShader(&vertexShader, nullptr, 0);
         context.PSSetShader(&pixelShader, nullptr, 0);
-        context.PSSetShaderResources(
-            0,
-            static_cast<UINT>(rawTextureViews.size()),
-            rawTextureViews.data());
+        if (hasLandscapeLayers) {
+            if (hasInstancedLandscapeLayers) {
+                context.PSSetShaderResources(
+                    0,
+                    static_cast<UINT>(
+                        rawInstancedLandscapeLayerViews.size()),
+                    rawInstancedLandscapeLayerViews.data());
+            } else {
+                context.PSSetShaderResources(
+                    0,
+                    static_cast<UINT>(rawLandscapeLayerViews.size()),
+                    rawLandscapeLayerViews.data());
+            }
+        } else {
+            context.PSSetShaderResources(
+                0,
+                static_cast<UINT>(rawTextureViews.size()),
+                rawTextureViews.data());
+        }
+        std::array<ID3D11SamplerState*, 16> allSamplers{};
+        allSamplers.fill(sampler.Get());
         context.PSSetSamplers(
             0,
-            static_cast<UINT>(samplers.size()),
-            samplers.data());
+            hasLandscapeLayers ? 12u : static_cast<UINT>(samplers.size()),
+            hasLandscapeLayers ? allSamplers.data() : samplers.data());
         auto* rawScreenTexture = screenTexture.Get();
         auto* rawScreenSampler = sampler.Get();
-        context.PSSetShaderResources(4, 1, &rawScreenTexture);
-        context.PSSetSamplers(4, 1, &rawScreenSampler);
+        if (!hasLandscapeLayers) {
+            context.PSSetShaderResources(4, 1, &rawScreenTexture);
+            context.PSSetSamplers(4, 1, &rawScreenSampler);
+        }
         auto* rawFaceDetailTexture = faceDetailTexture.Get();
         auto* rawFaceDetailSampler = sampler.Get();
-        context.PSSetShaderResources(8, 1, &rawFaceDetailTexture);
-        context.PSSetSamplers(8, 1, &rawFaceDetailSampler);
+        if (!hasLandscapeLayers) {
+            context.PSSetShaderResources(8, 1, &rawFaceDetailTexture);
+            context.PSSetSamplers(8, 1, &rawFaceDetailSampler);
+        }
         auto* rawAdditionalAlphaTexture = additionalAlphaTexture.Get();
         auto* rawAdditionalAlphaNoise = additionalAlphaNoise.Get();
         context.PSSetShaderResources(12, 1, &rawAdditionalAlphaTexture);
@@ -1550,6 +1762,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             context.PSSetSamplers(13, 1, &rawLandscapeLodSampler);
             context.PSSetSamplers(15, 1, &rawLandscapeLodSampler);
         }
+        if (hasLandscapeLayers && !hasInstancedLandscapeLayers &&
+            hasLandscapeLod) {
+            const auto landscapeLodMultiplier = createTexture(
+                device, kLandscapeLodMultiplier);
+            auto* rawLandscapeLodMultiplier = landscapeLodMultiplier.Get();
+            context.PSSetShaderResources(
+                14, 1, &rawLandscapeLodMultiplier);
+            context.PSSetSamplers(14, 1, &rawLandscapeLodSampler);
+        }
         auto* rawGradientRemapTexture = gradientRemapTexture.Get();
         auto* rawGradientRemapSampler = sampler.Get();
         if (hasGradientRemap) {
@@ -1564,6 +1785,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             auto* rawCombinedDepth = combinedDepthView.Get();
             context.PSSetShaderResources(4, 1, &rawCombinedMaterial);
             context.PSSetShaderResources(6, 1, &rawCombinedDepth);
+        }
+        if (hasInstancedLandscapeLayers) {
+            auto* rawLandscapeLayerIndices =
+                landscapeLayerIndicesView.Get();
+            context.PSSetShaderResources(
+                4, 1, &rawLandscapeLayerIndices);
         }
         auto* rawBoneTintLookup = boneTintLookup.Get();
         auto* rawBoneTintPalette = boneTintPalette.Get();
@@ -1618,13 +1845,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context.Draw(3, 0);
 
         const auto result = readRenderTargets(context, targets);
-        constexpr std::array<ID3D11ShaderResourceView*, 4> nullViews{};
+        constexpr std::array<ID3D11ShaderResourceView*, 16> nullViews{};
         constexpr std::array<ID3D11RenderTargetView*, kRenderTargetCount>
             nullTargets{};
         context.PSSetShaderResources(
             0,
             static_cast<UINT>(nullViews.size()),
             nullViews.data());
+        constexpr std::array<ID3D11SamplerState*, 16> nullSamplers{};
+        context.PSSetSamplers(
+            0,
+            static_cast<UINT>(nullSamplers.size()),
+            nullSamplers.data());
         ID3D11ShaderResourceView* nullView{};
         context.PSSetShaderResources(4, 1, &nullView);
         context.PSSetShaderResources(6, 1, &nullView);
@@ -1773,7 +2005,25 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             kInstanceEmitColor : kEmitColor;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             float diffuse{};
-            if (contract.hasGradientRemap && !useDismemberment &&
+            if (contract.hasLandscapeLayers) {
+                for (std::size_t layer = 0;
+                     layer < kLandscapeLayerWeights.size();
+                     ++layer) {
+                    diffuse += kLandscapeDiffuseLayers[layer][channel] *
+                        kLandscapeLayerWeights[layer];
+                }
+                if (contract.hasLandscapeLod) {
+                    const auto landscapeLodDiffuse =
+                        (kLandscapeLodDiffuse[channel] * 3.777778F) -
+                        2.006F;
+                    const auto lodDiffuse =
+                        kLandscapeLodMultiplier[channel] *
+                        landscapeLodDiffuse;
+                    diffuse += (lodDiffuse - diffuse) *
+                        kLandscapeLodBlend;
+                }
+                diffuse *= kVertexColor[channel];
+            } else if (contract.hasGradientRemap && !useDismemberment &&
                 !contract.hasMeatCuff) {
                 const auto gradientTexel = contract.hasVertexColor ? 1u : 3u;
                 diffuse = kGradientRemapTexture[gradientTexel][channel];
@@ -1888,7 +2138,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             fail("D3D11 WARP did not provide feature level 11_0");
         }
 
-        std::array<ComPtr<ID3D11VertexShader>, 16384> vertexShaders;
+        std::array<ComPtr<ID3D11VertexShader>, 65536> vertexShaders;
         const auto getVertexShader = [&device, &vertexShaders] (
                                          std::size_t index) {
             if (vertexShaders[index].Get() != nullptr) {
@@ -1903,6 +2153,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto hasFaceDetail = (index & 64u) != 0;
             const auto hasDismemberment = (index & 128u) != 0;
             const auto hasCombinedMaterial = (index & 8192u) != 0;
+            const auto hasLandscapeLayers = (index & 16384u) != 0;
+            const auto hasInstancedLandscapeLayers =
+                (index & 32768u) != 0;
             const auto eyeIndex = static_cast<std::uint32_t>(
                 (index >> 8u) & 1u);
             const auto useDismemberment = (index & 512u) != 0;
@@ -1919,6 +2172,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 hasFaceDetail,
                 hasDismemberment,
                 hasCombinedMaterial,
+                hasLandscapeLayers,
+                hasInstancedLandscapeLayers,
                 useDismemberment,
                 hasMeatCuff,
                 meatCuffCase,
@@ -1941,6 +2196,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (hasFaceDetail ? ", face TEXCOORD6" : "") +
                     (hasDismemberment ? ", dismemberment inputs" : "") +
                     (hasCombinedMaterial ? ", combined material" : "") +
+                    (hasLandscapeLayers ? ", four-layer landscape" : "") +
+                    (hasInstancedLandscapeLayers ?
+                            ", instanced landscape layout" :
+                            "") +
                     (useDismemberment ? ", dismemberment layer" : "") +
                     (hasMeatCuff ? ", meat-cuff inputs" : "") +
                     (hasMeatCuff ?
@@ -1964,7 +2223,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (std::string(contract.name) +
                     ".LinearLightingCandidate.dxbc"));
             const auto usesGlowmap = usesTextureSlot(vanillaBytes, 3) &&
-                !contract.hasStandaloneHair;
+                !contract.hasStandaloneHair &&
+                !contract.hasLandscapeLayers;
             ComPtr<ID3D11PixelShader> vanillaShader;
             ComPtr<ID3D11PixelShader> replacementShader;
             require(
@@ -2008,7 +2268,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (useDismemberment ? 512u : 0u) |
                     (contract.hasMeatCuff ? 1024u : 0u) |
                     (static_cast<std::size_t>(meatCuffCase) << 11u) |
-                    (contract.hasCombinedMaterial ? 8192u : 0u));
+                    (contract.hasCombinedMaterial ? 8192u : 0u) |
+                    (contract.hasLandscapeLayers ? 16384u : 0u) |
+                    (contract.hasInstancedLandscapeLayers ? 32768u : 0u));
                 for (std::size_t caseIndex = 0; caseIndex < kCaseCount;
                      ++caseIndex) {
                 const auto vanilla = render(
@@ -2030,7 +2292,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
                     contract.hasMeatCuff,
-                    contract.hasCombinedMaterial);
+                    contract.hasCombinedMaterial,
+                    contract.hasLandscapeLayers,
+                    contract.hasInstancedLandscapeLayers);
                 if (contract.hasMeatCuff && caseIndex == 0 &&
                     isClearResult(vanilla)) {
                     failures.push_back(
@@ -2069,7 +2333,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
                     contract.hasMeatCuff,
-                    contract.hasCombinedMaterial);
+                    contract.hasCombinedMaterial,
+                    contract.hasLandscapeLayers,
+                    contract.hasInstancedLandscapeLayers);
                 auto mismatch = compare(
                     contract,
                     kDisabledCase.name,
@@ -2100,7 +2366,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
                     contract.hasMeatCuff,
-                    contract.hasCombinedMaterial);
+                    contract.hasCombinedMaterial,
+                    contract.hasLandscapeLayers,
+                    contract.hasInstancedLandscapeLayers);
                 mismatch = compare(
                     contract,
                     kIdentityCase.name,
@@ -2131,7 +2399,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     contract.hasStandaloneHair,
                     contract.hasDismemberment,
                     contract.hasMeatCuff,
-                    contract.hasCombinedMaterial);
+                    contract.hasCombinedMaterial,
+                    contract.hasLandscapeLayers,
+                    contract.hasInstancedLandscapeLayers);
                 const auto expected = makeEnabledExpected(
                     contract,
                     caseIndex,
@@ -2191,6 +2461,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasDismemberment,
                         contract.hasMeatCuff,
                         contract.hasCombinedMaterial,
+                        contract.hasLandscapeLayers,
+                        contract.hasInstancedLandscapeLayers,
                         maskCase.value);
                     const auto replacement = render(
                         *device.Get(),
@@ -2212,6 +2484,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         contract.hasDismemberment,
                         contract.hasMeatCuff,
                         contract.hasCombinedMaterial,
+                        contract.hasLandscapeLayers,
+                        contract.hasInstancedLandscapeLayers,
                         maskCase.value);
                     auto mismatch = compare(
                         contract,
@@ -2284,6 +2558,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             contract.hasDismemberment,
                             true,
                             contract.hasCombinedMaterial,
+                            contract.hasLandscapeLayers,
+                            contract.hasInstancedLandscapeLayers,
                             AdditionalAlphaCase::disabled,
                             proofCase.alphaCase);
                         const auto replacement = render(
@@ -2306,6 +2582,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             contract.hasDismemberment,
                             true,
                             contract.hasCombinedMaterial,
+                            contract.hasLandscapeLayers,
+                            contract.hasInstancedLandscapeLayers,
                             AdditionalAlphaCase::disabled,
                             proofCase.alphaCase);
                         auto mismatch = compare(

@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 273:
-        fail("Linear Lighting manifest must contain exactly 273 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 276:
+        fail("Linear Lighting manifest must contain exactly 276 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -320,6 +320,30 @@ def verify_source_contracts(
             fail(f"combined-material shader is missing verified contract: {token}")
     if "[earlydepthstencil]" in combined_source_text:
         fail("combined-material shaders must preserve no-early-depth behavior")
+    landscape_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "Reconstruction"
+        / "LandscapeFourLayerSixMrt_L3_00000023.LinearLightingCandidate.hlsl"
+    )
+    landscape_source_text = landscape_source.read_text(encoding="utf-8")
+    for token in (
+        "struct LandscapeLayerIndices",
+        "StructuredBuffer<LandscapeLayerIndices> LandscapeIndices : register(t4)",
+        "Texture2DArray<float4> TexDiffuseLayers : register(t0)",
+        "Texture2D<float4> TexDiffuse3 : register(t3)",
+        "Texture2D<float4> TexNormal3 : register(t7)",
+        "Texture2D<float4> TexSpecular3 : register(t11)",
+        "AccumulateLandscapeLayer(",
+        "lodMultiplier * landscapeLodDiffuse",
+        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingEmitColor(cb2[1].xyz)",
+        "input.eyeIndex * 4u",
+    ):
+        if token not in landscape_source_text:
+            fail(f"four-layer landscape shader is missing contract: {token}")
     meat_cuff_source = (
         root
         / "package"
@@ -584,6 +608,8 @@ def verify_source_contracts(
     dismemberment_contracts = 0
     meat_cuff_contracts = 0
     combined_material_contracts = 0
+    landscape_layer_contracts = 0
+    instanced_landscape_layer_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -604,6 +630,10 @@ def verify_source_contracts(
             meat_cuff_contracts += 1
         if "Combined" in str(contract["label"]):
             combined_material_contracts += 1
+        if "LandscapeFourLayer" in str(contract["label"]):
+            landscape_layer_contracts += 1
+            if "#define LINEAR_LIGHTING_INSTANCED_LANDSCAPE 1" in source_text:
+                instanced_landscape_layer_contracts += 1
         if "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text:
             additional_alpha_mask_contracts += 1
         if "#define LINEAR_LIGHTING_LANDSCAPE_LOD 1" in source_text:
@@ -717,8 +747,8 @@ def verify_source_contracts(
             in source_text
         ):
             standalone_projected_model_space_contracts += 1
-    if vertex_contracts != 138:
-        fail(f"expected 138 COLOR0 contracts, found {vertex_contracts}")
+    if vertex_contracts != 141:
+        fail(f"expected 141 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 39:
         fail(f"expected 39 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 8:
@@ -741,9 +771,9 @@ def verify_source_contracts(
             "expected 82 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
-    if landscape_lod_contracts != 12:
+    if landscape_lod_contracts != 14:
         fail(
-            "expected 12 landscape-LOD contracts, "
+            "expected 14 landscape-LOD contracts, "
             f"found {landscape_lod_contracts}"
         )
     if gradient_remap_contracts != 82:
@@ -755,6 +785,16 @@ def verify_source_contracts(
         fail(
             "expected 7 combined-material contracts, "
             f"found {combined_material_contracts}"
+        )
+    if landscape_layer_contracts != 3:
+        fail(
+            "expected 3 four-layer landscape contracts, "
+            f"found {landscape_layer_contracts}"
+        )
+    if instanced_landscape_layer_contracts != 1:
+        fail(
+            "expected 1 instanced four-layer landscape contract, "
+            f"found {instanced_landscape_layer_contracts}"
         )
     if gradient_hair_contracts != 27:
         fail(
@@ -924,7 +964,7 @@ def verify(root: Path) -> None:
     for token in (
         "output.eyeIndex = TEST_EYE_INDEX;",
         '{ "TEST_EYE_INDEX", eyeIndex == 0 ? "0" : "1" }',
-        "std::array<ComPtr<ID3D11VertexShader>, 16384>",
+        "std::array<ComPtr<ID3D11VertexShader>, 65536>",
         "for (std::uint32_t eyeIndex = 0; eyeIndex < 2; ++eyeIndex)",
         "output.dismembermentSelector = float2(",
         '{ "HAS_DISMEMBERMENT", hasDismemberment ? "1" : "0" }',
@@ -956,6 +996,7 @@ def verify(root: Path) -> None:
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
+        r'(?:,\s*(true|false))?(?:,\s*(true|false))?'
         r'(?:,\s*(true|false))?\s*\}',
         parity_text,
     )
@@ -963,6 +1004,8 @@ def verify(root: Path) -> None:
         str,
         tuple[
             int,
+            bool,
+            bool,
             bool,
             bool,
             bool,
@@ -1002,6 +1045,8 @@ def verify(root: Path) -> None:
         has_dismemberment,
         has_meat_cuff,
         has_combined_material,
+        has_landscape_layers,
+        has_instanced_landscape_layers,
     ) in parity_entries:
         if name in parity_contracts:
             fail(f"duplicate WARP parity contract: {name}")
@@ -1024,6 +1069,8 @@ def verify(root: Path) -> None:
             has_dismemberment == "true",
             has_meat_cuff == "true",
             has_combined_material == "true",
+            has_landscape_layers == "true",
+            has_instanced_landscape_layers == "true",
         )
     expected_names = {str(contract["label"]) for contract in contracts}
     if set(parity_contracts) != expected_names:
@@ -1275,6 +1322,19 @@ def verify(root: Path) -> None:
                 and any(
                     semantic[0] == "COLOR" and semantic[1] == 2
                     for semantic in original["input_signature"]
+                ),
+                "LandscapeFourLayer" in label
+                and original["constant_buffers"].get(2) == 9
+                and any(
+                    semantic[0] == "TEXCOORD" and semantic[1] == 7
+                    for semantic in original["input_signature"]
+                ),
+                "#define LINEAR_LIGHTING_INSTANCED_LANDSCAPE 1" in source_text
+                and "dcl_resource_structured t4, 76" in vanilla_assembly
+                and all(
+                    f"dcl_resource_texture2darray (float,float,float,float) t{slot}"
+                    in vanilla_assembly
+                    for slot in (0, 1, 2, 3)
                 ),
             )
             if parity_contracts[label] != expected_parity_metadata:
