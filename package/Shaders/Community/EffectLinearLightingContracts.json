@@ -314,7 +314,7 @@
   {
     "name": "EffectTexturedMultiplyBlendPremultipliedAlpha_50000044",
     "descriptor": 1342177348,
-    "aliases": [],
+    "aliases": [1342177350],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_MULTIPLY_BLEND_PREMULTIPLIED_ALPHA_PS"
   },
   {
@@ -640,5 +640,17 @@
     "descriptor": 1342193733,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_50004045_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendParticle_000000CD",
+    "descriptor": 205,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MULTIPLY_PARTICLE_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendParticlePremultipliedAlpha_400000CD",
+    "descriptor": 1073742029,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MULTIPLY_PARTICLE_PREMULTIPLIED_ALPHA_PS"
   }
 ]

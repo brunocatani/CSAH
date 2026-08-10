@@ -138,7 +138,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 107> kEffectContracts{ {
+    constexpr std::array<EffectContract, 109> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -246,6 +246,8 @@ namespace
         { "EffectVertexColorTexturedMultiplyBlendGrayscaleColorAlphaPremultipliedAlpha_40006045", 0x40006045U },
         { "EffectVertexColorTexturedAdditiveSoftGrayscaleColorAlphaPremultipliedAlpha_40007025", 0x40007025U },
         { "EffectVertexColorTexturedMultiplyBlendGrayscaleAlphaPremultipliedAlpha_50004045", 0x50004045U },
+        { "EffectVertexColorTexturedMultiplyBlendParticle_000000CD", 0x000000CDU },
+        { "EffectVertexColorTexturedMultiplyBlendParticlePremultipliedAlpha_400000CD", 0x400000CDU },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1085,7 +1087,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 107 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 109 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
