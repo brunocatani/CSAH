@@ -148,5 +148,9 @@
   { "name": "BoneTintFaceDetailSixMrt_L4_C0000042", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_SIX_MRT_PS" },
   { "name": "BoneTintFaceDetailSixMrt_L3_C0000043", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_SIX_MRT_VERTEX_COLOR_PS" },
   { "name": "BoneTintFaceDetailAlphaTestSixMrt_L4_C0000142", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_ALPHA_TEST_SIX_MRT_PS" },
-  { "name": "BoneTintFaceDetailModelSpaceNormalsSixMrt_L4_C0002042", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" }
+  { "name": "BoneTintFaceDetailModelSpaceNormalsSixMrt_L4_C0002042", "resource": "IDR_LINEAR_LIGHTING_BONE_TINT_FACE_DETAIL_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "GradientRemapSixMrt_L4_04000002", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_EARLY_SIX_MRT_PS" },
+  { "name": "GradientRemapSixMrt_L3_04000003", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_EARLY_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "GradientRemapAlphaTestSixMrt_L4_04000102", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_EARLY_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "GradientRemapAlphaTestSixMrt_L3_04000103", "resource": "IDR_LINEAR_LIGHTING_GRADIENT_REMAP_EARLY_ALPHA_TEST_SIX_MRT_VERTEX_COLOR_PS" }
 ]

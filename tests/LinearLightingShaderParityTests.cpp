@@ -201,6 +201,10 @@ namespace
         ShaderContract{ "BoneTintFaceDetailSixMrt_L3_C0000043", 6, true, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "BoneTintFaceDetailAlphaTestSixMrt_L4_C0000142", 6, false, false, false, false, false, false, false, true, false, false, true },
         ShaderContract{ "BoneTintFaceDetailModelSpaceNormalsSixMrt_L4_C0002042", 6, false, false, false, false, false, false, false, true, false, false, true, true },
+        ShaderContract{ "GradientRemapSixMrt_L4_04000002", 6, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapSixMrt_L3_04000003", 6, true, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestSixMrt_L4_04000102", 6, false, false, false, false, false, true },
+        ShaderContract{ "GradientRemapAlphaTestSixMrt_L3_04000103", 6, true, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
