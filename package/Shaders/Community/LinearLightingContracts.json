@@ -132,5 +132,9 @@
   { "name": "SkinTintCharacterLightMaskSixMrt_L4_00040002", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_CHARACTER_LIGHT_MASK_SIX_MRT_PS" },
   { "name": "SkinTintVertexColorSixMrt_L3_00040003", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_VERTEX_COLOR_SIX_MRT_PS" },
   { "name": "SkinTintAlphaTestSixMrt_L4_00040102", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_ALPHA_TEST_SIX_MRT_PS" },
-  { "name": "SkinTintCharacterLightMaskModelSpaceNormalsSixMrt_L4_00042002", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_CHARACTER_LIGHT_MASK_MODEL_SPACE_NORMALS_SIX_MRT_PS" }
+  { "name": "SkinTintCharacterLightMaskModelSpaceNormalsSixMrt_L4_00042002", "resource": "IDR_LINEAR_LIGHTING_SKIN_TINT_CHARACTER_LIGHT_MASK_MODEL_SPACE_NORMALS_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskSkinTintSixMrt_L4_01040002", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SKIN_TINT_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskSkinTintSixMrt_L3_01040003", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SKIN_TINT_SIX_MRT_VERTEX_COLOR_PS" },
+  { "name": "AdditionalAlphaMaskSkinTintAlphaTestSixMrt_L4_01040102", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SKIN_TINT_ALPHA_TEST_SIX_MRT_PS" },
+  { "name": "AdditionalAlphaMaskSkinTintModelSpaceNormalsSixMrt_L4_01042002", "resource": "IDR_LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK_SKIN_TINT_MODEL_SPACE_NORMALS_SIX_MRT_PS" }
 ]

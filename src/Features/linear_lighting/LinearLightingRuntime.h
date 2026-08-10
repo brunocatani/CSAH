@@ -56,7 +56,7 @@ namespace community_shaders::linear_lighting
     class Runtime final
     {
     public:
-        static constexpr std::size_t kShaderContractCount = 134;
+        static constexpr std::size_t kShaderContractCount = 138;
         static_assert(kShaderContractCount <= kContractMaskCapacity);
 
         static Runtime& get() noexcept;

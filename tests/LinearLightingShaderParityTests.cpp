@@ -185,6 +185,10 @@ namespace
         ShaderContract{ "SkinTintVertexColorSixMrt_L3_00040003", 6, true, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "SkinTintAlphaTestSixMrt_L4_00040102", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
         ShaderContract{ "SkinTintCharacterLightMaskModelSpaceNormalsSixMrt_L4_00042002", 6, false, false, false, false, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskSkinTintSixMrt_L4_01040002", 6, false, false, false, true, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskSkinTintSixMrt_L3_01040003", 6, true, false, false, true, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskSkinTintAlphaTestSixMrt_L4_01040102", 6, false, false, false, true, false, false, false, false, false, false, false, false, true },
+        ShaderContract{ "AdditionalAlphaMaskSkinTintModelSpaceNormalsSixMrt_L4_01042002", 6, false, false, false, true, false, false, false, false, false, false, false, false, true },
     };
 
     enum class AdditionalAlphaCase : std::uint8_t
@@ -748,7 +752,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 0.4F,
                 caseIndex == 2 ? -1.0F : 0.6F,
             };
-            values[6] = depthParameters;
+            if (hasAdditionalAlphaMask) {
+                values[6] = maskParameters;
+                values[7] = depthParameters;
+            } else {
+                values[6] = depthParameters;
+            }
             return values;
         }
         if (hasAdditionalAlphaMask) {

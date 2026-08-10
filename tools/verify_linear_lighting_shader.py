@@ -167,8 +167,8 @@ def load_contracts(root: Path) -> tuple[Path, list[dict[str, object]]]:
         root / "package" / "Shaders" / "Community" / "LinearLightingContracts.json"
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, list) or len(manifest) != 134:
-        fail("Linear Lighting manifest must contain exactly 134 contracts")
+    if not isinstance(manifest, list) or len(manifest) != 138:
+        fail("Linear Lighting manifest must contain exactly 138 contracts")
 
     reconstruction = root / "package" / "Shaders" / "Community" / "Reconstruction"
     verified = root / "package" / "Shaders" / "Community" / "VerifiedLinearLighting"
@@ -340,6 +340,7 @@ def verify_source_contracts(
         "(skinTintGamma < 0.5) ? skinTintDark : skinTintLight",
         "float3 tintedDiffuse = pow(abs(skinTintBlend), 2.2)",
         "diffuse = lerp(diffuse, tintedDiffuse, cb2[2].w)",
+        "LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK && (LINEAR_LIGHTING_GRADIENT_REMAP || LINEAR_LIGHTING_SKIN_TINT)",
         "#if LINEAR_LIGHTING_FACE_DETAIL || LINEAR_LIGHTING_SKIN_TINT",
         "output.target3.w = 0.019608;",
     ):
@@ -393,6 +394,7 @@ def verify_source_contracts(
     pipboy_screen_contracts = 0
     face_detail_contracts = 0
     skin_tint_contracts = 0
+    combined_skin_tint_additional_alpha_contracts = 0
     for contract in contracts:
         source = contract["source"]
         assert isinstance(source, Path)
@@ -432,22 +434,27 @@ def verify_source_contracts(
             face_detail_contracts += 1
         if "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text:
             skin_tint_contracts += 1
-    if vertex_contracts != 68:
-        fail(f"expected 68 COLOR0 contracts, found {vertex_contracts}")
+        if (
+            "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
+            and "#define LINEAR_LIGHTING_ADDITIONAL_ALPHA_MASK 1" in source_text
+        ):
+            combined_skin_tint_additional_alpha_contracts += 1
+    if vertex_contracts != 69:
+        fail(f"expected 69 COLOR0 contracts, found {vertex_contracts}")
     if glowmap_contracts != 20:
         fail(f"expected 20 glowmap contracts, found {glowmap_contracts}")
     if instanced_contracts != 7:
         fail(f"expected 7 instanced contracts, found {instanced_contracts}")
-    if model_space_normal_contracts != 12:
+    if model_space_normal_contracts != 13:
         fail(
-            "expected 12 model-space-normal contracts, "
+            "expected 13 model-space-normal contracts, "
             f"found {model_space_normal_contracts}"
         )
     if tessellated_contracts != 16:
         fail(f"expected 16 tessellated contracts, found {tessellated_contracts}")
-    if additional_alpha_mask_contracts != 36:
+    if additional_alpha_mask_contracts != 40:
         fail(
-            "expected 36 additional-alpha-mask contracts, "
+            "expected 40 additional-alpha-mask contracts, "
             f"found {additional_alpha_mask_contracts}"
         )
     if landscape_lod_contracts != 7:
@@ -485,8 +492,13 @@ def verify_source_contracts(
         )
     if face_detail_contracts != 5:
         fail(f"expected 5 face-detail contracts, found {face_detail_contracts}")
-    if skin_tint_contracts != 4:
-        fail(f"expected 4 skin-tint contracts, found {skin_tint_contracts}")
+    if skin_tint_contracts != 8:
+        fail(f"expected 8 skin-tint contracts, found {skin_tint_contracts}")
+    if combined_skin_tint_additional_alpha_contracts != 4:
+        fail(
+            "expected 4 combined skin-tint/additional-alpha contracts, "
+            f"found {combined_skin_tint_additional_alpha_contracts}"
+        )
 
 
 def verify(root: Path) -> None:
@@ -746,7 +758,7 @@ def verify(root: Path) -> None:
                 and "#define LINEAR_LIGHTING_MODEL_SPACE_NORMALS 1"
                 in source_text,
                 "#define LINEAR_LIGHTING_SKIN_TINT 1" in source_text
-                and original["constant_buffers"].get(2) == 7,
+                and original["constant_buffers"].get(2) in (7, 8),
             )
             if parity_contracts[label] != expected_parity_metadata:
                 fail(
