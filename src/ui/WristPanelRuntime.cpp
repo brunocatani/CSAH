@@ -9,6 +9,7 @@
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
+#include "support/SettingsPath.h"
 #include "ui/LinearLightingTelemetryGate.h"
 #include "ui/PointerClickGate.h"
 #include "ui/WristPanelPose.h"
@@ -1753,7 +1754,7 @@ namespace community_shaders::ui
         void refreshPrismaPanelSetting(std::string_view trigger) noexcept
         {
             try {
-                const auto path = linear_lighting::settingsPath();
+                const auto path = settings_path::resolveIniPath();
                 const auto loaded = wrist_panel_settings::load(path);
                 const auto previous = prismaPanelEnabled.load(
                     std::memory_order_acquire);

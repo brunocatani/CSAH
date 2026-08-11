@@ -9,6 +9,10 @@ if(NOT DEFINED WRIST_PANEL_SETTINGS_SOURCE OR
     NOT EXISTS "${WRIST_PANEL_SETTINGS_SOURCE}")
   message(FATAL_ERROR "WRIST_PANEL_SETTINGS_SOURCE is missing")
 endif()
+if(NOT DEFINED SETTINGS_PATH_SOURCE OR
+    NOT EXISTS "${SETTINGS_PATH_SOURCE}")
+  message(FATAL_ERROR "SETTINGS_PATH_SOURCE is missing")
+endif()
 if(NOT DEFINED LINEAR_LIGHTING_RUNTIME_SOURCE OR
     NOT EXISTS "${LINEAR_LIGHTING_RUNTIME_SOURCE}")
   message(FATAL_ERROR "LINEAR_LIGHTING_RUNTIME_SOURCE is missing")
@@ -20,6 +24,7 @@ endif()
 file(READ "${WRIST_PANEL_SOURCE}" source)
 file(READ "${WRIST_PANEL_POSE_SOURCE}" poseSource)
 file(READ "${WRIST_PANEL_SETTINGS_SOURCE}" settingsSource)
+file(READ "${SETTINGS_PATH_SOURCE}" settingsPathSource)
 file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${WRIST_PANEL_VIEW_SOURCE}" viewSource)
 
@@ -85,6 +90,31 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Wrist-panel source regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "SHGetFolderPathW"
+    "CSIDL_MYDOCUMENTS"
+    "L\"My Games\""
+    "L\"Fallout4VR\""
+    "L\"FO4VRCommunityShaders_Config\""
+    "L\"FO4VRCommunityShaders.ini\""
+    "std::filesystem::create_directories")
+  string(FIND "${settingsPathSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Settings-path regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "GetModuleFileNameW"
+    "Data\\F4SE\\Plugins")
+  string(FIND "${settingsPathSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Settings-path regression: forbidden fallback '${forbidden}'")
   endif()
 endforeach()
 

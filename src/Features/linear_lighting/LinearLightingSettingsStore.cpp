@@ -1,10 +1,10 @@
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 
 #include "support/Logger.h"
+#include "support/SettingsPath.h"
 
 #include <Windows.h>
 
-#include <array>
 #include <cerrno>
 #include <cmath>
 #include <cwchar>
@@ -89,35 +89,11 @@ namespace community_shaders::linear_lighting
         }
     }
 
-    std::filesystem::path settingsPath() noexcept
-    {
-        HMODULE module{};
-        if (!GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCWSTR>(&settingsPath),
-                &module)) {
-            return {};
-        }
-        std::array<wchar_t, 32768> buffer{};
-        const auto length = GetModuleFileNameW(
-            module,
-            buffer.data(),
-            static_cast<DWORD>(buffer.size()));
-        if (!length || length >= buffer.size()) {
-            return {};
-        }
-        return std::filesystem::path(
-                   std::wstring_view(buffer.data(), length))
-            .parent_path() /
-            L"FO4VRCommunityShaders.ini";
-    }
-
     Settings loadSettings() noexcept
     {
         const Settings defaults{};
         auto result = defaults;
-        const auto path = settingsPath();
+        const auto path = settings_path::resolveIniPath();
         std::error_code pathError;
         if (path.empty() ||
             !std::filesystem::is_regular_file(path, pathError) ||
@@ -190,8 +166,11 @@ namespace community_shaders::linear_lighting
 
     bool saveSettings(const Settings& settings) noexcept
     {
-        const auto path = settingsPath();
-        if (path.empty()) {
+        const auto path = settings_path::resolveIniPath();
+        if (!settings_path::ensureParentDirectory(path)) {
+            logging::error(
+                "Community Shaders settings directory is unavailable for '{}'.",
+                path.string());
             return false;
         }
         const auto safe = sanitize(settings);

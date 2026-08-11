@@ -87,6 +87,8 @@ set(WRIST_PANEL_SETTINGS_SOURCE
   "${SOURCE_DIR}/ui/WristPanelSettings.cpp")
 set(WRIST_PANEL_SETTINGS_HEADER
   "${SOURCE_DIR}/ui/WristPanelSettings.h")
+set(SETTINGS_PATH_SOURCE "${SOURCE_DIR}/support/SettingsPath.cpp")
+set(SETTINGS_PATH_HEADER "${SOURCE_DIR}/support/SettingsPath.h")
 set(WRIST_PANEL_VIEW_SOURCE
   "${ROOT_DIR}/view/index.html")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
@@ -224,6 +226,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_POSE_SOURCE}"
   "${WRIST_PANEL_SETTINGS_SOURCE}"
   "${WRIST_PANEL_SETTINGS_HEADER}"
+  "${SETTINGS_PATH_SOURCE}"
+  "${SETTINGS_PATH_HEADER}"
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
@@ -319,6 +323,7 @@ add_custom_target(VerifyWristPanel ALL
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
     "-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}"
     "-DWRIST_PANEL_SETTINGS_SOURCE=${WRIST_PANEL_SETTINGS_SOURCE}"
+    "-DSETTINGS_PATH_SOURCE=${SETTINGS_PATH_SOURCE}"
     "-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
@@ -600,6 +605,8 @@ add_library(${PROJECT_NAME} SHARED
   "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
+  "${SETTINGS_PATH_SOURCE}"
+  "${SETTINGS_PATH_HEADER}"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
   "${D3D11_HOOK_SOURCE}"
@@ -666,6 +673,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   minhook::minhook
   nlohmann_json::nlohmann_json
   spdlog::spdlog
+  shell32
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE "${SOURCE_DIR}/PCH.h")
@@ -759,6 +767,25 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.LinearLightingSettings
     COMMAND FO4VRCommunityShadersLinearLightingSettingsTests)
 
+  add_executable(FO4VRCommunityShadersSettingsPathTests
+    "${ROOT_DIR}/tests/SettingsPathTests.cpp"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersSettingsPathTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersSettingsPathTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersSettingsPathTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersSettingsPathTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersSettingsPathTests PRIVATE shell32)
+  add_test(NAME FO4VRCommunityShaders.SettingsPath
+    COMMAND FO4VRCommunityShadersSettingsPathTests)
+
   add_executable(FO4VRCommunityShadersFixedShaderBindingLookupTests
     "${ROOT_DIR}/tests/FixedShaderBindingLookupTests.cpp")
   target_compile_features(
@@ -786,7 +813,7 @@ if(BUILD_FO4VR_CS_TESTS)
       -P "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
-      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DWRIST_PANEL_SETTINGS_SOURCE=${WRIST_PANEL_SETTINGS_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DWRIST_PANEL_SETTINGS_SOURCE=${WRIST_PANEL_SETTINGS_SOURCE}' '-DSETTINGS_PATH_SOURCE=${SETTINGS_PATH_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
 
   add_test(NAME FO4VRCommunityShaders.D3D11HookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
