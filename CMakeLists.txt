@@ -172,7 +172,20 @@ file(GLOB EFFECT_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/EffectLinearLighting/*.dxbc")
 file(GLOB EFFECT_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedEffectLinearLighting/*.dxbc")
+set(IBL_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/ibl/IblRuntime.cpp")
+set(IBL_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/ibl/IblRuntime.h")
+set(IBL_PROJECTION_MODEL
+  "${SOURCE_DIR}/Features/ibl/IblProjectionModel.h")
+set(IBL_PROJECTION_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/IBL/DiffuseIblProjectionCS.hlsl")
+set(IBL_PROJECTION_SHADER_ASSET
+  "${ROOT_DIR}/package/Shaders/Community/IBL/DiffuseIblProjectionCS.dxbc")
+set(IBL_PROJECTION_SHADER_VERIFIER
+  "${ROOT_DIR}/tools/verify_ibl_projection_shader.py")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
+include("${ROOT_DIR}/cmake/VerifyIblFoundation.cmake")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
@@ -196,6 +209,13 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
+  "${IBL_RUNTIME_SOURCE}"
+  "${IBL_RUNTIME_HEADER}"
+  "${IBL_PROJECTION_MODEL}"
+  "${IBL_PROJECTION_SHADER_SOURCE}"
+  "${IBL_PROJECTION_SHADER_ASSET}"
+  "${IBL_PROJECTION_SHADER_VERIFIER}"
+  "${ROOT_DIR}/cmake/VerifyIblFoundation.cmake"
   "${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake"
   "${LINEAR_LIGHTING_RUNTIME_SOURCE}"
   "${LINEAR_LIGHTING_RUNTIME_HEADER}"
@@ -289,6 +309,27 @@ add_custom_target(VerifyD3D11Hooks ALL
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   COMMENT "Verifying D3D11 method-detour ownership contract"
+  VERBATIM)
+
+add_custom_target(VerifyIblFoundation ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DIBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}"
+    "-DIBL_RUNTIME_HEADER=${IBL_RUNTIME_HEADER}"
+    "-DIBL_PROJECTION_MODEL=${IBL_PROJECTION_MODEL}"
+    "-DIBL_PROJECTION_SHADER_SOURCE=${IBL_PROJECTION_SHADER_SOURCE}"
+    "-DIBL_PROJECTION_SHADER_ASSET=${IBL_PROJECTION_SHADER_ASSET}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyIblFoundation.cmake"
+  COMMENT "Verifying FO4VR-native IBL projection foundation"
+  VERBATIM)
+
+add_custom_target(VerifyIblProjectionShaderAsset ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${IBL_PROJECTION_SHADER_VERIFIER}"
+    --root "${ROOT_DIR}"
+    --check
+  COMMENT "Verifying generated IBL projection shader identity"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingConstantScope ALL
@@ -512,6 +553,9 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.h"
   "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingContractMask.h"
+  "${IBL_RUNTIME_SOURCE}"
+  "${IBL_RUNTIME_HEADER}"
+  "${IBL_PROJECTION_MODEL}"
   "${POINT_LIGHT_HOOK_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h"
@@ -544,6 +588,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
+  VerifyIblFoundation
+  VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
   VerifyParticleLinearLighting
@@ -714,6 +760,16 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
 
+  add_test(NAME FO4VRCommunityShaders.IblFoundationSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DIBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}' '-DIBL_RUNTIME_HEADER=${IBL_RUNTIME_HEADER}' '-DIBL_PROJECTION_MODEL=${IBL_PROJECTION_MODEL}' '-DIBL_PROJECTION_SHADER_SOURCE=${IBL_PROJECTION_SHADER_SOURCE}' '-DIBL_PROJECTION_SHADER_ASSET=${IBL_PROJECTION_SHADER_ASSET}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DRESOURCE_SOURCE=${RESOURCE_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyIblFoundation.cmake'")
+
+  add_test(NAME FO4VRCommunityShaders.IblProjectionShaderAsset
+    COMMAND "${Python3_EXECUTABLE}"
+      "${IBL_PROJECTION_SHADER_VERIFIER}"
+      --root "${ROOT_DIR}"
+      --check)
+
   add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake'")
@@ -758,6 +814,24 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderParity
     COMMAND FO4VRCommunityShadersLinearLightingShaderParityTests
       "${ROOT_DIR}")
+
+  add_executable(FO4VRCommunityShadersIblProjectionTests
+    "${ROOT_DIR}/tests/IblProjectionTests.cpp"
+    "${IBL_PROJECTION_MODEL}")
+  target_compile_features(
+    FO4VRCommunityShadersIblProjectionTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersIblProjectionTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersIblProjectionTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersIblProjectionTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersIblProjectionTests PRIVATE d3d11)
+  add_test(NAME FO4VRCommunityShaders.IblProjection
+    COMMAND FO4VRCommunityShadersIblProjectionTests "${ROOT_DIR}")
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"

@@ -1,5 +1,6 @@
 #include "render/D3D11Hooks.h"
 
+#include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "support/Logger.h"
@@ -758,6 +759,10 @@ namespace community_shaders::render
                 linear_lighting::Runtime::get().selectPixelShader(
                 context,
                 shader);
+            if (selection.binding.family ==
+                linear_lighting::ReplacementShaderFamily::dFLightAmbient) {
+                ibl::Runtime::get().onDFLightAmbientBind(context);
+            }
             original(
                 context,
                 selection.shader,
@@ -1244,6 +1249,7 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            ibl::Runtime::get().onDeviceCreated(*device, *immediateContext);
             shaderInterceptionActive.store(true, std::memory_order_release);
             deviceHooksInstalled.store(true, std::memory_order_release);
             logging::info(
