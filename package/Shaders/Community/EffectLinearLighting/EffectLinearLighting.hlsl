@@ -31,8 +31,15 @@ struct EffectPixelInput
 
 cbuffer EffectPerTechnique : register(b0)
 {
+#if (EFFECT_TECHNIQUE & 0x08000000) != 0
+    float4 EffectUIMaskTechniqueData[19] : packoffset(c0);
+#else
     float4 EffectDepthParameters : packoffset(c0);
+#endif
 };
+#if (EFFECT_TECHNIQUE & 0x08000000) != 0
+#define EffectDepthParameters EffectUIMaskTechniqueData[0]
+#endif
 
 cbuffer EffectPerMaterial : register(b1)
 {
@@ -119,6 +126,83 @@ float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
 
 float4 PSMain(EffectPixelInput input) : SV_Target0
 {
+#if (EFFECT_TECHNIQUE & 0x08000000) != 0
+    const float sampledAlpha = EffectTexture.Sample(
+        EffectSampler,
+        input.texCoord.xy).w;
+    const float materialAlpha = sampledAlpha * EffectBaseColor.w;
+    const float propertyAlpha = materialAlpha * EffectPropertyColor.w;
+    if (propertyAlpha - EffectAlphaTest.x < 0.0f) {
+        discard;
+    }
+
+    float alpha = propertyAlpha;
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+    float pipboyAlpha = EffectPipboyTexture.Sample(
+        EffectPipboySampler,
+        input.texCoord.xy).w;
+    if (EffectPipboyControls.y == 0.0f && enableLinearLighting == 0u) {
+        pipboyAlpha = exp2(log2(pipboyAlpha) * 2.2f);
+    }
+    const bool usePipboyAlpha = EffectAlphaTest.w != 0.0f;
+    alpha = usePipboyAlpha ? pipboyAlpha : alpha;
+    if (usePipboyAlpha && EffectPipboyControls.x != 0.0f) {
+        alpha *= EffectBaseColor.w;
+    }
+    alpha *= usePipboyAlpha ? EffectPipboyControls.z : 1.0f;
+#endif
+
+    [branch] if (EffectAlphaTest.y < 1.0f) {
+        if (EffectAlphaTest.y - sampledAlpha < 0.0f) {
+            discard;
+        }
+    }
+
+    const int rectangleCount = (int)EffectUIMaskTechniqueData[1].x;
+    float rectangleMask = 0.0f;
+    [loop] for (int rectangleIndex = 0;
+                rectangleIndex < rectangleCount;
+                ++rectangleIndex) {
+        const float4 rectangle =
+            EffectUIMaskTechniqueData[rectangleIndex + 2];
+        const bool multiplyVerticalRamp = rectangle.x < 0.0f;
+        const float2 upperDistance = float2(
+            abs(rectangle.x) - input.texCoord.x,
+            rectangle.y - input.texCoord.y);
+        const float2 lowerDistance =
+            input.texCoord.xy - rectangle.zw;
+        const float distance = max(
+            max(upperDistance.x, lowerDistance.x),
+            max(upperDistance.y, lowerDistance.y));
+        rectangleMask = max(
+            rectangleMask,
+            1.0f - EffectUIMaskTechniqueData[1].y * distance);
+
+        if (multiplyVerticalRamp &&
+            input.texCoord.y >= rectangle.y - 0.0025f &&
+            input.texCoord.y <= rectangle.w + 0.0025f) {
+            alpha *= (input.texCoord.y - rectangle.y) /
+                (rectangle.w - rectangle.y);
+        }
+    }
+
+    float3 outputColor = EffectUIMaskTechniqueData[1].z != 0.0f ?
+        EffectUIMaskTechniqueData[18].xyz :
+        (enableLinearLighting != 0u ?
+            LinearLightingEffect(EffectUIMaskTechniqueData[18].xyz) :
+            exp2(log2(EffectUIMaskTechniqueData[18].xyz) * 2.2f));
+    if (enableLinearLighting != 0u) {
+        outputColor *= otherEffectMult;
+    }
+    const float outputAlpha = LinearLightingEffectAlpha(
+        alpha *
+        saturate(rectangleMask) *
+        EffectUIMaskTechniqueData[1].w);
+#if (EFFECT_TECHNIQUE & 0x40000000) != 0
+    outputColor *= outputAlpha;
+#endif
+    return float4(outputColor, outputAlpha);
+#else
 #if (EFFECT_TECHNIQUE & 0x01000000) != 0
     const int2 depthTestCoordinate = int2(
         (input.depthTestData.xy + 1.0f) *
@@ -298,4 +382,5 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     blendedColor *= outputAlpha;
 #endif
     return float4(blendedColor, outputAlpha);
+#endif
 }

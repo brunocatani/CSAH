@@ -57,6 +57,9 @@ namespace
         { 0.70F, 0.80F, 0.90F, 0.65F },
     } };
     constexpr Pixel kDepthParameters{ 0.0F, 1.0F, 1.0F, 0.0F };
+    constexpr Pixel kUIMaskControls{ 1.0F, 4.0F, 0.0F, 0.75F };
+    constexpr Pixel kUIMaskRectangle{ -0.6F, 0.4F, 0.8F, 0.8F };
+    constexpr Pixel kUIMaskColor{ 0.25F, 0.5F, 0.75F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
@@ -127,6 +130,11 @@ namespace
             return (descriptor & 0x00100000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool uiMaskRects() const noexcept
+        {
+            return (descriptor & 0x08000000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool premultipliedAlpha() const noexcept
         {
             return (descriptor & 0x40000000U) != 0;
@@ -138,7 +146,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 109> kEffectContracts{ {
+    constexpr std::array<EffectContract, 112> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -248,12 +256,25 @@ namespace
         { "EffectVertexColorTexturedMultiplyBlendGrayscaleAlphaPremultipliedAlpha_50004045", 0x50004045U },
         { "EffectVertexColorTexturedMultiplyBlendParticle_000000CD", 0x000000CDU },
         { "EffectVertexColorTexturedMultiplyBlendParticlePremultipliedAlpha_400000CD", 0x400000CDU },
+        { "EffectTexturedUIMaskRects_08000004", 0x08000004U },
+        { "EffectTexturedPipboyUIMaskRects_08100004", 0x08100004U },
+        { "EffectTexturedUIMaskRectsPremultipliedAlpha_48000004", 0x48000004U },
     } };
 
     struct alignas(16) EffectPerTechnique
     {
         Pixel depthParameters{};
+        Pixel uiMaskControls{};
+        std::array<Pixel, 16> uiMaskRectangles{};
+        Pixel uiMaskColor{};
     };
+    static_assert(sizeof(EffectPerTechnique) == 19 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerTechnique, uiMaskControls) == sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerTechnique, uiMaskRectangles) == 2 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerTechnique, uiMaskColor) == 18 * sizeof(Pixel));
 
     struct alignas(16) EffectPerMaterial
     {
@@ -692,11 +713,66 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return sampleGrayscaleTexture(kTextureColor[3], v)[3];
     }
 
+    float expectedUIMaskFactor()
+    {
+        constexpr float u = 0.5F;
+        constexpr float v = 0.5F;
+        const auto upperX = std::abs(kUIMaskRectangle[0]) - u;
+        const auto upperY = kUIMaskRectangle[1] - v;
+        const auto lowerX = u - kUIMaskRectangle[2];
+        const auto lowerY = v - kUIMaskRectangle[3];
+        const auto distance = std::max(
+            std::max(upperX, lowerX),
+            std::max(upperY, lowerY));
+        const auto rectangleMask = std::clamp(
+            1.0F - kUIMaskControls[1] * distance,
+            0.0F,
+            1.0F);
+        auto verticalRamp = 1.0F;
+        if (kUIMaskRectangle[0] < 0.0F &&
+            v >= kUIMaskRectangle[1] - 0.0025F &&
+            v <= kUIMaskRectangle[3] + 0.0025F) {
+            verticalRamp = (v - kUIMaskRectangle[1]) /
+                (kUIMaskRectangle[3] - kUIMaskRectangle[1]);
+        }
+        return rectangleMask * verticalRamp * kUIMaskControls[3];
+    }
+
     Pixel expectedVanilla(
         const EffectContract& contract,
         const Pixel& pipboyControls = kPipboyControlsConverted,
-        bool usePipboyAlpha = true)
+        bool usePipboyAlpha = true,
+        bool uiMaskColorIsLinear = false)
     {
+        if (contract.uiMaskRects()) {
+            auto alpha = kTextureColor[3] *
+                kBaseColor[3] * kPropertyColor[3];
+            if (contract.pipboy() && usePipboyAlpha) {
+                auto pipboyAlpha = kPipboyTexture[3];
+                if (pipboyControls[1] == 0.0F) {
+                    pipboyAlpha = std::pow(pipboyAlpha, 2.2F);
+                }
+                alpha = pipboyAlpha;
+                if (pipboyControls[0] != 0.0F) {
+                    alpha *= kBaseColor[3];
+                }
+                alpha *= pipboyControls[2];
+            }
+            alpha *= expectedUIMaskFactor();
+
+            Pixel result{};
+            for (std::size_t channel = 0; channel < 3; ++channel) {
+                result[channel] = uiMaskColorIsLinear ?
+                    kUIMaskColor[channel] :
+                    std::pow(kUIMaskColor[channel], 2.2F);
+                if (contract.premultipliedAlpha()) {
+                    result[channel] *= alpha;
+                }
+            }
+            result[3] = alpha;
+            return result;
+        }
+
         Pixel result{};
         auto alpha = contract.grayscaleAlpha() ?
             grayscaleAlphaSample(contract) :
@@ -768,8 +844,39 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const EffectContract& contract,
         const Settings& settings,
         const Pixel& pipboyControls = kPipboyControlsConverted,
-        bool usePipboyAlpha = true)
+        bool usePipboyAlpha = true,
+        bool uiMaskColorIsLinear = false)
     {
+        if (contract.uiMaskRects()) {
+            auto alpha = kTextureColor[3] *
+                kBaseColor[3] * kPropertyColor[3];
+            if (contract.pipboy() && usePipboyAlpha) {
+                alpha = kPipboyTexture[3];
+                if (pipboyControls[0] != 0.0F) {
+                    alpha *= kBaseColor[3];
+                }
+                alpha *= pipboyControls[2];
+            }
+            alpha = std::pow(
+                std::abs(alpha * expectedUIMaskFactor()),
+                settings.effectAlphaGamma);
+
+            Pixel result{};
+            for (std::size_t channel = 0; channel < 3; ++channel) {
+                result[channel] = (uiMaskColorIsLinear ?
+                    kUIMaskColor[channel] :
+                    std::pow(
+                        std::abs(kUIMaskColor[channel]),
+                        settings.effectGamma)) *
+                    settings.otherEffectMultiplier;
+                if (contract.premultipliedAlpha()) {
+                    result[channel] *= alpha;
+                }
+            }
+            result[3] = alpha;
+            return result;
+        }
+
         Pixel result{};
         auto rawAlpha = contract.grayscaleAlpha() ?
             grayscaleAlphaSample(contract) :
@@ -884,6 +991,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         EffectPerTechnique techniqueConstants{};
         techniqueConstants.depthParameters = kDepthParameters;
+        techniqueConstants.uiMaskControls = kUIMaskControls;
+        techniqueConstants.uiMaskRectangles[0] = kUIMaskRectangle;
+        techniqueConstants.uiMaskColor = kUIMaskColor;
+        auto linearUIMaskTechniqueConstants = techniqueConstants;
+        linearUIMaskTechniqueConstants.uiMaskControls[2] = 1.0F;
         EffectPerMaterial materialConstants{};
         materialConstants.baseColor = kBaseColor;
         materialConstants.baseColorScale[0] = kBaseColorScale;
@@ -899,6 +1011,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         rawPipboyGeometryConstants.alphaTest[3] = 0.0F;
         const auto techniqueBuffer =
             createConstantBuffer(device.Get(), techniqueConstants);
+        const auto linearUIMaskTechniqueBuffer =
+            createConstantBuffer(device.Get(), linearUIMaskTechniqueConstants);
         const auto materialBuffer =
             createConstantBuffer(device.Get(), materialConstants);
         const auto geometryBuffer =
@@ -1015,6 +1129,50 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 enabled,
                 expectedEnabled(contract, enabledSettings),
                 label + " enabled model");
+            if (contract.uiMaskRects()) {
+                const auto vanillaLinearColor = render(
+                    device.Get(), context.Get(), vertexShader,
+                    vanillaShader.Get(), linearUIMaskTechniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                const auto disabledLinearColor = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), linearUIMaskTechniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                const auto enabledLinearColor = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), linearUIMaskTechniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    enabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                passed &= compare(
+                    vanillaLinearColor,
+                    expectedVanilla(
+                        contract,
+                        kPipboyControlsConverted,
+                        true,
+                        true),
+                    label + " linear UI-mask color vanilla model");
+                passed &= compare(
+                    disabledLinearColor,
+                    vanillaLinearColor,
+                    label + " linear UI-mask color disabled parity");
+                passed &= compare(
+                    enabledLinearColor,
+                    expectedEnabled(
+                        contract,
+                        enabledSettings,
+                        kPipboyControlsConverted,
+                        true,
+                        true),
+                    label + " linear UI-mask color enabled model");
+            }
             if (contract.depthTested()) {
                 const auto vanillaDiscard = render(
                     device.Get(), context.Get(), vertexShader,
@@ -1087,7 +1245,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 109 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 112 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

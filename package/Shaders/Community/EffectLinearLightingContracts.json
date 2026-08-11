@@ -652,5 +652,23 @@
     "descriptor": 1073742029,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_MULTIPLY_PARTICLE_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectTexturedUIMaskRects_08000004",
+    "descriptor": 134217732,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_UI_MASK_RECTS_PS"
+  },
+  {
+    "name": "EffectTexturedPipboyUIMaskRects_08100004",
+    "descriptor": 135266308,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_UI_MASK_RECTS_PIPBOY_PS"
+  },
+  {
+    "name": "EffectTexturedUIMaskRectsPremultipliedAlpha_48000004",
+    "descriptor": 1207959556,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_UI_MASK_RECTS_PREMULTIPLIED_ALPHA_PS"
   }
 ]
