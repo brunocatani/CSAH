@@ -68,6 +68,7 @@ namespace community_shaders::diagnostics
             std::uint64_t distantTreeReplacementBindsBaseline{};
             std::uint64_t particleReplacementBindsBaseline{};
             std::uint64_t waterReplacementBindsBaseline{};
+            std::uint64_t vlsCompositeReplacementBindsBaseline{};
             std::uint64_t effectReplacementBindsBaseline{};
             std::uint64_t directionalPowCallsBaseline{};
             std::uint64_t directionalPowModifiedBaseline{};
@@ -407,7 +408,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 11 },
+                    { "schemaVersion", 12 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -526,6 +527,24 @@ namespace community_shaders::diagnostics
                                     capture.runtime.waterReplacementBinds,
                                     session
                                         .waterReplacementBindsBaseline) },
+                            { "verifiedVLSCompositeShaderContracts",
+                                capture.runtime
+                                    .verifiedVLSCompositeShaderContracts },
+                            { "matchingVLSCompositeShaderContractMask",
+                                capture.runtime
+                                    .matchingVLSCompositeShaderContractMask },
+                            { "matchingVLSCompositeShadersCreated",
+                                capture.runtime
+                                    .matchingVLSCompositeShadersCreated },
+                            { "trackedOriginalVLSCompositeShaders",
+                                capture.runtime
+                                    .trackedOriginalVLSCompositeShaders },
+                            { "vlsCompositeReplacementBinds",
+                                delta(
+                                    capture.runtime
+                                        .vlsCompositeReplacementBinds,
+                                    session
+                                        .vlsCompositeReplacementBindsBaseline) },
                             { "verifiedEffectShaderContracts",
                                 capture.runtime
                                     .verifiedEffectShaderContracts },
@@ -871,6 +890,8 @@ namespace community_shaders::diagnostics
                             runtime.particleReplacementBinds,
                         .waterReplacementBindsBaseline =
                             runtime.waterReplacementBinds,
+                        .vlsCompositeReplacementBindsBaseline =
+                            runtime.vlsCompositeReplacementBinds,
                         .effectReplacementBindsBaseline =
                             runtime.effectReplacementBinds,
                         .directionalPowCallsBaseline =

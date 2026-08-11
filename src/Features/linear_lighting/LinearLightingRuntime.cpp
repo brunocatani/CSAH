@@ -75,6 +75,15 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
+        struct VLSCompositeShaderContractDefinition
+        {
+            const char* name{};
+            std::uint32_t imageSpaceIndex{};
+            int resourceId{};
+            DxbcIdentity original{};
+            DxbcIdentity replacement{};
+        };
+
         struct EffectShaderContractDefinition
         {
             const char* name{};
@@ -95,6 +104,7 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedDistantTreeLinearLightingContract.inl"
         #include "Features/linear_lighting/GeneratedParticleLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedWaterLinearLightingContracts.inl"
+        #include "Features/linear_lighting/GeneratedVLSCompositeLinearLightingContract.inl"
         #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
@@ -259,12 +269,13 @@ namespace community_shaders::linear_lighting
 
             gpuResourcesReady_.store(true, std::memory_order_release);
             logging::info(
-                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, waterContracts={}, effectContracts={}); active shader replacement remains {}.",
+                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, waterContracts={}, vlsCompositeContracts={}, effectContracts={}); active shader replacement remains {}.",
                 kShaderContracts.size(),
                 kSkyShaderContracts.size(),
                 kDistantTreeShaderContractCount,
                 kParticleShaderContracts.size(),
                 kWaterShaderContracts.size(),
+                kVLSCompositeShaderContractCount,
                 kEffectShaderContracts.size(),
                 enabled_.load(std::memory_order_relaxed) ? "enabled" : "disabled");
         } catch (const std::exception& error) {
@@ -293,6 +304,7 @@ namespace community_shaders::linear_lighting
             kParticleShaderContracts.size() == kParticleShaderContractCount);
         static_assert(
             kWaterShaderContracts.size() == kWaterShaderContractCount);
+        static_assert(kVLSCompositeShaderContractCount == 1);
         static_assert(
             kEffectShaderContracts.size() == kEffectShaderContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
@@ -359,6 +371,35 @@ namespace community_shaders::linear_lighting
                     static_cast<std::uint32_t>(result));
                 return false;
             }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kVLSCompositeShaderContractCount>
+            vlsCompositeReplacements{};
+        const auto vlsCompositeEmbedded =
+            loadEmbeddedShader(kVLSCompositeShaderContract.resourceId);
+        if (!matchesDxbcIdentity(
+                vlsCompositeEmbedded.data,
+                vlsCompositeEmbedded.size,
+                kVLSCompositeShaderContract.replacement.size,
+                kVLSCompositeShaderContract.replacement.checksum)) {
+            logging::error(
+                "Linear Lighting embedded VLS composite replacement '{}' is missing or invalid.",
+                kVLSCompositeShaderContract.name);
+            return false;
+        }
+        const auto vlsCompositeResult = createPixelShader(
+            device,
+            vlsCompositeEmbedded.data,
+            vlsCompositeEmbedded.size,
+            nullptr,
+            vlsCompositeReplacements[0].GetAddressOf());
+        if (FAILED(vlsCompositeResult)) {
+            logging::error(
+                "Linear Lighting VLS composite replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                kVLSCompositeShaderContract.name,
+                static_cast<std::uint32_t>(vlsCompositeResult));
+            return false;
         }
 
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
@@ -535,6 +576,7 @@ namespace community_shaders::linear_lighting
             std::move(distantTreeReplacements);
         particleReplacementShaders_ = std::move(particleReplacements);
         waterReplacementShaders_ = std::move(waterReplacements);
+        vlsCompositeReplacementShaders_ = std::move(vlsCompositeReplacements);
         effectReplacementShaders_ = std::move(effectReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
@@ -944,6 +986,53 @@ namespace community_shaders::linear_lighting
             return;
         }
 
+        if (matchesDxbcIdentity(
+                bytecode,
+                bytecodeLength,
+                kVLSCompositeShaderContract.original.size,
+                kVLSCompositeShaderContract.original.checksum)) {
+            matchingVLSCompositeShaderContractMask_.fetch_or(
+                1u,
+                std::memory_order_relaxed);
+            matchingVLSCompositeShadersCreated_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            std::scoped_lock lock(shaderRegistryMutex_);
+            auto& owners = originalVLSCompositeShaderOwners_[0];
+            auto& slots = originalVLSCompositeShaders_[0];
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                if (slots[index].load(std::memory_order_relaxed) == shader) {
+                    return;
+                }
+                if (!owners[index]) {
+                    owners[index] = shader;
+                    if (!registerShaderBinding(
+                            shader,
+                            {
+                                ReplacementShaderFamily::vlsComposite,
+                                1u,
+                                ReplacementPixelConstants_Frame,
+                            })) {
+                        owners[index].Reset();
+                        return;
+                    }
+                    slots[index].store(shader, std::memory_order_release);
+                    trackedOriginalVLSCompositeShaders_.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                    return;
+                }
+            }
+            if (!originalVLSCompositeCapacityWarningLogged_[0].exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Linear Lighting original VLS composite-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                    kVLSCompositeShaderContract.name);
+            }
+            return;
+        }
+
         std::size_t effectContractIndex = kEffectShaderContracts.size();
         for (std::size_t index = 0;
              index < kEffectShaderContracts.size();
@@ -1260,6 +1349,26 @@ namespace community_shaders::linear_lighting
             return { replacement, binding, false };
         }
 
+        if (binding.family == ReplacementShaderFamily::vlsComposite) {
+            if (binding.contractPlusOne != 1) {
+                inactiveShaderSelections_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            auto* replacement = vlsCompositeReplacementShaders_[0].Get();
+            if (!replacement) {
+                inactiveShaderSelections_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            vlsCompositeReplacementBinds_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            return { replacement, binding, false };
+        }
+
         if (binding.family == ReplacementShaderFamily::effect) {
             if (binding.contractPlusOne == 0 ||
                 binding.contractPlusOne > effectReplacementShaders_.size()) {
@@ -1323,6 +1432,10 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= waterReplacementShaders_.size() &&
             binding.constantFlags == ReplacementPixelConstants_Frame;
+        const auto validVLSComposite =
+            binding.family == ReplacementShaderFamily::vlsComposite &&
+            binding.contractPlusOne == 1 &&
+            binding.constantFlags == ReplacementPixelConstants_Frame;
         const auto validEffect =
             binding.family == ReplacementShaderFamily::effect &&
             binding.contractPlusOne > 0 &&
@@ -1330,7 +1443,8 @@ namespace community_shaders::linear_lighting
             binding.constantFlags == ReplacementPixelConstants_Frame;
         if (!context || context != context_.Get() ||
             (!validMaterial && !validSky && !validDistantTree &&
-                !validParticle && !validWater && !validEffect) ||
+                !validParticle && !validWater && !validVLSComposite &&
+                !validEffect) ||
             !frameBuffer_ ||
             (validMaterial && !geometryBuffer_)) {
             return ScopedReplacementPixelConstants{};
@@ -1374,6 +1488,10 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne <= waterReplacementShaders_.size()) {
             expectedShader =
                 waterReplacementShaders_[binding.contractPlusOne - 1].Get();
+        } else if (
+            binding.family == ReplacementShaderFamily::vlsComposite &&
+            binding.contractPlusOne == 1) {
+            expectedShader = vlsCompositeReplacementShaders_[0].Get();
         } else if (binding.family == ReplacementShaderFamily::effect &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= effectReplacementShaders_.size()) {
@@ -1629,6 +1747,20 @@ namespace community_shaders::linear_lighting
                     std::memory_order_relaxed),
             .waterReplacementBinds =
                 waterReplacementBinds_.load(std::memory_order_relaxed),
+            .verifiedVLSCompositeShaderContracts =
+                static_cast<std::uint32_t>(kVLSCompositeShaderContractCount),
+            .matchingVLSCompositeShaderContractMask =
+                matchingVLSCompositeShaderContractMask_.load(
+                    std::memory_order_relaxed),
+            .matchingVLSCompositeShadersCreated =
+                matchingVLSCompositeShadersCreated_.load(
+                    std::memory_order_relaxed),
+            .trackedOriginalVLSCompositeShaders =
+                trackedOriginalVLSCompositeShaders_.load(
+                    std::memory_order_relaxed),
+            .vlsCompositeReplacementBinds =
+                vlsCompositeReplacementBinds_.load(
+                    std::memory_order_relaxed),
             .verifiedEffectShaderContracts =
                 static_cast<std::uint32_t>(kEffectShaderContracts.size()),
             .matchingEffectShaderContractMask =

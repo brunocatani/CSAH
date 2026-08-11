@@ -148,6 +148,18 @@ file(GLOB WATER_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/WaterLinearLighting/*.dxbc")
 file(GLOB WATER_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedWaterLinearLighting/*.dxbc")
+set(VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/VLSCompositeLinearLightingContracts.json")
+set(VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_vls_composite_linear_lighting_contract.py")
+set(VLS_COMPOSITE_LINEAR_LIGHTING_GENERATED_CONTRACT
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedVLSCompositeLinearLightingContract.inl")
+set(VLS_COMPOSITE_LINEAR_LIGHTING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/VLSCompositeLinearLighting/VLSCompositeLinearLighting.hlsl")
+file(GLOB VLS_COMPOSITE_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VLSCompositeLinearLighting/*.dxbc")
+file(GLOB VLS_COMPOSITE_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedVLSCompositeLinearLighting/*.dxbc")
 set(EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/EffectLinearLightingContracts.json")
 set(EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR
@@ -170,6 +182,7 @@ include("${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyWaterLinearLighting.cmake")
+include("${ROOT_DIR}/cmake/VerifyVLSCompositeLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -224,6 +237,12 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WATER_LINEAR_LIGHTING_SHADER_SOURCE}"
   ${WATER_LINEAR_LIGHTING_SHADER_ASSETS}
   ${WATER_LINEAR_LIGHTING_VERIFIED_ASSETS}
+  "${VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
+  "${VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+  "${VLS_COMPOSITE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+  "${VLS_COMPOSITE_LINEAR_LIGHTING_SHADER_SOURCE}"
+  ${VLS_COMPOSITE_LINEAR_LIGHTING_SHADER_ASSETS}
+  ${VLS_COMPOSITE_LINEAR_LIGHTING_VERIFIED_ASSETS}
   "${EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
   "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
   "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
@@ -237,6 +256,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyWaterLinearLighting.cmake"
+  "${ROOT_DIR}/cmake/VerifyVLSCompositeLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 
@@ -357,6 +377,16 @@ add_custom_target(VerifyEffectLinearLighting ALL
   COMMENT "Verifying frame-only Effect Linear Lighting ownership"
   VERBATIM)
 
+add_custom_target(VerifyVLSCompositeLinearLighting ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DVLS_COMPOSITE_LINEAR_LIGHTING_SHADER_SOURCE=${VLS_COMPOSITE_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyVLSCompositeLinearLighting.cmake"
+  COMMENT "Verifying frame-only VLS composite Linear Lighting ownership"
+  VERBATIM)
+
 add_custom_target(VerifyFixedShaderBindingLookup ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
@@ -435,6 +465,15 @@ add_custom_target(VerifyEffectLinearLightingContracts ALL
   COMMENT "Verifying FO4VR Effect Linear Lighting contracts"
   VERBATIM)
 
+add_custom_target(VerifyVLSCompositeLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${VLS_COMPOSITE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+    --check
+  COMMENT "Verifying FO4VR VLS composite Linear Lighting contract"
+  VERBATIM)
+
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
@@ -511,6 +550,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyParticleLinearLightingContracts
   VerifyWaterLinearLighting
   VerifyWaterLinearLightingContracts
+  VerifyVLSCompositeLinearLighting
+  VerifyVLSCompositeLinearLightingContracts
   VerifyEffectLinearLighting
   VerifyEffectLinearLightingContracts
   VerifyDFLightAmbientReplacement
@@ -896,6 +937,12 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --output "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
+  add_test(NAME FO4VRCommunityShaders.VLSCompositeLinearLightingRuntimeContract
+    COMMAND "${Python3_EXECUTABLE}"
+      "${VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${VLS_COMPOSITE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
+      --check)
   add_executable(FO4VRCommunityShadersSkyLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/SkyLinearLightingShaderParityTests.cpp")
   target_compile_features(
@@ -993,6 +1040,26 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore d3d11 d3dcompiler)
   add_test(NAME FO4VRCommunityShaders.EffectLinearLightingShaderParity
     COMMAND FO4VRCommunityShadersEffectLinearLightingShaderParityTests
+      "${ROOT_DIR}")
+  add_executable(FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/VLSCompositeLinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_definitions(
+    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    FO4VRCommunityShadersCore d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.VLSCompositeLinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests
       "${ROOT_DIR}")
   add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"

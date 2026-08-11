@@ -533,6 +533,7 @@
         metric("Replacement binds", String(runtime.replacementBinds || 0), runtime.replacementBinds ? "good" : "wait"),
         metric("DistantTree binds", String(runtime.distantTreeReplacementBinds || 0), runtime.distantTreeReplacementBinds ? "good" : "wait"),
         metric("Particle binds", String(runtime.particleReplacementBinds || 0), runtime.particleReplacementBinds ? "good" : "wait"),
+        metric("VLS composite binds", String(runtime.vlsCompositeReplacementBinds || 0), runtime.vlsCompositeReplacementBinds ? "good" : "wait"),
         metric("Effect binds", String(runtime.effectReplacementBinds || 0), runtime.effectReplacementBinds ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),

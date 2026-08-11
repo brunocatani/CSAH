@@ -200,6 +200,7 @@ namespace community_shaders::ui
         bool distantTreeReplacementReported{};
         bool particleReplacementReported{};
         bool waterReplacementReported{};
+        bool vlsCompositeReplacementReported{};
         bool effectReplacementReported{};
 
         void pushLatestSnapshot() noexcept;
@@ -601,8 +602,9 @@ namespace community_shaders::ui
                 (runtime.distantTreeReplacementBinds << 45) ^
                 (runtime.particleReplacementBinds << 46) ^
                 (runtime.waterReplacementBinds << 47) ^
-                (runtime.effectReplacementBinds << 48) ^
-                (runtime.shaderBindingLookupFailures << 49);
+                (runtime.vlsCompositeReplacementBinds << 48) ^
+                (runtime.effectReplacementBinds << 49) ^
+                (runtime.shaderBindingLookupFailures << 50);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -663,7 +665,16 @@ namespace community_shaders::ui
                         { "waterCoverageComplete",
                             runtime.verifiedWaterShaderContracts ==
                                 linear_lighting::Runtime::
-                                    kWaterShaderContractCount },
+                                     kWaterShaderContractCount },
+                        { "verifiedVLSCompositeShaderContracts",
+                            runtime.verifiedVLSCompositeShaderContracts },
+                        { "expectedVLSCompositeShaderContracts",
+                            linear_lighting::Runtime::
+                                kVLSCompositeShaderContractCount },
+                        { "vlsCompositeCoverageComplete",
+                            runtime.verifiedVLSCompositeShaderContracts ==
+                                linear_lighting::Runtime::
+                                    kVLSCompositeShaderContractCount },
                         { "verifiedEffectShaderContracts",
                             runtime.verifiedEffectShaderContracts },
                         { "expectedEffectShaderContracts",
@@ -731,6 +742,14 @@ namespace community_shaders::ui
                             runtime.trackedOriginalWaterShaders },
                         { "waterReplacementBinds",
                             runtime.waterReplacementBinds },
+                        { "matchingVLSCompositeShaders",
+                            runtime.matchingVLSCompositeShadersCreated },
+                        { "matchingVLSCompositeShaderMask",
+                            runtime.matchingVLSCompositeShaderContractMask },
+                        { "trackedVLSCompositeShaders",
+                            runtime.trackedOriginalVLSCompositeShaders },
+                        { "vlsCompositeReplacementBinds",
+                            runtime.vlsCompositeReplacementBinds },
                         { "matchingEffectShaders",
                             runtime.matchingEffectShadersCreated },
                         { "matchingEffectShaderMaskWords",
@@ -914,7 +933,7 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, matchingDistantTreeShaders={}, trackedDistantTreeShaders={}, matchingParticleShaders={}, trackedParticleShaders={}, matchingWaterShaders={}, trackedWaterShaders={}, matchingEffectShaders={}, trackedEffectShaders={}, shaderBindingLookupFailures={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, matchingDistantTreeShaders={}, trackedDistantTreeShaders={}, matchingParticleShaders={}, trackedParticleShaders={}, matchingWaterShaders={}, trackedWaterShaders={}, matchingVLSCompositeShaders={}, trackedVLSCompositeShaders={}, matchingEffectShaders={}, trackedEffectShaders={}, shaderBindingLookupFailures={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
@@ -929,6 +948,8 @@ namespace community_shaders::ui
                     runtime.trackedOriginalParticleShaders,
                     runtime.matchingWaterShadersCreated,
                     runtime.trackedOriginalWaterShaders,
+                    runtime.matchingVLSCompositeShadersCreated,
+                    runtime.trackedOriginalVLSCompositeShaders,
                     runtime.matchingEffectShadersCreated,
                     runtime.trackedOriginalEffectShaders,
                     runtime.shaderBindingLookupFailures,
@@ -1010,6 +1031,18 @@ namespace community_shaders::ui
                     runtime.matchingEffectShadersCreated,
                     runtime.trackedOriginalEffectShaders,
                     runtime.effectReplacementBinds,
+                    runtime.frameDataUploads,
+                    runtime.shaderBindingLookupFailures);
+            }
+            if (!vlsCompositeReplacementReported &&
+                runtime.vlsCompositeReplacementBinds > 0) {
+                vlsCompositeReplacementReported = true;
+                logging::info(
+                    "Linear Lighting first VLS composite replacement proof: matchingShaders={}, trackedShaders={}, contractMask=0x{:02X}, replacementBinds={}, frameDataUploads={}, shaderBindingLookupFailures={}.",
+                    runtime.matchingVLSCompositeShadersCreated,
+                    runtime.trackedOriginalVLSCompositeShaders,
+                    runtime.matchingVLSCompositeShaderContractMask,
+                    runtime.vlsCompositeReplacementBinds,
                     runtime.frameDataUploads,
                     runtime.shaderBindingLookupFailures);
             }

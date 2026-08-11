@@ -38,6 +38,7 @@ namespace community_shaders::linear_lighting
         distantTree,
         particle,
         water,
+        vlsComposite,
         effect,
         dFLightAmbient,
     };
@@ -121,6 +122,11 @@ namespace community_shaders::linear_lighting
         std::uint32_t matchingWaterShadersCreated{};
         std::uint32_t trackedOriginalWaterShaders{};
         std::uint64_t waterReplacementBinds{};
+        std::uint32_t verifiedVLSCompositeShaderContracts{};
+        std::uint8_t matchingVLSCompositeShaderContractMask{};
+        std::uint32_t matchingVLSCompositeShadersCreated{};
+        std::uint32_t trackedOriginalVLSCompositeShaders{};
+        std::uint64_t vlsCompositeReplacementBinds{};
         std::uint32_t verifiedEffectShaderContracts{};
         EffectContractMask matchingEffectShaderContractMask{};
         std::uint32_t matchingEffectShadersCreated{};
@@ -177,6 +183,7 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kDistantTreeShaderContractCount = 1;
         static constexpr std::size_t kParticleShaderContractCount = 4;
         static constexpr std::size_t kWaterShaderContractCount = 17;
+        static constexpr std::size_t kVLSCompositeShaderContractCount = 1;
         static constexpr std::size_t kEffectShaderContractCount = 631;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
@@ -301,6 +308,9 @@ namespace community_shaders::linear_lighting
             kWaterShaderContractCount>
             waterReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kVLSCompositeShaderContractCount>
+            vlsCompositeReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kEffectShaderContractCount>
             effectReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
@@ -354,6 +364,14 @@ namespace community_shaders::linear_lighting
             originalWaterShaders_{};
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
                        kMaximumTrackedOriginalShadersPerContract>,
+            kVLSCompositeShaderContractCount>
+            originalVLSCompositeShaderOwners_{};
+        std::array<std::array<std::atomic<ID3D11PixelShader*>,
+                       kMaximumTrackedOriginalShadersPerContract>,
+            kVLSCompositeShaderContractCount>
+            originalVLSCompositeShaders_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+                       kMaximumTrackedOriginalShadersPerContract>,
             kEffectShaderContractCount>
             originalEffectShaderOwners_{};
         std::array<std::array<std::atomic<ID3D11PixelShader*>,
@@ -389,6 +407,9 @@ namespace community_shaders::linear_lighting
         std::atomic_uint32_t matchingWaterShaderContractMask_{};
         std::atomic_uint32_t matchingWaterShadersCreated_{};
         std::atomic_uint32_t trackedOriginalWaterShaders_{};
+        std::atomic_uint8_t matchingVLSCompositeShaderContractMask_{};
+        std::atomic_uint32_t matchingVLSCompositeShadersCreated_{};
+        std::atomic_uint32_t trackedOriginalVLSCompositeShaders_{};
         AtomicEffectContractMask matchingEffectShaderContractMask_{};
         std::atomic_uint32_t matchingEffectShadersCreated_{};
         std::atomic_uint32_t trackedOriginalEffectShaders_{};
@@ -401,6 +422,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t distantTreeReplacementBinds_{};
         std::atomic_uint64_t particleReplacementBinds_{};
         std::atomic_uint64_t waterReplacementBinds_{};
+        std::atomic_uint64_t vlsCompositeReplacementBinds_{};
         std::atomic_uint64_t effectReplacementBinds_{};
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
@@ -432,6 +454,8 @@ namespace community_shaders::linear_lighting
             originalParticleCapacityWarningLogged_{};
         std::array<std::atomic_bool, kWaterShaderContractCount>
             originalWaterCapacityWarningLogged_{};
+        std::array<std::atomic_bool, kVLSCompositeShaderContractCount>
+            originalVLSCompositeCapacityWarningLogged_{};
         std::array<std::atomic_bool, kEffectShaderContractCount>
             originalEffectCapacityWarningLogged_{};
         std::array<std::atomic_bool, kDFLightAmbientShaderContractCount>
