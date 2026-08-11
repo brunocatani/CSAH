@@ -12,7 +12,11 @@ struct EffectPixelInput
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000200) != 0
+#if (EFFECT_TECHNIQUE & 0x00800000) != 0
     float4 membraneNormal : TEXCOORD4;
+#else
+    float4 membraneViewVector : TEXCOORD4;
+#endif
 #endif
 #if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 depthTestData : TEXCOORD3;
@@ -25,7 +29,13 @@ struct EffectPixelInput
     float3 pipboyData : TEXCOORD1;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000200) != 0
+#if (EFFECT_TECHNIQUE & 0x00800000) != 0
     float3 membraneViewVector : TEXCOORD1;
+#elif (EFFECT_TECHNIQUE & 0x2) != 0
+    float3 membraneTangent0 : TEXCOORD1;
+    float3 membraneTangent1 : TEXCOORD2;
+    float3 membraneTangent2 : TEXCOORD3;
+#endif
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000400) != 0
     float3 modelPosition : TEXCOORD6;
@@ -94,6 +104,10 @@ cbuffer EffectPerGeometry : register(b2)
 };
 
 SamplerState EffectSampler : register(s0);
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0 && \
+    (EFFECT_TECHNIQUE & 0x00800000) == 0
+SamplerState EffectNormalSampler : register(s1);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
 SamplerState EffectAlphaMaskSampler : register(s2);
 #endif
@@ -104,6 +118,10 @@ SamplerState EffectGrayscaleSampler : register(s4);
 SamplerState EffectPipboySampler : register(s6);
 #endif
 Texture2D<float4> EffectTexture : register(t0);
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0 && \
+    (EFFECT_TECHNIQUE & 0x00800000) == 0
+Texture2D<float4> EffectNormalTexture : register(t1);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
 Texture2D<float4> EffectAlphaMaskTexture : register(t2);
 #endif
@@ -309,6 +327,23 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     const float4 textureColor = EffectTexture.Sample(
         EffectSampler,
         input.texCoord.xy);
+#if (EFFECT_TECHNIQUE & 0x00800000) != 0
+    const float3 membraneNormal = input.membraneNormal.xyz;
+    const float membraneGrayscaleScale = input.membraneNormal.w;
+#else
+    float3 membraneNormal = EffectNormalTexture.Sample(
+        EffectNormalSampler,
+        input.texCoord.zw).xzy * 2.0f - 1.0f;
+#if (EFFECT_TECHNIQUE & 0x2) != 0
+    membraneNormal = mul(
+        membraneNormal,
+        transpose(float3x3(
+            input.membraneTangent0,
+            input.membraneTangent1,
+            input.membraneTangent2)));
+#endif
+    const float membraneGrayscaleScale = input.membraneViewVector.w;
+#endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
     const float alphaMask = EffectAlphaMaskTexture.Sample(
         EffectAlphaMaskSampler,
@@ -333,7 +368,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #if (EFFECT_TECHNIQUE & 0x00002000) != 0
     float grayscaleColorY =
         pow(abs(EffectPropertyColor.x), 1.0f / 2.2f) *
-        input.membraneNormal.w;
+        membraneGrayscaleScale;
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleColorY *= input.vertexColor.x;
 #endif
@@ -349,7 +384,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #if (EFFECT_TECHNIQUE & 0x00004000) != 0
     float grayscaleAlphaY =
         pow(abs(EffectPropertyColor.w), 1.0f / 2.2f) *
-        input.membraneNormal.w;
+        membraneGrayscaleScale;
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleAlphaY *= input.vertexColor.w;
 #endif
@@ -361,8 +396,8 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     const float membraneFactor = pow(
         saturate(
             1.0f - dot(
-                input.membraneViewVector,
-                input.membraneNormal.xyz)),
+                input.membraneViewVector.xyz,
+                membraneNormal)),
         EffectMembraneVariables.x);
     const float4 membraneColor =
         EffectMembraneRimColor * membraneFactor;

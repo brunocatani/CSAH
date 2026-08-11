@@ -2434,5 +2434,65 @@
     "descriptor": 8561191,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_VERTEX_NORMAL_0082A227_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00000206",
+    "descriptor": 518,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00000206_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00000226",
+    "descriptor": 550,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00000226_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00002206",
+    "descriptor": 8710,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00002206_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00002226",
+    "descriptor": 8742,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00002226_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00006206",
+    "descriptor": 25094,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00006206_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00006226",
+    "descriptor": 25126,
+    "aliases": [27174],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00006226_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00006227",
+    "descriptor": 25127,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00006227_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00020204",
+    "descriptor": 131588,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00020204_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00020226",
+    "descriptor": 131622,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00020226_PS"
+  },
+  {
+    "name": "EffectMembraneNormalMap_00026226",
+    "descriptor": 156198,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00026226_PS"
   }
 ]

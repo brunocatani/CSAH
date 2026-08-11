@@ -95,6 +95,11 @@ namespace
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr Pixel kMembraneNormal{ 0.1F, 0.2F, 0.8F, 0.65F };
     constexpr Pixel kMembraneViewVector{ 0.2F, -0.1F, 0.6F, 0.0F };
+    constexpr Pixel kMembraneNormalMapTexture{ 0.65F, 0.9F, 0.25F, 1.0F };
+    constexpr Pixel kMembraneNormalMapViewVector{ 0.2F, -0.1F, 0.6F, 0.72F };
+    constexpr Pixel kMembraneTangent0{ 0.7F, 0.2F, -0.1F, 0.0F };
+    constexpr Pixel kMembraneTangent1{ -0.3F, 0.8F, 0.4F, 0.0F };
+    constexpr Pixel kMembraneTangent2{ 0.5F, -0.6F, 0.9F, 0.0F };
     constexpr Pixel kMembraneRimColor{ 0.3F, 0.5F, 0.7F, 0.4F };
     constexpr Pixel kMembraneVariables{ 1.3F, 0.0F, 0.75F, 0.0F };
     constexpr Pixel kAlphaMaskTextureFail{};
@@ -167,6 +172,16 @@ namespace
             return (descriptor & 0x00000200U) != 0;
         }
 
+        [[nodiscard]] constexpr bool normalMappedMembrane() const noexcept
+        {
+            return membrane() && (descriptor & 0x00800000U) == 0;
+        }
+
+        [[nodiscard]] constexpr bool membraneTangentBasis() const noexcept
+        {
+            return normalMappedMembrane() && (descriptor & 0x2U) != 0;
+        }
+
         [[nodiscard]] constexpr bool alphaMaskTested() const noexcept
         {
             return (descriptor & 0x00020000U) != 0;
@@ -213,7 +228,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 406> kEffectContracts{ {
+    constexpr std::array<EffectContract, 416> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -620,6 +635,16 @@ namespace
         { "EffectMembraneVertexNormal_00828227", 0x00828227U },
         { "EffectMembraneVertexNormal_0082A226", 0x0082A226U },
         { "EffectMembraneVertexNormal_0082A227", 0x0082A227U },
+        { "EffectMembraneNormalMap_00000206", 0x00000206U },
+        { "EffectMembraneNormalMap_00000226", 0x00000226U },
+        { "EffectMembraneNormalMap_00002206", 0x00002206U },
+        { "EffectMembraneNormalMap_00002226", 0x00002226U },
+        { "EffectMembraneNormalMap_00006206", 0x00006206U },
+        { "EffectMembraneNormalMap_00006226", 0x00006226U },
+        { "EffectMembraneNormalMap_00006227", 0x00006227U },
+        { "EffectMembraneNormalMap_00020204", 0x00020204U },
+        { "EffectMembraneNormalMap_00020226", 0x00020226U },
+        { "EffectMembraneNormalMap_00026226", 0x00026226U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -746,7 +771,9 @@ namespace
         bool pipboy,
         bool lighting,
         bool rightEye,
-        bool membrane = false)
+        bool membraneVertexNormal = false,
+        bool membraneNormalMap = false,
+        bool membraneTangentBasis = false)
     {
         constexpr char source[] = R"(
 struct VSOutput
@@ -756,8 +783,10 @@ struct VSOutput
 #ifdef EFFECT_PIPBOY
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
-#ifdef EFFECT_MEMBRANE
+#ifdef EFFECT_MEMBRANE_VERTEX_NORMAL
     float4 membraneNormal : TEXCOORD4;
+#elif defined(EFFECT_MEMBRANE_NORMAL_MAP)
+    float4 membraneViewVector : TEXCOORD4;
 #endif
 #ifdef EFFECT_DEPTH_TEST
     float4 depthTestData : TEXCOORD3;
@@ -769,8 +798,12 @@ struct VSOutput
 #ifdef EFFECT_PIPBOY
     float3 pipboyData : TEXCOORD1;
 #endif
-#ifdef EFFECT_MEMBRANE
+#ifdef EFFECT_MEMBRANE_VERTEX_NORMAL
     float3 membraneViewVector : TEXCOORD1;
+#elif defined(EFFECT_MEMBRANE_TANGENT_BASIS)
+    float3 membraneTangent0 : TEXCOORD1;
+    float3 membraneTangent1 : TEXCOORD2;
+    float3 membraneTangent2 : TEXCOORD3;
 #endif
 #ifdef EFFECT_LIGHTING
     float3 modelPosition : TEXCOORD6;
@@ -797,9 +830,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.pipboyTexCoord = 0.0.xxxx;
     output.pipboyData = 0.0.xxx;
 #endif
-#ifdef EFFECT_MEMBRANE
+#ifdef EFFECT_MEMBRANE_VERTEX_NORMAL
     output.membraneNormal = float4(0.1, 0.2, 0.8, 0.65);
     output.membraneViewVector = float3(0.2, -0.1, 0.6);
+#elif defined(EFFECT_MEMBRANE_NORMAL_MAP)
+    output.membraneViewVector = float4(0.2, -0.1, 0.6, 0.72);
+#ifdef EFFECT_MEMBRANE_TANGENT_BASIS
+    output.membraneTangent0 = float3(0.7, 0.2, -0.1);
+    output.membraneTangent1 = float3(-0.3, 0.8, 0.4);
+    output.membraneTangent2 = float3(0.5, -0.6, 0.9);
+#endif
 #endif
 #ifdef EFFECT_LIGHTING
     output.modelPosition = float3(0.2, -0.1, 0.3);
@@ -826,7 +866,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 8> macros{};
+        std::array<D3D_SHADER_MACRO, 10> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
@@ -846,8 +886,14 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (rightEye) {
             macros[macroCount++] = { "EFFECT_RIGHT_EYE", "1" };
         }
-        if (membrane) {
-            macros[macroCount++] = { "EFFECT_MEMBRANE", "1" };
+        if (membraneVertexNormal) {
+            macros[macroCount++] = { "EFFECT_MEMBRANE_VERTEX_NORMAL", "1" };
+        }
+        if (membraneNormalMap) {
+            macros[macroCount++] = { "EFFECT_MEMBRANE_NORMAL_MAP", "1" };
+        }
+        if (membraneTangentBasis) {
+            macros[macroCount++] = { "EFFECT_MEMBRANE_TANGENT_BASIS", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -997,7 +1043,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* grayscaleTexture,
         ID3D11ShaderResourceView* pipboyTexture,
         ID3D11SamplerState* sampler,
-        ID3D11ShaderResourceView* alphaMaskTexture = nullptr)
+        ID3D11ShaderResourceView* alphaMaskTexture = nullptr,
+        ID3D11ShaderResourceView* normalTexture = nullptr)
     {
         auto target = createRenderTarget(device);
         const float clear[4]{};
@@ -1015,6 +1062,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetConstantBuffers(2, 1, &geometryBuffer);
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->PSSetShaderResources(0, 1, &texture);
+        auto* boundNormalTexture = normalTexture != nullptr ?
+            normalTexture : texture;
+        context->PSSetShaderResources(1, 1, &boundNormalTexture);
         auto* boundAlphaMaskTexture = alphaMaskTexture != nullptr ?
             alphaMaskTexture : texture;
         context->PSSetShaderResources(2, 1, &boundAlphaMaskTexture);
@@ -1023,6 +1073,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetShaderResources(6, 1, &pipboyTexture);
         context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
+        context->PSSetSamplers(1, 1, &sampler);
         context->PSSetSamplers(2, 1, &sampler);
         context->PSSetSamplers(4, 1, &sampler);
         context->PSSetSamplers(6, 1, &sampler);
@@ -1039,6 +1090,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         ID3D11ShaderResourceView* nullTexture{};
         context->PSSetShaderResources(0, 1, &nullTexture);
+        context->PSSetShaderResources(1, 1, &nullTexture);
         context->PSSetShaderResources(2, 1, &nullTexture);
         context->PSSetShaderResources(3, 1, &nullTexture);
         context->PSSetShaderResources(4, 1, &nullTexture);
@@ -1148,6 +1200,35 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 color;
         };
 
+        Pixel membraneNormal = kMembraneNormal;
+        const Pixel* membraneViewVector = &kMembraneViewVector;
+        auto membraneGrayscaleScale = kMembraneNormal[3];
+        if (contract.normalMappedMembrane()) {
+            const Pixel tangentNormal{
+                kMembraneNormalMapTexture[0] * 2.0F - 1.0F,
+                kMembraneNormalMapTexture[2] * 2.0F - 1.0F,
+                kMembraneNormalMapTexture[1] * 2.0F - 1.0F,
+                0.0F
+            };
+            membraneNormal = tangentNormal;
+            if (contract.membraneTangentBasis()) {
+                membraneNormal[0] =
+                    tangentNormal[0] * kMembraneTangent0[0] +
+                    tangentNormal[1] * kMembraneTangent0[1] +
+                    tangentNormal[2] * kMembraneTangent0[2];
+                membraneNormal[1] =
+                    tangentNormal[0] * kMembraneTangent1[0] +
+                    tangentNormal[1] * kMembraneTangent1[1] +
+                    tangentNormal[2] * kMembraneTangent1[2];
+                membraneNormal[2] =
+                    tangentNormal[0] * kMembraneTangent2[0] +
+                    tangentNormal[1] * kMembraneTangent2[1] +
+                    tangentNormal[2] * kMembraneTangent2[2];
+            }
+            membraneViewVector = &kMembraneNormalMapViewVector;
+            membraneGrayscaleScale = kMembraneNormalMapViewVector[3];
+        }
+
         Pixel baseColor = kTextureColor;
         if (contract.ignoresTextureAlpha()) {
             baseColor[3] = 1.0F;
@@ -1172,7 +1253,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (contract.grayscaleColor()) {
             auto v =
                 std::pow(kPropertyColor[0], 1.0F / 2.2F) *
-                kMembraneNormal[3];
+                membraneGrayscaleScale;
             if (contract.vertexColored()) {
                 v *= kVertexColor[0];
             }
@@ -1187,7 +1268,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (contract.grayscaleAlpha()) {
             auto v =
                 std::pow(kPropertyColor[3], 1.0F / 2.2F) *
-                kMembraneNormal[3];
+                membraneGrayscaleScale;
             if (contract.vertexColored()) {
                 v *= kVertexColor[3];
             }
@@ -1196,9 +1277,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
 
         const auto normalDotView =
-            kMembraneNormal[0] * kMembraneViewVector[0] +
-            kMembraneNormal[1] * kMembraneViewVector[1] +
-            kMembraneNormal[2] * kMembraneViewVector[2];
+            membraneNormal[0] * (*membraneViewVector)[0] +
+            membraneNormal[1] * (*membraneViewVector)[1] +
+            membraneNormal[2] * (*membraneViewVector)[2];
         const auto membraneFactor = std::pow(
             std::clamp(1.0F - normalDotView, 0.0F, 1.0F),
             kMembraneVariables[0]);
@@ -1691,6 +1772,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             createConstantBuffer(device.Get(), enabledFrame);
 
         const auto texture = createTexture(device.Get(), kTextureColor);
+        const auto membraneNormalMapTexture =
+            createTexture(device.Get(), kMembraneNormalMapTexture);
         const auto depthTexture = createTexture(device.Get(), kDepthTexture);
         const auto depthTestTexturePass =
             createTexture(device.Get(), kDepthTestTexturePass);
@@ -1773,9 +1856,27 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto rightEyeVertexColorMembraneLightingVertexShader =
             createVertexShader(
                 device.Get(), true, false, false, false, true, true, true);
+        const auto membraneNormalMapVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, false, false,
+            false, true, false);
+        const auto membraneNormalMapTangentVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, false, false,
+            false, true, true);
+        const auto vertexColorMembraneNormalMapTangentVertexShader =
+            createVertexShader(
+                device.Get(), true, false, false, false, false, false,
+                false, true, true);
         const auto selectVertexShader = [&](const EffectContract& contract,
                                             bool rightEye) {
             if (contract.membrane()) {
+                if (contract.normalMappedMembrane()) {
+                    if (contract.vertexColored()) {
+                        return vertexColorMembraneNormalMapTangentVertexShader.Get();
+                    }
+                    return contract.membraneTangentBasis() ?
+                        membraneNormalMapTangentVertexShader.Get() :
+                        membraneNormalMapVertexShader.Get();
+                }
                 if (!contract.lighting()) {
                     return contract.vertexColored() ?
                         vertexColorMembraneVertexShader.Get() :
@@ -1855,19 +1956,22 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 vanillaShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                nullptr, membraneNormalMapTexture.Get());
             const auto disabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                nullptr, membraneNormalMapTexture.Get());
             const auto enabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), enabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
-                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                nullptr, membraneNormalMapTexture.Get());
 
             const std::string label = contract.name;
             passed &= compare(
@@ -2007,7 +2111,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
                     grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
-                    alphaMaskTextureFail.Get());
+                    alphaMaskTextureFail.Get(),
+                    membraneNormalMapTexture.Get());
                 const auto replacementDiscard = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
@@ -2015,7 +2120,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
                     grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
-                    alphaMaskTextureFail.Get());
+                    alphaMaskTextureFail.Get(),
+                    membraneNormalMapTexture.Get());
                 constexpr Pixel discarded{};
                 passed &= compare(
                     vanillaDiscard,
@@ -2073,7 +2179,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 406 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 416 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
