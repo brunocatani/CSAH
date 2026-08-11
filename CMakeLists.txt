@@ -83,6 +83,10 @@ set(RENDERER_HOOK_SOURCE
 include("${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake")
 set(WRIST_PANEL_SOURCE "${SOURCE_DIR}/ui/WristPanelRuntime.cpp")
 set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
+set(WRIST_PANEL_SETTINGS_SOURCE
+  "${SOURCE_DIR}/ui/WristPanelSettings.cpp")
+set(WRIST_PANEL_SETTINGS_HEADER
+  "${SOURCE_DIR}/ui/WristPanelSettings.h")
 set(WRIST_PANEL_VIEW_SOURCE
   "${ROOT_DIR}/view/index.html")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
@@ -218,6 +222,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake"
   "${WRIST_PANEL_SOURCE}"
   "${WRIST_PANEL_POSE_SOURCE}"
+  "${WRIST_PANEL_SETTINGS_SOURCE}"
+  "${WRIST_PANEL_SETTINGS_HEADER}"
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
@@ -312,6 +318,7 @@ add_custom_target(VerifyWristPanel ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
     "-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}"
+    "-DWRIST_PANEL_SETTINGS_SOURCE=${WRIST_PANEL_SETTINGS_SOURCE}"
     "-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyWristPanel.cmake"
@@ -602,6 +609,8 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/ui/LinearLightingTelemetryGate.h"
   "${SOURCE_DIR}/ui/PointerClickGate.h"
   "${SOURCE_DIR}/ui/WristPanelPose.h"
+  "${WRIST_PANEL_SETTINGS_SOURCE}"
+  "${WRIST_PANEL_SETTINGS_HEADER}"
   "${SOURCE_DIR}/ui/WristPanelRuntime.cpp"
   "${SOURCE_DIR}/ui/WristPanelRuntime.h"
   "${SOURCE_DIR}/ui/WristProviderRetry.h"
@@ -777,7 +786,7 @@ if(BUILD_FO4VR_CS_TESTS)
       -P "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake")
   add_test(NAME FO4VRCommunityShaders.WristPanelSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
-      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
+      "& '${CMAKE_COMMAND}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_POSE_SOURCE=${WRIST_PANEL_POSE_SOURCE}' '-DWRIST_PANEL_SETTINGS_SOURCE=${WRIST_PANEL_SETTINGS_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyWristPanel.cmake'")
 
   add_test(NAME FO4VRCommunityShaders.D3D11HookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
@@ -912,6 +921,23 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   add_test(NAME FO4VRCommunityShaders.WristPanelPose
     COMMAND FO4VRCommunityShadersWristPanelPoseTests)
+
+  add_executable(FO4VRCommunityShadersWristPanelSettingsTests
+    "${ROOT_DIR}/tests/WristPanelSettingsTests.cpp"
+    "${WRIST_PANEL_SETTINGS_SOURCE}"
+    "${WRIST_PANEL_SETTINGS_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersWristPanelSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersWristPanelSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersWristPanelSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersWristPanelSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.WristPanelSettings
+    COMMAND FO4VRCommunityShadersWristPanelSettingsTests)
 
   add_executable(FO4VRCommunityShadersLinearLightingTelemetryGateTests
     "${ROOT_DIR}/tests/LinearLightingTelemetryGateTests.cpp"

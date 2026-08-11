@@ -12,6 +12,7 @@
 #include "ui/LinearLightingTelemetryGate.h"
 #include "ui/PointerClickGate.h"
 #include "ui/WristPanelPose.h"
+#include "ui/WristPanelSettings.h"
 #include "ui/WristProviderRetry.h"
 
 #include <F4SE/API.h>
@@ -177,6 +178,9 @@ namespace community_shaders::ui
         std::atomic_bool overlayCapability{};
         std::atomic_bool diagnosticsEnabled{ true };
         std::atomic_bool overlayPublished{};
+        std::atomic_bool prismaPanelEnabled{
+            wrist_panel_settings::kDefaultPrismaPanelEnabled };
+        std::atomic_bool prismaPanelSettingLoaded{};
         RockProviderDebugOverlayTextV1 overlayText{};
 
         std::mutex frameMutex;
@@ -1081,6 +1085,10 @@ namespace community_shaders::ui
         {
             pushScheduled.store(false, std::memory_order_release);
             logLinearLightingMilestones();
+            if (!prismaPanelEnabled.load(std::memory_order_acquire)) {
+                hidePanel();
+                return;
+            }
             if (!prisma || !prismaVr || !view ||
                 !domReady.load(std::memory_order_acquire)) {
                 return;
@@ -1351,6 +1359,15 @@ namespace community_shaders::ui
             publishDeveloperOverlay(*snapshot);
             FrameData frame{};
             frame.frameIndex = snapshot->frameIndex;
+            if (!prismaPanelEnabled.load(std::memory_order_acquire)) {
+                resetClickInput();
+                {
+                    std::scoped_lock lock(frameMutex);
+                    latestFrame = frame;
+                }
+                schedulePush();
+                return;
+            }
             frame.ready = snapshotAllowsDisplay(*snapshot);
             if (frame.ready) {
                 frame.panelPose = computePanelPose(*snapshot);
@@ -1632,6 +1649,9 @@ namespace community_shaders::ui
 
         void attemptPrismaInitialization(std::string_view trigger) noexcept
         {
+            if (!prismaPanelEnabled.load(std::memory_order_acquire)) {
+                return;
+            }
             if (prisma && prismaVr) {
                 ensureView();
                 return;
@@ -1679,7 +1699,8 @@ namespace community_shaders::ui
 
         void ensureView() noexcept
         {
-            if (!prisma || !prismaVr || view) {
+            if (!prismaPanelEnabled.load(std::memory_order_acquire) ||
+                !prisma || !prismaVr || view) {
                 return;
             }
             auto expected = false;
@@ -1728,6 +1749,56 @@ namespace community_shaders::ui
                 });
             prisma->SetOrder(view, 84);
         }
+
+        void refreshPrismaPanelSetting(std::string_view trigger) noexcept
+        {
+            try {
+                const auto path = linear_lighting::settingsPath();
+                const auto loaded = wrist_panel_settings::load(path);
+                const auto previous = prismaPanelEnabled.load(
+                    std::memory_order_acquire);
+                const auto enabled = loaded.valueValid ?
+                    loaded.enabled :
+                    previous;
+                prismaPanelEnabled.store(enabled, std::memory_order_release);
+                const auto firstLoad = !prismaPanelSettingLoaded.exchange(
+                    true,
+                    std::memory_order_acq_rel);
+                const auto pathText = path.string();
+
+                if (!loaded.valueValid) {
+                    logging::warn(
+                        "Prisma panel INI value is invalid at '[PrismaPanel] bEnabled' in '{}'; previous state retained.",
+                        pathText);
+                }
+                if (firstLoad || previous != enabled) {
+                    logging::info(
+                        "Prisma panel setting loaded from '{}': enabled={}, keyPresent={}, trigger={}; shader runtime and ROCK diagnostics are independent.",
+                        pathText,
+                        enabled,
+                        loaded.keyPresent,
+                        trigger);
+                }
+                if (enabled) {
+                    return;
+                }
+
+                hidePanel();
+                if (prisma && view) {
+                    prisma->Destroy(view);
+                }
+                view = 0;
+                domReady.store(false, std::memory_order_release);
+                viewRequested.store(false, std::memory_order_release);
+                panelVisible.store(false, std::memory_order_release);
+                worldPresentationActive.store(
+                    false,
+                    std::memory_order_release);
+            } catch (...) {
+                logging::warn(
+                    "Prisma panel INI refresh failed; previous panel state retained.");
+            }
+        }
     }
 
     void setInitialSettings(
@@ -1744,6 +1815,7 @@ namespace community_shaders::ui
             return;
         }
         (void)render::validateD3D11ShaderHooks("GameDataReady");
+        refreshPrismaPanelSetting("GameDataReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameDataReady");
     }
@@ -1751,6 +1823,7 @@ namespace community_shaders::ui
     void onGameSessionReady() noexcept
     {
         (void)render::validateD3D11ShaderHooks("GameSessionReady");
+        refreshPrismaPanelSetting("GameSessionReady");
         startRockDiscovery();
         attemptPrismaInitialization("GameSessionReady");
     }

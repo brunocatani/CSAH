@@ -5,6 +5,10 @@ if(NOT DEFINED WRIST_PANEL_POSE_SOURCE OR
     NOT EXISTS "${WRIST_PANEL_POSE_SOURCE}")
   message(FATAL_ERROR "WRIST_PANEL_POSE_SOURCE is missing")
 endif()
+if(NOT DEFINED WRIST_PANEL_SETTINGS_SOURCE OR
+    NOT EXISTS "${WRIST_PANEL_SETTINGS_SOURCE}")
+  message(FATAL_ERROR "WRIST_PANEL_SETTINGS_SOURCE is missing")
+endif()
 if(NOT DEFINED LINEAR_LIGHTING_RUNTIME_SOURCE OR
     NOT EXISTS "${LINEAR_LIGHTING_RUNTIME_SOURCE}")
   message(FATAL_ERROR "LINEAR_LIGHTING_RUNTIME_SOURCE is missing")
@@ -15,6 +19,7 @@ if(NOT DEFINED WRIST_PANEL_VIEW_SOURCE OR
 endif()
 file(READ "${WRIST_PANEL_SOURCE}" source)
 file(READ "${WRIST_PANEL_POSE_SOURCE}" poseSource)
+file(READ "${WRIST_PANEL_SETTINGS_SOURCE}" settingsSource)
 file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${WRIST_PANEL_VIEW_SOURCE}" viewSource)
 
@@ -63,6 +68,11 @@ foreach(required IN ITEMS
     "vlsCompositeReplacementBinds"
     "shaderBindingLookupFailures"
     "std::atomic_bool diagnosticsEnabled{ true }"
+    "std::atomic_bool prismaPanelEnabled"
+    "refreshPrismaPanelSetting(\"GameDataReady\")"
+    "refreshPrismaPanelSetting(\"GameSessionReady\")"
+    "wrist_panel_settings::load(path)"
+    "shader runtime and ROCK diagnostics are independent"
     "scene %s | qualification %s | proof %u/%u"
     "wrist_provider_retry::Gate"
     "PrismaProbeFailure::SceneDepthPending"
@@ -75,6 +85,20 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Wrist-panel source regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kSection = L\"PrismaPanel\""
+    "kEnabledKey = L\"bEnabled\""
+    "GetPrivateProfileStringW"
+    "equalsIgnoreAsciiCase"
+    "std::filesystem::is_regular_file"
+    "result.valueValid = false")
+  string(FIND "${settingsSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Wrist-panel settings regression: missing '${required}'")
   endif()
 endforeach()
 
