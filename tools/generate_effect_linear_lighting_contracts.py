@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import struct
 import subprocess
 import sys
 import tempfile
@@ -14,7 +16,7 @@ class ContractError(RuntimeError):
     pass
 
 
-EXPECTED_CONTRACTS = {
+EXPECTED_BASE_CONTRACTS = {
     0x00000000: ((932, "bda7028e4d023d80b1252229246173e7"), (0x10000000,)),
     0x00000001: ((1060, "bcf6976db0386f17e06b975e451db93d"), (0x10000001,)),
     0x00000004: ((944, "ff037555b0aee4168134f15de151515a"), (0x10000004,)),
@@ -433,8 +435,69 @@ EXPECTED_CONTRACTS = {
     0x0082A227: ((1548, "94c9b1a0e38f5f1d3c0546af057f2956"), ()),
 }
 
+EXPECTED_EFFECT_CONTRACT_COUNT = 571
+EXPECTED_ENVMAP_SLOT_COUNT = 183
+EXPECTED_ENVMAP_IDENTITY_COUNT = 155
+EXPECTED_ENVMAP_FXP_DIGEST = (
+    "2c501c802ed4b0ccf6c3cfb75f4ea8c6a3ab929cdc0ed166dbffa10d02fe6861"
+)
 
-def read_manifest(root: Path) -> list[dict[str, object]]:
+
+def expected_contracts(
+    inventory: census.FxpInventory,
+) -> dict[int, tuple[tuple[int, str], tuple[int, ...]]]:
+    envmap_records = sorted(
+        (
+            item
+            for item in inventory.containers
+            if item.family == "Effect"
+            and item.stage == "PS"
+            and item.key is not None
+            and item.key & 0x00080000
+        ),
+        key=lambda item: int(item.key),
+    )
+    envmap_identities = {item.identity for item in envmap_records}
+    if (
+        len(envmap_records) != EXPECTED_ENVMAP_SLOT_COUNT
+        or len(envmap_identities) != EXPECTED_ENVMAP_IDENTITY_COUNT
+    ):
+        raise ContractError(
+            "active FO4VR FXP Effect envmap family changed shape"
+        )
+
+    digest = hashlib.sha256()
+    for item in envmap_records:
+        digest.update(struct.pack("<II", int(item.key), len(item.data)))
+        digest.update(item.data)
+    if digest.hexdigest() != EXPECTED_ENVMAP_FXP_DIGEST:
+        raise ContractError(
+            "active FO4VR FXP Effect envmap family changed bytecode"
+        )
+
+    keys_by_identity: dict[tuple[int, str], list[int]] = {}
+    for item in envmap_records:
+        keys_by_identity.setdefault(item.identity, []).append(int(item.key))
+
+    result = dict(EXPECTED_BASE_CONTRACTS)
+    for identity, keys in keys_by_identity.items():
+        ordered_keys = sorted(keys)
+        descriptor = ordered_keys[0]
+        if descriptor in result:
+            raise ContractError(
+                f"Effect envmap descriptor overlaps existing contract: "
+                f"0x{descriptor:08X}"
+            )
+        result[descriptor] = (identity, tuple(ordered_keys[1:]))
+    if len(result) != EXPECTED_EFFECT_CONTRACT_COUNT:
+        raise ContractError("Effect contract matrix changed size")
+    return result
+
+
+def read_manifest(
+    root: Path,
+    contracts: dict[int, tuple[tuple[int, str], tuple[int, ...]]],
+) -> list[dict[str, object]]:
     path = (
         root
         / "package"
@@ -443,8 +506,10 @@ def read_manifest(root: Path) -> list[dict[str, object]]:
         / "EffectLinearLightingContracts.json"
     )
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, list) or len(value) != len(EXPECTED_CONTRACTS):
-        raise ContractError("Effect manifest must contain 416 contracts")
+    if not isinstance(value, list) or len(value) != len(contracts):
+        raise ContractError(
+            f"Effect manifest must contain {len(contracts)} contracts"
+        )
 
     names: set[str] = set()
     descriptors: set[int] = set()
@@ -458,11 +523,11 @@ def read_manifest(root: Path) -> list[dict[str, object]]:
         resource = entry.get("resource")
         if not isinstance(name, str) or not name:
             raise ContractError(f"Effect manifest entry {index} has an invalid name")
-        if not isinstance(descriptor, int) or descriptor not in EXPECTED_CONTRACTS:
+        if not isinstance(descriptor, int) or descriptor not in contracts:
             raise ContractError(
                 f"Effect manifest entry {index} has an invalid descriptor"
             )
-        expected_aliases = list(EXPECTED_CONTRACTS[descriptor][1])
+        expected_aliases = list(contracts[descriptor][1])
         if aliases != expected_aliases:
             raise ContractError(
                 f"Effect manifest entry {index} has unexpected descriptor aliases"
@@ -476,16 +541,18 @@ def read_manifest(root: Path) -> list[dict[str, object]]:
         names.add(name)
         descriptors.add(descriptor)
         resources.add(resource)
-    if descriptors != set(EXPECTED_CONTRACTS):
+    if descriptors != set(contracts):
         raise ContractError("Effect manifest descriptor matrix is incomplete")
     return sorted(value, key=lambda item: int(item["descriptor"]))
 
 
-def effect_originals(root: Path) -> dict[int, census.DxbcContainer]:
-    inventory = census.parse_fxp((root / "Shaders012_VR.fxp").read_bytes())
+def effect_originals(
+    inventory: census.FxpInventory,
+    contracts: dict[int, tuple[tuple[int, str], tuple[int, ...]]],
+) -> dict[int, census.DxbcContainer]:
     expected_keys = {
         key
-        for descriptor, (_, aliases) in EXPECTED_CONTRACTS.items()
+        for descriptor, (_, aliases) in contracts.items()
         for key in (descriptor, *aliases)
     }
     records = [
@@ -503,7 +570,7 @@ def effect_originals(root: Path) -> dict[int, census.DxbcContainer]:
         )
     by_key = {int(item.key): item for item in records}
     originals: dict[int, census.DxbcContainer] = {}
-    for descriptor, (identity, aliases) in EXPECTED_CONTRACTS.items():
+    for descriptor, (identity, aliases) in contracts.items():
         keys = (descriptor, *aliases)
         if any(by_key[key].identity != identity for key in keys):
             raise ContractError(
@@ -571,6 +638,7 @@ def compile_candidates(
     root: Path,
     manifest: list[dict[str, object]],
     originals: dict[int, census.DxbcContainer],
+    contracts: dict[int, tuple[tuple[int, str], tuple[int, ...]]],
     fxc: Path,
     output_directory: Path,
 ) -> dict[int, bytes]:
@@ -609,6 +677,15 @@ def compile_candidates(
         "EffectNormalSampler,",
         "input.membraneTangent0",
         "membraneGrayscaleScale",
+        "(EFFECT_TECHNIQUE & 0x00080000)",
+        "EffectEnvironmentMapScale",
+        "EffectEnvironmentTexture.Sample(",
+        "EffectEnvironmentSampler,",
+        "EffectEnvironmentMaskTexture.Sample(",
+        "EffectEnvironmentMaskSampler,",
+        "input.environmentViewVector",
+        "input.environmentTangent0",
+        "environmentNormalSample.w",
         "EffectAlphaMaskTexture.Sample(",
         "EffectAlphaMaskSampler,",
         "alphaMask - EffectAlphaTest.x",
@@ -636,6 +713,18 @@ def compile_candidates(
         "float3 blendedColor = lerp(lightColor, fogColor, fogFactor);"
     ):
         raise ContractError("Effect multiplier must be applied before fog blending")
+    if source_text.index(
+        "baseColor.xyz += environmentColor *"
+    ) < source_text.index("baseColor.xyz *= input.texCoord.z;"):
+        raise ContractError(
+            "Effect envmap contribution must be applied after RGB falloff"
+        )
+    if source_text.index(
+        "baseColor.xyz += environmentColor *"
+    ) > source_text.index("const float3 propertyColor = EffectLightingColor("):
+        raise ContractError(
+            "Effect envmap contribution must be applied before lighting influence"
+        )
 
     candidates: dict[int, bytes] = {}
     for entry in manifest:
@@ -656,7 +745,7 @@ def compile_candidates(
             name,
         )
         candidate_data = candidate_path.read_bytes()
-        for alias in EXPECTED_CONTRACTS[descriptor][1]:
+        for alias in contracts[descriptor][1]:
             alias_path = output_directory / f"{name}.alias.{alias:08X}.dxbc"
             alias_assembly_path = (
                 output_directory / f"{name}.alias.{alias:08X}.asm.txt"
@@ -740,8 +829,8 @@ def render_contracts(
     rows = [
         "// Generated by tools/generate_effect_linear_lighting_contracts.py.",
         "// Do not edit this file by hand.",
-        "constexpr std::array<EffectShaderContractDefinition, 416> "
-        "kEffectShaderContracts{ {",
+        f"constexpr std::array<EffectShaderContractDefinition, "
+        f"{len(manifest)}> kEffectShaderContracts{{ {{",
     ]
     for entry in manifest:
         descriptor = int(entry["descriptor"])
@@ -773,8 +862,10 @@ def main() -> int:
 
     try:
         root = arguments.root.resolve()
-        manifest = read_manifest(root)
-        originals = effect_originals(root)
+        inventory = census.parse_fxp((root / "Shaders012_VR.fxp").read_bytes())
+        contracts = expected_contracts(inventory)
+        manifest = read_manifest(root, contracts)
+        originals = effect_originals(inventory, contracts)
         fxc = census.find_fxc(None)
         asset_directory = (
             root / "package" / "Shaders" / "Community" / "EffectLinearLighting"
@@ -790,7 +881,7 @@ def main() -> int:
             prefix="fo4vr_effect_linear_lighting_"
         ) as temporary:
             candidates = compile_candidates(
-                root, manifest, originals, fxc, Path(temporary)
+                root, manifest, originals, contracts, fxc, Path(temporary)
             )
         generated = render_contracts(manifest, originals, candidates)
         output = arguments.output.resolve()

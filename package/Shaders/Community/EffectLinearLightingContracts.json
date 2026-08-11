@@ -2495,4 +2495,935 @@
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_NORMAL_MAP_00026226_PS"
   }
+,
+  {
+    "name": "EffectEnvironmentMap_00880000",
+    "descriptor": 8912896,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880000_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880001",
+    "descriptor": 8912897,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880001_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880004",
+    "descriptor": 8912900,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880005",
+    "descriptor": 8912901,
+    "aliases": [277348357],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880010",
+    "descriptor": 8912912,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880010_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880011",
+    "descriptor": 8912913,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880011_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880014",
+    "descriptor": 8912916,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880014_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880015",
+    "descriptor": 8912917,
+    "aliases": [277348373],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880015_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880020",
+    "descriptor": 8912928,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880020_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880021",
+    "descriptor": 8912929,
+    "aliases": [277348385],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880021_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880024",
+    "descriptor": 8912932,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880025",
+    "descriptor": 8912933,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880030",
+    "descriptor": 8912944,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880031",
+    "descriptor": 8912945,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880031_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880034",
+    "descriptor": 8912948,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880034_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880035",
+    "descriptor": 8912949,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880040",
+    "descriptor": 8912960,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880040_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880045",
+    "descriptor": 8912965,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880045_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880055",
+    "descriptor": 8912981,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880055_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880400",
+    "descriptor": 8913920,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880400_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880401",
+    "descriptor": 8913921,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880401_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880404",
+    "descriptor": 8913924,
+    "aliases": [277349380],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880405",
+    "descriptor": 8913925,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880410",
+    "descriptor": 8913936,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880410_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880414",
+    "descriptor": 8913940,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880414_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880415",
+    "descriptor": 8913941,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880420",
+    "descriptor": 8913952,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880420_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880424",
+    "descriptor": 8913956,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880425",
+    "descriptor": 8913957,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880430",
+    "descriptor": 8913968,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880430_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880431",
+    "descriptor": 8913969,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880431_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880434",
+    "descriptor": 8913972,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880435",
+    "descriptor": 8913973,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880444",
+    "descriptor": 8913988,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880444_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00880454",
+    "descriptor": 8914004,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00880454_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881015",
+    "descriptor": 8917013,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881015_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881035",
+    "descriptor": 8917045,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881401",
+    "descriptor": 8918017,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881401_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881405",
+    "descriptor": 8918021,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881411",
+    "descriptor": 8918033,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881411_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881414",
+    "descriptor": 8918036,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881414_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881415",
+    "descriptor": 8918037,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881434",
+    "descriptor": 8918068,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00881435",
+    "descriptor": 8918069,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00881435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882004",
+    "descriptor": 8921092,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882005",
+    "descriptor": 8921093,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882014",
+    "descriptor": 8921108,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882014_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882015",
+    "descriptor": 8921109,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882015_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882024",
+    "descriptor": 8921124,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882025",
+    "descriptor": 8921125,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882030",
+    "descriptor": 8921136,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882034",
+    "descriptor": 8921140,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882034_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882035",
+    "descriptor": 8921141,
+    "aliases": [11018293],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882045",
+    "descriptor": 8921157,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882045_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882404",
+    "descriptor": 8922116,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882405",
+    "descriptor": 8922117,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882415",
+    "descriptor": 8922133,
+    "aliases": [11019285],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882424",
+    "descriptor": 8922148,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882425",
+    "descriptor": 8922149,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882430",
+    "descriptor": 8922160,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882430_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882435",
+    "descriptor": 8922165,
+    "aliases": [11019317],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00882444",
+    "descriptor": 8922180,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00882444_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00883434",
+    "descriptor": 8926260,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00883434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00883435",
+    "descriptor": 8926261,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00883435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00884004",
+    "descriptor": 8929284,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00884004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00884005",
+    "descriptor": 8929285,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00884005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00884405",
+    "descriptor": 8930309,
+    "aliases": [8930325],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00884405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00884435",
+    "descriptor": 8930357,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00884435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00885024",
+    "descriptor": 8933412,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00885024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00885434",
+    "descriptor": 8934452,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00885434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886004",
+    "descriptor": 8937476,
+    "aliases": [8937492],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886005",
+    "descriptor": 8937477,
+    "aliases": [8937493],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886024",
+    "descriptor": 8937508,
+    "aliases": [8937524],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886025",
+    "descriptor": 8937509,
+    "aliases": [8937525, 11034677],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886045",
+    "descriptor": 8937541,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886045_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886404",
+    "descriptor": 8938500,
+    "aliases": [11035668],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886405",
+    "descriptor": 8938501,
+    "aliases": [8938517, 11035669],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886424",
+    "descriptor": 8938532,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00886425",
+    "descriptor": 8938533,
+    "aliases": [8938549, 11035701],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00886425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887004",
+    "descriptor": 8941572,
+    "aliases": [11038724],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887024",
+    "descriptor": 8941604,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887404",
+    "descriptor": 8942596,
+    "aliases": [8942612, 11039748],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887405",
+    "descriptor": 8942597,
+    "aliases": [11039749],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887424",
+    "descriptor": 8942628,
+    "aliases": [8942644, 11039780, 11039796],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00887425",
+    "descriptor": 8942629,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00887425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00980004",
+    "descriptor": 9961476,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00980004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00980014",
+    "descriptor": 9961492,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00980014_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80004",
+    "descriptor": 11010052,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80005",
+    "descriptor": 11010053,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80014",
+    "descriptor": 11010068,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80014_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80015",
+    "descriptor": 11010069,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80015_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80030",
+    "descriptor": 11010096,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80034",
+    "descriptor": 11010100,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80034_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80035",
+    "descriptor": 11010101,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80404",
+    "descriptor": 11011076,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80405",
+    "descriptor": 11011077,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80414",
+    "descriptor": 11011092,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80414_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80415",
+    "descriptor": 11011093,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80424",
+    "descriptor": 11011108,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80425",
+    "descriptor": 11011109,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80434",
+    "descriptor": 11011124,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80435",
+    "descriptor": 11011125,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80454",
+    "descriptor": 11011156,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80454_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A80455",
+    "descriptor": 11011157,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A80455_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A81005",
+    "descriptor": 11014149,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A81005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A81411",
+    "descriptor": 11015185,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A81411_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A81434",
+    "descriptor": 11015220,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A81434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A81435",
+    "descriptor": 11015221,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A81435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A82455",
+    "descriptor": 11019349,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A82455_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A83404",
+    "descriptor": 11023364,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A83404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_00A84435",
+    "descriptor": 11027509,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_00A84435_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_01080404",
+    "descriptor": 17302532,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_01080404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880000",
+    "descriptor": 1082654720,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880000_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880001",
+    "descriptor": 1082654721,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880001_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880004",
+    "descriptor": 1082654724,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880004_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880005",
+    "descriptor": 1082654725,
+    "aliases": [1351090181],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880014",
+    "descriptor": 1082654740,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880014_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880015",
+    "descriptor": 1082654741,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880015_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880020",
+    "descriptor": 1082654752,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880020_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880021",
+    "descriptor": 1082654753,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880021_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880024",
+    "descriptor": 1082654756,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880024_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880025",
+    "descriptor": 1082654757,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880030",
+    "descriptor": 1082654768,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880034",
+    "descriptor": 1082654772,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880034_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880035",
+    "descriptor": 1082654773,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880045",
+    "descriptor": 1082654789,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880045_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880400",
+    "descriptor": 1082655744,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880400_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880404",
+    "descriptor": 1082655748,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880405",
+    "descriptor": 1082655749,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880414",
+    "descriptor": 1082655764,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880414_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880415",
+    "descriptor": 1082655765,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880420",
+    "descriptor": 1082655776,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880420_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880424",
+    "descriptor": 1082655780,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880425",
+    "descriptor": 1082655781,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880430",
+    "descriptor": 1082655792,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880430_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40880434",
+    "descriptor": 1082655796,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40880434_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40881405",
+    "descriptor": 1082659845,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40881405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40881414",
+    "descriptor": 1082659860,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40881414_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882005",
+    "descriptor": 1082662917,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882025",
+    "descriptor": 1082662949,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882030",
+    "descriptor": 1082662960,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882404",
+    "descriptor": 1082663940,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882404_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882405",
+    "descriptor": 1082663941,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882415",
+    "descriptor": 1082663957,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882415_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40882430",
+    "descriptor": 1082663984,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40882430_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40884005",
+    "descriptor": 1082671109,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40884005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40884405",
+    "descriptor": 1082672133,
+    "aliases": [1082672149],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40884405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40886005",
+    "descriptor": 1082679301,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40886005_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40886025",
+    "descriptor": 1082679333,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40886025_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40886405",
+    "descriptor": 1082680325,
+    "aliases": [1082680341],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40886405_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40886424",
+    "descriptor": 1082680356,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40886424_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40886425",
+    "descriptor": 1082680357,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40886425_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40A80030",
+    "descriptor": 1084751920,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40A80030_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40A80035",
+    "descriptor": 1084751925,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40A80035_PS"
+  },
+  {
+    "name": "EffectEnvironmentMap_40A87404",
+    "descriptor": 1084781572,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40A87404_PS"
+  }
 ]

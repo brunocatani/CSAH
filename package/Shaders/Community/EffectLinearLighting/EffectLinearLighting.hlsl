@@ -8,7 +8,8 @@ struct EffectPixelInput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
-#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+#if (EFFECT_TECHNIQUE & 0x00100000) != 0 && \
+    (EFFECT_TECHNIQUE & 0x00080000) == 0
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000200) != 0
@@ -18,8 +19,16 @@ struct EffectPixelInput
     float4 membraneViewVector : TEXCOORD4;
 #endif
 #endif
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+    float4 environmentViewVector : TEXCOORD4;
+#endif
 #if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 depthTestData : TEXCOORD3;
+#endif
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+    float3 environmentTangent0 : TEXCOORD7;
+    float3 environmentTangent1 : TEXCOORD8;
+    float3 environmentTangent2 : TEXCOORD9;
 #endif
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     float4 vertexColor : COLOR0;
@@ -65,8 +74,12 @@ cbuffer EffectPerMaterial : register(b1)
     float4 EffectBaseColor : packoffset(c0);
     float4 EffectUnusedPerMaterial : packoffset(c1);
     float4 EffectLightingInfluence : packoffset(c2);
-#if (EFFECT_TECHNIQUE & 0x03000000) != 0
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+    float4 EffectEnvironmentMapScale : packoffset(c3);
+#elif (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 EffectUnusedPerMaterialDepthTest : packoffset(c3);
+#endif
+#if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 EffectDepthTestParameters : packoffset(c4);
 #endif
 };
@@ -104,8 +117,9 @@ cbuffer EffectPerGeometry : register(b2)
 };
 
 SamplerState EffectSampler : register(s0);
-#if (EFFECT_TECHNIQUE & 0x00000200) != 0 && \
-    (EFFECT_TECHNIQUE & 0x00800000) == 0
+#if ((EFFECT_TECHNIQUE & 0x00000200) != 0 && \
+     (EFFECT_TECHNIQUE & 0x00800000) == 0) || \
+    (EFFECT_TECHNIQUE & 0x00080000) != 0
 SamplerState EffectNormalSampler : register(s1);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
@@ -117,9 +131,14 @@ SamplerState EffectGrayscaleSampler : register(s4);
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
 SamplerState EffectPipboySampler : register(s6);
 #endif
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+SamplerState EffectEnvironmentSampler : register(s5);
+SamplerState EffectEnvironmentMaskSampler : register(s7);
+#endif
 Texture2D<float4> EffectTexture : register(t0);
-#if (EFFECT_TECHNIQUE & 0x00000200) != 0 && \
-    (EFFECT_TECHNIQUE & 0x00800000) == 0
+#if ((EFFECT_TECHNIQUE & 0x00000200) != 0 && \
+     (EFFECT_TECHNIQUE & 0x00800000) == 0) || \
+    (EFFECT_TECHNIQUE & 0x00080000) != 0
 Texture2D<float4> EffectNormalTexture : register(t1);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
@@ -131,6 +150,10 @@ Texture2D<float4> EffectGrayscaleTexture : register(t4);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
 Texture2D<float4> EffectPipboyTexture : register(t6);
+#endif
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+TextureCube<float4> EffectEnvironmentTexture : register(t5);
+Texture2D<float4> EffectEnvironmentMaskTexture : register(t7);
 #endif
 #if (EFFECT_TECHNIQUE & 0x03000000) != 0
 Texture2D<float4> EffectDepthTestTexture : register(t8);
@@ -515,6 +538,34 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #if (EFFECT_TECHNIQUE & 0x00200000) != 0 && \
     (EFFECT_TECHNIQUE & 0x00002000) == 0
     baseColor.xyz *= input.texCoord.z;
+#endif
+#if (EFFECT_TECHNIQUE & 0x00080000) != 0
+    const float4 environmentNormalSample = EffectNormalTexture.Sample(
+        EffectNormalSampler,
+        input.texCoord.xy);
+    const float2 environmentNormalXY =
+        environmentNormalSample.xy * 2.0f - 1.0f;
+    const float environmentNormalZ = sqrt(
+        1.0f - min(dot(environmentNormalXY, environmentNormalXY), 1.0f));
+    float3 environmentNormal =
+        environmentNormalXY.x * input.environmentTangent0 +
+        environmentNormalXY.y * input.environmentTangent1 +
+        environmentNormalZ * input.environmentTangent2;
+    environmentNormal = normalize(environmentNormal);
+    const float3 environmentReflectionVector = reflect(
+        input.environmentViewVector.xyz,
+        environmentNormal);
+    const float3 environmentColor = LinearLightingEffect(
+        EffectEnvironmentTexture.Sample(
+            EffectEnvironmentSampler,
+            environmentReflectionVector).xyz);
+    const float environmentMask = EffectEnvironmentMaskTexture.Sample(
+        EffectEnvironmentMaskSampler,
+        input.texCoord.xy).x;
+    baseColor.xyz += environmentColor *
+        EffectEnvironmentMapScale.x *
+        environmentNormalSample.w *
+        environmentMask;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000400) != 0
     const float3 propertyColor = EffectLightingColor(

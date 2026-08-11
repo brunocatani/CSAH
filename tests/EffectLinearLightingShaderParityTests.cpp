@@ -102,7 +102,23 @@ namespace
     constexpr Pixel kMembraneTangent2{ 0.5F, -0.6F, 0.9F, 0.0F };
     constexpr Pixel kMembraneRimColor{ 0.3F, 0.5F, 0.7F, 0.4F };
     constexpr Pixel kMembraneVariables{ 1.3F, 0.0F, 0.75F, 0.0F };
+    constexpr Pixel kEnvironmentNormalTexture{ 0.75F, 0.25F, 0.0F, 0.6F };
+    constexpr Pixel kEnvironmentMaskTexture{ 0.4F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kEnvironmentTangent0{ 0.0F, 1.0F, 0.0F, 0.0F };
+    constexpr Pixel kEnvironmentTangent1{ 0.0F, 0.0F, 1.0F, 0.0F };
+    constexpr Pixel kEnvironmentTangent2{ 1.0F, 0.0F, 0.0F, 0.0F };
+    constexpr Pixel kEnvironmentViewVectorLeft{ 0.0F, -0.6F, 0.8F, 0.0F };
+    constexpr Pixel kEnvironmentViewVectorRight{ -0.8F, 0.6F, 0.0F, 0.0F };
+    constexpr std::array<Pixel, 6> kEnvironmentCubeFaces{ {
+        { 0.17F, 0.29F, 0.41F, 1.0F },
+        { 0.53F, 0.11F, 0.23F, 1.0F },
+        { 0.31F, 0.47F, 0.19F, 1.0F },
+        { 0.67F, 0.37F, 0.13F, 1.0F },
+        { 0.07F, 0.59F, 0.71F, 1.0F },
+        { 0.79F, 0.61F, 0.43F, 1.0F },
+    } };
     constexpr Pixel kAlphaMaskTextureFail{};
+    constexpr float kEnvironmentMapScale = 0.75F;
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
     constexpr float kSoftParticleDepth = 0.75F;
@@ -172,6 +188,11 @@ namespace
             return (descriptor & 0x00000200U) != 0;
         }
 
+        [[nodiscard]] constexpr bool environmentMap() const noexcept
+        {
+            return (descriptor & 0x00080000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool normalMappedMembrane() const noexcept
         {
             return membrane() && (descriptor & 0x00800000U) == 0;
@@ -228,7 +249,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 416> kEffectContracts{ {
+    constexpr std::array<EffectContract, 571> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -645,6 +666,161 @@ namespace
         { "EffectMembraneNormalMap_00020204", 0x00020204U },
         { "EffectMembraneNormalMap_00020226", 0x00020226U },
         { "EffectMembraneNormalMap_00026226", 0x00026226U },
+        { "EffectEnvironmentMap_00880000", 0x00880000U },
+        { "EffectEnvironmentMap_00880001", 0x00880001U },
+        { "EffectEnvironmentMap_00880004", 0x00880004U },
+        { "EffectEnvironmentMap_00880005", 0x00880005U },
+        { "EffectEnvironmentMap_00880010", 0x00880010U },
+        { "EffectEnvironmentMap_00880011", 0x00880011U },
+        { "EffectEnvironmentMap_00880014", 0x00880014U },
+        { "EffectEnvironmentMap_00880015", 0x00880015U },
+        { "EffectEnvironmentMap_00880020", 0x00880020U },
+        { "EffectEnvironmentMap_00880021", 0x00880021U },
+        { "EffectEnvironmentMap_00880024", 0x00880024U },
+        { "EffectEnvironmentMap_00880025", 0x00880025U },
+        { "EffectEnvironmentMap_00880030", 0x00880030U },
+        { "EffectEnvironmentMap_00880031", 0x00880031U },
+        { "EffectEnvironmentMap_00880034", 0x00880034U },
+        { "EffectEnvironmentMap_00880035", 0x00880035U },
+        { "EffectEnvironmentMap_00880040", 0x00880040U },
+        { "EffectEnvironmentMap_00880045", 0x00880045U },
+        { "EffectEnvironmentMap_00880055", 0x00880055U },
+        { "EffectEnvironmentMap_00880400", 0x00880400U },
+        { "EffectEnvironmentMap_00880401", 0x00880401U },
+        { "EffectEnvironmentMap_00880404", 0x00880404U },
+        { "EffectEnvironmentMap_00880405", 0x00880405U },
+        { "EffectEnvironmentMap_00880410", 0x00880410U },
+        { "EffectEnvironmentMap_00880414", 0x00880414U },
+        { "EffectEnvironmentMap_00880415", 0x00880415U },
+        { "EffectEnvironmentMap_00880420", 0x00880420U },
+        { "EffectEnvironmentMap_00880424", 0x00880424U },
+        { "EffectEnvironmentMap_00880425", 0x00880425U },
+        { "EffectEnvironmentMap_00880430", 0x00880430U },
+        { "EffectEnvironmentMap_00880431", 0x00880431U },
+        { "EffectEnvironmentMap_00880434", 0x00880434U },
+        { "EffectEnvironmentMap_00880435", 0x00880435U },
+        { "EffectEnvironmentMap_00880444", 0x00880444U },
+        { "EffectEnvironmentMap_00880454", 0x00880454U },
+        { "EffectEnvironmentMap_00881015", 0x00881015U },
+        { "EffectEnvironmentMap_00881035", 0x00881035U },
+        { "EffectEnvironmentMap_00881401", 0x00881401U },
+        { "EffectEnvironmentMap_00881405", 0x00881405U },
+        { "EffectEnvironmentMap_00881411", 0x00881411U },
+        { "EffectEnvironmentMap_00881414", 0x00881414U },
+        { "EffectEnvironmentMap_00881415", 0x00881415U },
+        { "EffectEnvironmentMap_00881434", 0x00881434U },
+        { "EffectEnvironmentMap_00881435", 0x00881435U },
+        { "EffectEnvironmentMap_00882004", 0x00882004U },
+        { "EffectEnvironmentMap_00882005", 0x00882005U },
+        { "EffectEnvironmentMap_00882014", 0x00882014U },
+        { "EffectEnvironmentMap_00882015", 0x00882015U },
+        { "EffectEnvironmentMap_00882024", 0x00882024U },
+        { "EffectEnvironmentMap_00882025", 0x00882025U },
+        { "EffectEnvironmentMap_00882030", 0x00882030U },
+        { "EffectEnvironmentMap_00882034", 0x00882034U },
+        { "EffectEnvironmentMap_00882035", 0x00882035U },
+        { "EffectEnvironmentMap_00882045", 0x00882045U },
+        { "EffectEnvironmentMap_00882404", 0x00882404U },
+        { "EffectEnvironmentMap_00882405", 0x00882405U },
+        { "EffectEnvironmentMap_00882415", 0x00882415U },
+        { "EffectEnvironmentMap_00882424", 0x00882424U },
+        { "EffectEnvironmentMap_00882425", 0x00882425U },
+        { "EffectEnvironmentMap_00882430", 0x00882430U },
+        { "EffectEnvironmentMap_00882435", 0x00882435U },
+        { "EffectEnvironmentMap_00882444", 0x00882444U },
+        { "EffectEnvironmentMap_00883434", 0x00883434U },
+        { "EffectEnvironmentMap_00883435", 0x00883435U },
+        { "EffectEnvironmentMap_00884004", 0x00884004U },
+        { "EffectEnvironmentMap_00884005", 0x00884005U },
+        { "EffectEnvironmentMap_00884405", 0x00884405U },
+        { "EffectEnvironmentMap_00884435", 0x00884435U },
+        { "EffectEnvironmentMap_00885024", 0x00885024U },
+        { "EffectEnvironmentMap_00885434", 0x00885434U },
+        { "EffectEnvironmentMap_00886004", 0x00886004U },
+        { "EffectEnvironmentMap_00886005", 0x00886005U },
+        { "EffectEnvironmentMap_00886024", 0x00886024U },
+        { "EffectEnvironmentMap_00886025", 0x00886025U },
+        { "EffectEnvironmentMap_00886045", 0x00886045U },
+        { "EffectEnvironmentMap_00886404", 0x00886404U },
+        { "EffectEnvironmentMap_00886405", 0x00886405U },
+        { "EffectEnvironmentMap_00886424", 0x00886424U },
+        { "EffectEnvironmentMap_00886425", 0x00886425U },
+        { "EffectEnvironmentMap_00887004", 0x00887004U },
+        { "EffectEnvironmentMap_00887024", 0x00887024U },
+        { "EffectEnvironmentMap_00887404", 0x00887404U },
+        { "EffectEnvironmentMap_00887405", 0x00887405U },
+        { "EffectEnvironmentMap_00887424", 0x00887424U },
+        { "EffectEnvironmentMap_00887425", 0x00887425U },
+        { "EffectEnvironmentMap_00980004", 0x00980004U },
+        { "EffectEnvironmentMap_00980014", 0x00980014U },
+        { "EffectEnvironmentMap_00A80004", 0x00A80004U },
+        { "EffectEnvironmentMap_00A80005", 0x00A80005U },
+        { "EffectEnvironmentMap_00A80014", 0x00A80014U },
+        { "EffectEnvironmentMap_00A80015", 0x00A80015U },
+        { "EffectEnvironmentMap_00A80030", 0x00A80030U },
+        { "EffectEnvironmentMap_00A80034", 0x00A80034U },
+        { "EffectEnvironmentMap_00A80035", 0x00A80035U },
+        { "EffectEnvironmentMap_00A80404", 0x00A80404U },
+        { "EffectEnvironmentMap_00A80405", 0x00A80405U },
+        { "EffectEnvironmentMap_00A80414", 0x00A80414U },
+        { "EffectEnvironmentMap_00A80415", 0x00A80415U },
+        { "EffectEnvironmentMap_00A80424", 0x00A80424U },
+        { "EffectEnvironmentMap_00A80425", 0x00A80425U },
+        { "EffectEnvironmentMap_00A80434", 0x00A80434U },
+        { "EffectEnvironmentMap_00A80435", 0x00A80435U },
+        { "EffectEnvironmentMap_00A80454", 0x00A80454U },
+        { "EffectEnvironmentMap_00A80455", 0x00A80455U },
+        { "EffectEnvironmentMap_00A81005", 0x00A81005U },
+        { "EffectEnvironmentMap_00A81411", 0x00A81411U },
+        { "EffectEnvironmentMap_00A81434", 0x00A81434U },
+        { "EffectEnvironmentMap_00A81435", 0x00A81435U },
+        { "EffectEnvironmentMap_00A82455", 0x00A82455U },
+        { "EffectEnvironmentMap_00A83404", 0x00A83404U },
+        { "EffectEnvironmentMap_00A84435", 0x00A84435U },
+        { "EffectEnvironmentMap_01080404", 0x01080404U },
+        { "EffectEnvironmentMap_40880000", 0x40880000U },
+        { "EffectEnvironmentMap_40880001", 0x40880001U },
+        { "EffectEnvironmentMap_40880004", 0x40880004U },
+        { "EffectEnvironmentMap_40880005", 0x40880005U },
+        { "EffectEnvironmentMap_40880014", 0x40880014U },
+        { "EffectEnvironmentMap_40880015", 0x40880015U },
+        { "EffectEnvironmentMap_40880020", 0x40880020U },
+        { "EffectEnvironmentMap_40880021", 0x40880021U },
+        { "EffectEnvironmentMap_40880024", 0x40880024U },
+        { "EffectEnvironmentMap_40880025", 0x40880025U },
+        { "EffectEnvironmentMap_40880030", 0x40880030U },
+        { "EffectEnvironmentMap_40880034", 0x40880034U },
+        { "EffectEnvironmentMap_40880035", 0x40880035U },
+        { "EffectEnvironmentMap_40880045", 0x40880045U },
+        { "EffectEnvironmentMap_40880400", 0x40880400U },
+        { "EffectEnvironmentMap_40880404", 0x40880404U },
+        { "EffectEnvironmentMap_40880405", 0x40880405U },
+        { "EffectEnvironmentMap_40880414", 0x40880414U },
+        { "EffectEnvironmentMap_40880415", 0x40880415U },
+        { "EffectEnvironmentMap_40880420", 0x40880420U },
+        { "EffectEnvironmentMap_40880424", 0x40880424U },
+        { "EffectEnvironmentMap_40880425", 0x40880425U },
+        { "EffectEnvironmentMap_40880430", 0x40880430U },
+        { "EffectEnvironmentMap_40880434", 0x40880434U },
+        { "EffectEnvironmentMap_40881405", 0x40881405U },
+        { "EffectEnvironmentMap_40881414", 0x40881414U },
+        { "EffectEnvironmentMap_40882005", 0x40882005U },
+        { "EffectEnvironmentMap_40882025", 0x40882025U },
+        { "EffectEnvironmentMap_40882030", 0x40882030U },
+        { "EffectEnvironmentMap_40882404", 0x40882404U },
+        { "EffectEnvironmentMap_40882405", 0x40882405U },
+        { "EffectEnvironmentMap_40882415", 0x40882415U },
+        { "EffectEnvironmentMap_40882430", 0x40882430U },
+        { "EffectEnvironmentMap_40884005", 0x40884005U },
+        { "EffectEnvironmentMap_40884405", 0x40884405U },
+        { "EffectEnvironmentMap_40886005", 0x40886005U },
+        { "EffectEnvironmentMap_40886025", 0x40886025U },
+        { "EffectEnvironmentMap_40886405", 0x40886405U },
+        { "EffectEnvironmentMap_40886424", 0x40886424U },
+        { "EffectEnvironmentMap_40886425", 0x40886425U },
+        { "EffectEnvironmentMap_40A80030", 0x40A80030U },
+        { "EffectEnvironmentMap_40A80035", 0x40A80035U },
+        { "EffectEnvironmentMap_40A87404", 0x40A87404U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -667,7 +843,7 @@ namespace
         Pixel baseColor{};
         Pixel baseColorScale{};
         Pixel lightingInfluence{};
-        Pixel unusedDepthTest{};
+        Pixel environmentMapScale{};
         Pixel depthTestParameters{};
     };
 
@@ -773,14 +949,15 @@ namespace
         bool rightEye,
         bool membraneVertexNormal = false,
         bool membraneNormalMap = false,
-        bool membraneTangentBasis = false)
+        bool membraneTangentBasis = false,
+        bool environmentMap = false)
     {
         constexpr char source[] = R"(
 struct VSOutput
 {
     float4 position : SV_POSITION0;
     float4 texCoord : TEXCOORD0;
-#ifdef EFFECT_PIPBOY
+#if defined(EFFECT_PIPBOY) && !defined(EFFECT_ENVIRONMENT_MAP)
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
 #ifdef EFFECT_MEMBRANE_VERTEX_NORMAL
@@ -788,8 +965,16 @@ struct VSOutput
 #elif defined(EFFECT_MEMBRANE_NORMAL_MAP)
     float4 membraneViewVector : TEXCOORD4;
 #endif
+#ifdef EFFECT_ENVIRONMENT_MAP
+    float4 environmentViewVector : TEXCOORD4;
+#endif
 #ifdef EFFECT_DEPTH_TEST
     float4 depthTestData : TEXCOORD3;
+#endif
+#ifdef EFFECT_ENVIRONMENT_MAP
+    float3 environmentTangent0 : TEXCOORD7;
+    float3 environmentTangent1 : TEXCOORD8;
+    float3 environmentTangent2 : TEXCOORD9;
 #endif
 #ifdef EFFECT_VERTEX_COLOR
     float4 vertexColor : COLOR0;
@@ -826,8 +1011,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     VSOutput output;
     output.position = float4(positions[vertexId], 0.5, 1.0);
     output.texCoord = float4(0.5, 0.5, 0.65, 0.0);
-#ifdef EFFECT_PIPBOY
+#if defined(EFFECT_PIPBOY) && !defined(EFFECT_ENVIRONMENT_MAP)
     output.pipboyTexCoord = 0.0.xxxx;
+#endif
+#ifdef EFFECT_PIPBOY
     output.pipboyData = 0.0.xxx;
 #endif
 #ifdef EFFECT_MEMBRANE_VERTEX_NORMAL
@@ -840,6 +1027,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.membraneTangent1 = float3(-0.3, 0.8, 0.4);
     output.membraneTangent2 = float3(0.5, -0.6, 0.9);
 #endif
+#endif
+#ifdef EFFECT_ENVIRONMENT_MAP
+#ifdef EFFECT_RIGHT_EYE
+    output.environmentViewVector = float4(-0.8, 0.6, 0.0, 0.0);
+#else
+    output.environmentViewVector = float4(0.0, -0.6, 0.8, 0.0);
+#endif
+    output.environmentTangent0 = float3(0.0, 1.0, 0.0);
+    output.environmentTangent1 = float3(0.0, 0.0, 1.0);
+    output.environmentTangent2 = float3(1.0, 0.0, 0.0);
 #endif
 #ifdef EFFECT_LIGHTING
     output.modelPosition = float3(0.2, -0.1, 0.3);
@@ -866,7 +1063,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 10> macros{};
+        std::array<D3D_SHADER_MACRO, 11> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
@@ -894,6 +1091,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
         if (membraneTangentBasis) {
             macros[macroCount++] = { "EFFECT_MEMBRANE_TANGENT_BASIS", "1" };
+        }
+        if (environmentMap) {
+            macros[macroCount++] = { "EFFECT_ENVIRONMENT_MAP", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -963,6 +1163,39 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device->CreateShaderResourceView(
                 texture.Get(), nullptr, view.GetAddressOf()),
             "CreateShaderResourceView");
+        return view;
+    }
+
+    ComPtr<ID3D11ShaderResourceView> createEnvironmentCube(
+        ID3D11Device* device)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 1;
+        description.Height = 1;
+        description.MipLevels = 1;
+        description.ArraySize = 6;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        description.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+        std::array<D3D11_SUBRESOURCE_DATA, 6> initial{};
+        for (std::size_t face = 0; face < initial.size(); ++face) {
+            initial[face].pSysMem = kEnvironmentCubeFaces[face].data();
+            initial[face].SysMemPitch = sizeof(Pixel);
+        }
+
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device->CreateTexture2D(
+                &description, initial.data(), texture.GetAddressOf()),
+            "CreateTexture2D(environment cube)");
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device->CreateShaderResourceView(
+                texture.Get(), nullptr, view.GetAddressOf()),
+            "CreateShaderResourceView(environment cube)");
         return view;
     }
 
@@ -1044,7 +1277,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* pipboyTexture,
         ID3D11SamplerState* sampler,
         ID3D11ShaderResourceView* alphaMaskTexture = nullptr,
-        ID3D11ShaderResourceView* normalTexture = nullptr)
+        ID3D11ShaderResourceView* normalTexture = nullptr,
+        ID3D11ShaderResourceView* environmentTexture = nullptr,
+        ID3D11ShaderResourceView* environmentMaskTexture = nullptr)
     {
         auto target = createRenderTarget(device);
         const float clear[4]{};
@@ -1070,13 +1305,17 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetShaderResources(2, 1, &boundAlphaMaskTexture);
         context->PSSetShaderResources(3, 1, &depthTexture);
         context->PSSetShaderResources(4, 1, &grayscaleTexture);
+        context->PSSetShaderResources(5, 1, &environmentTexture);
         context->PSSetShaderResources(6, 1, &pipboyTexture);
+        context->PSSetShaderResources(7, 1, &environmentMaskTexture);
         context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
         context->PSSetSamplers(1, 1, &sampler);
         context->PSSetSamplers(2, 1, &sampler);
         context->PSSetSamplers(4, 1, &sampler);
+        context->PSSetSamplers(5, 1, &sampler);
         context->PSSetSamplers(6, 1, &sampler);
+        context->PSSetSamplers(7, 1, &sampler);
         context->Draw(3, 0);
 
         context->CopyResource(target.staging.Get(), target.texture.Get());
@@ -1094,7 +1333,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetShaderResources(2, 1, &nullTexture);
         context->PSSetShaderResources(3, 1, &nullTexture);
         context->PSSetShaderResources(4, 1, &nullTexture);
+        context->PSSetShaderResources(5, 1, &nullTexture);
         context->PSSetShaderResources(6, 1, &nullTexture);
+        context->PSSetShaderResources(7, 1, &nullTexture);
         context->PSSetShaderResources(8, 1, &nullTexture);
         ID3D11RenderTargetView* nullTarget{};
         context->OMSetRenderTargets(1, &nullTarget, nullptr);
@@ -1187,6 +1428,72 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             v *= expectedSoftFade();
         }
         return sampleGrayscaleTexture(kTextureColor[3], v)[3];
+    }
+
+    Pixel expectedEnvironmentColor(
+        std::uint32_t eyeIndex,
+        const Settings* settings)
+    {
+        const float normalX = kEnvironmentNormalTexture[0] * 2.0F - 1.0F;
+        const float normalY = kEnvironmentNormalTexture[1] * 2.0F - 1.0F;
+        const float normalZ = std::sqrt(
+            1.0F - std::min(normalX * normalX + normalY * normalY, 1.0F));
+        std::array<float, 3> normal{
+            normalX * kEnvironmentTangent0[0] +
+                normalY * kEnvironmentTangent1[0] +
+                normalZ * kEnvironmentTangent2[0],
+            normalX * kEnvironmentTangent0[1] +
+                normalY * kEnvironmentTangent1[1] +
+                normalZ * kEnvironmentTangent2[1],
+            normalX * kEnvironmentTangent0[2] +
+                normalY * kEnvironmentTangent1[2] +
+                normalZ * kEnvironmentTangent2[2],
+        };
+        const float inverseNormalLength = 1.0F / std::sqrt(
+            normal[0] * normal[0] +
+            normal[1] * normal[1] +
+            normal[2] * normal[2]);
+        for (auto& channel : normal) {
+            channel *= inverseNormalLength;
+        }
+
+        const auto& view = eyeIndex == 0 ?
+            kEnvironmentViewVectorLeft : kEnvironmentViewVectorRight;
+        const float viewNormalDot =
+            view[0] * normal[0] +
+            view[1] * normal[1] +
+            view[2] * normal[2];
+        const std::array<float, 3> reflection{
+            view[0] - 2.0F * viewNormalDot * normal[0],
+            view[1] - 2.0F * viewNormalDot * normal[1],
+            view[2] - 2.0F * viewNormalDot * normal[2],
+        };
+
+        const auto absoluteX = std::abs(reflection[0]);
+        const auto absoluteY = std::abs(reflection[1]);
+        const auto absoluteZ = std::abs(reflection[2]);
+        std::size_t face{};
+        if (absoluteX >= absoluteY && absoluteX >= absoluteZ) {
+            face = reflection[0] >= 0.0F ? 0U : 1U;
+        } else if (absoluteY >= absoluteZ) {
+            face = reflection[1] >= 0.0F ? 2U : 3U;
+        } else {
+            face = reflection[2] >= 0.0F ? 4U : 5U;
+        }
+
+        Pixel result{};
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            const auto cubeColor = settings != nullptr ?
+                std::pow(
+                    std::abs(kEnvironmentCubeFaces[face][channel]),
+                    settings->effectGamma) :
+                kEnvironmentCubeFaces[face][channel];
+            result[channel] = cubeColor *
+                kEnvironmentMapScale *
+                kEnvironmentNormalTexture[3] *
+                kEnvironmentMaskTexture[0];
+        }
+        return result;
     }
 
     Pixel expectedMembrane(
@@ -1508,6 +1815,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (contract.rgbFalloff() && !contract.grayscaleColor()) {
                 baseColor *= kGrayscaleInput;
             }
+            if (contract.environmentMap()) {
+                baseColor += expectedEnvironmentColor(
+                    eyeIndex, nullptr)[channel];
+            }
             const auto propertyColor = contract.lighting() ?
                 expectedLightingColor(eyeIndex, nullptr)[channel] :
                 kPropertyColor[channel];
@@ -1643,6 +1954,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             if (contract.rgbFalloff() && !contract.grayscaleColor()) {
                 base *= kGrayscaleInput;
             }
+            if (contract.environmentMap()) {
+                base += expectedEnvironmentColor(
+                    eyeIndex, &settings)[channel];
+            }
             const auto property = contract.lighting() ?
                 expectedLightingColor(eyeIndex, &settings)[channel] :
                 std::pow(
@@ -1715,6 +2030,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         materialConstants.baseColorScale[0] = kBaseColorScale;
         materialConstants.lightingInfluence[0] = kLightingInfluence;
         materialConstants.lightingInfluence[1] = kSoftDepthScale;
+        materialConstants.environmentMapScale[0] = kEnvironmentMapScale;
         materialConstants.depthTestParameters[0] = 1.0F;
         EffectPerGeometry geometryConstants{};
         geometryConstants.pointLightPositionX = kPointLightPositionX;
@@ -1774,6 +2090,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto texture = createTexture(device.Get(), kTextureColor);
         const auto membraneNormalMapTexture =
             createTexture(device.Get(), kMembraneNormalMapTexture);
+        const auto environmentNormalTexture =
+            createTexture(device.Get(), kEnvironmentNormalTexture);
+        const auto environmentMaskTexture =
+            createTexture(device.Get(), kEnvironmentMaskTexture);
+        const auto environmentTexture = createEnvironmentCube(device.Get());
         const auto depthTexture = createTexture(device.Get(), kDepthTexture);
         const auto depthTestTexturePass =
             createTexture(device.Get(), kDepthTestTexturePass);
@@ -1866,8 +2187,35 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             createVertexShader(
                 device.Get(), true, false, false, false, false, false,
                 false, true, true);
+        std::array<ComPtr<ID3D11VertexShader>, 64>
+            environmentVertexShaders{};
         const auto selectVertexShader = [&](const EffectContract& contract,
                                             bool rightEye) {
+            if (contract.environmentMap()) {
+                const std::size_t key =
+                    (contract.vertexColored() ? 1U : 0U) |
+                    (contract.needsParticleData() ? 2U : 0U) |
+                    (contract.depthTested() ? 4U : 0U) |
+                    (contract.pipboy() ? 8U : 0U) |
+                    (contract.lighting() ? 16U : 0U) |
+                    (rightEye ? 32U : 0U);
+                auto& shader = environmentVertexShaders[key];
+                if (!shader) {
+                    shader = createVertexShader(
+                        device.Get(),
+                        contract.vertexColored(),
+                        contract.needsParticleData(),
+                        contract.depthTested(),
+                        contract.pipboy(),
+                        contract.lighting(),
+                        rightEye,
+                        false,
+                        false,
+                        false,
+                        true);
+                }
+                return shader.Get();
+            }
             if (contract.membrane()) {
                 if (contract.normalMappedMembrane()) {
                     if (contract.vertexColored()) {
@@ -1941,6 +2289,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
             auto* vertexShader = selectVertexShader(contract, false);
+            auto* normalTexture = contract.environmentMap() ?
+                environmentNormalTexture.Get() :
+                membraneNormalMapTexture.Get();
+            auto* environmentCube = contract.environmentMap() ?
+                environmentTexture.Get() : nullptr;
+            auto* environmentMask = contract.environmentMap() ?
+                environmentMaskTexture.Get() : nullptr;
             const auto vanillaShader = createPixelShader(
                 device.Get(),
                 root /
@@ -1957,21 +2312,21 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
                 grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
-                nullptr, membraneNormalMapTexture.Get());
+                nullptr, normalTexture, environmentCube, environmentMask);
             const auto disabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), disabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
                 grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
-                nullptr, membraneNormalMapTexture.Get());
+                nullptr, normalTexture, environmentCube, environmentMask);
             const auto enabled = render(
                 device.Get(), context.Get(), vertexShader,
                 replacementShader.Get(), techniqueBuffer.Get(), materialBuffer.Get(),
                 geometryBuffer.Get(), enabledFrameBuffer.Get(), texture.Get(),
                 depthTexture.Get(), depthTestTexturePass.Get(),
                 grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
-                nullptr, membraneNormalMapTexture.Get());
+                nullptr, normalTexture, environmentCube, environmentMask);
 
             const std::string label = contract.name;
             passed &= compare(
@@ -1986,7 +2341,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 enabled,
                 expectedEnabled(contract, enabledSettings),
                 label + " enabled model");
-            if (contract.lighting()) {
+            if (contract.lighting() || contract.environmentMap()) {
                 auto* rightEyeVertexShader =
                     selectVertexShader(contract, true);
                 const auto rightEyeVanilla = render(
@@ -1995,21 +2350,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto rightEyeDisabled = render(
                     device.Get(), context.Get(), rightEyeVertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto rightEyeEnabled = render(
                     device.Get(), context.Get(), rightEyeVertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     enabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 passed &= compare(
                     rightEyeVanilla,
                     expectedVanilla(
@@ -2041,21 +2399,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto disabledLinearColor = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), linearUIMaskTechniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto enabledLinearColor = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), linearUIMaskTechniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     enabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 passed &= compare(
                     vanillaLinearColor,
                     expectedVanilla(
@@ -2085,14 +2446,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTextureFail.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto replacementDiscard = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), geometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTextureFail.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 constexpr Pixel discarded{};
                 passed &= compare(
                     vanillaDiscard,
@@ -2139,21 +2502,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto disabledRawPipboy = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     disabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 const auto enabledRawPipboy = render(
                     device.Get(), context.Get(), vertexShader,
                     replacementShader.Get(), techniqueBuffer.Get(),
                     materialBuffer.Get(), rawPipboyGeometryBuffer.Get(),
                     enabledFrameBuffer.Get(), texture.Get(),
                     depthTexture.Get(), depthTestTexturePass.Get(),
-                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    nullptr, normalTexture, environmentCube, environmentMask);
                 passed &= compare(
                     vanillaRawPipboy,
                     expectedVanilla(
@@ -2179,7 +2545,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 416 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 571 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
