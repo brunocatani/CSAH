@@ -133,6 +133,7 @@ namespace community_shaders::render
         thread_local std::uint64_t activeQualificationSessionId{};
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
+        thread_local std::uint16_t activeIblCaptureProbePlusOne{};
 
         class RecursionGuard final
         {
@@ -506,6 +507,7 @@ namespace community_shaders::render
                     std::memory_order_release);
                 activeQualificationSessionId = requested;
                 activeReplacementBinding = {};
+                activeIblCaptureProbePlusOne = 0;
                 qualificationSessionActive.store(
                     true,
                     std::memory_order_release);
@@ -644,6 +646,18 @@ namespace community_shaders::render
                     activeReplacementBinding);
         }
 
+        void observeActiveIblCaptureProbe(
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
+                activeIblCaptureProbePlusOne == 0) {
+                return;
+            }
+            ibl::Runtime::get().onCaptureProbeDraw(
+                context,
+                activeIblCaptureProbePlusOne);
+        }
+
         [[nodiscard]] void** findMainModuleImport(
             const char* importedModule,
             const char* importedFunction) noexcept
@@ -726,6 +740,10 @@ namespace community_shaders::render
                     bytecode,
                     bytecodeLength,
                     *shader);
+                ibl::Runtime::get().onPixelShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
             }
             return result;
         }
@@ -743,18 +761,22 @@ namespace community_shaders::render
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
+                activeIblCaptureProbePlusOne = 0;
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
+                activeIblCaptureProbePlusOne = 0;
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
 
             const RecursionGuard recursionGuard(insidePSSetShaderHook);
             activatePendingQualificationSession();
+            activeIblCaptureProbePlusOne =
+                ibl::Runtime::get().captureProbeForShader(shader);
             const auto selection =
                 linear_lighting::Runtime::get().selectPixelShader(
                 context,
@@ -795,6 +817,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            observeActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
                     1,
@@ -817,6 +840,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            observeActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
                 recordQualificationDraw(context);
@@ -836,6 +860,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            observeActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
                     1,
@@ -862,6 +887,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            observeActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
                     1,

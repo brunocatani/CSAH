@@ -186,6 +186,10 @@ set(IBL_RUNTIME_HEADER
   "${SOURCE_DIR}/Features/ibl/IblRuntime.h")
 set(IBL_PROJECTION_MODEL
   "${SOURCE_DIR}/Features/ibl/IblProjectionModel.h")
+set(IBL_CAPTURE_PROBE_MODEL
+  "${SOURCE_DIR}/Features/ibl/IblCaptureProbeModel.h")
+set(IBL_CAPTURE_PROBE_VERIFIER
+  "${ROOT_DIR}/tools/verify_ibl_capture_probe_contracts.py")
 set(IBL_PROJECTION_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/IBL/DiffuseIblProjectionCS.hlsl")
 set(IBL_PROJECTION_SHADER_ASSET
@@ -220,6 +224,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${IBL_RUNTIME_SOURCE}"
   "${IBL_RUNTIME_HEADER}"
   "${IBL_PROJECTION_MODEL}"
+  "${IBL_CAPTURE_PROBE_MODEL}"
+  "${IBL_CAPTURE_PROBE_VERIFIER}"
   "${IBL_PROJECTION_SHADER_SOURCE}"
   "${IBL_PROJECTION_SHADER_ASSET}"
   "${IBL_PROJECTION_SHADER_VERIFIER}"
@@ -338,6 +344,13 @@ add_custom_target(VerifyIblProjectionShaderAsset ALL
     --root "${ROOT_DIR}"
     --check
   COMMENT "Verifying generated IBL projection shader identity"
+  VERBATIM)
+
+add_custom_target(VerifyIblCaptureProbeContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${IBL_CAPTURE_PROBE_VERIFIER}"
+    --root "${ROOT_DIR}"
+  COMMENT "Verifying exact DFComposite IBL capture contracts"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingConstantScope ALL
@@ -564,6 +577,7 @@ add_library(${PROJECT_NAME} SHARED
   "${IBL_RUNTIME_SOURCE}"
   "${IBL_RUNTIME_HEADER}"
   "${IBL_PROJECTION_MODEL}"
+  "${IBL_CAPTURE_PROBE_MODEL}"
   "${POINT_LIGHT_HOOK_SOURCE}"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightHook.h"
   "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h"
@@ -597,6 +611,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
   VerifyIblFoundation
+  VerifyIblCaptureProbeContracts
   VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
@@ -778,6 +793,11 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --check)
 
+  add_test(NAME FO4VRCommunityShaders.IblCaptureProbeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${IBL_CAPTURE_PROBE_VERIFIER}"
+      --root "${ROOT_DIR}")
+
   add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake'")
@@ -840,6 +860,19 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersIblProjectionTests PRIVATE d3d11)
   add_test(NAME FO4VRCommunityShaders.IblProjection
     COMMAND FO4VRCommunityShadersIblProjectionTests "${ROOT_DIR}")
+
+  add_executable(FO4VRCommunityShadersIblCaptureProbeModelTests
+    "${ROOT_DIR}/tests/IblCaptureProbeModelTests.cpp"
+    "${IBL_CAPTURE_PROBE_MODEL}")
+  target_compile_features(
+    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.IblCaptureProbeModel
+    COMMAND FO4VRCommunityShadersIblCaptureProbeModelTests)
 
   add_executable(FO4VRCommunityShadersPointerClickGateTests
     "${ROOT_DIR}/tests/PointerClickGateTests.cpp"

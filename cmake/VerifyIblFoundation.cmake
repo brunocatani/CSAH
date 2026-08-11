@@ -30,7 +30,13 @@ foreach(required IN ITEMS
     "CSGetSamplers"
     "Dispatch(1, 1, 1)"
     "CopyResource"
-    "onDFLightAmbientBind")
+    "onDFLightAmbientBind"
+    "matchCaptureProbeContract"
+    "PSGetShaderResources"
+    "PSGetConstantBuffers(12, 1"
+    "OMGetRenderTargets"
+    "RSGetViewports"
+    "state read only, image unchanged")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -90,6 +96,10 @@ endforeach()
 foreach(required IN ITEMS
     "#include \"Features/ibl/IblRuntime.h\""
     "ibl::Runtime::get().onDeviceCreated"
+    "ibl::Runtime::get().onPixelShaderCreated"
+    "ibl::Runtime::get().captureProbeForShader"
+    "ibl::Runtime::get().onCaptureProbeDraw"
+    "qualificationSessionActive.load"
     "ReplacementShaderFamily::dFLightAmbient"
     "ibl::Runtime::get().onDFLightAmbientBind")
   string(FIND "${hookSource}" "${required}" found)
