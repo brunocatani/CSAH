@@ -9,6 +9,7 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <atomic>
@@ -61,6 +62,19 @@ namespace community_shaders::render
         constexpr std::size_t kDrawVtableIndex = 13;
         constexpr std::size_t kDrawIndexedInstancedVtableIndex = 20;
         constexpr std::size_t kDrawInstancedVtableIndex = 21;
+        constexpr std::uint32_t kMaterialColorDomainProbeLimit = 16;
+
+        struct TextureBindingDescription
+        {
+            DXGI_FORMAT viewFormat{ DXGI_FORMAT_UNKNOWN };
+            DXGI_FORMAT textureFormat{ DXGI_FORMAT_UNKNOWN };
+            UINT viewDimension{};
+            UINT width{};
+            UINT height{};
+            UINT arraySize{};
+            UINT sampleCount{};
+            bool present{};
+        };
 
         struct DetourPatchIdentity
         {
@@ -127,6 +141,11 @@ namespace community_shaders::render
             qualificationBindingVerifiedContractMask{};
         linear_lighting::AtomicContractMask
             qualificationDrawVerifiedContractMask{};
+        std::array<
+            std::atomic_bool,
+            linear_lighting::Runtime::kShaderContractCount>
+            qualificationMaterialColorDomainLogged{};
+        std::atomic_uint32_t qualificationMaterialColorDomainProbes{};
         std::atomic_uint32_t qualificationLastBindingState{};
         std::atomic_uint32_t qualificationLastDrawState{};
         thread_local bool insidePSSetShaderHook{};
@@ -478,6 +497,12 @@ namespace community_shaders::render
                 std::memory_order_relaxed);
             qualificationDrawVerifiedContractMask.clear(
                 std::memory_order_relaxed);
+            for (auto& logged : qualificationMaterialColorDomainLogged) {
+                logged.store(false, std::memory_order_relaxed);
+            }
+            qualificationMaterialColorDomainProbes.store(
+                0,
+                std::memory_order_relaxed);
             qualificationLastBindingState.store(0, std::memory_order_relaxed);
             qualificationLastDrawState.store(0, std::memory_order_relaxed);
         }
@@ -528,6 +553,136 @@ namespace community_shaders::render
                         linear_lighting::Runtime::kShaderContractCount ?
                 linear_lighting::contractBit(contractPlusOne - 1) :
                 linear_lighting::ContractBit{};
+        }
+
+        [[nodiscard]] TextureBindingDescription describeShaderResource(
+            ID3D11ShaderResourceView* view) noexcept
+        {
+            TextureBindingDescription result{};
+            if (!view) {
+                return result;
+            }
+            result.present = true;
+            D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+            view->GetDesc(&viewDescription);
+            result.viewFormat = viewDescription.Format;
+            result.viewDimension =
+                static_cast<UINT>(viewDescription.ViewDimension);
+
+            Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+            view->GetResource(&resource);
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            if (!resource || FAILED(resource.As(&texture)) || !texture) {
+                return result;
+            }
+            D3D11_TEXTURE2D_DESC textureDescription{};
+            texture->GetDesc(&textureDescription);
+            result.textureFormat = textureDescription.Format;
+            result.width = textureDescription.Width;
+            result.height = textureDescription.Height;
+            result.arraySize = textureDescription.ArraySize;
+            result.sampleCount = textureDescription.SampleDesc.Count;
+            return result;
+        }
+
+        [[nodiscard]] TextureBindingDescription describeRenderTarget(
+            ID3D11RenderTargetView* view) noexcept
+        {
+            TextureBindingDescription result{};
+            if (!view) {
+                return result;
+            }
+            result.present = true;
+            D3D11_RENDER_TARGET_VIEW_DESC viewDescription{};
+            view->GetDesc(&viewDescription);
+            result.viewFormat = viewDescription.Format;
+            result.viewDimension =
+                static_cast<UINT>(viewDescription.ViewDimension);
+
+            Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+            view->GetResource(&resource);
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            if (!resource || FAILED(resource.As(&texture)) || !texture) {
+                return result;
+            }
+            D3D11_TEXTURE2D_DESC textureDescription{};
+            texture->GetDesc(&textureDescription);
+            result.textureFormat = textureDescription.Format;
+            result.width = textureDescription.Width;
+            result.height = textureDescription.Height;
+            result.arraySize = textureDescription.ArraySize;
+            result.sampleCount = textureDescription.SampleDesc.Count;
+            return result;
+        }
+
+        void observeMaterialColorDomain(
+            ID3D11DeviceContext* context,
+            linear_lighting::ReplacementShaderBinding binding) noexcept
+        {
+            if (!context || binding.family !=
+                    linear_lighting::ReplacementShaderFamily::material ||
+                binding.contractPlusOne == 0 ||
+                binding.contractPlusOne >
+                    qualificationMaterialColorDomainLogged.size() ||
+                qualificationMaterialColorDomainProbes.load(
+                    std::memory_order_relaxed) >=
+                    kMaterialColorDomainProbeLimit) {
+                return;
+            }
+
+            const auto contractIndex = binding.contractPlusOne - 1;
+            if (qualificationMaterialColorDomainLogged[contractIndex].exchange(
+                    true,
+                    std::memory_order_acq_rel)) {
+                return;
+            }
+            const auto probeIndex =
+                qualificationMaterialColorDomainProbes.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            if (probeIndex >= kMaterialColorDomainProbeLimit) {
+                return;
+            }
+
+            ID3D11ShaderResourceView* rawDiffuseView{};
+            context->PSGetShaderResources(0, 1, &rawDiffuseView);
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> diffuseView;
+            diffuseView.Attach(rawDiffuseView);
+
+            ID3D11RenderTargetView* rawRenderTarget{};
+            ID3D11DepthStencilView* rawDepthStencil{};
+            context->OMGetRenderTargets(
+                1,
+                &rawRenderTarget,
+                &rawDepthStencil);
+            Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTarget;
+            renderTarget.Attach(rawRenderTarget);
+            Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depthStencil;
+            depthStencil.Attach(rawDepthStencil);
+
+            const auto diffuse = describeShaderResource(diffuseView.Get());
+            const auto output = describeRenderTarget(renderTarget.Get());
+            logging::info(
+                "Linear Lighting material color-domain probe {}/{}: contract={}, PS-t0(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}), OM-RT0(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}); bindings observed only, image unchanged.",
+                probeIndex + 1,
+                kMaterialColorDomainProbeLimit,
+                binding.contractPlusOne,
+                diffuse.present,
+                static_cast<unsigned>(diffuse.viewFormat),
+                static_cast<unsigned>(diffuse.textureFormat),
+                diffuse.viewDimension,
+                diffuse.width,
+                diffuse.height,
+                diffuse.arraySize,
+                diffuse.sampleCount,
+                output.present,
+                static_cast<unsigned>(output.viewFormat),
+                static_cast<unsigned>(output.textureFormat),
+                output.viewDimension,
+                output.width,
+                output.height,
+                output.arraySize,
+                output.sampleCount);
         }
 
         void recordQualificationBinding(
@@ -600,6 +755,8 @@ namespace community_shaders::render
             }
             const auto contractPlusOne =
                 activeReplacementBinding.contractPlusOne;
+
+            observeMaterialColorDomain(context, activeReplacementBinding);
 
             qualificationReplacementDrawCalls.fetch_add(
                 1,

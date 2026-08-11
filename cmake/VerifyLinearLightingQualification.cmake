@@ -30,6 +30,12 @@ foreach(required IN ITEMS
     "activatePendingQualificationSession"
     "recordQualificationBinding"
     "recordQualificationDraw"
+    "kMaterialColorDomainProbeLimit = 16"
+    "observeMaterialColorDomain"
+    "PSGetShaderResources(0, 1"
+    "OMGetRenderTargets("
+    "Linear Lighting material color-domain probe"
+    "bindings observed only, image unchanged"
     "inspectReplacementPipelineState"
     "AtomicContractMask"
     "qualificationDrawDetoursOwned")
