@@ -31,9 +31,6 @@ namespace community_shaders::linear_lighting
 
         float effectLightingMultiplier{ 0.32f };
         float membraneEffectMultiplier{ 1.0f };
-        float bloodEffectMultiplier{ 1.0f };
-        float projectedEffectMultiplier{ 1.0f };
-        float deferredEffectMultiplier{ 1.0f };
         float otherEffectMultiplier{ 1.0f };
     };
 
@@ -62,6 +59,9 @@ namespace community_shaders::linear_lighting
         float glowmapMultiplier{ 0.66f };
         float effectLightingMultiplier{ 0.32f };
         float membraneEffectMultiplier{ 1.0f };
+        // Fixed compatibility slots. The active FO4VR Effect domain has no
+        // independently selectable Blood, Projected, or Deferred contract,
+        // but packaged replacement bytecode relies on the established b5 ABI.
         float bloodEffectMultiplier{ 1.0f };
         float projectedEffectMultiplier{ 1.0f };
         float deferredEffectMultiplier{ 1.0f };

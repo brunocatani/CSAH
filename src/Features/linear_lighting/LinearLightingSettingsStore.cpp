@@ -175,18 +175,6 @@ namespace community_shaders::linear_lighting
             path,
             L"fMembraneEffectMultiplier",
             defaults.membraneEffectMultiplier);
-        result.bloodEffectMultiplier = readFloat(
-            path,
-            L"fBloodEffectMultiplier",
-            defaults.bloodEffectMultiplier);
-        result.projectedEffectMultiplier = readFloat(
-            path,
-            L"fProjectedEffectMultiplier",
-            defaults.projectedEffectMultiplier);
-        result.deferredEffectMultiplier = readFloat(
-            path,
-            L"fDeferredEffectMultiplier",
-            defaults.deferredEffectMultiplier);
         result.otherEffectMultiplier = readFloat(
             path,
             L"fOtherEffectMultiplier",
@@ -230,9 +218,6 @@ namespace community_shaders::linear_lighting
         WRITE_SETTING(L"fGlowmapMultiplier", glowmapMultiplier);
         WRITE_SETTING(L"fEffectLightingMultiplier", effectLightingMultiplier);
         WRITE_SETTING(L"fMembraneEffectMultiplier", membraneEffectMultiplier);
-        WRITE_SETTING(L"fBloodEffectMultiplier", bloodEffectMultiplier);
-        WRITE_SETTING(L"fProjectedEffectMultiplier", projectedEffectMultiplier);
-        WRITE_SETTING(L"fDeferredEffectMultiplier", deferredEffectMultiplier);
         WRITE_SETTING(L"fOtherEffectMultiplier", otherEffectMultiplier);
 #undef WRITE_SETTING
         return success;

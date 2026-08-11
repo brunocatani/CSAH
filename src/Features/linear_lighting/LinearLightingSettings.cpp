@@ -76,15 +76,6 @@ namespace community_shaders::linear_lighting
         result.membraneEffectMultiplier = sanitizeMultiplier(
             result.membraneEffectMultiplier,
             defaults.membraneEffectMultiplier);
-        result.bloodEffectMultiplier = sanitizeMultiplier(
-            result.bloodEffectMultiplier,
-            defaults.bloodEffectMultiplier);
-        result.projectedEffectMultiplier = sanitizeMultiplier(
-            result.projectedEffectMultiplier,
-            defaults.projectedEffectMultiplier);
-        result.deferredEffectMultiplier = sanitizeMultiplier(
-            result.deferredEffectMultiplier,
-            defaults.deferredEffectMultiplier);
         result.otherEffectMultiplier = sanitizeMultiplier(
             result.otherEffectMultiplier,
             defaults.otherEffectMultiplier);
@@ -126,9 +117,9 @@ namespace community_shaders::linear_lighting
         data.glowmapMultiplier = safe.glowmapMultiplier;
         data.effectLightingMultiplier = safe.effectLightingMultiplier;
         data.membraneEffectMultiplier = safe.membraneEffectMultiplier;
-        data.bloodEffectMultiplier = safe.bloodEffectMultiplier;
-        data.projectedEffectMultiplier = safe.projectedEffectMultiplier;
-        data.deferredEffectMultiplier = safe.deferredEffectMultiplier;
+        data.bloodEffectMultiplier = 1.0f;
+        data.projectedEffectMultiplier = 1.0f;
+        data.deferredEffectMultiplier = 1.0f;
         data.otherEffectMultiplier = safe.otherEffectMultiplier;
         return data;
     }

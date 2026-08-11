@@ -7,6 +7,21 @@
 
 namespace
 {
+    template <class T>
+    concept HasBloodEffectMultiplier = requires(T value) {
+        value.bloodEffectMultiplier;
+    };
+
+    template <class T>
+    concept HasProjectedEffectMultiplier = requires(T value) {
+        value.projectedEffectMultiplier;
+    };
+
+    template <class T>
+    concept HasDeferredEffectMultiplier = requires(T value) {
+        value.deferredEffectMultiplier;
+    };
+
     void require(bool condition, const char* message)
     {
         if (!condition) {
@@ -24,6 +39,10 @@ namespace
 int main()
 {
     using namespace community_shaders::linear_lighting;
+
+    static_assert(!HasBloodEffectMultiplier<Settings>);
+    static_assert(!HasProjectedEffectMultiplier<Settings>);
+    static_assert(!HasDeferredEffectMultiplier<Settings>);
 
     const Settings defaults{};
     require(!defaults.enabled, "feature must default disabled");
@@ -55,6 +74,12 @@ int main()
     require(enabled.enableLinearLighting == 1, "settings and runtime gate enable GPU feature");
     require(enabled.isDirectionalLightLinear == 1, "directional light space flag");
     require(near(enabled.directionalLightRuntimeMultiplier, 2.0f), "runtime directional multiplier");
+    require(near(enabled.bloodEffectMultiplier, 1.0f),
+        "unsupported Blood ABI slot must remain neutral");
+    require(near(enabled.projectedEffectMultiplier, 1.0f),
+        "unsupported Projected ABI slot must remain neutral");
+    require(near(enabled.deferredEffectMultiplier, 1.0f),
+        "unsupported Deferred ABI slot must remain neutral");
 
     std::cout << "Linear Lighting settings tests passed.\n";
     return EXIT_SUCCESS;
