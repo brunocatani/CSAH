@@ -1990,5 +1990,161 @@
     "descriptor": 1084256276,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A07014_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800204",
+    "descriptor": 8389124,
+    "aliases": [8389126, 8391172, 8391174],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800204_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800205",
+    "descriptor": 8389125,
+    "aliases": [8389127, 8391175],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800205_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800224",
+    "descriptor": 8389156,
+    "aliases": [8389158, 8391204, 8391206],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800224_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800225",
+    "descriptor": 8389157,
+    "aliases": [8389159, 8391205, 8391207],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800225_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800604",
+    "descriptor": 8390148,
+    "aliases": [8390150],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800604_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800624",
+    "descriptor": 8390180,
+    "aliases": [8390182],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800624_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00800625",
+    "descriptor": 8390181,
+    "aliases": [8390183],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00800625_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802204",
+    "descriptor": 8397316,
+    "aliases": [8397318],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802204_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802205",
+    "descriptor": 8397317,
+    "aliases": [8397319],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802205_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802224",
+    "descriptor": 8397348,
+    "aliases": [8397350, 8399396, 8399398],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802224_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802225",
+    "descriptor": 8397349,
+    "aliases": [8397351, 8399399],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802225_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802604",
+    "descriptor": 8398340,
+    "aliases": [8398342],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802604_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802605",
+    "descriptor": 8398341,
+    "aliases": [8398343],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802605_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802624",
+    "descriptor": 8398372,
+    "aliases": [8398374],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802624_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00802625",
+    "descriptor": 8398373,
+    "aliases": [8398375],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00802625_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804204",
+    "descriptor": 8405508,
+    "aliases": [8405510],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804204_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804224",
+    "descriptor": 8405540,
+    "aliases": [8405542, 8407588, 8407590],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804224_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804225",
+    "descriptor": 8405541,
+    "aliases": [8405543, 8407591],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804225_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804604",
+    "descriptor": 8406532,
+    "aliases": [8406534],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804604_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804605",
+    "descriptor": 8406533,
+    "aliases": [8406535],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804605_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00804624",
+    "descriptor": 8406564,
+    "aliases": [8406566],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00804624_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00806204",
+    "descriptor": 8413700,
+    "aliases": [8413702, 8415748, 8415750, 8446468, 8446470],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806204_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00806205",
+    "descriptor": 8413701,
+    "aliases": [8413703, 8415749, 8415751],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806205_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00806224",
+    "descriptor": 8413732,
+    "aliases": [8413734, 8415780, 8415782, 8448548, 8448550],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806224_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00806225",
+    "descriptor": 8413733,
+    "aliases": [8413735, 8415781, 8415783],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806225_PS"
+  },
+  {
+    "name": "EffectMembraneCore_00806604",
+    "descriptor": 8414724,
+    "aliases": [8414726, 8449542],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806604_PS"
   }
 ]

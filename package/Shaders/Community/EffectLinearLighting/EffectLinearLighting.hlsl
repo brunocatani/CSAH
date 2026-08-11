@@ -11,6 +11,9 @@ struct EffectPixelInput
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0
+    float4 membraneNormal : TEXCOORD4;
+#endif
 #if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 depthTestData : TEXCOORD3;
 #endif
@@ -20,6 +23,9 @@ struct EffectPixelInput
     float4 fogParam : COLOR1;
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
     float3 pipboyData : TEXCOORD1;
+#endif
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0
+    float3 membraneViewVector : TEXCOORD1;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000400) != 0
     float3 modelPosition : TEXCOORD6;
@@ -81,6 +87,10 @@ cbuffer EffectPerGeometry : register(b2)
 #endif
     float4 EffectPropertyColor : packoffset(c20);
     float4 EffectAlphaTest : packoffset(c21);
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0
+    float4 EffectMembraneRimColor : packoffset(c22);
+    float4 EffectMembraneVariables : packoffset(c23);
+#endif
 };
 
 SamplerState EffectSampler : register(s0);
@@ -289,6 +299,80 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         discard;
     }
 #endif
+#if (EFFECT_TECHNIQUE & 0x00000200) != 0
+    const float4 textureColor = EffectTexture.Sample(
+        EffectSampler,
+        input.texCoord.xy);
+    float4 baseColor = textureColor;
+    baseColor.xyz = LinearLightingEffect(baseColor.xyz);
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    const float4 vertexColor =
+        LinearLightingEffectVertexColor(input.vertexColor);
+    baseColor *= vertexColor;
+#endif
+    baseColor.xyz *= LinearLightingEffect(EffectPropertyColor.xyz);
+    baseColor.w *= EffectPropertyColor.w;
+
+#if (EFFECT_TECHNIQUE & 0x00002000) != 0
+    float grayscaleColorY =
+        pow(abs(EffectPropertyColor.x), 1.0f / 2.2f) *
+        input.membraneNormal.w;
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    grayscaleColorY *= input.vertexColor.x;
+#endif
+    const float3 grayscaleColor = EffectGrayscaleTexture.Sample(
+        EffectGrayscaleSampler,
+        float2(
+            pow(abs(textureColor.y), 1.0f / 2.2f),
+            grayscaleColorY)).xyz;
+    baseColor.xyz = LinearLightingEffect(
+        grayscaleColor * EffectMembraneVariables.z);
+#endif
+
+#if (EFFECT_TECHNIQUE & 0x00004000) != 0
+    float grayscaleAlphaY =
+        pow(abs(EffectPropertyColor.w), 1.0f / 2.2f) *
+        input.membraneNormal.w;
+#if (EFFECT_TECHNIQUE & 0x1) != 0
+    grayscaleAlphaY *= input.vertexColor.w;
+#endif
+    baseColor.w = EffectGrayscaleTexture.Sample(
+        EffectGrayscaleSampler,
+        float2(textureColor.w, grayscaleAlphaY)).w;
+#endif
+
+    const float membraneFactor = pow(
+        saturate(
+            1.0f - dot(
+                input.membraneViewVector,
+                input.membraneNormal.xyz)),
+        EffectMembraneVariables.x);
+    const float4 membraneColor =
+        EffectMembraneRimColor * membraneFactor;
+    baseColor.xyz += membraneColor.xyz * membraneColor.w;
+    baseColor.w += membraneColor.w;
+    if (enableLinearLighting != 0u) {
+        baseColor.xyz *= membraneEffectMult;
+    }
+
+    const float fogFactor = LinearLightingFogAlpha(input.fogParam.w);
+#if (EFFECT_TECHNIQUE & 0x20) != 0
+    const float3 blendedColor = baseColor.xyz * (1.0f - fogFactor);
+#else
+    const float3 blendedColor = lerp(
+        baseColor.xyz,
+        LinearLightingFog(input.fogParam.xyz),
+        fogFactor);
+#endif
+    [branch] if (EffectAlphaTest.y < 1.0f) {
+        if (EffectAlphaTest.y - textureColor.w < 0.0f) {
+            discard;
+        }
+    }
+    return float4(
+        blendedColor,
+        LinearLightingEffectAlpha(baseColor.w));
+#else
 #if (EFFECT_TECHNIQUE & 0x00006000) != 0
     float4 baseColor = float4(
         LinearLightingEffect(EffectBaseColor.xyz),
@@ -472,5 +556,6 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     blendedColor *= outputAlpha;
 #endif
     return float4(blendedColor, outputAlpha);
+#endif
 #endif
 }

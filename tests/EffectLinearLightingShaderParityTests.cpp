@@ -93,6 +93,10 @@ namespace
     constexpr Pixel kPointLightColorB{ 0.5F, 0.3F, 0.12F, 0.4F };
     constexpr Pixel kDirectionalLightColor{ 0.12F, 0.08F, 0.18F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
+    constexpr Pixel kMembraneNormal{ 0.1F, 0.2F, 0.8F, 0.65F };
+    constexpr Pixel kMembraneViewVector{ 0.2F, -0.1F, 0.6F, 0.0F };
+    constexpr Pixel kMembraneRimColor{ 0.3F, 0.5F, 0.7F, 0.4F };
+    constexpr Pixel kMembraneVariables{ 1.3F, 0.0F, 0.75F, 0.0F };
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
     constexpr float kSoftParticleDepth = 0.75F;
@@ -157,6 +161,11 @@ namespace
             return (descriptor & 0x00200000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool membrane() const noexcept
+        {
+            return (descriptor & 0x00000200U) != 0;
+        }
+
         [[nodiscard]] constexpr bool usesBaseTextureAlpha() const noexcept
         {
             return textured() && !grayscaleAlpha();
@@ -193,7 +202,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 332> kEffectContracts{ {
+    constexpr std::array<EffectContract, 358> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -526,6 +535,32 @@ namespace
         { "EffectFalloffFamily_40A05415", 0x40A05415U },
         { "EffectFalloffFamily_40A06424", 0x40A06424U },
         { "EffectFalloffFamily_40A07014", 0x40A07014U },
+        { "EffectMembraneCore_00800204", 0x00800204U },
+        { "EffectMembraneCore_00800205", 0x00800205U },
+        { "EffectMembraneCore_00800224", 0x00800224U },
+        { "EffectMembraneCore_00800225", 0x00800225U },
+        { "EffectMembraneCore_00800604", 0x00800604U },
+        { "EffectMembraneCore_00800624", 0x00800624U },
+        { "EffectMembraneCore_00800625", 0x00800625U },
+        { "EffectMembraneCore_00802204", 0x00802204U },
+        { "EffectMembraneCore_00802205", 0x00802205U },
+        { "EffectMembraneCore_00802224", 0x00802224U },
+        { "EffectMembraneCore_00802225", 0x00802225U },
+        { "EffectMembraneCore_00802604", 0x00802604U },
+        { "EffectMembraneCore_00802605", 0x00802605U },
+        { "EffectMembraneCore_00802624", 0x00802624U },
+        { "EffectMembraneCore_00802625", 0x00802625U },
+        { "EffectMembraneCore_00804204", 0x00804204U },
+        { "EffectMembraneCore_00804224", 0x00804224U },
+        { "EffectMembraneCore_00804225", 0x00804225U },
+        { "EffectMembraneCore_00804604", 0x00804604U },
+        { "EffectMembraneCore_00804605", 0x00804605U },
+        { "EffectMembraneCore_00804624", 0x00804624U },
+        { "EffectMembraneCore_00806204", 0x00806204U },
+        { "EffectMembraneCore_00806205", 0x00806205U },
+        { "EffectMembraneCore_00806224", 0x00806224U },
+        { "EffectMembraneCore_00806225", 0x00806225U },
+        { "EffectMembraneCore_00806604", 0x00806604U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -570,8 +605,10 @@ namespace
         Pixel directionalLightColor{};
         Pixel propertyColor{};
         Pixel alphaTest{};
+        Pixel membraneRimColor{};
+        Pixel membraneVariables{};
     };
-    static_assert(sizeof(EffectPerGeometry) == 22 * sizeof(Pixel));
+    static_assert(sizeof(EffectPerGeometry) == 24 * sizeof(Pixel));
     static_assert(
         offsetof(EffectPerGeometry, spotLightDirectionX) == 6 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, pipboyControls) == 12 * sizeof(Pixel));
@@ -583,6 +620,10 @@ namespace
         19 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, propertyColor) == 20 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, alphaTest) == 21 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerGeometry, membraneRimColor) == 22 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerGeometry, membraneVariables) == 23 * sizeof(Pixel));
 
     struct RenderTarget
     {
@@ -645,7 +686,8 @@ namespace
         bool depthTested,
         bool pipboy,
         bool lighting,
-        bool rightEye)
+        bool rightEye,
+        bool membrane = false)
     {
         constexpr char source[] = R"(
 struct VSOutput
@@ -654,6 +696,9 @@ struct VSOutput
     float4 texCoord : TEXCOORD0;
 #ifdef EFFECT_PIPBOY
     float4 pipboyTexCoord : TEXCOORD4;
+#endif
+#ifdef EFFECT_MEMBRANE
+    float4 membraneNormal : TEXCOORD4;
 #endif
 #ifdef EFFECT_DEPTH_TEST
     float4 depthTestData : TEXCOORD3;
@@ -664,6 +709,9 @@ struct VSOutput
     float4 color : COLOR1;
 #ifdef EFFECT_PIPBOY
     float3 pipboyData : TEXCOORD1;
+#endif
+#ifdef EFFECT_MEMBRANE
+    float3 membraneViewVector : TEXCOORD1;
 #endif
 #ifdef EFFECT_LIGHTING
     float3 modelPosition : TEXCOORD6;
@@ -690,6 +738,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.pipboyTexCoord = 0.0.xxxx;
     output.pipboyData = 0.0.xxx;
 #endif
+#ifdef EFFECT_MEMBRANE
+    output.membraneNormal = float4(0.1, 0.2, 0.8, 0.65);
+    output.membraneViewVector = float3(0.2, -0.1, 0.6);
+#endif
 #ifdef EFFECT_LIGHTING
     output.modelPosition = float3(0.2, -0.1, 0.3);
 #endif
@@ -715,7 +767,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 7> macros{};
+        std::array<D3D_SHADER_MACRO, 8> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
@@ -734,6 +786,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
         if (rightEye) {
             macros[macroCount++] = { "EFFECT_RIGHT_EYE", "1" };
+        }
+        if (membrane) {
+            macros[macroCount++] = { "EFFECT_MEMBRANE", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -1017,6 +1072,107 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return sampleGrayscaleTexture(kTextureColor[3], v)[3];
     }
 
+    Pixel expectedMembrane(
+        const EffectContract& contract,
+        const Settings* settings)
+    {
+        const auto enabled = settings != nullptr && settings->enabled;
+        const auto effectColor = [&](float color) {
+            return enabled ?
+                std::pow(std::abs(color), settings->effectGamma) :
+                color;
+        };
+
+        Pixel baseColor = kTextureColor;
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            baseColor[channel] =
+                effectColor(kTextureColor[channel]) *
+                effectColor(kPropertyColor[channel]);
+            if (contract.vertexColored()) {
+                baseColor[channel] *= enabled ?
+                    effectColor(kVertexColor[channel]) :
+                    std::pow(kVertexColor[channel], 2.2F);
+            }
+        }
+        baseColor[3] *= kPropertyColor[3];
+        if (contract.vertexColored()) {
+            baseColor[3] *= enabled ?
+                kVertexColor[3] :
+                std::pow(kVertexColor[3], 2.2F);
+        }
+
+        if (contract.grayscaleColor()) {
+            auto v =
+                std::pow(kPropertyColor[0], 1.0F / 2.2F) *
+                kMembraneNormal[3];
+            if (contract.vertexColored()) {
+                v *= kVertexColor[0];
+            }
+            const auto grayscale = sampleGrayscaleTexture(
+                std::pow(kTextureColor[1], 1.0F / 2.2F),
+                v);
+            for (std::size_t channel = 0; channel < 3; ++channel) {
+                baseColor[channel] = effectColor(
+                    grayscale[channel] * kMembraneVariables[2]);
+            }
+        }
+        if (contract.grayscaleAlpha()) {
+            auto v =
+                std::pow(kPropertyColor[3], 1.0F / 2.2F) *
+                kMembraneNormal[3];
+            if (contract.vertexColored()) {
+                v *= kVertexColor[3];
+            }
+            baseColor[3] =
+                sampleGrayscaleTexture(kTextureColor[3], v)[3];
+        }
+
+        const auto normalDotView =
+            kMembraneNormal[0] * kMembraneViewVector[0] +
+            kMembraneNormal[1] * kMembraneViewVector[1] +
+            kMembraneNormal[2] * kMembraneViewVector[2];
+        const auto membraneFactor = std::pow(
+            std::clamp(1.0F - normalDotView, 0.0F, 1.0F),
+            kMembraneVariables[0]);
+        const auto membraneAlpha =
+            kMembraneRimColor[3] * membraneFactor;
+        baseColor[3] += membraneAlpha;
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            baseColor[channel] +=
+                kMembraneRimColor[channel] *
+                membraneFactor * membraneAlpha;
+            if (enabled) {
+                baseColor[channel] *= settings->membraneEffectMultiplier;
+            }
+        }
+
+        const auto fogFactor = enabled ?
+            std::pow(
+                std::abs(kFogParam[3]),
+                settings->fogAlphaGamma) :
+            kFogParam[3];
+        Pixel result{};
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            if (contract.additive()) {
+                result[channel] = baseColor[channel] * (1.0F - fogFactor);
+            } else {
+                const auto fogColor = enabled ?
+                    std::pow(
+                        std::abs(kFogParam[channel]),
+                        settings->fogGamma) :
+                    kFogParam[channel];
+                result[channel] = baseColor[channel] +
+                    fogFactor * (fogColor - baseColor[channel]);
+            }
+        }
+        result[3] = enabled ?
+            std::pow(
+                std::abs(baseColor[3]),
+                settings->effectAlphaGamma) :
+            baseColor[3];
+        return result;
+    }
+
     float expectedUIMaskFactor()
     {
         constexpr float u = 0.5F;
@@ -1128,6 +1284,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool uiMaskColorIsLinear = false,
         std::uint32_t eyeIndex = 0)
     {
+        if (contract.membrane()) {
+            return expectedMembrane(contract, nullptr);
+        }
         if (contract.uiMaskRects()) {
             auto alpha = kTextureColor[3] *
                 kBaseColor[3] * kPropertyColor[3];
@@ -1241,6 +1400,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool uiMaskColorIsLinear = false,
         std::uint32_t eyeIndex = 0)
     {
+        if (contract.membrane()) {
+            return expectedMembrane(contract, &settings);
+        }
         if (contract.uiMaskRects()) {
             auto alpha = kTextureColor[3] *
                 kBaseColor[3] * kPropertyColor[3];
@@ -1422,6 +1584,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         geometryConstants.directionalLightColor = kDirectionalLightColor;
         geometryConstants.propertyColor = kPropertyColor;
         geometryConstants.alphaTest = { 0.001F, 0.8F, 0.0F, 1.0F };
+        geometryConstants.membraneRimColor = kMembraneRimColor;
+        geometryConstants.membraneVariables = kMembraneVariables;
         auto rawPipboyGeometryConstants = geometryConstants;
         rawPipboyGeometryConstants.pipboyControls = kPipboyControlsRaw;
         rawPipboyGeometryConstants.alphaTest[3] = 0.0F;
@@ -1447,6 +1611,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         enabledSettings.fogAlphaGamma = 1.45F;
         enabledSettings.pointLightMultiplier = 0.85F;
         enabledSettings.effectLightingMultiplier = 0.4F;
+        enabledSettings.membraneEffectMultiplier = 1.35F;
         enabledSettings.otherEffectMultiplier = 1.25F;
         const FrameData disabledFrame =
             makeFrameData(disabledSettings, true, false, 1.0F);
@@ -1524,8 +1689,37 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto rightEyeDepthTestParticleLightingVertexShader =
             createVertexShader(
                 device.Get(), false, true, true, false, true, true);
+        const auto membraneVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, false, false, true);
+        const auto vertexColorMembraneVertexShader = createVertexShader(
+            device.Get(), true, false, false, false, false, false, true);
+        const auto membraneLightingVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, true, false, true);
+        const auto rightEyeMembraneLightingVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, true, true, true);
+        const auto vertexColorMembraneLightingVertexShader =
+            createVertexShader(
+                device.Get(), true, false, false, false, true, false, true);
+        const auto rightEyeVertexColorMembraneLightingVertexShader =
+            createVertexShader(
+                device.Get(), true, false, false, false, true, true, true);
         const auto selectVertexShader = [&](const EffectContract& contract,
                                             bool rightEye) {
+            if (contract.membrane()) {
+                if (!contract.lighting()) {
+                    return contract.vertexColored() ?
+                        vertexColorMembraneVertexShader.Get() :
+                        membraneVertexShader.Get();
+                }
+                if (contract.vertexColored()) {
+                    return rightEye ?
+                        rightEyeVertexColorMembraneLightingVertexShader.Get() :
+                        vertexColorMembraneLightingVertexShader.Get();
+                }
+                return rightEye ?
+                    rightEyeMembraneLightingVertexShader.Get() :
+                    membraneLightingVertexShader.Get();
+            }
             if (contract.lighting()) {
                 if (contract.depthTested()) {
                     if (contract.needsParticleData()) {
