@@ -183,7 +183,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 168> kEffectContracts{ {
+    constexpr std::array<EffectContract, 176> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -352,6 +352,14 @@ namespace
         { "EffectVertexColorTexturedAdditiveSoftGrayscaleColorLighting_00003425", 0x00003425U },
         { "EffectVertexColorTexturedSoftGrayscaleColorLightingPremultipliedAlpha_40003405", 0x40003405U },
         { "EffectVertexColorTexturedAdditiveParticleSoftGrayscaleColorLightingPremultipliedAlpha_400034A5", 0x400034A5U },
+        { "EffectTexturedGrayscaleAlphaLighting_00004404", 0x00004404U },
+        { "EffectVertexColorTexturedGrayscaleAlphaLighting_00004405", 0x00004405U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleAlphaLighting_00004425", 0x00004425U },
+        { "EffectVertexColorTexturedParticleGrayscaleAlphaLighting_0000448D", 0x0000448DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleAlphaLighting_000044AD", 0x000044ADU },
+        { "EffectVertexColorTexturedGrayscaleAlphaLightingPremultipliedAlpha_40004405", 0x40004405U },
+        { "EffectVertexColorTexturedParticleGrayscaleAlphaLightingPremultipliedAlpha_4000448D", 0x4000448DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleAlphaLightingPremultipliedAlpha_400044AD", 0x400044ADU },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1586,7 +1594,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 168 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 176 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }
