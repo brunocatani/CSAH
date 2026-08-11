@@ -147,9 +147,9 @@ namespace
             return (descriptor & 0x4000U) != 0;
         }
 
-        [[nodiscard]] constexpr bool samplesBaseTexture() const noexcept
+        [[nodiscard]] constexpr bool usesBaseTextureAlpha() const noexcept
         {
-            return textured() || grayscaleColor() || grayscaleAlpha();
+            return textured() && !grayscaleAlpha();
         }
 
         [[nodiscard]] constexpr bool depthTested() const noexcept
@@ -183,7 +183,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 149> kEffectContracts{ {
+    constexpr std::array<EffectContract, 162> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -333,6 +333,19 @@ namespace
         { "EffectVertexColorTexturedSoftLightingPremultipliedAlpha_40001405", 0x40001405U },
         { "EffectVertexColorTexturedAdditiveSoftLightingPremultipliedAlpha_40001425", 0x40001425U },
         { "EffectVertexColorTexturedMultiplyBlendParticleSoftLightingPremultipliedAlpha_400014CD", 0x400014CDU },
+        { "EffectTexturedGrayscaleColorLighting_00002404", 0x00002404U },
+        { "EffectVertexColorTexturedGrayscaleColorLighting_00002405", 0x00002405U },
+        { "EffectAdditiveGrayscaleColorLighting_00002420", 0x00002420U },
+        { "EffectTexturedAdditiveGrayscaleColorLighting_00002424", 0x00002424U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorLighting_00002425", 0x00002425U },
+        { "EffectVertexColorTexturedParticleGrayscaleColorLighting_0000248D", 0x0000248DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorLighting_000024AD", 0x000024ADU },
+        { "EffectTexturedGrayscaleColorLightingPremultipliedAlpha_40002404", 0x40002404U },
+        { "EffectVertexColorTexturedGrayscaleColorLightingPremultipliedAlpha_40002405", 0x40002405U },
+        { "EffectTexturedAdditiveGrayscaleColorLightingPremultipliedAlpha_40002424", 0x40002424U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorLightingPremultipliedAlpha_40002425", 0x40002425U },
+        { "EffectVertexColorTexturedParticleGrayscaleColorLightingPremultipliedAlpha_4000248D", 0x4000248DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorLightingPremultipliedAlpha_400024AD", 0x400024ADU },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -971,7 +984,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (contract.vertexColored() ?
                         std::pow(kVertexColor[3], 2.2F) :
                         1.0F) *
-                (contract.samplesBaseTexture() ? kTextureColor[3] : 1.0F) *
+                (contract.usesBaseTextureAlpha() ? kTextureColor[3] : 1.0F) *
                 kPropertyColor[3];
         if (contract.soft() && !contract.grayscaleAlpha()) {
             alpha *= expectedSoftFade();
@@ -1077,7 +1090,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             grayscaleAlphaSample(contract) :
             kBaseColor[3] *
                 (contract.vertexColored() ? kVertexColor[3] : 1.0F) *
-                (contract.samplesBaseTexture() ? kTextureColor[3] : 1.0F) *
+                (contract.usesBaseTextureAlpha() ? kTextureColor[3] : 1.0F) *
                 kPropertyColor[3];
         if (contract.soft() && !contract.grayscaleAlpha()) {
             rawAlpha *= expectedSoftFade();
@@ -1567,7 +1580,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 149 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 162 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

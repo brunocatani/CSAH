@@ -308,7 +308,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #if (EFFECT_TECHNIQUE & 0x00002004) == 0x4
     baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
 #endif
-#if (EFFECT_TECHNIQUE & 0x00004000) == 0
+#if (EFFECT_TECHNIQUE & 0x00004004) == 0x4
     baseColor.w *= textureColor.w;
 #endif
 #endif
