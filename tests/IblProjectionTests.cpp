@@ -283,6 +283,10 @@ namespace
         require(
             community_shaders::ibl::validDiffuseSH(projected),
             "constant-cubemap projection produced invalid coefficients");
+        require(
+            community_shaders::ibl::classifyDiffuseSH(projected) ==
+                community_shaders::ibl::DiffuseSHState::usable,
+            "constant-cubemap projection was not classified as usable");
         constexpr float kIntegratedL0 = 3.544907701811032f;
         const std::array colors{ kColor.x, kColor.y, kColor.z };
         for (std::size_t channel = 0; channel < 3; ++channel) {
@@ -306,6 +310,32 @@ namespace
         require(
             !community_shaders::ibl::validDiffuseSH(invalid),
             "non-finite SH coefficients were accepted");
+        require(
+            community_shaders::ibl::classifyDiffuseSH(invalid) ==
+                community_shaders::ibl::DiffuseSHState::invalid,
+            "non-finite SH coefficients were not classified as invalid");
+
+        const DiffuseSH black{};
+        require(
+            community_shaders::ibl::classifyDiffuseSH(black) ==
+                community_shaders::ibl::DiffuseSHState::black,
+            "zero-radiance SH coefficients were not classified as black");
+
+        auto negativeL0 = projected;
+        negativeL0.rgb[0][0] = -0.25f;
+        require(
+            community_shaders::ibl::classifyDiffuseSH(negativeL0) ==
+                community_shaders::ibl::DiffuseSHState::invalid,
+            "negative-radiance L0 was accepted");
+
+        auto impossibleDirectional = projected;
+        impossibleDirectional.rgb[0][1] =
+            impossibleDirectional.rgb[0][0] * 2.0f;
+        require(
+            community_shaders::ibl::classifyDiffuseSH(
+                impossibleDirectional) ==
+                community_shaders::ibl::DiffuseSHState::invalid,
+            "physically impossible first-order SH was accepted");
     }
 }
 

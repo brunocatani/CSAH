@@ -16,10 +16,15 @@ namespace community_shaders::ibl
     {
         bool resourcesReady{};
         bool nativeCubemapReady{};
+        bool diffuseSHUsable{};
         std::uint64_t cadenceTicks{};
         std::uint64_t projectionDispatches{};
         std::uint64_t completedReadbacks{};
+        std::uint64_t blackReadbacks{};
+        std::uint64_t usableReadbacks{};
         std::uint64_t invalidReadbacks{};
+        std::uint64_t latestSampleGeneration{};
+        std::uint64_t latestSampleTickMilliseconds{};
         DiffuseSH latestDiffuseSH{};
     };
 
@@ -53,7 +58,13 @@ namespace community_shaders::ibl
         [[nodiscard]] bool refreshNativeCubemap() noexcept;
         void consumeCompletedReadbacks() noexcept;
         void dispatchProjection() noexcept;
-        void publish(const DiffuseSH& coefficients) noexcept;
+        void publishUsable(
+            const DiffuseSH& coefficients,
+            std::uint64_t generation,
+            std::uint64_t tickMilliseconds) noexcept;
+        void publishUnavailable(
+            std::uint64_t generation,
+            std::uint64_t tickMilliseconds) noexcept;
         void resetResources() noexcept;
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
@@ -65,10 +76,13 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
         std::array<ReadbackSlot, 3> readbackRing_{};
         std::uint64_t nextGeneration_{ 1 };
-        std::uint64_t lastPublishedGeneration_{};
+        std::uint64_t lastProcessedGeneration_{};
         std::uint64_t nextCadenceTickMilliseconds_{};
+        std::uint32_t consecutiveBlackReadbacks_{};
         bool loggedSourceReady_{};
         bool loggedFirstReadback_{};
+        bool loggedFirstUsableReadback_{};
+        bool loggedBlackStreak_{};
         bool loggedSourceUnavailable_{};
         bool loggedReadbackFailure_{};
 
@@ -77,8 +91,13 @@ namespace community_shaders::ibl
         std::atomic_uint64_t cadenceTicks_{};
         std::atomic_uint64_t projectionDispatches_{};
         std::atomic_uint64_t completedReadbacks_{};
+        std::atomic_uint64_t blackReadbacks_{};
+        std::atomic_uint64_t usableReadbacks_{};
         std::atomic_uint64_t invalidReadbacks_{};
         std::atomic_uint64_t publishedSequence_{};
+        std::atomic_bool publishedUsable_{};
+        std::atomic_uint64_t publishedGeneration_{};
+        std::atomic_uint64_t publishedTickMilliseconds_{};
         std::array<std::atomic_uint32_t, 12> publishedCoefficientBits_{};
     };
 }

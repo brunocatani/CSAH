@@ -51,11 +51,25 @@ endforeach()
 
 foreach(required IN ITEMS
     "validDiffuseSH"
+    "classifyDiffuseSH"
+    "DiffuseSHState"
     "std::array<std::array<float, 4>, 3>")
   string(FIND "${projectionModel}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL foundation regression: projection model is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "publishedUsable_"
+    "publishUnavailable"
+    "blackReadbacks_"
+    "ambient integration remains fail-closed")
+  string(FIND "${runtimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL usability-gate regression: runtime is missing '${required}'")
   endif()
 endforeach()
 

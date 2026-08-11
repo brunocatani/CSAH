@@ -31,6 +31,7 @@ namespace community_shaders::ibl
         constexpr std::uintptr_t kNativeCubemapSrvRva = 0x0623C3C0;
         constexpr UINT kNativeCubemapExtent = 512;
         constexpr std::uint64_t kProjectionCadenceMilliseconds = 250;
+        constexpr std::uint32_t kBlackReadbackWarningThreshold = 8;
 
         struct EmbeddedShader
         {
@@ -346,6 +347,11 @@ namespace community_shaders::ibl
                 viewDescription)) {
             nativeCubemapSrv_.Reset();
             nativeCubemapReady_.store(false, std::memory_order_release);
+            if (publishedUsable_.load(std::memory_order_acquire)) {
+                publishUnavailable(
+                    lastProcessedGeneration_,
+                    GetTickCount64());
+            }
             if (!loggedSourceUnavailable_) {
                 loggedSourceUnavailable_ = true;
                 logging::warn(
@@ -390,10 +396,15 @@ namespace community_shaders::ibl
             slot.pending = false;
             if (FAILED(result)) {
                 invalidReadbacks_.fetch_add(1, std::memory_order_relaxed);
+                if (slot.generation > lastProcessedGeneration_) {
+                    lastProcessedGeneration_ = slot.generation;
+                    consecutiveBlackReadbacks_ = 0;
+                    publishUnavailable(slot.generation, GetTickCount64());
+                }
                 if (!loggedReadbackFailure_) {
                     loggedReadbackFailure_ = true;
                     logging::warn(
-                        "IBL asynchronous SH readback failed with HRESULT 0x{:08X}; the last valid coefficients remain published.",
+                        "IBL asynchronous SH readback failed with HRESULT 0x{:08X}; SH publication was invalidated.",
                         static_cast<unsigned>(result));
                 }
                 continue;
@@ -401,25 +412,62 @@ namespace community_shaders::ibl
             if (!mapped.pData || mapped.RowPitch < sizeof(DiffuseSH)) {
                 context_->Unmap(slot.texture.Get(), 0);
                 invalidReadbacks_.fetch_add(1, std::memory_order_relaxed);
+                if (slot.generation > lastProcessedGeneration_) {
+                    lastProcessedGeneration_ = slot.generation;
+                    consecutiveBlackReadbacks_ = 0;
+                    publishUnavailable(slot.generation, GetTickCount64());
+                }
                 continue;
             }
 
             DiffuseSH coefficients{};
             std::memcpy(&coefficients, mapped.pData, sizeof(coefficients));
             context_->Unmap(slot.texture.Get(), 0);
-            if (!validDiffuseSH(coefficients)) {
-                invalidReadbacks_.fetch_add(1, std::memory_order_relaxed);
+            if (slot.generation <= lastProcessedGeneration_) {
                 continue;
             }
-            if (slot.generation > lastPublishedGeneration_) {
-                publish(coefficients);
-                lastPublishedGeneration_ = slot.generation;
+            lastProcessedGeneration_ = slot.generation;
+            const auto state = classifyDiffuseSH(coefficients);
+            const auto sampleTick = GetTickCount64();
+            if (state == DiffuseSHState::invalid) {
+                invalidReadbacks_.fetch_add(1, std::memory_order_relaxed);
+                consecutiveBlackReadbacks_ = 0;
+                publishUnavailable(slot.generation, sampleTick);
+                continue;
             }
             completedReadbacks_.fetch_add(1, std::memory_order_relaxed);
             if (!loggedFirstReadback_) {
                 loggedFirstReadback_ = true;
                 logging::info(
-                    "IBL first nonblocking native-cubemap SH readback completed: generation={}, L0 RGB=({}, {}, {}).",
+                    "IBL first nonblocking native-cubemap SH readback completed: generation={}, state={}, L0 RGB=({}, {}, {}).",
+                    slot.generation,
+                    state == DiffuseSHState::usable ? "usable" : "black",
+                    coefficients.rgb[0][0],
+                    coefficients.rgb[1][0],
+                    coefficients.rgb[2][0]);
+            }
+            if (state == DiffuseSHState::black) {
+                blackReadbacks_.fetch_add(1, std::memory_order_relaxed);
+                publishUnavailable(slot.generation, sampleTick);
+                ++consecutiveBlackReadbacks_;
+                if (!loggedBlackStreak_ &&
+                    consecutiveBlackReadbacks_ >=
+                        kBlackReadbackWarningThreshold) {
+                    loggedBlackStreak_ = true;
+                    logging::warn(
+                        "IBL native cubemap remained black across {} completed projections; ambient integration remains fail-closed until radiance appears.",
+                        consecutiveBlackReadbacks_);
+                }
+                continue;
+            }
+
+            consecutiveBlackReadbacks_ = 0;
+            usableReadbacks_.fetch_add(1, std::memory_order_relaxed);
+            publishUsable(coefficients, slot.generation, sampleTick);
+            if (!loggedFirstUsableReadback_) {
+                loggedFirstUsableReadback_ = true;
+                logging::info(
+                    "IBL first usable native-cubemap SH sample published: generation={}, L0 RGB=({}, {}, {}).",
                     slot.generation,
                     coefficients.rgb[0][0],
                     coefficients.rgb[1][0],
@@ -479,7 +527,10 @@ namespace community_shaders::ibl
         }
     }
 
-    void Runtime::publish(const DiffuseSH& coefficients) noexcept
+    void Runtime::publishUsable(
+        const DiffuseSH& coefficients,
+        std::uint64_t generation,
+        std::uint64_t tickMilliseconds) noexcept
     {
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         std::size_t index{};
@@ -490,6 +541,24 @@ namespace community_shaders::ibl
                     std::memory_order_relaxed);
             }
         }
+        publishedGeneration_.store(generation, std::memory_order_relaxed);
+        publishedTickMilliseconds_.store(
+            tickMilliseconds,
+            std::memory_order_relaxed);
+        publishedUsable_.store(true, std::memory_order_relaxed);
+        publishedSequence_.fetch_add(1, std::memory_order_release);
+    }
+
+    void Runtime::publishUnavailable(
+        std::uint64_t generation,
+        std::uint64_t tickMilliseconds) noexcept
+    {
+        publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
+        publishedGeneration_.store(generation, std::memory_order_relaxed);
+        publishedTickMilliseconds_.store(
+            tickMilliseconds,
+            std::memory_order_relaxed);
+        publishedUsable_.store(false, std::memory_order_relaxed);
         publishedSequence_.fetch_add(1, std::memory_order_release);
     }
 
@@ -503,6 +572,10 @@ namespace community_shaders::ibl
             .projectionDispatches = projectionDispatches_.load(
                 std::memory_order_acquire),
             .completedReadbacks = completedReadbacks_.load(
+                std::memory_order_acquire),
+            .blackReadbacks = blackReadbacks_.load(
+                std::memory_order_acquire),
+            .usableReadbacks = usableReadbacks_.load(
                 std::memory_order_acquire),
             .invalidReadbacks = invalidReadbacks_.load(
                 std::memory_order_acquire),
@@ -524,9 +597,18 @@ namespace community_shaders::ibl
                             std::memory_order_relaxed));
                 }
             }
+            const auto usable = publishedUsable_.load(
+                std::memory_order_relaxed);
+            const auto generation = publishedGeneration_.load(
+                std::memory_order_relaxed);
+            const auto tickMilliseconds = publishedTickMilliseconds_.load(
+                std::memory_order_relaxed);
             const auto after = publishedSequence_.load(
                 std::memory_order_acquire);
             if (before == after && (after & 1u) == 0) {
+                result.diffuseSHUsable = usable;
+                result.latestSampleGeneration = generation;
+                result.latestSampleTickMilliseconds = tickMilliseconds;
                 result.latestDiffuseSH = coefficients;
                 break;
             }
@@ -549,11 +631,25 @@ namespace community_shaders::ibl
         context_.Reset();
         device_.Reset();
         nextGeneration_ = 1;
-        lastPublishedGeneration_ = 0;
+        lastProcessedGeneration_ = 0;
         nextCadenceTickMilliseconds_ = 0;
+        consecutiveBlackReadbacks_ = 0;
         loggedSourceReady_ = false;
         loggedFirstReadback_ = false;
+        loggedFirstUsableReadback_ = false;
+        loggedBlackStreak_ = false;
         loggedSourceUnavailable_ = false;
         loggedReadbackFailure_ = false;
+        cadenceTicks_.store(0, std::memory_order_relaxed);
+        projectionDispatches_.store(0, std::memory_order_relaxed);
+        completedReadbacks_.store(0, std::memory_order_relaxed);
+        blackReadbacks_.store(0, std::memory_order_relaxed);
+        usableReadbacks_.store(0, std::memory_order_relaxed);
+        invalidReadbacks_.store(0, std::memory_order_relaxed);
+        publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
+        publishedUsable_.store(false, std::memory_order_relaxed);
+        publishedGeneration_.store(0, std::memory_order_relaxed);
+        publishedTickMilliseconds_.store(0, std::memory_order_relaxed);
+        publishedSequence_.fetch_add(1, std::memory_order_release);
     }
 }
