@@ -970,5 +970,41 @@
     "descriptor": 1073751213,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_LIGHTING_400024AD_PS"
+  },
+  {
+    "name": "EffectTexturedSoftGrayscaleColorLighting_00003404",
+    "descriptor": 13316,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_00003404_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedSoftGrayscaleColorLighting_00003405",
+    "descriptor": 13317,
+    "aliases": [13445, 13453],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_00003405_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveSoftGrayscaleColorLighting_00003424",
+    "descriptor": 13348,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_00003424_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveSoftGrayscaleColorLighting_00003425",
+    "descriptor": 13349,
+    "aliases": [13477, 13485],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_00003425_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedSoftGrayscaleColorLightingPremultipliedAlpha_40003405",
+    "descriptor": 1073755141,
+    "aliases": [1073755269, 1073755277],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_40003405_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleSoftGrayscaleColorLightingPremultipliedAlpha_400034A5",
+    "descriptor": 1073755301,
+    "aliases": [1073755309],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_LIGHTING_400034A5_PS"
   }
 ]
