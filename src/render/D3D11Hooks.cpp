@@ -62,7 +62,40 @@ namespace community_shaders::render
         constexpr std::size_t kDrawVtableIndex = 13;
         constexpr std::size_t kDrawIndexedInstancedVtableIndex = 20;
         constexpr std::size_t kDrawInstancedVtableIndex = 21;
-        constexpr std::uint32_t kMaterialColorDomainProbeLimit = 16;
+
+        enum class ColorDomainProbeCategory : std::uint8_t
+        {
+            materialBase,
+            materialGradientRemap,
+            materialBoneTint,
+            materialScreen,
+            materialDismemberment,
+            materialMeatCuff,
+            materialLandscapeFourLayer,
+            materialLandscapeLod,
+            distantTree,
+            particle0,
+            particle1,
+            particle2,
+            particle3,
+            count,
+        };
+
+        constexpr auto kColorDomainProbeCategoryCount =
+            static_cast<std::size_t>(ColorDomainProbeCategory::count);
+        constexpr std::array<UINT, 1> kBaseColorSlots{ 0 };
+        constexpr std::array<UINT, 1> kGradientRemapColorSlots{ 5 };
+        constexpr std::array<UINT, 2> kBoneTintColorSlots{ 13, 14 };
+        constexpr std::array<UINT, 1> kScreenColorSlots{ 4 };
+        constexpr std::array<UINT, 2> kSpecialDiffuseColorSlots{ 0, 9 };
+        constexpr std::array<UINT, 3> kLandscapeFourLayerColorSlots{
+            0, 3, 13
+        };
+        constexpr std::array<UINT, 2> kLandscapeLodColorSlots{ 0, 13 };
+        constexpr std::array<UINT, 2> kParticleColorSlots{ 0, 1 };
+        constexpr std::array<const char*, 4> kParticleColorDomainLabels{
+            "particle-0", "particle-1", "particle-2", "particle-3"
+        };
 
         struct TextureBindingDescription
         {
@@ -141,11 +174,8 @@ namespace community_shaders::render
             qualificationBindingVerifiedContractMask{};
         linear_lighting::AtomicContractMask
             qualificationDrawVerifiedContractMask{};
-        std::array<
-            std::atomic_bool,
-            linear_lighting::Runtime::kShaderContractCount>
-            qualificationMaterialColorDomainLogged{};
-        std::atomic_uint32_t qualificationMaterialColorDomainProbes{};
+        std::array<std::atomic_bool, kColorDomainProbeCategoryCount>
+            qualificationColorDomainLogged{};
         std::atomic_uint32_t qualificationLastBindingState{};
         std::atomic_uint32_t qualificationLastDrawState{};
         thread_local bool insidePSSetShaderHook{};
@@ -497,12 +527,9 @@ namespace community_shaders::render
                 std::memory_order_relaxed);
             qualificationDrawVerifiedContractMask.clear(
                 std::memory_order_relaxed);
-            for (auto& logged : qualificationMaterialColorDomainLogged) {
+            for (auto& logged : qualificationColorDomainLogged) {
                 logged.store(false, std::memory_order_relaxed);
             }
-            qualificationMaterialColorDomainProbes.store(
-                0,
-                std::memory_order_relaxed);
             qualificationLastBindingState.store(0, std::memory_order_relaxed);
             qualificationLastDrawState.store(0, std::memory_order_relaxed);
         }
@@ -615,40 +642,14 @@ namespace community_shaders::render
             return result;
         }
 
-        void observeMaterialColorDomain(
+        template <std::size_t SlotCount>
+        void logColorDomainBindings(
             ID3D11DeviceContext* context,
-            linear_lighting::ReplacementShaderBinding binding) noexcept
+            linear_lighting::ReplacementShaderBinding binding,
+            const char* category,
+            const char* contractName,
+            const std::array<UINT, SlotCount>& slots) noexcept
         {
-            if (!context || binding.family !=
-                    linear_lighting::ReplacementShaderFamily::material ||
-                binding.contractPlusOne == 0 ||
-                binding.contractPlusOne >
-                    qualificationMaterialColorDomainLogged.size() ||
-                qualificationMaterialColorDomainProbes.load(
-                    std::memory_order_relaxed) >=
-                    kMaterialColorDomainProbeLimit) {
-                return;
-            }
-
-            const auto contractIndex = binding.contractPlusOne - 1;
-            if (qualificationMaterialColorDomainLogged[contractIndex].exchange(
-                    true,
-                    std::memory_order_acq_rel)) {
-                return;
-            }
-            const auto probeIndex =
-                qualificationMaterialColorDomainProbes.fetch_add(
-                    1,
-                    std::memory_order_relaxed);
-            if (probeIndex >= kMaterialColorDomainProbeLimit) {
-                return;
-            }
-
-            ID3D11ShaderResourceView* rawDiffuseView{};
-            context->PSGetShaderResources(0, 1, &rawDiffuseView);
-            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> diffuseView;
-            diffuseView.Attach(rawDiffuseView);
-
             ID3D11RenderTargetView* rawRenderTarget{};
             ID3D11DepthStencilView* rawDepthStencil{};
             context->OMGetRenderTargets(
@@ -660,21 +661,13 @@ namespace community_shaders::render
             Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depthStencil;
             depthStencil.Attach(rawDepthStencil);
 
-            const auto diffuse = describeShaderResource(diffuseView.Get());
             const auto output = describeRenderTarget(renderTarget.Get());
             logging::info(
-                "Linear Lighting material color-domain probe {}/{}: contract={}, PS-t0(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}), OM-RT0(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}); bindings observed only, image unchanged.",
-                probeIndex + 1,
-                kMaterialColorDomainProbeLimit,
+                "Linear Lighting color-domain probe '{}': family={}, contract={}, name='{}', OM-RT0(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}); bindings observed only, image unchanged.",
+                category,
+                static_cast<unsigned>(binding.family),
                 binding.contractPlusOne,
-                diffuse.present,
-                static_cast<unsigned>(diffuse.viewFormat),
-                static_cast<unsigned>(diffuse.textureFormat),
-                diffuse.viewDimension,
-                diffuse.width,
-                diffuse.height,
-                diffuse.arraySize,
-                diffuse.sampleCount,
+                contractName,
                 output.present,
                 static_cast<unsigned>(output.viewFormat),
                 static_cast<unsigned>(output.textureFormat),
@@ -683,6 +676,164 @@ namespace community_shaders::render
                 output.height,
                 output.arraySize,
                 output.sampleCount);
+
+            for (const auto slot : slots) {
+                ID3D11ShaderResourceView* rawView{};
+                context->PSGetShaderResources(slot, 1, &rawView);
+                Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+                view.Attach(rawView);
+                const auto input = describeShaderResource(view.Get());
+                logging::info(
+                    "Linear Lighting color-domain probe '{}': PS-t{}(present={}, viewFormat={}, textureFormat={}, viewDimension={}, extent={}x{}, array={}, samples={}).",
+                    category,
+                    slot,
+                    input.present,
+                    static_cast<unsigned>(input.viewFormat),
+                    static_cast<unsigned>(input.textureFormat),
+                    input.viewDimension,
+                    input.width,
+                    input.height,
+                    input.arraySize,
+                    input.sampleCount);
+            }
+        }
+
+        template <std::size_t SlotCount>
+        void tryObserveColorDomain(
+            ID3D11DeviceContext* context,
+            linear_lighting::ReplacementShaderBinding binding,
+            ColorDomainProbeCategory probe,
+            const char* category,
+            const char* contractName,
+            const std::array<UINT, SlotCount>& slots) noexcept
+        {
+            const auto probeIndex = static_cast<std::size_t>(probe);
+            if (probeIndex >= qualificationColorDomainLogged.size() ||
+                qualificationColorDomainLogged[probeIndex].exchange(
+                    true,
+                    std::memory_order_acq_rel)) {
+                return;
+            }
+            logColorDomainBindings(
+                context, binding, category, contractName, slots);
+        }
+
+        void observeLinearLightingColorDomains(
+            ID3D11DeviceContext* context,
+            linear_lighting::ReplacementShaderBinding binding) noexcept
+        {
+            if (!context || binding.contractPlusOne == 0) {
+                return;
+            }
+
+            if (binding.family ==
+                linear_lighting::ReplacementShaderFamily::material) {
+                if (binding.contractPlusOne >
+                    linear_lighting::Runtime::kShaderContractCount) {
+                    return;
+                }
+                const auto* name = linear_lighting::Runtime::shaderContractName(
+                    binding.contractPlusOne - 1);
+                tryObserveColorDomain(
+                    context,
+                    binding,
+                    ColorDomainProbeCategory::materialBase,
+                    "material-base",
+                    name,
+                    kBaseColorSlots);
+                if (std::strstr(name, "GradientRemap")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialGradientRemap,
+                        "material-gradient-remap",
+                        name,
+                        kGradientRemapColorSlots);
+                }
+                if (std::strstr(name, "BoneTint")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialBoneTint,
+                        "material-bone-tint",
+                        name,
+                        kBoneTintColorSlots);
+                }
+                if (std::strstr(name, "Screen")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialScreen,
+                        "material-screen",
+                        name,
+                        kScreenColorSlots);
+                }
+                if (std::strstr(name, "Dismemberment")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialDismemberment,
+                        "material-dismemberment",
+                        name,
+                        kSpecialDiffuseColorSlots);
+                }
+                if (std::strstr(name, "MeatCuff")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialMeatCuff,
+                        "material-meat-cuff",
+                        name,
+                        kSpecialDiffuseColorSlots);
+                }
+                if (std::strstr(name, "LandscapeFourLayer")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialLandscapeFourLayer,
+                        "material-landscape-four-layer",
+                        name,
+                        kLandscapeFourLayerColorSlots);
+                } else if (std::strstr(name, "LandscapeLod")) {
+                    tryObserveColorDomain(
+                        context,
+                        binding,
+                        ColorDomainProbeCategory::materialLandscapeLod,
+                        "material-landscape-lod",
+                        name,
+                        kLandscapeLodColorSlots);
+                }
+                return;
+            }
+
+            if (binding.family ==
+                linear_lighting::ReplacementShaderFamily::distantTree) {
+                tryObserveColorDomain(
+                    context,
+                    binding,
+                    ColorDomainProbeCategory::distantTree,
+                    "distant-tree",
+                    "DistantTree",
+                    kBaseColorSlots);
+                return;
+            }
+
+            if (binding.family ==
+                    linear_lighting::ReplacementShaderFamily::particle &&
+                binding.contractPlusOne <=
+                    linear_lighting::Runtime::kParticleShaderContractCount) {
+                const auto contractIndex = binding.contractPlusOne - 1;
+                const auto probe = static_cast<ColorDomainProbeCategory>(
+                    static_cast<std::size_t>(ColorDomainProbeCategory::particle0) +
+                    contractIndex);
+                tryObserveColorDomain(
+                    context,
+                    binding,
+                    probe,
+                    kParticleColorDomainLabels[contractIndex],
+                    kParticleColorDomainLabels[contractIndex],
+                    kParticleColorSlots);
+            }
         }
 
         void recordQualificationBinding(
@@ -748,6 +899,8 @@ namespace community_shaders::render
             if (activeQualificationSessionId != sessionId) {
                 return;
             }
+            observeLinearLightingColorDomains(context, activeReplacementBinding);
+
             const auto bit = qualificationContractBit(
                 activeReplacementBinding);
             if (!bit) {
@@ -755,8 +908,6 @@ namespace community_shaders::render
             }
             const auto contractPlusOne =
                 activeReplacementBinding.contractPlusOne;
-
-            observeMaterialColorDomain(context, activeReplacementBinding);
 
             qualificationReplacementDrawCalls.fetch_add(
                 1,
