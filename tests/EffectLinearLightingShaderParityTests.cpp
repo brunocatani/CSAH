@@ -183,7 +183,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 182> kEffectContracts{ {
+    constexpr std::array<EffectContract, 192> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -366,6 +366,16 @@ namespace
         { "EffectTexturedSoftGrayscaleAlphaLightingPremultipliedAlpha_40005404", 0x40005404U },
         { "EffectVertexColorTexturedSoftGrayscaleAlphaLightingPremultipliedAlpha_40005405", 0x40005405U },
         { "EffectVertexColorTexturedAdditiveSoftGrayscaleAlphaLightingPremultipliedAlpha_40005425", 0x40005425U },
+        { "EffectTexturedGrayscaleColorAlphaLighting_00006404", 0x00006404U },
+        { "EffectVertexColorTexturedGrayscaleColorAlphaLighting_00006405", 0x00006405U },
+        { "EffectTexturedAdditiveGrayscaleColorAlphaLighting_00006424", 0x00006424U },
+        { "EffectVertexColorTexturedAdditiveGrayscaleColorAlphaLighting_00006425", 0x00006425U },
+        { "EffectVertexColorTexturedParticleGrayscaleColorAlphaLighting_0000648D", 0x0000648DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaLighting_000064AD", 0x000064ADU },
+        { "EffectTexturedGrayscaleColorAlphaLightingPremultipliedAlpha_40006404", 0x40006404U },
+        { "EffectVertexColorTexturedGrayscaleColorAlphaLightingPremultipliedAlpha_40006405", 0x40006405U },
+        { "EffectVertexColorTexturedParticleGrayscaleColorAlphaLightingPremultipliedAlpha_4000648D", 0x4000648DU },
+        { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaLightingPremultipliedAlpha_400064AD", 0x400064ADU },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1600,7 +1610,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 182 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 192 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

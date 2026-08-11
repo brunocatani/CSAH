@@ -1090,5 +1090,65 @@
     "descriptor": 1073763365,
     "aliases": [1073763501, 1082151989],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_GRAYSCALE_ALPHA_LIGHTING_40005425_PS"
+  },
+  {
+    "name": "EffectTexturedGrayscaleColorAlphaLighting_00006404",
+    "descriptor": 25604,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_00006404_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedGrayscaleColorAlphaLighting_00006405",
+    "descriptor": 25605,
+    "aliases": [8414229],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_00006405_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveGrayscaleColorAlphaLighting_00006424",
+    "descriptor": 25636,
+    "aliases": [10511396, 10511412],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_00006424_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveGrayscaleColorAlphaLighting_00006425",
+    "descriptor": 25637,
+    "aliases": [8414261],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_00006425_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleGrayscaleColorAlphaLighting_0000648D",
+    "descriptor": 25741,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_0000648D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaLighting_000064AD",
+    "descriptor": 25773,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_000064AD_PS"
+  },
+  {
+    "name": "EffectTexturedGrayscaleColorAlphaLightingPremultipliedAlpha_40006404",
+    "descriptor": 1073767428,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_40006404_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedGrayscaleColorAlphaLightingPremultipliedAlpha_40006405",
+    "descriptor": 1073767429,
+    "aliases": [1082156053],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_40006405_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleGrayscaleColorAlphaLightingPremultipliedAlpha_4000648D",
+    "descriptor": 1073767565,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_4000648D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaLightingPremultipliedAlpha_400064AD",
+    "descriptor": 1073767597,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_COMBINED_GRAYSCALE_LIGHTING_400064AD_PS"
   }
 ]
