@@ -2,6 +2,7 @@ foreach(variable IN ITEMS
     IBL_RUNTIME_SOURCE
     IBL_RUNTIME_HEADER
     IBL_PROJECTION_MODEL
+    IBL_SCENE_RADIANCE_PROBE_MODEL
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
     D3D11_HOOK_SOURCE
@@ -14,6 +15,7 @@ endforeach()
 file(READ "${IBL_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${IBL_PROJECTION_MODEL}" projectionModel)
+file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
@@ -44,9 +46,45 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+foreach(required IN ITEMS
+    "kSceneRadianceCandidateT5Slot = 5"
+    "kSceneRadianceCandidateT6Slot = 6"
+    "kSceneRadianceMaximumReadbackPolls = 80"
+    "CopySubresourceRegion"
+    "createSceneRadianceProbeResources"
+    "consumeSceneRadianceProbeReadbacks"
+    "D3D11_MAP_FLAG_DO_NOT_WAIT"
+    "IBL scene-radiance OM-before:"
+    "\"PS-t5\""
+    "\"PS-t6\""
+    "IBL scene-radiance OM-after:"
+    "onCaptureProbeDrawComplete")
+  string(FIND "${runtimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL scene-radiance probe regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kSceneProbeSampleCount = 8"
+    "sceneProbeCoordinates"
+    "decodeR11G11B10Float"
+    "decodeR8G8B8A8Unorm"
+    "summarizeSceneProbe"
+    "meanAbsoluteSceneProbeDifference")
+  string(FIND "${sceneProbeModel}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL scene-radiance probe regression: model is missing '${required}'")
+  endif()
+endforeach()
+
 foreach(forbidden IN ITEMS
     "GetRendererData"
     "cubemapRenderTargets"
+    "kSceneRadianceCandidateSlot"
+    "PS-t10"
     "RE::")
   string(FIND "${runtimeSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
@@ -99,6 +137,9 @@ foreach(required IN ITEMS
     "ibl::Runtime::get().onPixelShaderCreated"
     "ibl::Runtime::get().captureProbeForShader"
     "ibl::Runtime::get().onCaptureProbeDraw"
+    "ibl::Runtime::get().onCaptureProbeDrawComplete"
+    "beginActiveIblCaptureProbe"
+    "completeActiveIblCaptureProbe"
     "qualificationSessionActive.load"
     "ReplacementShaderFamily::dFLightAmbient"
     "ibl::Runtime::get().onDFLightAmbientBind")

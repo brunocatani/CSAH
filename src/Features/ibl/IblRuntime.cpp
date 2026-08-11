@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <ranges>
 
 namespace community_shaders::ibl
 {
@@ -33,8 +34,20 @@ namespace community_shaders::ibl
         constexpr std::uint64_t kProjectionCadenceMilliseconds = 250;
         constexpr std::uint32_t kBlackReadbackWarningThreshold = 8;
         constexpr UINT kCaptureShaderResourceCount = 16;
+        // Exact DFComposite FXP identities declare and sample both bindings,
+        // and the live 5376x2880 R11 draw exposes both at output resolution.
+        // Their production meaning remains untrusted until this probe records
+        // non-black stereo radiance; these are evidence sources, not an IBL
+        // integration contract.
+        constexpr UINT kSceneRadianceCandidateT5Slot = 5;
+        constexpr UINT kSceneRadianceCandidateT6Slot = 6;
+        constexpr std::uint32_t kSceneRadianceMaximumReadbackPolls = 80;
         constexpr UINT kCaptureRenderTargetCount =
             D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
+        constexpr std::array<DXGI_FORMAT, 2> kSceneRadianceProbeFormats{
+            DXGI_FORMAT_R11G11B10_FLOAT,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+        };
 
         struct TextureViewRange
         {
@@ -336,6 +349,118 @@ namespace community_shaders::ibl
                     D3D11_RESOURCE_MISC_TEXTURECUBE) != 0;
         }
 
+        [[nodiscard]] const char* sceneProbeFormatName(
+            DXGI_FORMAT format) noexcept
+        {
+            switch (format) {
+            case DXGI_FORMAT_R11G11B10_FLOAT:
+                return "R11G11B10_FLOAT";
+            case DXGI_FORMAT_R8G8B8A8_UNORM:
+                return "R8G8B8A8_UNORM";
+            default:
+                return "unsupported";
+            }
+        }
+
+        [[nodiscard]] bool copySceneProbeSamples(
+            ID3D11DeviceContext* context,
+            ID3D11Texture2D* source,
+            ID3D11Texture2D* destination,
+            const D3D11_TEXTURE2D_DESC& sourceDescription) noexcept
+        {
+            if (!context || !source || !destination ||
+                sourceDescription.Width < 4 || sourceDescription.Height < 2 ||
+                sourceDescription.MipLevels == 0 ||
+                sourceDescription.ArraySize != 1 ||
+                sourceDescription.SampleDesc.Count != 1 ||
+                std::ranges::find(
+                    kSceneRadianceProbeFormats,
+                    sourceDescription.Format) ==
+                    kSceneRadianceProbeFormats.end()) {
+                return false;
+            }
+
+            const auto coordinates = sceneProbeCoordinates(
+                sourceDescription.Width,
+                sourceDescription.Height);
+            for (std::size_t index = 0; index < coordinates.size(); ++index) {
+                const auto& coordinate = coordinates[index];
+                const D3D11_BOX sourceBox{
+                    coordinate.x,
+                    coordinate.y,
+                    0,
+                    coordinate.x + 1,
+                    coordinate.y + 1,
+                    1,
+                };
+                context->CopySubresourceRegion(
+                    destination,
+                    0,
+                    static_cast<UINT>(index),
+                    0,
+                    0,
+                    source,
+                    0,
+                    &sourceBox);
+            }
+            return true;
+        }
+
+        enum class SceneProbeReadResult
+        {
+            pending,
+            ready,
+            failed,
+        };
+
+        [[nodiscard]] SceneProbeReadResult readSceneProbeSamples(
+            ID3D11DeviceContext* context,
+            ID3D11Texture2D* texture,
+            DXGI_FORMAT format,
+            std::array<SceneProbeRgb, kSceneProbeSampleCount>& samples)
+            noexcept
+        {
+            if (!context || !texture) {
+                return SceneProbeReadResult::failed;
+            }
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            const auto result = context->Map(
+                texture,
+                0,
+                D3D11_MAP_READ,
+                D3D11_MAP_FLAG_DO_NOT_WAIT,
+                &mapped);
+            if (result == DXGI_ERROR_WAS_STILL_DRAWING) {
+                return SceneProbeReadResult::pending;
+            }
+            if (FAILED(result) || !mapped.pData ||
+                mapped.RowPitch < kSceneProbeSampleCount * sizeof(std::uint32_t)) {
+                return SceneProbeReadResult::failed;
+            }
+
+            const auto* source = static_cast<const std::byte*>(mapped.pData);
+            for (std::size_t index = 0; index < samples.size(); ++index) {
+                std::uint32_t packed{};
+                std::memcpy(
+                    &packed,
+                    source + index * sizeof(packed),
+                    sizeof(packed));
+                switch (format) {
+                case DXGI_FORMAT_R11G11B10_FLOAT:
+                    samples[index] = decodeR11G11B10Float(packed);
+                    break;
+                case DXGI_FORMAT_R8G8B8A8_UNORM:
+                    samples[index] = decodeR8G8B8A8Unorm(packed);
+                    break;
+                default:
+                    context->Unmap(texture, 0);
+                    return SceneProbeReadResult::failed;
+                }
+            }
+            context->Unmap(texture, 0);
+            return SceneProbeReadResult::ready;
+        }
+
         class ScopedComputeState final
         {
         public:
@@ -514,20 +639,21 @@ namespace community_shaders::ibl
         return 0;
     }
 
-    void Runtime::onCaptureProbeDraw(
+    CaptureProbeDrawToken Runtime::onCaptureProbeDraw(
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
+        CaptureProbeDrawToken token{};
         if (!context || context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size()) {
-            return;
+            return token;
         }
         const auto contractIndex =
             static_cast<std::size_t>(contractPlusOne - 1);
         if (captureProbeLogged_[contractIndex].exchange(
                 true,
                 std::memory_order_acq_rel)) {
-            return;
+            return token;
         }
 
         std::array<ID3D11ShaderResourceView*, kCaptureShaderResourceCount>
@@ -569,6 +695,43 @@ namespace community_shaders::ibl
             (static_cast<std::uint32_t>(contract.checksum[1]) << 16) |
             (static_cast<std::uint32_t>(contract.checksum[2]) << 8) |
             static_cast<std::uint32_t>(contract.checksum[3]);
+
+        ComPtr<ID3D11Texture2D> outputTexture;
+        D3D11_TEXTURE2D_DESC outputDescription{};
+        if (renderTargets[0]) {
+            ComPtr<ID3D11Resource> outputResource;
+            renderTargets[0]->GetResource(&outputResource);
+            if (outputResource &&
+                SUCCEEDED(outputResource.As(&outputTexture)) &&
+                outputTexture) {
+                outputTexture->GetDesc(&outputDescription);
+            }
+        }
+        const auto acquireTexture = [&shaderResources](
+                                        UINT shaderResourceSlot,
+                                        ComPtr<ID3D11Texture2D>& texture,
+                                        D3D11_TEXTURE2D_DESC& description) {
+            if (!shaderResources[shaderResourceSlot]) {
+                return;
+            }
+            ComPtr<ID3D11Resource> resource;
+            shaderResources[shaderResourceSlot]->GetResource(&resource);
+            if (resource && SUCCEEDED(resource.As(&texture)) && texture) {
+                texture->GetDesc(&description);
+            }
+        };
+        ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
+        D3D11_TEXTURE2D_DESC pixelShaderT5Description{};
+        acquireTexture(
+            kSceneRadianceCandidateT5Slot,
+            pixelShaderT5Texture,
+            pixelShaderT5Description);
+        ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
+        D3D11_TEXTURE2D_DESC pixelShaderT6Description{};
+        acquireTexture(
+            kSceneRadianceCandidateT6Slot,
+            pixelShaderT6Texture,
+            pixelShaderT6Description);
         logging::info(
             "IBL capture WORLD DFComposite[{:02}] {:08x} draw: PS-SRVs={}, RTVs={}, DSV={}, b12={}, viewports={}; state read only, image unchanged.",
             contractPlusOne,
@@ -664,6 +827,107 @@ namespace community_shaders::ibl
             }
         }
         completedCaptureProbes_.fetch_add(1, std::memory_order_relaxed);
+
+        if (!resourcesReady_.load(std::memory_order_acquire) ||
+            !outputTexture || outputDescription.ArraySize != 1 ||
+            outputDescription.MipLevels == 0 ||
+            outputDescription.SampleDesc.Count != 1) {
+            return token;
+        }
+        const auto readback = std::ranges::find_if(
+            sceneRadianceReadbackSlots_,
+            [&outputDescription](const auto& slot) {
+                return slot.format == outputDescription.Format;
+            });
+        if (readback == sceneRadianceReadbackSlots_.end() ||
+            readback->armed || readback->pending || readback->completed ||
+            !readback->beforeTexture || !readback->pixelShaderT5Texture ||
+            !readback->pixelShaderT6Texture ||
+            !readback->afterTexture ||
+            !copySceneProbeSamples(
+                context,
+                outputTexture.Get(),
+                readback->beforeTexture.Get(),
+                outputDescription)) {
+            return token;
+        }
+
+        readback->armed = true;
+        readback->sourceWidth = outputDescription.Width;
+        readback->sourceHeight = outputDescription.Height;
+        readback->contractPlusOne = contractPlusOne;
+        readback->checksumPrefix = checksumPrefix;
+        readback->pixelShaderT5Copied = false;
+        readback->pixelShaderT6Copied = false;
+        readback->pendingPolls = 0;
+        const auto copyCandidate = [context, &outputDescription](
+                                       ID3D11Texture2D* source,
+                                       const D3D11_TEXTURE2D_DESC& description,
+                                       ID3D11Texture2D* destination) {
+            return source &&
+                description.Width == outputDescription.Width &&
+                description.Height == outputDescription.Height &&
+                description.Format == outputDescription.Format &&
+                description.ArraySize == 1 && description.MipLevels > 0 &&
+                description.SampleDesc.Count == 1 &&
+                copySceneProbeSamples(
+                    context,
+                    source,
+                    destination,
+                    description);
+        };
+        readback->pixelShaderT5Copied = copyCandidate(
+            pixelShaderT5Texture.Get(),
+            pixelShaderT5Description,
+            readback->pixelShaderT5Texture.Get());
+        readback->pixelShaderT6Copied = copyCandidate(
+            pixelShaderT6Texture.Get(),
+            pixelShaderT6Description,
+            readback->pixelShaderT6Texture.Get());
+
+        token.outputTexture = outputTexture;
+        token.contractPlusOne = contractPlusOne;
+        token.readbackSlotPlusOne = static_cast<std::uint8_t>(
+            std::distance(sceneRadianceReadbackSlots_.begin(), readback) + 1);
+        return token;
+    }
+
+    void Runtime::onCaptureProbeDrawComplete(
+        ID3D11DeviceContext* context,
+        const CaptureProbeDrawToken& token) noexcept
+    {
+        if (!context || context != context_.Get() || !token.outputTexture ||
+            token.readbackSlotPlusOne == 0 ||
+            token.readbackSlotPlusOne > sceneRadianceReadbackSlots_.size()) {
+            return;
+        }
+        auto& readback = sceneRadianceReadbackSlots_[
+            token.readbackSlotPlusOne - 1];
+        if (!readback.armed ||
+            readback.contractPlusOne != token.contractPlusOne) {
+            return;
+        }
+
+        D3D11_TEXTURE2D_DESC outputDescription{};
+        token.outputTexture->GetDesc(&outputDescription);
+        const auto copied = outputDescription.Width == readback.sourceWidth &&
+            outputDescription.Height == readback.sourceHeight &&
+            outputDescription.Format == readback.format &&
+            copySceneProbeSamples(
+                context,
+                token.outputTexture.Get(),
+                readback.afterTexture.Get(),
+                outputDescription);
+        readback.armed = false;
+        if (!copied) {
+            readback.completed = true;
+            sceneRadianceProbeFailures_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            return;
+        }
+        readback.pending = true;
+        sceneRadianceProbeCaptures_.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool Runtime::createResources() noexcept
@@ -727,6 +991,46 @@ namespace community_shaders::ibl
                     &stagingDescription,
                     nullptr,
                     &slot.texture))) {
+                return false;
+            }
+        }
+        return createSceneRadianceProbeResources();
+    }
+
+    bool Runtime::createSceneRadianceProbeResources() noexcept
+    {
+        for (std::size_t index = 0;
+             index < sceneRadianceReadbackSlots_.size();
+             ++index) {
+            auto& slot = sceneRadianceReadbackSlots_[index];
+            slot = {};
+            slot.format = kSceneRadianceProbeFormats[index];
+
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = static_cast<UINT>(kSceneProbeSampleCount);
+            description.Height = 1;
+            description.MipLevels = 1;
+            description.ArraySize = 1;
+            description.Format = slot.format;
+            description.SampleDesc.Count = 1;
+            description.Usage = D3D11_USAGE_STAGING;
+            description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            if (FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.beforeTexture)) ||
+                FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.pixelShaderT5Texture)) ||
+                FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.pixelShaderT6Texture)) ||
+                FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.afterTexture))) {
                 return false;
             }
         }
@@ -888,6 +1192,166 @@ namespace community_shaders::ibl
         }
     }
 
+    void Runtime::consumeSceneRadianceProbeReadbacks() noexcept
+    {
+        for (auto& slot : sceneRadianceReadbackSlots_) {
+            if (!slot.pending) {
+                continue;
+            }
+
+            std::array<SceneProbeRgb, kSceneProbeSampleCount> before{};
+            std::array<SceneProbeRgb, kSceneProbeSampleCount> pixelShaderT5{};
+            std::array<SceneProbeRgb, kSceneProbeSampleCount> pixelShaderT6{};
+            std::array<SceneProbeRgb, kSceneProbeSampleCount> after{};
+            const auto beforeResult = readSceneProbeSamples(
+                context_.Get(),
+                slot.beforeTexture.Get(),
+                slot.format,
+                before);
+            const auto pixelShaderT5Result = slot.pixelShaderT5Copied ?
+                readSceneProbeSamples(
+                    context_.Get(),
+                    slot.pixelShaderT5Texture.Get(),
+                    slot.format,
+                    pixelShaderT5) :
+                SceneProbeReadResult::ready;
+            const auto pixelShaderT6Result = slot.pixelShaderT6Copied ?
+                readSceneProbeSamples(
+                    context_.Get(),
+                    slot.pixelShaderT6Texture.Get(),
+                    slot.format,
+                    pixelShaderT6) :
+                SceneProbeReadResult::ready;
+            const auto afterResult = readSceneProbeSamples(
+                context_.Get(),
+                slot.afterTexture.Get(),
+                slot.format,
+                after);
+            if (beforeResult == SceneProbeReadResult::pending ||
+                pixelShaderT5Result == SceneProbeReadResult::pending ||
+                pixelShaderT6Result == SceneProbeReadResult::pending ||
+                afterResult == SceneProbeReadResult::pending) {
+                ++slot.pendingPolls;
+                if (slot.pendingPolls <
+                    kSceneRadianceMaximumReadbackPolls) {
+                    continue;
+                }
+                slot.pending = false;
+                slot.completed = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                if (!slot.failureLogged) {
+                    slot.failureLogged = true;
+                    logging::warn(
+                        "IBL scene-radiance boundary readback timed out after {} nonblocking polls for format {}; the diagnostic remains fail-closed.",
+                        slot.pendingPolls,
+                        sceneProbeFormatName(slot.format));
+                }
+                continue;
+            }
+            if (beforeResult == SceneProbeReadResult::failed ||
+                pixelShaderT5Result == SceneProbeReadResult::failed ||
+                pixelShaderT6Result == SceneProbeReadResult::failed ||
+                afterResult == SceneProbeReadResult::failed) {
+                slot.pending = false;
+                slot.completed = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                if (!slot.failureLogged) {
+                    slot.failureLogged = true;
+                    logging::warn(
+                        "IBL scene-radiance boundary readback failed for format {}; the diagnostic remains fail-closed.",
+                        sceneProbeFormatName(slot.format));
+                }
+                continue;
+            }
+
+            const auto beforeSummary = summarizeSceneProbe(before);
+            const auto afterSummary = summarizeSceneProbe(after);
+            logging::info(
+                "IBL scene-radiance boundary DFComposite[{:02}] {:08x}: format={}, packedExtent={}x{}, samples={}; image unchanged.",
+                slot.contractPlusOne,
+                slot.checksumPrefix,
+                sceneProbeFormatName(slot.format),
+                slot.sourceWidth,
+                slot.sourceHeight,
+                kSceneProbeSampleCount);
+            logging::info(
+                "IBL scene-radiance OM-before: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}.",
+                beforeSummary.average.red,
+                beforeSummary.average.green,
+                beforeSummary.average.blue,
+                beforeSummary.leftEyeAverage.red,
+                beforeSummary.leftEyeAverage.green,
+                beforeSummary.leftEyeAverage.blue,
+                beforeSummary.rightEyeAverage.red,
+                beforeSummary.rightEyeAverage.green,
+                beforeSummary.rightEyeAverage.blue,
+                beforeSummary.peak,
+                beforeSummary.nonBlackSamples,
+                beforeSummary.validSamples);
+            const auto logPixelShaderCandidate = [&after](
+                                                     const char* name,
+                                                     bool copied,
+                                                     const auto& samples) {
+                if (!copied) {
+                    logging::info(
+                        "IBL scene-radiance {}: no same-format full-resolution candidate was bound for this draw.",
+                        name);
+                    return;
+                }
+                const auto candidateSummary = summarizeSceneProbe(samples);
+                logging::info(
+                    "IBL scene-radiance {}: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}, meanAbsDeltaToAfter={}.",
+                    name,
+                    candidateSummary.average.red,
+                    candidateSummary.average.green,
+                    candidateSummary.average.blue,
+                    candidateSummary.leftEyeAverage.red,
+                    candidateSummary.leftEyeAverage.green,
+                    candidateSummary.leftEyeAverage.blue,
+                    candidateSummary.rightEyeAverage.red,
+                    candidateSummary.rightEyeAverage.green,
+                    candidateSummary.rightEyeAverage.blue,
+                    candidateSummary.peak,
+                    candidateSummary.nonBlackSamples,
+                    candidateSummary.validSamples,
+                    meanAbsoluteSceneProbeDifference(samples, after));
+            };
+            logPixelShaderCandidate(
+                "PS-t5",
+                slot.pixelShaderT5Copied,
+                pixelShaderT5);
+            logPixelShaderCandidate(
+                "PS-t6",
+                slot.pixelShaderT6Copied,
+                pixelShaderT6);
+            logging::info(
+                "IBL scene-radiance OM-after: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}, meanAbsDeltaFromBefore={}.",
+                afterSummary.average.red,
+                afterSummary.average.green,
+                afterSummary.average.blue,
+                afterSummary.leftEyeAverage.red,
+                afterSummary.leftEyeAverage.green,
+                afterSummary.leftEyeAverage.blue,
+                afterSummary.rightEyeAverage.red,
+                afterSummary.rightEyeAverage.green,
+                afterSummary.rightEyeAverage.blue,
+                afterSummary.peak,
+                afterSummary.nonBlackSamples,
+                afterSummary.validSamples,
+                meanAbsoluteSceneProbeDifference(before, after));
+
+            slot.pending = false;
+            slot.completed = true;
+            sceneRadianceProbeReadbacks_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+        }
+    }
+
     void Runtime::dispatchProjection() noexcept
     {
         const auto available = std::ranges::find_if(
@@ -934,6 +1398,7 @@ namespace community_shaders::ibl
         nextCadenceTickMilliseconds_ = now + kProjectionCadenceMilliseconds;
         cadenceTicks_.fetch_add(1, std::memory_order_relaxed);
         consumeCompletedReadbacks();
+        consumeSceneRadianceProbeReadbacks();
         if (refreshNativeCubemap()) {
             dispatchProjection();
         }
@@ -995,6 +1460,12 @@ namespace community_shaders::ibl
                 std::memory_order_acquire),
             .completedCaptureProbes = completedCaptureProbes_.load(
                 std::memory_order_acquire),
+            .sceneRadianceProbeCaptures =
+                sceneRadianceProbeCaptures_.load(std::memory_order_acquire),
+            .sceneRadianceProbeReadbacks =
+                sceneRadianceProbeReadbacks_.load(std::memory_order_acquire),
+            .sceneRadianceProbeFailures =
+                sceneRadianceProbeFailures_.load(std::memory_order_acquire),
         };
         constexpr std::uint32_t kMaximumSnapshotAttempts = 3;
         for (std::uint32_t attempt = 0; attempt < kMaximumSnapshotAttempts;
@@ -1062,6 +1533,9 @@ namespace community_shaders::ibl
         for (auto& slot : readbackRing_) {
             slot = {};
         }
+        for (auto& slot : sceneRadianceReadbackSlots_) {
+            slot = {};
+        }
         projectionUav_.Reset();
         projectionTexture_.Reset();
         linearSampler_.Reset();
@@ -1084,6 +1558,9 @@ namespace community_shaders::ibl
         blackReadbacks_.store(0, std::memory_order_relaxed);
         usableReadbacks_.store(0, std::memory_order_relaxed);
         invalidReadbacks_.store(0, std::memory_order_relaxed);
+        sceneRadianceProbeCaptures_.store(0, std::memory_order_relaxed);
+        sceneRadianceProbeReadbacks_.store(0, std::memory_order_relaxed);
+        sceneRadianceProbeFailures_.store(0, std::memory_order_relaxed);
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);

@@ -2,6 +2,7 @@
 
 #include "Features/ibl/IblCaptureProbeModel.h"
 #include "Features/ibl/IblProjectionModel.h"
+#include "Features/ibl/IblSceneRadianceProbeModel.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -27,9 +28,19 @@ namespace community_shaders::ibl
         std::uint64_t invalidReadbacks{};
         std::uint64_t matchingCaptureShaders{};
         std::uint64_t completedCaptureProbes{};
+        std::uint64_t sceneRadianceProbeCaptures{};
+        std::uint64_t sceneRadianceProbeReadbacks{};
+        std::uint64_t sceneRadianceProbeFailures{};
         std::uint64_t latestSampleGeneration{};
         std::uint64_t latestSampleTickMilliseconds{};
         DiffuseSH latestDiffuseSH{};
+    };
+
+    struct CaptureProbeDrawToken
+    {
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> outputTexture;
+        std::uint16_t contractPlusOne{};
+        std::uint8_t readbackSlotPlusOne{};
     };
 
     class Runtime
@@ -56,9 +67,17 @@ namespace community_shaders::ibl
         // Called only inside the existing PostLoadGame/NewGame qualification
         // window. It reads current D3D11 bindings once per exact contract,
         // changes no state, and distinguishes world evidence from menu draws.
-        void onCaptureProbeDraw(
+        // This Batch-0 staging readback is removed when its selected source
+        // is replaced by the production capture/update provider.
+        [[nodiscard]] CaptureProbeDrawToken onCaptureProbeDraw(
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
+
+        // Completes the bounded before/after sample transaction after the
+        // original qualified draw. The token never escapes that draw hook.
+        void onCaptureProbeDrawComplete(
+            ID3D11DeviceContext* context,
+            const CaptureProbeDrawToken& token) noexcept;
 
         // Called only at an exact DFLight ambient shader bind. The initial
         // observe-only stage performs at most one tiny projection every
@@ -84,9 +103,31 @@ namespace community_shaders::ibl
             std::atomic<std::uint16_t> contractPlusOne{};
         };
 
+        struct SceneRadianceReadbackSlot
+        {
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> beforeTexture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> afterTexture;
+            DXGI_FORMAT format{ DXGI_FORMAT_UNKNOWN };
+            UINT sourceWidth{};
+            UINT sourceHeight{};
+            std::uint16_t contractPlusOne{};
+            std::uint32_t checksumPrefix{};
+            std::uint32_t pendingPolls{};
+            bool armed{};
+            bool pending{};
+            bool completed{};
+            bool pixelShaderT5Copied{};
+            bool pixelShaderT6Copied{};
+            bool failureLogged{};
+        };
+
         [[nodiscard]] bool createResources() noexcept;
+        [[nodiscard]] bool createSceneRadianceProbeResources() noexcept;
         [[nodiscard]] bool refreshNativeCubemap() noexcept;
         void consumeCompletedReadbacks() noexcept;
+        void consumeSceneRadianceProbeReadbacks() noexcept;
         void dispatchProjection() noexcept;
         void publishUsable(
             const DiffuseSH& coefficients,
@@ -106,6 +147,8 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> projectionUav_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
         std::array<ReadbackSlot, 3> readbackRing_{};
+        std::array<SceneRadianceReadbackSlot, 2>
+            sceneRadianceReadbackSlots_{};
         mutable std::mutex captureShaderMutex_;
         std::array<CaptureShaderSlot, kCaptureShaderSlotCount>
             captureShaderSlots_{};
@@ -132,6 +175,9 @@ namespace community_shaders::ibl
         std::atomic_uint64_t invalidReadbacks_{};
         std::atomic_uint64_t matchingCaptureShaders_{};
         std::atomic_uint64_t completedCaptureProbes_{};
+        std::atomic_uint64_t sceneRadianceProbeCaptures_{};
+        std::atomic_uint64_t sceneRadianceProbeReadbacks_{};
+        std::atomic_uint64_t sceneRadianceProbeFailures_{};
         std::atomic_bool captureRegistryOverflowLogged_{};
         std::atomic_uint64_t publishedSequence_{};
         std::atomic_bool publishedUsable_{};

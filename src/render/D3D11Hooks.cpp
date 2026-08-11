@@ -646,16 +646,23 @@ namespace community_shaders::render
                     activeReplacementBinding);
         }
 
-        void observeActiveIblCaptureProbe(
+        [[nodiscard]] ibl::CaptureProbeDrawToken beginActiveIblCaptureProbe(
             ID3D11DeviceContext* context) noexcept
         {
             if (!qualificationSessionActive.load(std::memory_order_acquire) ||
                 activeIblCaptureProbePlusOne == 0) {
-                return;
+                return {};
             }
-            ibl::Runtime::get().onCaptureProbeDraw(
+            return ibl::Runtime::get().onCaptureProbeDraw(
                 context,
                 activeIblCaptureProbePlusOne);
+        }
+
+        void completeActiveIblCaptureProbe(
+            ID3D11DeviceContext* context,
+            const ibl::CaptureProbeDrawToken& token) noexcept
+        {
+            ibl::Runtime::get().onCaptureProbeDrawComplete(context, token);
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -817,7 +824,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            observeActiveIblCaptureProbe(context);
+            const auto iblCapture = beginActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
                     1,
@@ -831,6 +838,7 @@ namespace community_shaders::render
                     startIndexLocation,
                     baseVertexLocation);
             }
+            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDraw(
@@ -840,7 +848,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            observeActiveIblCaptureProbe(context);
+            const auto iblCapture = beginActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
                 recordQualificationDraw(context);
@@ -848,6 +856,7 @@ namespace community_shaders::render
             if (originalDraw) {
                 originalDraw(context, vertexCount, startVertexLocation);
             }
+            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDrawIndexedInstanced(
@@ -860,7 +869,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            observeActiveIblCaptureProbe(context);
+            const auto iblCapture = beginActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
                     1,
@@ -876,6 +885,7 @@ namespace community_shaders::render
                     baseVertexLocation,
                     startInstanceLocation);
             }
+            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDrawInstanced(
@@ -887,7 +897,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            observeActiveIblCaptureProbe(context);
+            const auto iblCapture = beginActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
                     1,
@@ -902,6 +912,7 @@ namespace community_shaders::render
                     startVertexLocation,
                     startInstanceLocation);
             }
+            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         [[nodiscard]] bool createQualificationDrawDetour(
