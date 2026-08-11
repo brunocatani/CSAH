@@ -104,6 +104,24 @@ namespace
     constexpr Pixel kMembraneVariables{ 1.3F, 0.0F, 0.75F, 0.0F };
     constexpr Pixel kEnvironmentNormalTexture{ 0.75F, 0.25F, 0.0F, 0.6F };
     constexpr Pixel kEnvironmentMaskTexture{ 0.4F, 0.0F, 0.0F, 0.0F };
+    constexpr std::array<Pixel, 4> kDistortionFieldTexture{ {
+        { 0.15F, 0.85F, 0.0F, 1.0F },
+        { 0.75F, 0.75F, 0.0F, 1.0F },
+        { 0.35F, 0.65F, 0.0F, 1.0F },
+        { 0.55F, 0.45F, 0.0F, 1.0F },
+    } };
+    constexpr std::array<Pixel, 4> kDistortionMaskTexture{ {
+        { 0.1F, 0.2F, 0.3F, 0.4F },
+        { 0.2F, 0.3F, 0.4F, 0.5F },
+        { 0.3F, 0.4F, 0.5F, 0.6F },
+        { 0.7F, 0.6F, 0.5F, 0.4F },
+    } };
+    constexpr Pixel kDistortedTextureColor{
+        kTextureColor[0] * kDistortionMaskTexture[3][0],
+        kTextureColor[1] * kDistortionMaskTexture[3][1],
+        kTextureColor[2] * kDistortionMaskTexture[3][2],
+        kTextureColor[3] * kDistortionMaskTexture[3][3],
+    };
     constexpr Pixel kEnvironmentTangent0{ 0.0F, 1.0F, 0.0F, 0.0F };
     constexpr Pixel kEnvironmentTangent1{ 0.0F, 0.0F, 1.0F, 0.0F };
     constexpr Pixel kEnvironmentTangent2{ 1.0F, 0.0F, 0.0F, 0.0F };
@@ -193,6 +211,11 @@ namespace
             return (descriptor & 0x00080000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool particleDistortion() const noexcept
+        {
+            return (descriptor & 0x00400000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool normalMappedMembrane() const noexcept
         {
             return membrane() && (descriptor & 0x00800000U) == 0;
@@ -249,7 +272,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 571> kEffectContracts{ {
+    constexpr std::array<EffectContract, 631> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -821,6 +844,66 @@ namespace
         { "EffectEnvironmentMap_40A80030", 0x40A80030U },
         { "EffectEnvironmentMap_40A80035", 0x40A80035U },
         { "EffectEnvironmentMap_40A87404", 0x40A87404U },
+        { "EffectParticleDistortion_0040008D", 0x0040008DU },
+        { "EffectParticleDistortion_004000AD", 0x004000ADU },
+        { "EffectParticleDistortion_004000CD", 0x004000CDU },
+        { "EffectParticleDistortion_0040048D", 0x0040048DU },
+        { "EffectParticleDistortion_004004AD", 0x004004ADU },
+        { "EffectParticleDistortion_004004CD", 0x004004CDU },
+        { "EffectParticleDistortion_0040108D", 0x0040108DU },
+        { "EffectParticleDistortion_004010AD", 0x004010ADU },
+        { "EffectParticleDistortion_004010CD", 0x004010CDU },
+        { "EffectParticleDistortion_0040148D", 0x0040148DU },
+        { "EffectParticleDistortion_004014A5", 0x004014A5U },
+        { "EffectParticleDistortion_004014CD", 0x004014CDU },
+        { "EffectParticleDistortion_0040208D", 0x0040208DU },
+        { "EffectParticleDistortion_004020AD", 0x004020ADU },
+        { "EffectParticleDistortion_0040308D", 0x0040308DU },
+        { "EffectParticleDistortion_004030AD", 0x004030ADU },
+        { "EffectParticleDistortion_0040348D", 0x0040348DU },
+        { "EffectParticleDistortion_004034AD", 0x004034ADU },
+        { "EffectParticleDistortion_0040408D", 0x0040408DU },
+        { "EffectParticleDistortion_004040AD", 0x004040ADU },
+        { "EffectParticleDistortion_004040CD", 0x004040CDU },
+        { "EffectParticleDistortion_0040448D", 0x0040448DU },
+        { "EffectParticleDistortion_004044AD", 0x004044ADU },
+        { "EffectParticleDistortion_004044CD", 0x004044CDU },
+        { "EffectParticleDistortion_0040508D", 0x0040508DU },
+        { "EffectParticleDistortion_004050AD", 0x004050ADU },
+        { "EffectParticleDistortion_004050CD", 0x004050CDU },
+        { "EffectParticleDistortion_0040548D", 0x0040548DU },
+        { "EffectParticleDistortion_004054AD", 0x004054ADU },
+        { "EffectParticleDistortion_004054CD", 0x004054CDU },
+        { "EffectParticleDistortion_0040608D", 0x0040608DU },
+        { "EffectParticleDistortion_004060AD", 0x004060ADU },
+        { "EffectParticleDistortion_00406485", 0x00406485U },
+        { "EffectParticleDistortion_004064AD", 0x004064ADU },
+        { "EffectParticleDistortion_0040708D", 0x0040708DU },
+        { "EffectParticleDistortion_004070AD", 0x004070ADU },
+        { "EffectParticleDistortion_0040748D", 0x0040748DU },
+        { "EffectParticleDistortion_004074AD", 0x004074ADU },
+        { "EffectParticleDistortion_4040008D", 0x4040008DU },
+        { "EffectParticleDistortion_404000AD", 0x404000ADU },
+        { "EffectParticleDistortion_4040048D", 0x4040048DU },
+        { "EffectParticleDistortion_4040108D", 0x4040108DU },
+        { "EffectParticleDistortion_404010AD", 0x404010ADU },
+        { "EffectParticleDistortion_4040148D", 0x4040148DU },
+        { "EffectParticleDistortion_404020AD", 0x404020ADU },
+        { "EffectParticleDistortion_4040348D", 0x4040348DU },
+        { "EffectParticleDistortion_404034AD", 0x404034ADU },
+        { "EffectParticleDistortion_404044CD", 0x404044CDU },
+        { "EffectParticleDistortion_4040508D", 0x4040508DU },
+        { "EffectParticleDistortion_404050AD", 0x404050ADU },
+        { "EffectParticleDistortion_4040548D", 0x4040548DU },
+        { "EffectParticleDistortion_404054AD", 0x404054ADU },
+        { "EffectParticleDistortion_404054CD", 0x404054CDU },
+        { "EffectParticleDistortion_4040608D", 0x4040608DU },
+        { "EffectParticleDistortion_404060AD", 0x404060ADU },
+        { "EffectParticleDistortion_4040648D", 0x4040648DU },
+        { "EffectParticleDistortion_4040708D", 0x4040708DU },
+        { "EffectParticleDistortion_404070AD", 0x404070ADU },
+        { "EffectParticleDistortion_4040748D", 0x4040748DU },
+        { "EffectParticleDistortion_404074AD", 0x404074ADU },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1166,6 +1249,37 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return view;
     }
 
+    ComPtr<ID3D11ShaderResourceView> createTexture2x2(
+        ID3D11Device* device,
+        const std::array<Pixel, 4>& pixels)
+    {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = 2;
+        description.Height = 2;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{
+            pixels.data(),
+            2 * sizeof(Pixel),
+            0
+        };
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            device->CreateTexture2D(
+                &description, &initial, texture.GetAddressOf()),
+            "CreateTexture2D(2x2 shader resource)");
+        ComPtr<ID3D11ShaderResourceView> view;
+        require(
+            device->CreateShaderResourceView(
+                texture.Get(), nullptr, view.GetAddressOf()),
+            "CreateShaderResourceView(2x2)");
+        return view;
+    }
+
     ComPtr<ID3D11ShaderResourceView> createEnvironmentCube(
         ID3D11Device* device)
     {
@@ -1401,33 +1515,47 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return kGrayscaleTexture[texel(v) * 4U + texel(u)];
     }
 
+    const Pixel& effectTextureSample(const EffectContract& contract)
+    {
+        return contract.particleDistortion() ?
+            kDistortedTextureColor : kTextureColor;
+    }
+
     Pixel grayscaleColorSample(const EffectContract& contract)
     {
-        auto v = std::pow(kBaseColor[0], 1.0F / 2.2F) *
-            kGrayscaleInput;
+        const auto& textureColor = effectTextureSample(contract);
+        auto v = std::pow(kBaseColor[0], 1.0F / 2.2F);
+        if (!contract.particleDistortion()) {
+            v *= kGrayscaleInput;
+        }
         if (contract.vertexColored()) {
             v *= kVertexColor[0];
         }
         if (contract.soft()) {
             v *= expectedSoftFade();
         }
-        return sampleGrayscaleTexture(
-            std::pow(kTextureColor[1], 1.0F / 2.2F),
-            v);
+        const auto u = contract.particleDistortion() ?
+            std::pow(kTextureColor[1], 1.0F / 2.2F) *
+                kDistortionMaskTexture[3][1] :
+            std::pow(textureColor[1], 1.0F / 2.2F);
+        return sampleGrayscaleTexture(u, v);
     }
 
     float grayscaleAlphaSample(const EffectContract& contract)
     {
+        const auto& textureColor = effectTextureSample(contract);
         auto v = std::pow(kBaseColor[3], 1.0F / 2.2F) *
-            kGrayscaleInput *
             std::pow(kPropertyColor[3], 1.0F / 2.2F);
+        if (!contract.particleDistortion()) {
+            v *= kGrayscaleInput;
+        }
         if (contract.vertexColored()) {
             v *= kVertexColor[3];
         }
-        if (contract.soft()) {
+        if (contract.soft() && !contract.particleDistortion()) {
             v *= expectedSoftFade();
         }
-        return sampleGrayscaleTexture(kTextureColor[3], v)[3];
+        return sampleGrayscaleTexture(textureColor[3], v)[3];
     }
 
     Pixel expectedEnvironmentColor(
@@ -1772,6 +1900,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return result;
         }
 
+        const auto& textureColor = effectTextureSample(contract);
         Pixel result{};
         auto alpha = contract.grayscaleAlpha() ?
             grayscaleAlphaSample(contract) :
@@ -1779,9 +1908,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 (contract.vertexColored() ?
                         std::pow(kVertexColor[3], 2.2F) :
                         1.0F) *
-                (contract.usesBaseTextureAlpha() ? kTextureColor[3] : 1.0F) *
+                (contract.usesBaseTextureAlpha() ? textureColor[3] : 1.0F) *
                 kPropertyColor[3];
-        if (contract.soft() && !contract.grayscaleAlpha()) {
+        if (contract.soft() &&
+            (!contract.grayscaleAlpha() || contract.particleDistortion())) {
             alpha *= expectedSoftFade();
         }
         if (contract.falloff() && !contract.grayscaleAlpha()) {
@@ -1810,7 +1940,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                             std::pow(kVertexColor[channel], 2.2F) :
                             1.0F) *
                     (contract.textured() ?
-                            kTextureColor[channel] :
+                            textureColor[channel] :
                             1.0F);
             if (contract.rgbFalloff() && !contract.grayscaleColor()) {
                 baseColor *= kGrayscaleInput;
@@ -1893,14 +2023,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return result;
         }
 
+        const auto& textureColor = effectTextureSample(contract);
         Pixel result{};
         auto rawAlpha = contract.grayscaleAlpha() ?
             grayscaleAlphaSample(contract) :
             kBaseColor[3] *
                 (contract.vertexColored() ? kVertexColor[3] : 1.0F) *
-                (contract.usesBaseTextureAlpha() ? kTextureColor[3] : 1.0F) *
+                (contract.usesBaseTextureAlpha() ? textureColor[3] : 1.0F) *
                 kPropertyColor[3];
-        if (contract.soft() && !contract.grayscaleAlpha()) {
+        if (contract.soft() &&
+            (!contract.grayscaleAlpha() || contract.particleDistortion())) {
             rawAlpha *= expectedSoftFade();
         }
         if (contract.falloff() && !contract.grayscaleAlpha()) {
@@ -1947,7 +2079,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 }
                 if (contract.textured()) {
                     base *= std::pow(
-                        std::abs(kTextureColor[channel]),
+                        std::abs(textureColor[channel]),
                         settings.effectGamma);
                 }
             }
@@ -2095,6 +2227,10 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const auto environmentMaskTexture =
             createTexture(device.Get(), kEnvironmentMaskTexture);
         const auto environmentTexture = createEnvironmentCube(device.Get());
+        const auto distortionFieldTexture =
+            createTexture2x2(device.Get(), kDistortionFieldTexture);
+        const auto distortionMaskTexture =
+            createTexture2x2(device.Get(), kDistortionMaskTexture);
         const auto depthTexture = createTexture(device.Get(), kDepthTexture);
         const auto depthTestTexturePass =
             createTexture(device.Get(), kDepthTestTexturePass);
@@ -2289,13 +2425,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
             auto* vertexShader = selectVertexShader(contract, false);
-            auto* normalTexture = contract.environmentMap() ?
-                environmentNormalTexture.Get() :
-                membraneNormalMapTexture.Get();
+            auto* normalTexture = contract.particleDistortion() ?
+                distortionFieldTexture.Get() :
+                (contract.environmentMap() ?
+                        environmentNormalTexture.Get() :
+                        membraneNormalMapTexture.Get());
             auto* environmentCube = contract.environmentMap() ?
                 environmentTexture.Get() : nullptr;
-            auto* environmentMask = contract.environmentMap() ?
-                environmentMaskTexture.Get() : nullptr;
+            auto* environmentMask = contract.particleDistortion() ?
+                distortionMaskTexture.Get() :
+                (contract.environmentMap() ?
+                        environmentMaskTexture.Get() :
+                        nullptr);
             const auto vanillaShader = createPixelShader(
                 device.Get(),
                 root /
@@ -2545,7 +2686,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 571 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 631 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

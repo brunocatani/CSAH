@@ -76,6 +76,8 @@ cbuffer EffectPerMaterial : register(b1)
     float4 EffectLightingInfluence : packoffset(c2);
 #if (EFFECT_TECHNIQUE & 0x00080000) != 0
     float4 EffectEnvironmentMapScale : packoffset(c3);
+#elif (EFFECT_TECHNIQUE & 0x00400000) != 0
+    float4 EffectDistortionScale : packoffset(c3);
 #elif (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 EffectUnusedPerMaterialDepthTest : packoffset(c3);
 #endif
@@ -121,6 +123,8 @@ SamplerState EffectSampler : register(s0);
      (EFFECT_TECHNIQUE & 0x00800000) == 0) || \
     (EFFECT_TECHNIQUE & 0x00080000) != 0
 SamplerState EffectNormalSampler : register(s1);
+#elif (EFFECT_TECHNIQUE & 0x00400000) != 0
+SamplerState EffectDistortionSampler : register(s1);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
 SamplerState EffectAlphaMaskSampler : register(s2);
@@ -134,12 +138,16 @@ SamplerState EffectPipboySampler : register(s6);
 #if (EFFECT_TECHNIQUE & 0x00080000) != 0
 SamplerState EffectEnvironmentSampler : register(s5);
 SamplerState EffectEnvironmentMaskSampler : register(s7);
+#elif (EFFECT_TECHNIQUE & 0x00400000) != 0
+SamplerState EffectDistortionMaskSampler : register(s7);
 #endif
 Texture2D<float4> EffectTexture : register(t0);
 #if ((EFFECT_TECHNIQUE & 0x00000200) != 0 && \
      (EFFECT_TECHNIQUE & 0x00800000) == 0) || \
     (EFFECT_TECHNIQUE & 0x00080000) != 0
 Texture2D<float4> EffectNormalTexture : register(t1);
+#elif (EFFECT_TECHNIQUE & 0x00400000) != 0
+Texture2D<float4> EffectDistortionTexture : register(t1);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00020000) != 0
 Texture2D<float4> EffectAlphaMaskTexture : register(t2);
@@ -154,6 +162,8 @@ Texture2D<float4> EffectPipboyTexture : register(t6);
 #if (EFFECT_TECHNIQUE & 0x00080000) != 0
 TextureCube<float4> EffectEnvironmentTexture : register(t5);
 Texture2D<float4> EffectEnvironmentMaskTexture : register(t7);
+#elif (EFFECT_TECHNIQUE & 0x00400000) != 0
+Texture2D<float4> EffectDistortionMaskTexture : register(t7);
 #endif
 #if (EFFECT_TECHNIQUE & 0x03000000) != 0
 Texture2D<float4> EffectDepthTestTexture : register(t8);
@@ -198,6 +208,30 @@ float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
     cameraFade = cameraFade * cameraFade * (3.0f - 2.0f * cameraFade);
     return intersectionFade * cameraFade;
 }
+
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+void EffectDistortedTextureSamples(
+    float4 texCoord,
+    float particleScale,
+    out float4 textureColor,
+    out float4 undistortedTextureColor,
+    out float4 distortionMaskColor)
+{
+    const float2 distortion =
+        EffectDistortionTexture.Sample(
+            EffectDistortionSampler,
+            texCoord.zw).xy * 2.0f - 1.0f;
+    const float2 offset =
+        distortion * particleScale * EffectDistortionScale.x;
+    undistortedTextureColor = EffectTexture.Sample(
+        EffectSampler,
+        texCoord.zw + offset);
+    distortionMaskColor = EffectDistortionMaskTexture.Sample(
+        EffectDistortionMaskSampler,
+        texCoord.xy + offset);
+    textureColor = undistortedTextureColor * distortionMaskColor;
+}
+#endif
 
 #if (EFFECT_TECHNIQUE & 0x00000400) != 0
 float4 EffectPointLightColorToLinear(float4 color)
@@ -461,9 +495,21 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #endif
 #endif
 #if (EFFECT_TECHNIQUE & 0x00006004) != 0
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+    float4 textureColor;
+    float4 undistortedTextureColor;
+    float4 distortionMaskColor;
+    EffectDistortedTextureSamples(
+        input.texCoord,
+        input.particleData.y,
+        textureColor,
+        undistortedTextureColor,
+        distortionMaskColor);
+#else
     const float4 textureColor = EffectTexture.Sample(
         EffectSampler,
         input.texCoord.xy);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00002004) == 0x4
     baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
 #endif
@@ -480,8 +526,13 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #endif
 #endif
 #if (EFFECT_TECHNIQUE & 0x00002000) != 0
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+    float grayscaleColorY =
+        pow(abs(EffectBaseColor.x), 1.0f / 2.2f);
+#else
     float grayscaleColorY =
         pow(abs(EffectBaseColor.x), 1.0f / 2.2f) * input.texCoord.z;
+#endif
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleColorY *= input.vertexColor.x;
 #endif
@@ -489,7 +540,12 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     grayscaleColorY *= softParticleFade;
 #endif
     const float2 grayscaleColorCoordinate = float2(
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+        pow(abs(undistortedTextureColor.y), 1.0f / 2.2f) *
+            distortionMaskColor.y,
+#else
         pow(abs(textureColor.y), 1.0f / 2.2f),
+#endif
         grayscaleColorY);
     const float3 grayscaleColor = EffectUnusedPerMaterial.x *
         EffectGrayscaleTexture.Sample(
@@ -498,19 +554,34 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     baseColor.xyz = LinearLightingEffect(grayscaleColor);
 #endif
 #if (EFFECT_TECHNIQUE & 0x00004000) != 0
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+    float grayscaleAlphaY =
+        pow(abs(EffectBaseColor.w), 1.0f / 2.2f) *
+        pow(abs(EffectPropertyColor.w), 1.0f / 2.2f);
+#else
     float grayscaleAlphaY =
         pow(abs(EffectBaseColor.w), 1.0f / 2.2f) *
         input.texCoord.z *
         pow(abs(EffectPropertyColor.w), 1.0f / 2.2f);
+#endif
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleAlphaY *= input.vertexColor.w;
 #endif
 #if (EFFECT_TECHNIQUE & 0x1000) != 0
+#if (EFFECT_TECHNIQUE & 0x00400000) == 0
     grayscaleAlphaY *= softParticleFade;
 #endif
+#endif
+#if (EFFECT_TECHNIQUE & 0x00401000) == 0x00401000
+    float grayscaleAlpha = EffectGrayscaleTexture.Sample(
+        EffectGrayscaleSampler,
+        float2(textureColor.w, grayscaleAlphaY)).w;
+    grayscaleAlpha *= softParticleFade;
+#else
     const float grayscaleAlpha = EffectGrayscaleTexture.Sample(
         EffectGrayscaleSampler,
         float2(textureColor.w, grayscaleAlphaY)).w;
+#endif
 #endif
 #else
     float4 baseColor = EffectBaseColor;
@@ -519,9 +590,21 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     baseColor *= LinearLightingEffectVertexColor(input.vertexColor);
 #endif
 #if (EFFECT_TECHNIQUE & 0x4) != 0
+#if (EFFECT_TECHNIQUE & 0x00400000) != 0
+    float4 textureColor;
+    float4 undistortedTextureColor;
+    float4 distortionMaskColor;
+    EffectDistortedTextureSamples(
+        input.texCoord,
+        input.particleData.y,
+        textureColor,
+        undistortedTextureColor,
+        distortionMaskColor);
+#else
     const float4 textureColor = EffectTexture.Sample(
         EffectSampler,
         input.texCoord.xy);
+#endif
     baseColor.xyz *= LinearLightingEffect(textureColor.xyz);
     baseColor.w *= textureColor.w;
 #endif

@@ -435,60 +435,95 @@ EXPECTED_BASE_CONTRACTS = {
     0x0082A227: ((1548, "94c9b1a0e38f5f1d3c0546af057f2956"), ()),
 }
 
-EXPECTED_EFFECT_CONTRACT_COUNT = 571
+EXPECTED_EFFECT_CONTRACT_COUNT = 631
 EXPECTED_ENVMAP_SLOT_COUNT = 183
 EXPECTED_ENVMAP_IDENTITY_COUNT = 155
 EXPECTED_ENVMAP_FXP_DIGEST = (
     "2c501c802ed4b0ccf6c3cfb75f4ea8c6a3ab929cdc0ed166dbffa10d02fe6861"
 )
+EXPECTED_PARTICLE_DISTORTION_SLOT_COUNT = 63
+EXPECTED_PARTICLE_DISTORTION_IDENTITY_COUNT = 60
+EXPECTED_PARTICLE_DISTORTION_FXP_DIGEST = (
+    "e39a418bad09881edcb3313a5d6802ee9c6a4bc4ad16b6452a1e2e548d73c91f"
+)
 
 
-def expected_contracts(
+def frozen_effect_family(
     inventory: census.FxpInventory,
-) -> dict[int, tuple[tuple[int, str], tuple[int, ...]]]:
-    envmap_records = sorted(
+    flag: int,
+    expected_slot_count: int,
+    expected_identity_count: int,
+    expected_digest: str,
+    label: str,
+) -> list[census.DxbcContainer]:
+    records = sorted(
         (
             item
             for item in inventory.containers
             if item.family == "Effect"
             and item.stage == "PS"
             and item.key is not None
-            and item.key & 0x00080000
+            and item.key & flag
         ),
         key=lambda item: int(item.key),
     )
-    envmap_identities = {item.identity for item in envmap_records}
+    identities = {item.identity for item in records}
     if (
-        len(envmap_records) != EXPECTED_ENVMAP_SLOT_COUNT
-        or len(envmap_identities) != EXPECTED_ENVMAP_IDENTITY_COUNT
+        len(records) != expected_slot_count
+        or len(identities) != expected_identity_count
     ):
         raise ContractError(
-            "active FO4VR FXP Effect envmap family changed shape"
+            f"active FO4VR FXP Effect {label} family changed shape"
         )
 
     digest = hashlib.sha256()
-    for item in envmap_records:
+    for item in records:
         digest.update(struct.pack("<II", int(item.key), len(item.data)))
         digest.update(item.data)
-    if digest.hexdigest() != EXPECTED_ENVMAP_FXP_DIGEST:
+    if digest.hexdigest() != expected_digest:
         raise ContractError(
-            "active FO4VR FXP Effect envmap family changed bytecode"
+            f"active FO4VR FXP Effect {label} family changed bytecode"
         )
+    return records
 
-    keys_by_identity: dict[tuple[int, str], list[int]] = {}
-    for item in envmap_records:
-        keys_by_identity.setdefault(item.identity, []).append(int(item.key))
+
+def expected_contracts(
+    inventory: census.FxpInventory,
+) -> dict[int, tuple[tuple[int, str], tuple[int, ...]]]:
+    envmap_records = frozen_effect_family(
+        inventory,
+        0x00080000,
+        EXPECTED_ENVMAP_SLOT_COUNT,
+        EXPECTED_ENVMAP_IDENTITY_COUNT,
+        EXPECTED_ENVMAP_FXP_DIGEST,
+        "envmap",
+    )
+    particle_distortion_records = frozen_effect_family(
+        inventory,
+        0x00400000,
+        EXPECTED_PARTICLE_DISTORTION_SLOT_COUNT,
+        EXPECTED_PARTICLE_DISTORTION_IDENTITY_COUNT,
+        EXPECTED_PARTICLE_DISTORTION_FXP_DIGEST,
+        "particle-distortion",
+    )
 
     result = dict(EXPECTED_BASE_CONTRACTS)
-    for identity, keys in keys_by_identity.items():
-        ordered_keys = sorted(keys)
-        descriptor = ordered_keys[0]
-        if descriptor in result:
-            raise ContractError(
-                f"Effect envmap descriptor overlaps existing contract: "
-                f"0x{descriptor:08X}"
-            )
-        result[descriptor] = (identity, tuple(ordered_keys[1:]))
+    for label, records in (
+        ("envmap", envmap_records),
+        ("particle-distortion", particle_distortion_records),
+    ):
+        keys_by_identity: dict[tuple[int, str], list[int]] = {}
+        for item in records:
+            keys_by_identity.setdefault(item.identity, []).append(int(item.key))
+        for identity, keys in keys_by_identity.items():
+            ordered_keys = sorted(keys)
+            descriptor = ordered_keys[0]
+            if descriptor in result:
+                raise ContractError(
+                    f"Effect {label} descriptor overlaps existing contract: "
+                    f"0x{descriptor:08X}"
+                )
+            result[descriptor] = (identity, tuple(ordered_keys[1:]))
     if len(result) != EXPECTED_EFFECT_CONTRACT_COUNT:
         raise ContractError("Effect contract matrix changed size")
     return result
@@ -686,6 +721,13 @@ def compile_candidates(
         "input.environmentViewVector",
         "input.environmentTangent0",
         "environmentNormalSample.w",
+        "(EFFECT_TECHNIQUE & 0x00400000)",
+        "EffectDistortionScale",
+        "EffectDistortionTexture.Sample(",
+        "EffectDistortionSampler,",
+        "EffectDistortionMaskTexture.Sample(",
+        "EffectDistortionMaskSampler,",
+        "input.particleData.y",
         "EffectAlphaMaskTexture.Sample(",
         "EffectAlphaMaskSampler,",
         "alphaMask - EffectAlphaTest.x",

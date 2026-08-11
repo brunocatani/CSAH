@@ -3425,5 +3425,365 @@
     "descriptor": 1084781572,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_ENVIRONMENT_MAP_40A87404_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040008D",
+    "descriptor": 4194445,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040008D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004000AD",
+    "descriptor": 4194477,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004000AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004000CD",
+    "descriptor": 4194509,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004000CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040048D",
+    "descriptor": 4195469,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040048D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004004AD",
+    "descriptor": 4195501,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004004AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004004CD",
+    "descriptor": 4195533,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004004CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040108D",
+    "descriptor": 4198541,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040108D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004010AD",
+    "descriptor": 4198573,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004010AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004010CD",
+    "descriptor": 4198605,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004010CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040148D",
+    "descriptor": 4199565,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040148D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004014A5",
+    "descriptor": 4199589,
+    "aliases": [4199597, 272635053],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004014A5_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004014CD",
+    "descriptor": 4199629,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004014CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040208D",
+    "descriptor": 4202637,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040208D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004020AD",
+    "descriptor": 4202669,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004020AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040308D",
+    "descriptor": 4206733,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040308D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004030AD",
+    "descriptor": 4206765,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004030AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040348D",
+    "descriptor": 4207757,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040348D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004034AD",
+    "descriptor": 4207789,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004034AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040408D",
+    "descriptor": 4210829,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040408D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004040AD",
+    "descriptor": 4210861,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004040AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004040CD",
+    "descriptor": 4210893,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004040CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040448D",
+    "descriptor": 4211853,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040448D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004044AD",
+    "descriptor": 4211885,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004044AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004044CD",
+    "descriptor": 4211917,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004044CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040508D",
+    "descriptor": 4214925,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040508D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004050AD",
+    "descriptor": 4214957,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004050AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004050CD",
+    "descriptor": 4214989,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004050CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040548D",
+    "descriptor": 4215949,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040548D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004054AD",
+    "descriptor": 4215981,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004054AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004054CD",
+    "descriptor": 4216013,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004054CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040608D",
+    "descriptor": 4219021,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040608D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004060AD",
+    "descriptor": 4219053,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004060AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_00406485",
+    "descriptor": 4220037,
+    "aliases": [4220045],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_00406485_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004064AD",
+    "descriptor": 4220077,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004064AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040708D",
+    "descriptor": 4223117,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040708D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004070AD",
+    "descriptor": 4223149,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004070AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_0040748D",
+    "descriptor": 4224141,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_0040748D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_004074AD",
+    "descriptor": 4224173,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_004074AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040008D",
+    "descriptor": 1077936269,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040008D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404000AD",
+    "descriptor": 1077936301,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404000AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040048D",
+    "descriptor": 1077937293,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040048D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040108D",
+    "descriptor": 1077940365,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040108D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404010AD",
+    "descriptor": 1077940397,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404010AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040148D",
+    "descriptor": 1077941389,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040148D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404020AD",
+    "descriptor": 1077944493,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404020AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040348D",
+    "descriptor": 1077949581,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040348D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404034AD",
+    "descriptor": 1077949613,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404034AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404044CD",
+    "descriptor": 1077953741,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404044CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040508D",
+    "descriptor": 1077956749,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040508D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404050AD",
+    "descriptor": 1077956781,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404050AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040548D",
+    "descriptor": 1077957773,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040548D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404054AD",
+    "descriptor": 1077957805,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404054AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404054CD",
+    "descriptor": 1077957837,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404054CD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040608D",
+    "descriptor": 1077960845,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040608D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404060AD",
+    "descriptor": 1077960877,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404060AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040648D",
+    "descriptor": 1077961869,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040648D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040708D",
+    "descriptor": 1077964941,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040708D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404070AD",
+    "descriptor": 1077964973,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404070AD_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_4040748D",
+    "descriptor": 1077965965,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_4040748D_PS"
+  },
+  {
+    "name": "EffectParticleDistortion_404074AD",
+    "descriptor": 1077965997,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_PARTICLE_DISTORTION_404074AD_PS"
   }
 ]

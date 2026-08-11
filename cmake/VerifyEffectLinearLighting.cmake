@@ -30,7 +30,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kEffectShaderContractCount = 571"
+    "kEffectShaderContractCount = 631"
     "EffectContractMask matchingEffectShaderContractMask"
     "AtomicEffectContractMask matchingEffectShaderContractMask_"
     "matchingEffectShaderContractMask"
@@ -73,6 +73,11 @@ foreach(required IN ITEMS
     "EffectEnvironmentMaskTexture.Sample("
     "input.environmentViewVector"
     "input.environmentTangent0"
+    "(EFFECT_TECHNIQUE & 0x00400000)"
+    "EffectDistortionScale"
+    "EffectDistortionTexture.Sample("
+    "EffectDistortionMaskTexture.Sample("
+    "input.particleData.y"
     "EffectAlphaMaskTexture.Sample("
     "EffectAlphaMaskSampler,"
     "alphaMask - EffectAlphaTest.x"
@@ -109,9 +114,9 @@ string(REGEX MATCHALL
   "IDR_LINEAR_LIGHTING_EFFECT_[A-Z0-9_]+_PS RCDATA"
   effectResources "${resourceSource}")
 list(LENGTH effectResources effectResourceCount)
-if(NOT effectResourceCount EQUAL 571)
+if(NOT effectResourceCount EQUAL 631)
   message(FATAL_ERROR
-    "Effect Linear Lighting regression: expected 571 embedded shaders")
+    "Effect Linear Lighting regression: expected 631 embedded shaders")
 endif()
 
 string(FIND "${runtimeSource}"
