@@ -2,10 +2,22 @@
 
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
+#include <array>
 #include <cstdint>
 
 namespace community_shaders::linear_lighting
 {
+    struct PointLightProducerEnergySample
+    {
+        bool captured{};
+        std::int32_t recordKind{};
+        float range{};
+        float gamma{};
+        float multiplier{ 1.0f };
+        std::array<float, 3> postGammaColor{};
+        std::array<float, 3> finalColor{};
+    };
+
     struct DFTiledPointLightHookSnapshot
     {
         bool installed{};
@@ -19,6 +31,7 @@ namespace community_shaders::linear_lighting
         std::uint64_t validationFailures{};
         float activeGamma{ 2.2f };
         float activeColorMultiplier{ 1.0f };
+        PointLightProducerEnergySample energySample{};
     };
 
     // Called only after the existing D3D bootstrap has initialized MinHook.

@@ -23,6 +23,9 @@ foreach(required IN ITEMS
     "originalPointLightRecord("
     "&scaledColor"
     "hookOwnershipReady"
+    "pointLightEnergySampleClaimed"
+    "pointLightEnergySampleReady.store("
+    ".postGammaColor = {"
     "synchronizeExponentStorage()"
     "kVanillaPointLightGamma"
     "completedCalls.fetch_add(1, std::memory_order_release)")

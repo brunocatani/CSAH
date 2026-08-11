@@ -108,6 +108,9 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t passThroughCalls{};
         std::atomic_uint64_t invalidColorSources{};
         std::atomic_uint64_t validationFailures{};
+        std::atomic_bool pointLightEnergySampleClaimed{};
+        std::atomic_bool pointLightEnergySampleReady{};
+        PointLightProducerEnergySample pointLightEnergySampleStorage{};
 
         [[nodiscard]] bool isReadableRange(
             const void* address,
@@ -440,6 +443,42 @@ namespace community_shaders::linear_lighting
                 };
                 if (std::isfinite(multiplier) && finiteColor(*color) &&
                     finiteColor(scaledColor)) {
+                    const auto informative = color->x != 0.0f ||
+                        color->y != 0.0f || color->z != 0.0f;
+                    auto expected = false;
+                    if (informative &&
+                        !pointLightEnergySampleReady.load(
+                            std::memory_order_acquire) &&
+                        pointLightEnergySampleClaimed.compare_exchange_strong(
+                            expected,
+                            true,
+                            std::memory_order_acq_rel,
+                            std::memory_order_relaxed)) {
+                        // Process-lifetime, first-informative-record diagnostic
+                        // only. Remove it after the FO4VR producer energy
+                        // formula is selected and verified in the headset.
+                        pointLightEnergySampleStorage = {
+                            .captured = true,
+                            .recordKind = recordKind,
+                            .range = range,
+                            .gamma = std::bit_cast<float>(
+                                desiredGammaBits.load(
+                                    std::memory_order_relaxed)),
+                            .multiplier = multiplier,
+                            .postGammaColor = {
+                                color->x,
+                                color->y,
+                                color->z,
+                            },
+                            .finalColor = {
+                                scaledColor.x,
+                                scaledColor.y,
+                                scaledColor.z,
+                            },
+                        };
+                        pointLightEnergySampleReady.store(
+                            true, std::memory_order_release);
+                    }
                     originalPointLightRecord(
                         recordKind,
                         positionAndRadius,
@@ -707,6 +746,10 @@ namespace community_shaders::linear_lighting
         const auto owned = hookOwnershipReady.load(std::memory_order_acquire);
         const auto active = owned &&
             desiredEnabled.load(std::memory_order_acquire);
+        PointLightProducerEnergySample energySample{};
+        if (pointLightEnergySampleReady.load(std::memory_order_acquire)) {
+            energySample = pointLightEnergySampleStorage;
+        }
         return {
             .installed = hookInstalled,
             .detourOwned = hookInstalled && detourPatchOwned(),
@@ -728,6 +771,7 @@ namespace community_shaders::linear_lighting
                 std::bit_cast<float>(desiredColorMultiplierBits.load(
                     std::memory_order_relaxed)) :
                 1.0f,
+            .energySample = energySample,
         };
     }
 }

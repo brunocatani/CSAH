@@ -408,7 +408,7 @@ namespace community_shaders::diagnostics
                 temporaryPath += L".tmp";
 
                 const nlohmann::json report{
-                    { "schemaVersion", 12 },
+                    { "schemaVersion", 13 },
                     { "feature", "LinearLighting" },
                     { "contractMaskEncoding",
                         {
@@ -686,6 +686,59 @@ namespace community_shaders::diagnostics
                                     capture.pointLight.invalidColorSources,
                                     session.pointLightInvalidSourceBaseline) },
                         } },
+                    { "producerEnergyDiagnostic",
+                        {
+                            { "readOnly", true },
+                            { "directional",
+                                {
+                                    { "captured",
+                                        capture.geometry
+                                            .directionalEnergySample.captured },
+                                    { "descriptor",
+                                        capture.geometry
+                                            .directionalEnergySample.descriptor },
+                                    { "gamma",
+                                        capture.geometry
+                                            .directionalEnergySample.gamma },
+                                    { "multiplier",
+                                        capture.geometry
+                                            .directionalEnergySample.multiplier },
+                                    { "vanillaExponent",
+                                        capture.geometry
+                                            .directionalEnergySample
+                                            .vanillaExponent },
+                                    { "sourceBeforePow",
+                                        capture.geometry
+                                            .directionalEnergySample.source },
+                                    { "outputBeforeMultiplier",
+                                        capture.geometry
+                                            .directionalEnergySample.gammaOutput },
+                                    { "finalOutput",
+                                        capture.geometry
+                                            .directionalEnergySample.finalOutput },
+                                } },
+                            { "pointLight",
+                                {
+                                    { "captured",
+                                        capture.pointLight.energySample.captured },
+                                    { "recordKind",
+                                        capture.pointLight.energySample
+                                            .recordKind },
+                                    { "range",
+                                        capture.pointLight.energySample.range },
+                                    { "gamma",
+                                        capture.pointLight.energySample.gamma },
+                                    { "multiplier",
+                                        capture.pointLight.energySample
+                                            .multiplier },
+                                    { "colorAfterGammaBeforeMultiplier",
+                                        capture.pointLight.energySample
+                                            .postGammaColor },
+                                    { "finalColor",
+                                        capture.pointLight.energySample
+                                            .finalColor },
+                                } },
+                        } },
                     { "hooks",
                         {
                             { "createPixelShaderOwned",
@@ -787,6 +840,39 @@ namespace community_shaders::diagnostics
             } catch (...) {
                 return false;
             }
+        }
+
+        void logProducerEnergyDiagnostic(const Capture& capture) noexcept
+        {
+            const auto& directional =
+                capture.geometry.directionalEnergySample;
+            const auto& point = capture.pointLight.energySample;
+            logging::info(
+                "Linear Lighting producer-energy diagnostic (read-only): directionalCaptured={}, descriptor=0x{:08X}, gamma={}, multiplier={}, sourceBeforePow=[{},{},{}], outputBeforeMultiplier=[{},{},{}], finalOutput=[{},{},{}]; pointCaptured={}, recordKind={}, range={}, gamma={}, multiplier={}, colorAfterGammaBeforeMultiplier=[{},{},{}], finalColor=[{},{},{}].",
+                directional.captured,
+                directional.descriptor,
+                directional.gamma,
+                directional.multiplier,
+                directional.source[0],
+                directional.source[1],
+                directional.source[2],
+                directional.gammaOutput[0],
+                directional.gammaOutput[1],
+                directional.gammaOutput[2],
+                directional.finalOutput[0],
+                directional.finalOutput[1],
+                directional.finalOutput[2],
+                point.captured,
+                point.recordKind,
+                point.range,
+                point.gamma,
+                point.multiplier,
+                point.postGammaColor[0],
+                point.postGammaColor[1],
+                point.postGammaColor[2],
+                point.finalColor[0],
+                point.finalColor[1],
+                point.finalColor[2]);
         }
 
         // F4SE lifecycle messages are the sole session producer. This worker
@@ -1010,6 +1096,7 @@ namespace community_shaders::diagnostics
                                 evaluation.fullyVerifiedContractMask[3],
                                 evaluation.fullyVerifiedContractMask[4]);
                         }
+                        logProducerEnergyDiagnostic(capture);
                         render::endD3D11QualificationSession(
                             session.d3dSessionId);
                         finalGeneration = session.generation;
@@ -1036,6 +1123,7 @@ namespace community_shaders::diagnostics
                                 session.generation,
                                 timeoutEvaluation.reasonMask);
                         }
+                        logProducerEnergyDiagnostic(capture);
                         render::endD3D11QualificationSession(
                             session.d3dSessionId);
                         finalGeneration = session.generation;
