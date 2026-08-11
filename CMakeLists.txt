@@ -136,6 +136,18 @@ file(GLOB PARTICLE_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/ParticleLinearLighting/*.dxbc")
 file(GLOB PARTICLE_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
   "${ROOT_DIR}/package/Shaders/Community/VerifiedParticleLinearLighting/*.dxbc")
+set(WATER_LINEAR_LIGHTING_CONTRACT_MANIFEST
+  "${ROOT_DIR}/package/Shaders/Community/WaterLinearLightingContracts.json")
+set(WATER_LINEAR_LIGHTING_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_water_linear_lighting_contracts.py")
+set(WATER_LINEAR_LIGHTING_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/linear_lighting/GeneratedWaterLinearLightingContracts.inl")
+set(WATER_LINEAR_LIGHTING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/WaterLinearLighting/WaterColorTransformTemplate.hlsl")
+file(GLOB WATER_LINEAR_LIGHTING_SHADER_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/WaterLinearLighting/*.dxbc")
+file(GLOB WATER_LINEAR_LIGHTING_VERIFIED_ASSETS CONFIGURE_DEPENDS
+  "${ROOT_DIR}/package/Shaders/Community/VerifiedWaterLinearLighting/*.dxbc")
 set(EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/EffectLinearLightingContracts.json")
 set(EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR
@@ -157,6 +169,7 @@ include("${ROOT_DIR}/cmake/VerifyDFLightAmbientReplacement.cmake")
 include("${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake")
+include("${ROOT_DIR}/cmake/VerifyWaterLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake")
 include("${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -205,6 +218,12 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${PARTICLE_LINEAR_LIGHTING_SHADER_SOURCE}"
   ${PARTICLE_LINEAR_LIGHTING_SHADER_ASSETS}
   ${PARTICLE_LINEAR_LIGHTING_VERIFIED_ASSETS}
+  "${WATER_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
+  "${WATER_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+  "${WATER_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+  "${WATER_LINEAR_LIGHTING_SHADER_SOURCE}"
+  ${WATER_LINEAR_LIGHTING_SHADER_ASSETS}
+  ${WATER_LINEAR_LIGHTING_VERIFIED_ASSETS}
   "${EFFECT_LINEAR_LIGHTING_CONTRACT_MANIFEST}"
   "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
   "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
@@ -217,6 +236,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyDistantTreeLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyParticleLinearLighting.cmake"
+  "${ROOT_DIR}/cmake/VerifyWaterLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyEffectLinearLighting.cmake"
   "${ROOT_DIR}/cmake/VerifyFixedShaderBindingLookup.cmake")
 
@@ -317,6 +337,16 @@ add_custom_target(VerifyParticleLinearLighting ALL
   COMMENT "Verifying frame-only Particle Linear Lighting ownership"
   VERBATIM)
 
+add_custom_target(VerifyWaterLinearLighting ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
+    "-DWATER_LINEAR_LIGHTING_SHADER_SOURCE=${WATER_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyWaterLinearLighting.cmake"
+  COMMENT "Verifying frame-only Water Linear Lighting ownership"
+  VERBATIM)
+
 add_custom_target(VerifyEffectLinearLighting ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
@@ -385,6 +415,15 @@ add_custom_target(VerifyParticleLinearLightingContracts ALL
     --output "${PARTICLE_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying FO4VR Particle Linear Lighting contracts"
+  VERBATIM)
+
+add_custom_target(VerifyWaterLinearLightingContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${WATER_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${WATER_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying FO4VR Water Linear Lighting contracts"
   VERBATIM)
 
 add_custom_target(VerifyEffectLinearLightingContracts ALL
@@ -470,6 +509,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyDistantTreeLinearLightingContracts
   VerifyParticleLinearLighting
   VerifyParticleLinearLightingContracts
+  VerifyWaterLinearLighting
+  VerifyWaterLinearLightingContracts
   VerifyEffectLinearLighting
   VerifyEffectLinearLightingContracts
   VerifyDFLightAmbientReplacement
@@ -843,6 +884,12 @@ if(BUILD_FO4VR_CS_TESTS)
       --root "${ROOT_DIR}"
       --output "${PARTICLE_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
+  add_test(NAME FO4VRCommunityShaders.WaterLinearLightingRuntimeContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${WATER_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${WATER_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
+      --check)
   add_test(NAME FO4VRCommunityShaders.EffectLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
@@ -907,6 +954,25 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersCore d3d11 d3dcompiler)
   add_test(NAME FO4VRCommunityShaders.ParticleLinearLightingShaderParity
     COMMAND FO4VRCommunityShadersParticleLinearLightingShaderParityTests
+      "${ROOT_DIR}")
+  add_executable(FO4VRCommunityShadersWaterLinearLightingShaderParityTests
+    "${ROOT_DIR}/tests/WaterLinearLightingShaderParityTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_definitions(
+    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    FO4VRCommunityShadersCore d3d11 d3dcompiler)
+  add_test(NAME FO4VRCommunityShaders.WaterLinearLightingShaderParity
+    COMMAND FO4VRCommunityShadersWaterLinearLightingShaderParityTests
       "${ROOT_DIR}")
   add_executable(FO4VRCommunityShadersEffectLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/EffectLinearLightingShaderParityTests.cpp")

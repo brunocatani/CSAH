@@ -67,6 +67,7 @@ namespace community_shaders::diagnostics
             std::uint64_t skyReplacementBindsBaseline{};
             std::uint64_t distantTreeReplacementBindsBaseline{};
             std::uint64_t particleReplacementBindsBaseline{};
+            std::uint64_t waterReplacementBindsBaseline{};
             std::uint64_t effectReplacementBindsBaseline{};
             std::uint64_t directionalPowCallsBaseline{};
             std::uint64_t directionalPowModifiedBaseline{};
@@ -508,6 +509,23 @@ namespace community_shaders::diagnostics
                                     capture.runtime.particleReplacementBinds,
                                     session
                                         .particleReplacementBindsBaseline) },
+                            { "verifiedWaterShaderContracts",
+                                capture.runtime
+                                    .verifiedWaterShaderContracts },
+                            { "matchingWaterShaderContractMask",
+                                capture.runtime
+                                    .matchingWaterShaderContractMask },
+                            { "matchingWaterShadersCreated",
+                                capture.runtime
+                                    .matchingWaterShadersCreated },
+                            { "trackedOriginalWaterShaders",
+                                capture.runtime
+                                    .trackedOriginalWaterShaders },
+                            { "waterReplacementBinds",
+                                delta(
+                                    capture.runtime.waterReplacementBinds,
+                                    session
+                                        .waterReplacementBindsBaseline) },
                             { "verifiedEffectShaderContracts",
                                 capture.runtime
                                     .verifiedEffectShaderContracts },
@@ -851,6 +869,8 @@ namespace community_shaders::diagnostics
                             runtime.distantTreeReplacementBinds,
                         .particleReplacementBindsBaseline =
                             runtime.particleReplacementBinds,
+                        .waterReplacementBindsBaseline =
+                            runtime.waterReplacementBinds,
                         .effectReplacementBindsBaseline =
                             runtime.effectReplacementBinds,
                         .directionalPowCallsBaseline =

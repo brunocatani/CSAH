@@ -66,6 +66,15 @@ namespace community_shaders::linear_lighting
             DxbcIdentity replacement{};
         };
 
+        struct WaterShaderContractDefinition
+        {
+            const char* name{};
+            std::uint32_t descriptor{};
+            int resourceId{};
+            DxbcIdentity original{};
+            DxbcIdentity replacement{};
+        };
+
         struct EffectShaderContractDefinition
         {
             const char* name{};
@@ -85,6 +94,7 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedSkyLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDistantTreeLinearLightingContract.inl"
         #include "Features/linear_lighting/GeneratedParticleLinearLightingContracts.inl"
+        #include "Features/linear_lighting/GeneratedWaterLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
@@ -249,11 +259,12 @@ namespace community_shaders::linear_lighting
 
             gpuResourcesReady_.store(true, std::memory_order_release);
             logging::info(
-                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, effectContracts={}); active shader replacement remains {}.",
+                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, waterContracts={}, effectContracts={}); active shader replacement remains {}.",
                 kShaderContracts.size(),
                 kSkyShaderContracts.size(),
                 kDistantTreeShaderContractCount,
                 kParticleShaderContracts.size(),
+                kWaterShaderContracts.size(),
                 kEffectShaderContracts.size(),
                 enabled_.load(std::memory_order_relaxed) ? "enabled" : "disabled");
         } catch (const std::exception& error) {
@@ -280,6 +291,8 @@ namespace community_shaders::linear_lighting
         static_assert(kDistantTreeShaderContractCount == 1);
         static_assert(
             kParticleShaderContracts.size() == kParticleShaderContractCount);
+        static_assert(
+            kWaterShaderContracts.size() == kWaterShaderContractCount);
         static_assert(
             kEffectShaderContracts.size() == kEffectShaderContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
@@ -412,6 +425,40 @@ namespace community_shaders::linear_lighting
         }
 
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kWaterShaderContracts.size()>
+            waterReplacements{};
+        for (std::size_t index = 0;
+             index < kWaterShaderContracts.size();
+             ++index) {
+            const auto& contract = kWaterShaderContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacement.size,
+                    contract.replacement.checksum)) {
+                logging::error(
+                    "Linear Lighting embedded Water replacement '{}' is missing or invalid.",
+                    contract.name);
+                return false;
+            }
+
+            const auto waterResult = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                waterReplacements[index].GetAddressOf());
+            if (FAILED(waterResult)) {
+                logging::error(
+                    "Linear Lighting Water replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    contract.name,
+                    static_cast<std::uint32_t>(waterResult));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kEffectShaderContracts.size()>
             effectReplacements{};
         for (std::size_t index = 0;
@@ -487,6 +534,7 @@ namespace community_shaders::linear_lighting
         distantTreeReplacementShaders_ =
             std::move(distantTreeReplacements);
         particleReplacementShaders_ = std::move(particleReplacements);
+        waterReplacementShaders_ = std::move(waterReplacements);
         effectReplacementShaders_ = std::move(effectReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
@@ -839,6 +887,63 @@ namespace community_shaders::linear_lighting
             return;
         }
 
+        std::size_t waterContractIndex = kWaterShaderContracts.size();
+        for (std::size_t index = 0;
+             index < kWaterShaderContracts.size();
+             ++index) {
+            const auto& identity = kWaterShaderContracts[index].original;
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                waterContractIndex = index;
+                break;
+            }
+        }
+        if (waterContractIndex != kWaterShaderContracts.size()) {
+            matchingWaterShaderContractMask_.fetch_or(
+                1u << waterContractIndex,
+                std::memory_order_relaxed);
+            matchingWaterShadersCreated_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            std::scoped_lock lock(shaderRegistryMutex_);
+            auto& owners = originalWaterShaderOwners_[waterContractIndex];
+            auto& slots = originalWaterShaders_[waterContractIndex];
+            for (std::size_t index = 0; index < slots.size(); ++index) {
+                if (slots[index].load(std::memory_order_relaxed) == shader) {
+                    return;
+                }
+                if (!owners[index]) {
+                    owners[index] = shader;
+                    if (!registerShaderBinding(
+                            shader,
+                            {
+                                ReplacementShaderFamily::water,
+                                static_cast<std::uint32_t>(
+                                    waterContractIndex + 1),
+                                ReplacementPixelConstants_Frame,
+                            })) {
+                        owners[index].Reset();
+                        return;
+                    }
+                    slots[index].store(shader, std::memory_order_release);
+                    trackedOriginalWaterShaders_.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                    return;
+                }
+            }
+            if (!originalWaterCapacityWarningLogged_[waterContractIndex]
+                     .exchange(true, std::memory_order_relaxed)) {
+                logging::warn(
+                    "Linear Lighting original Water-shader capacity for '{}' was exhausted; extra instances remain vanilla.",
+                    kWaterShaderContracts[waterContractIndex].name);
+            }
+            return;
+        }
+
         std::size_t effectContractIndex = kEffectShaderContracts.size();
         for (std::size_t index = 0;
              index < kEffectShaderContracts.size();
@@ -1137,6 +1242,24 @@ namespace community_shaders::linear_lighting
             return { replacement, binding, false };
         }
 
+        if (binding.family == ReplacementShaderFamily::water) {
+            if (binding.contractPlusOne == 0 ||
+                binding.contractPlusOne > waterReplacementShaders_.size()) {
+                inactiveShaderSelections_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            auto* replacement =
+                waterReplacementShaders_[binding.contractPlusOne - 1].Get();
+            if (!replacement) {
+                inactiveShaderSelections_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            waterReplacementBinds_.fetch_add(1, std::memory_order_relaxed);
+            return { replacement, binding, false };
+        }
+
         if (binding.family == ReplacementShaderFamily::effect) {
             if (binding.contractPlusOne == 0 ||
                 binding.contractPlusOne > effectReplacementShaders_.size()) {
@@ -1195,6 +1318,11 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= particleReplacementShaders_.size() &&
             binding.constantFlags == ReplacementPixelConstants_Frame;
+        const auto validWater =
+            binding.family == ReplacementShaderFamily::water &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= waterReplacementShaders_.size() &&
+            binding.constantFlags == ReplacementPixelConstants_Frame;
         const auto validEffect =
             binding.family == ReplacementShaderFamily::effect &&
             binding.contractPlusOne > 0 &&
@@ -1202,7 +1330,7 @@ namespace community_shaders::linear_lighting
             binding.constantFlags == ReplacementPixelConstants_Frame;
         if (!context || context != context_.Get() ||
             (!validMaterial && !validSky && !validDistantTree &&
-                !validParticle && !validEffect) ||
+                !validParticle && !validWater && !validEffect) ||
             !frameBuffer_ ||
             (validMaterial && !geometryBuffer_)) {
             return ScopedReplacementPixelConstants{};
@@ -1241,6 +1369,11 @@ namespace community_shaders::linear_lighting
             binding.contractPlusOne <= particleReplacementShaders_.size()) {
             expectedShader =
                 particleReplacementShaders_[binding.contractPlusOne - 1].Get();
+        } else if (binding.family == ReplacementShaderFamily::water &&
+            binding.contractPlusOne > 0 &&
+            binding.contractPlusOne <= waterReplacementShaders_.size()) {
+            expectedShader =
+                waterReplacementShaders_[binding.contractPlusOne - 1].Get();
         } else if (binding.family == ReplacementShaderFamily::effect &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= effectReplacementShaders_.size()) {
@@ -1483,6 +1616,19 @@ namespace community_shaders::linear_lighting
                     std::memory_order_relaxed),
             .particleReplacementBinds =
                 particleReplacementBinds_.load(std::memory_order_relaxed),
+            .verifiedWaterShaderContracts =
+                static_cast<std::uint32_t>(kWaterShaderContracts.size()),
+            .matchingWaterShaderContractMask =
+                matchingWaterShaderContractMask_.load(
+                    std::memory_order_relaxed),
+            .matchingWaterShadersCreated =
+                matchingWaterShadersCreated_.load(
+                    std::memory_order_relaxed),
+            .trackedOriginalWaterShaders =
+                trackedOriginalWaterShaders_.load(
+                    std::memory_order_relaxed),
+            .waterReplacementBinds =
+                waterReplacementBinds_.load(std::memory_order_relaxed),
             .verifiedEffectShaderContracts =
                 static_cast<std::uint32_t>(kEffectShaderContracts.size()),
             .matchingEffectShaderContractMask =

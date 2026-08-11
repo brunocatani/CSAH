@@ -199,6 +199,7 @@ namespace community_shaders::ui
         bool skyReplacementReported{};
         bool distantTreeReplacementReported{};
         bool particleReplacementReported{};
+        bool waterReplacementReported{};
         bool effectReplacementReported{};
 
         void pushLatestSnapshot() noexcept;
@@ -599,8 +600,9 @@ namespace community_shaders::ui
                      qualification.fullyVerifiedContracts) << 13) ^
                 (runtime.distantTreeReplacementBinds << 45) ^
                 (runtime.particleReplacementBinds << 46) ^
-                (runtime.effectReplacementBinds << 47) ^
-                (runtime.shaderBindingLookupFailures << 48);
+                (runtime.waterReplacementBinds << 47) ^
+                (runtime.effectReplacementBinds << 48) ^
+                (runtime.shaderBindingLookupFailures << 49);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -653,6 +655,15 @@ namespace community_shaders::ui
                             runtime.verifiedParticleShaderContracts ==
                                 linear_lighting::Runtime::
                                     kParticleShaderContractCount },
+                        { "verifiedWaterShaderContracts",
+                            runtime.verifiedWaterShaderContracts },
+                        { "expectedWaterShaderContracts",
+                            linear_lighting::Runtime::
+                                kWaterShaderContractCount },
+                        { "waterCoverageComplete",
+                            runtime.verifiedWaterShaderContracts ==
+                                linear_lighting::Runtime::
+                                    kWaterShaderContractCount },
                         { "verifiedEffectShaderContracts",
                             runtime.verifiedEffectShaderContracts },
                         { "expectedEffectShaderContracts",
@@ -712,6 +723,14 @@ namespace community_shaders::ui
                             runtime.trackedOriginalParticleShaders },
                         { "particleReplacementBinds",
                             runtime.particleReplacementBinds },
+                        { "matchingWaterShaders",
+                            runtime.matchingWaterShadersCreated },
+                        { "matchingWaterShaderMask",
+                            runtime.matchingWaterShaderContractMask },
+                        { "trackedWaterShaders",
+                            runtime.trackedOriginalWaterShaders },
+                        { "waterReplacementBinds",
+                            runtime.waterReplacementBinds },
                         { "matchingEffectShaders",
                             runtime.matchingEffectShadersCreated },
                         { "matchingEffectShaderMaskWords",
@@ -895,7 +914,7 @@ namespace community_shaders::ui
             }
             if (events.activationReady) {
                 logging::info(
-                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, matchingDistantTreeShaders={}, trackedDistantTreeShaders={}, matchingParticleShaders={}, trackedParticleShaders={}, matchingEffectShaders={}, trackedEffectShaders={}, shaderBindingLookupFailures={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
+                    "Linear Lighting runtime activation proof: enabled={}, gpuReady={}, geometryReady={}, frameDataUploads={}, matchingShaders={}, trackedShaders={}, matchingSkyShaders={}, trackedSkyShaders={}, matchingDistantTreeShaders={}, trackedDistantTreeShaders={}, matchingParticleShaders={}, trackedParticleShaders={}, matchingWaterShaders={}, trackedWaterShaders={}, matchingEffectShaders={}, trackedEffectShaders={}, shaderBindingLookupFailures={}, d3dBindDetourEnabled={}, geometryCellOwned={}, psBindCalls={}, geometryCalls={}.",
                     runtime.enabled,
                     runtime.gpuResourcesReady,
                     runtime.geometryProviderReady,
@@ -908,6 +927,8 @@ namespace community_shaders::ui
                     runtime.trackedOriginalDistantTreeShaders,
                     runtime.matchingParticleShadersCreated,
                     runtime.trackedOriginalParticleShaders,
+                    runtime.matchingWaterShadersCreated,
+                    runtime.trackedOriginalWaterShaders,
                     runtime.matchingEffectShadersCreated,
                     runtime.trackedOriginalEffectShaders,
                     runtime.shaderBindingLookupFailures,
@@ -966,6 +987,18 @@ namespace community_shaders::ui
                     runtime.trackedOriginalParticleShaders,
                     runtime.matchingParticleShaderContractMask,
                     runtime.particleReplacementBinds,
+                    runtime.frameDataUploads,
+                    runtime.shaderBindingLookupFailures);
+            }
+            if (!waterReplacementReported &&
+                runtime.waterReplacementBinds > 0) {
+                waterReplacementReported = true;
+                logging::info(
+                    "Linear Lighting first Water replacement proof: matchingShaders={}, trackedShaders={}, contractMask=0x{:08X}, replacementBinds={}, frameDataUploads={}, shaderBindingLookupFailures={}.",
+                    runtime.matchingWaterShadersCreated,
+                    runtime.trackedOriginalWaterShaders,
+                    runtime.matchingWaterShaderContractMask,
+                    runtime.waterReplacementBinds,
                     runtime.frameDataUploads,
                     runtime.shaderBindingLookupFailures);
             }

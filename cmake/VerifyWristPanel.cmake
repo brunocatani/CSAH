@@ -56,6 +56,8 @@ foreach(required IN ITEMS
     "particleCoverageComplete"
     "effectCoverageComplete"
     "matchingEffectShaderMaskWords"
+    "matchingWaterShaderMask"
+    "waterReplacementBinds"
     "shaderBindingLookupFailures"
     "std::atomic_bool diagnosticsEnabled{ true }"
     "scene %s | qualification %s | proof %u/%u"
