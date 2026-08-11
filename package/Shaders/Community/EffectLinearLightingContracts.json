@@ -1186,5 +1186,47 @@
     "descriptor": 1073771693,
     "aliases": [1082160181],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_COMBINED_GRAYSCALE_LIGHTING_400074AD_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleGrayscaleAlpha_0000408D",
+    "descriptor": 16525,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_0000408D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleGrayscaleColorPremultipliedAlpha_4000208D",
+    "descriptor": 1073750157,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_4000208D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleGrayscaleAlphaPremultipliedAlpha_400040AD",
+    "descriptor": 1073758381,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_400040AD_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleSoftGrayscaleAlphaPremultipliedAlpha_4000508D",
+    "descriptor": 1073762445,
+    "aliases": [1082150933],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_4000508D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleGrayscaleColorAlphaPremultipliedAlpha_4000608D",
+    "descriptor": 1073766541,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_4000608D_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaPremultipliedAlpha_400060AD",
+    "descriptor": 1073766573,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_400060AD_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleSoftGrayscaleColorAlphaPremultipliedAlpha_4000708D",
+    "descriptor": 1073770637,
+    "aliases": [1082159125],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_4000708D_PS"
   }
 ]
