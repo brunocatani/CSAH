@@ -403,10 +403,10 @@ PSOutput PSMain(PSInput input)
 #elif LINEAR_LIGHTING_MENU_SCREEN
     float3 menuScreen = TexScreen.Sample(SampScreen, uv).xyz;
     output.target0.xyz = fade * (
-        LinearLightingDiffuse(mappedDiffuse) +
+        LinearLightingDecodedDiffuse(mappedDiffuse) +
         LinearLightingDiffuse(menuScreen));
 #else
-    output.target0.xyz = fade * LinearLightingDiffuse(mappedDiffuse);
+    output.target0.xyz = fade * LinearLightingDecodedDiffuse(mappedDiffuse);
 #endif
 #if LINEAR_LIGHTING_BONE_TINTING
     output.target0.xyz += boneTint;

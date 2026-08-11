@@ -348,7 +348,7 @@ PSOutput PSMain(PSInput input)
 
     const float fade = (layerProperties.w == -1.0) ?
         1.0 : saturate(1.0 - (cb12[50].x * layerProperties.w));
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+    output.target0.xyz = fade * LinearLightingDecodedDiffuse(diffuse);
     output.target0.w = cb2[0].z;
     output.target4.xyz = LinearLightingEmitColor(cb2[1].xyz);
 

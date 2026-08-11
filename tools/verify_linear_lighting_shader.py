@@ -254,7 +254,9 @@ def verify_source_contracts(
         "specularSample.y *= gradientRemap.w",
         "diffuse = gradientRemap.xyz",
         "diffuse = lerp(diffuse, skinTint, cb2[2].w)",
+        "const float3 transformedDiffuse = useDismemberment ?",
         "LinearLightingDiffuse(diffuse)",
+        "LinearLightingDecodedDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
         "input.eyeIndex * 4u",
     ):
@@ -284,7 +286,9 @@ def verify_source_contracts(
         "baseDiffuseSample.xyz * input.vertexColor.xyz",
         "TexDismembermentDiffuse.Sample",
         "output.target1.z = -projectedNormal.z",
+        "const float3 transformedDiffuse = useDismemberment ?",
         "LinearLightingDiffuse(diffuse)",
+        "LinearLightingDecodedDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
     ):
         if token not in dismemberment_blend_source_text:
@@ -312,7 +316,7 @@ def verify_source_contracts(
         "CombinedMaterials[input.materialIndex]",
         "LINEAR_LIGHTING_COMBINED_FLAGS cb2[5]",
         "material.interpolationAndProperties.yx",
-        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingDecodedDiffuse(diffuse)",
         "LinearLightingEmitColor(",
         "input.eyeIndex * 4u",
     ):
@@ -338,7 +342,7 @@ def verify_source_contracts(
         "Texture2D<float4> TexSpecular3 : register(t11)",
         "AccumulateLandscapeLayer(",
         "lodMultiplier * landscapeLodDiffuse",
-        "LinearLightingDiffuse(diffuse)",
+        "LinearLightingDecodedDiffuse(diffuse)",
         "LinearLightingEmitColor(cb2[1].xyz)",
         "input.eyeIndex * 4u",
     ):
@@ -388,6 +392,19 @@ def verify_source_contracts(
         "enableGammaCorrection" in shared_text
     ):
         fail("removed upstream setting enableGammaCorrection returned")
+    decoded_diffuse_match = re.search(
+        r"float3\s+LinearLightingDecodedDiffuse\s*\(float3\s+color\)\s*"
+        r"\{(?P<body>.*?)\}",
+        shared_text,
+        re.DOTALL,
+    )
+    if decoded_diffuse_match is None:
+        fail("shared shader is missing decoded-diffuse transformation")
+    decoded_diffuse_body = decoded_diffuse_match.group("body")
+    if "color * vanillaDiffuseColorMult" not in decoded_diffuse_body:
+        fail("decoded-diffuse transformation no longer preserves decoded color")
+    if "pow(" in decoded_diffuse_body or "abs(" in decoded_diffuse_body:
+        fail("decoded-diffuse transformation must not decode color again")
 
     for base_source_text in base_source_texts:
         for token in (
@@ -395,10 +412,10 @@ def verify_source_contracts(
         ):
             if token not in base_source_text:
                 fail(f"active shader is missing transformation contract: {token}")
-    if "LinearLightingDiffuse(mappedDiffuse)" not in base_source_texts[0]:
-        fail("projected shader is missing diffuse transformation")
-    if "LinearLightingDiffuse(diffuse" not in base_source_texts[1]:
-        fail("six-MRT shader is missing diffuse transformation")
+    if "LinearLightingDecodedDiffuse(mappedDiffuse)" not in base_source_texts[0]:
+        fail("projected shader is missing decoded-diffuse transformation")
+    if "LinearLightingDecodedDiffuse(diffuse" not in base_source_texts[1]:
+        fail("six-MRT shader is missing decoded-diffuse transformation")
     if "LinearLightingEmitColor(cb2[1].xyz)" not in base_source_texts[0]:
         fail("projected shader is missing emission transformation")
     if "LinearLightingEmitColor(emitColor)" not in base_source_texts[1]:
@@ -592,7 +609,7 @@ def verify_source_contracts(
         "float4 cb2[6]",
         "float4 cb12[71]",
         "asfloat(uint2(0x7FC00000u, 0x7FC00000u))",
-        "LinearLightingDiffuse(float3(1.0, 1.0, 1.0))",
+        "LinearLightingDecodedDiffuse(float3(1.0, 1.0, 1.0))",
         "LinearLightingEmitColor(cb2[1].xyz)",
         "input.eyeIndex * 4u",
     ):

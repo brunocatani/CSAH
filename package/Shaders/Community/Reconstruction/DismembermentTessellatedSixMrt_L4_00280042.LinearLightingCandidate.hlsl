@@ -302,7 +302,10 @@ PSOutput PSMain(PSInput input)
     const float fade = (LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_DISMEMBERMENT_PROPERTIES.w * cb12[50].x) + 1.0);
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+    const float3 transformedDiffuse = useDismemberment ?
+        LinearLightingDiffuse(diffuse) :
+        LinearLightingDecodedDiffuse(diffuse);
+    output.target0.xyz = fade * transformedDiffuse;
 
     const uint matrixBase = input.eyeIndex * 4u;
     const float4 currentPosition = float4(input.currentPosition.xyz, 1.0);

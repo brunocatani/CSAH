@@ -447,9 +447,9 @@ PSOutput PSMain(PSInput input)
 #if LINEAR_LIGHTING_MENU_SCREEN
     float3 menuScreen = TexScreen.Sample(SampScreen, uv).xyz;
     output.target0.xyz = fade * (
-        LinearLightingDiffuse(diffuse) + LinearLightingDiffuse(menuScreen));
+        LinearLightingDecodedDiffuse(diffuse) + LinearLightingDiffuse(menuScreen));
 #elif !LINEAR_LIGHTING_PIPBOY_SCREEN
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+    output.target0.xyz = fade * LinearLightingDecodedDiffuse(diffuse);
 #endif
 #if LINEAR_LIGHTING_BONE_TINTING
     output.target0.xyz += boneTint;
@@ -550,7 +550,7 @@ PSOutput PSMain(PSInput input)
         (float2(screenOffset.x, -screenOffset.y) * cb0[0].y);
     float3 pipboyScreen = pow(TexScreen.Sample(SampScreen, screenUv).xyz, 2.2);
     output.target0.xyz =
-        (fade * LinearLightingDiffuse(diffuse)) +
+        (fade * LinearLightingDecodedDiffuse(diffuse)) +
         (pipboyScreen * cb0[0].z);
 #endif
 

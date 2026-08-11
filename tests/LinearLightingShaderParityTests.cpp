@@ -2013,6 +2013,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return std::pow(std::abs(value), gamma) * multiplier;
     }
 
+    [[nodiscard]] float decodedDiffuseValue(
+        float value,
+        float multiplier)
+    {
+        return value * multiplier;
+    }
+
     [[nodiscard]] float skinTintValue(
         float diffuse,
         float tint,
@@ -2107,10 +2114,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 diffuse *= 1.0F -
                     ((1.0F - faceDiffuseMask) * faceFactor * 0.3F);
             }
-            auto transformedDiffuse = transformedValue(
-                diffuse,
-                lightingCase.colorGamma,
-                lightingCase.vanillaDiffuseColorMult);
+            const auto transformedDiffuseSource =
+                useDismemberment || contract.hasMeatCuff ?
+                transformedValue(
+                    diffuse,
+                    lightingCase.colorGamma,
+                    lightingCase.vanillaDiffuseColorMult) :
+                decodedDiffuseValue(
+                    diffuse,
+                    lightingCase.vanillaDiffuseColorMult);
+            auto transformedDiffuse = transformedDiffuseSource;
             constexpr auto screenTexel = 2u;
             if (contract.hasMenuScreen) {
                 transformedDiffuse += transformedValue(

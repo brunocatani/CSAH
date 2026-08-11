@@ -75,6 +75,12 @@ float3 LinearLightingDiffuse(float3 color)
         pow(abs(color), colorGamma) * vanillaDiffuseColorMult : color;
 }
 
+float3 LinearLightingDecodedDiffuse(float3 color)
+{
+    return enableLinearLighting != 0u ?
+        color * vanillaDiffuseColorMult : color;
+}
+
 float3 LinearLightingLight(float3 color, bool isLinear)
 {
     return enableLinearLighting != 0u && !isLinear ?

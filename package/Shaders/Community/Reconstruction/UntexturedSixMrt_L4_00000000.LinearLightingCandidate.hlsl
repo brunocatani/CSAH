@@ -39,7 +39,7 @@ PSOutput PSMain(PSInput input)
 
     float fade = (cb2[4].w == -1.0) ?
         1.0 : ((-cb2[4].w * cb12[50].x) + 1.0);
-    output.target0.xyz = fade * LinearLightingDiffuse(float3(1.0, 1.0, 1.0));
+    output.target0.xyz = fade * LinearLightingDecodedDiffuse(float3(1.0, 1.0, 1.0));
     output.target0.w = cb2[0].z;
     output.target1.xy = asfloat(uint2(0x7FC00000u, 0x7FC00000u));
 

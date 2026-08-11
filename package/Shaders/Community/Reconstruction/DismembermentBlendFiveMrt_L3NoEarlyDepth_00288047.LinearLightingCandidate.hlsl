@@ -185,7 +185,10 @@ PSOutput PSMain(PSInput input)
     const float fade = (LINEAR_LIGHTING_BLEND_PROPERTIES.w == -1.0) ?
         1.0 :
         ((-LINEAR_LIGHTING_BLEND_PROPERTIES.w * cb12[50].x) + 1.0);
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+    const float3 transformedDiffuse = useDismemberment ?
+        LinearLightingDiffuse(diffuse) :
+        LinearLightingDecodedDiffuse(diffuse);
+    output.target0.xyz = fade * transformedDiffuse;
     output.target0.w = alpha;
     output.target1.w = alpha;
     output.target3.z = cb2[0].w * 0.01;

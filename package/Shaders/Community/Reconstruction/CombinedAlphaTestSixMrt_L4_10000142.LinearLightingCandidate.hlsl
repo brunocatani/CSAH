@@ -255,7 +255,7 @@ PSOutput PSMain(PSInput input)
     const float fade =
         (material.interpolationAndProperties.w == -1.0) ? 1.0 :
         ((-material.interpolationAndProperties.w * geometrySwitch) + 1.0);
-    output.target0.xyz = fade * LinearLightingDiffuse(diffuse);
+    output.target0.xyz = fade * LinearLightingDecodedDiffuse(diffuse);
     output.target4.xyz = LinearLightingEmitColor(
         material.emitColorAndAlphaReference.xyz);
 
