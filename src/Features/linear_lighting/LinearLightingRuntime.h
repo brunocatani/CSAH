@@ -170,7 +170,7 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kSkyShaderContractCount = 8;
         static constexpr std::size_t kDistantTreeShaderContractCount = 1;
         static constexpr std::size_t kParticleShaderContractCount = 4;
-        static constexpr std::size_t kEffectShaderContractCount = 358;
+        static constexpr std::size_t kEffectShaderContractCount = 387;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t

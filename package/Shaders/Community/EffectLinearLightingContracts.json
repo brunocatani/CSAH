@@ -2146,5 +2146,179 @@
     "descriptor": 8414724,
     "aliases": [8414726, 8449542],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_00806604_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820204",
+    "descriptor": 8520196,
+    "aliases": [8520198],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820204_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820205",
+    "descriptor": 8520197,
+    "aliases": [8520199, 8522247],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820205_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820224",
+    "descriptor": 8520228,
+    "aliases": [8520230, 8522276, 8522278],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820224_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820225",
+    "descriptor": 8520229,
+    "aliases": [8520231, 8522277, 8522279],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820225_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820606",
+    "descriptor": 8521222,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820606_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820607",
+    "descriptor": 8521223,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820607_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820624",
+    "descriptor": 8521252,
+    "aliases": [8521254],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820624_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00820625",
+    "descriptor": 8521253,
+    "aliases": [8521255],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00820625_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822204",
+    "descriptor": 8528388,
+    "aliases": [8528390],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822204_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822205",
+    "descriptor": 8528389,
+    "aliases": [8528391],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822205_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822224",
+    "descriptor": 8528420,
+    "aliases": [8528422, 8530468, 8530470],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822224_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822225",
+    "descriptor": 8528421,
+    "aliases": [8528423, 8530471],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822225_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822604",
+    "descriptor": 8529412,
+    "aliases": [8529414],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822604_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822605",
+    "descriptor": 8529413,
+    "aliases": [8529415],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822605_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822625",
+    "descriptor": 8529445,
+    "aliases": [8529447],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822625_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00822626",
+    "descriptor": 8529446,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00822626_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824206",
+    "descriptor": 8536582,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824206_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824207",
+    "descriptor": 8536583,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824207_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824224",
+    "descriptor": 8536612,
+    "aliases": [8536614, 8538660, 8538662],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824224_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824225",
+    "descriptor": 8536613,
+    "aliases": [8536615, 8538663],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824225_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824604",
+    "descriptor": 8537604,
+    "aliases": [8537606],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824604_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824605",
+    "descriptor": 8537605,
+    "aliases": [8537607],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824605_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00824627",
+    "descriptor": 8537639,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00824627_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826204",
+    "descriptor": 8544772,
+    "aliases": [8544774, 8546820, 8546822, 8577540, 8577542],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826204_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826205",
+    "descriptor": 8544773,
+    "aliases": [8544775, 8546821, 8546823, 8577543],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826205_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826224",
+    "descriptor": 8544804,
+    "aliases": [8544806, 8546852, 8546854],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826224_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826225",
+    "descriptor": 8544805,
+    "aliases": [8544807, 8546853, 8546855, 8579623],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826225_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826606",
+    "descriptor": 8545798,
+    "aliases": [8580614],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826606_PS"
+  },
+  {
+    "name": "EffectMembraneAlphaMask_00826607",
+    "descriptor": 8545799,
+    "aliases": [8580615],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MEMBRANE_ALPHA_MASK_00826607_PS"
   }
 ]

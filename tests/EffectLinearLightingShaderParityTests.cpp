@@ -97,6 +97,7 @@ namespace
     constexpr Pixel kMembraneViewVector{ 0.2F, -0.1F, 0.6F, 0.0F };
     constexpr Pixel kMembraneRimColor{ 0.3F, 0.5F, 0.7F, 0.4F };
     constexpr Pixel kMembraneVariables{ 1.3F, 0.0F, 0.75F, 0.0F };
+    constexpr Pixel kAlphaMaskTextureFail{};
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
     constexpr float kSoftParticleDepth = 0.75F;
@@ -166,6 +167,11 @@ namespace
             return (descriptor & 0x00000200U) != 0;
         }
 
+        [[nodiscard]] constexpr bool alphaMaskTested() const noexcept
+        {
+            return (descriptor & 0x00020000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool usesBaseTextureAlpha() const noexcept
         {
             return textured() && !grayscaleAlpha();
@@ -202,7 +208,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 358> kEffectContracts{ {
+    constexpr std::array<EffectContract, 387> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -561,6 +567,35 @@ namespace
         { "EffectMembraneCore_00806224", 0x00806224U },
         { "EffectMembraneCore_00806225", 0x00806225U },
         { "EffectMembraneCore_00806604", 0x00806604U },
+        { "EffectMembraneAlphaMask_00820204", 0x00820204U },
+        { "EffectMembraneAlphaMask_00820205", 0x00820205U },
+        { "EffectMembraneAlphaMask_00820224", 0x00820224U },
+        { "EffectMembraneAlphaMask_00820225", 0x00820225U },
+        { "EffectMembraneAlphaMask_00820606", 0x00820606U },
+        { "EffectMembraneAlphaMask_00820607", 0x00820607U },
+        { "EffectMembraneAlphaMask_00820624", 0x00820624U },
+        { "EffectMembraneAlphaMask_00820625", 0x00820625U },
+        { "EffectMembraneAlphaMask_00822204", 0x00822204U },
+        { "EffectMembraneAlphaMask_00822205", 0x00822205U },
+        { "EffectMembraneAlphaMask_00822224", 0x00822224U },
+        { "EffectMembraneAlphaMask_00822225", 0x00822225U },
+        { "EffectMembraneAlphaMask_00822604", 0x00822604U },
+        { "EffectMembraneAlphaMask_00822605", 0x00822605U },
+        { "EffectMembraneAlphaMask_00822625", 0x00822625U },
+        { "EffectMembraneAlphaMask_00822626", 0x00822626U },
+        { "EffectMembraneAlphaMask_00824206", 0x00824206U },
+        { "EffectMembraneAlphaMask_00824207", 0x00824207U },
+        { "EffectMembraneAlphaMask_00824224", 0x00824224U },
+        { "EffectMembraneAlphaMask_00824225", 0x00824225U },
+        { "EffectMembraneAlphaMask_00824604", 0x00824604U },
+        { "EffectMembraneAlphaMask_00824605", 0x00824605U },
+        { "EffectMembraneAlphaMask_00824627", 0x00824627U },
+        { "EffectMembraneAlphaMask_00826204", 0x00826204U },
+        { "EffectMembraneAlphaMask_00826205", 0x00826205U },
+        { "EffectMembraneAlphaMask_00826224", 0x00826224U },
+        { "EffectMembraneAlphaMask_00826225", 0x00826225U },
+        { "EffectMembraneAlphaMask_00826606", 0x00826606U },
+        { "EffectMembraneAlphaMask_00826607", 0x00826607U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -937,7 +972,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         ID3D11ShaderResourceView* depthTestTexture,
         ID3D11ShaderResourceView* grayscaleTexture,
         ID3D11ShaderResourceView* pipboyTexture,
-        ID3D11SamplerState* sampler)
+        ID3D11SamplerState* sampler,
+        ID3D11ShaderResourceView* alphaMaskTexture = nullptr)
     {
         auto target = createRenderTarget(device);
         const float clear[4]{};
@@ -955,11 +991,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         context->PSSetConstantBuffers(2, 1, &geometryBuffer);
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->PSSetShaderResources(0, 1, &texture);
+        auto* boundAlphaMaskTexture = alphaMaskTexture != nullptr ?
+            alphaMaskTexture : texture;
+        context->PSSetShaderResources(2, 1, &boundAlphaMaskTexture);
         context->PSSetShaderResources(3, 1, &depthTexture);
         context->PSSetShaderResources(4, 1, &grayscaleTexture);
         context->PSSetShaderResources(6, 1, &pipboyTexture);
         context->PSSetShaderResources(8, 1, &depthTestTexture);
         context->PSSetSamplers(0, 1, &sampler);
+        context->PSSetSamplers(2, 1, &sampler);
         context->PSSetSamplers(4, 1, &sampler);
         context->PSSetSamplers(6, 1, &sampler);
         context->Draw(3, 0);
@@ -975,6 +1015,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         ID3D11ShaderResourceView* nullTexture{};
         context->PSSetShaderResources(0, 1, &nullTexture);
+        context->PSSetShaderResources(2, 1, &nullTexture);
         context->PSSetShaderResources(3, 1, &nullTexture);
         context->PSSetShaderResources(4, 1, &nullTexture);
         context->PSSetShaderResources(6, 1, &nullTexture);
@@ -1628,6 +1669,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             createTexture(device.Get(), kDepthTestTexturePass);
         const auto depthTestTextureFail =
             createTexture(device.Get(), kDepthTestTextureFail);
+        const auto alphaMaskTextureFail =
+            createTexture(device.Get(), kAlphaMaskTextureFail);
         const auto grayscaleTexture = createGrayscaleTexture(device.Get());
         const auto pipboyTexture = createTexture(device.Get(), kPipboyTexture);
         D3D11_SAMPLER_DESC samplerDescription{};
@@ -1929,6 +1972,33 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     vanillaDiscard,
                     label + " disabled depth discard parity");
             }
+            if (contract.alphaMaskTested()) {
+                const auto vanillaDiscard = render(
+                    device.Get(), context.Get(), vertexShader,
+                    vanillaShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    alphaMaskTextureFail.Get());
+                const auto replacementDiscard = render(
+                    device.Get(), context.Get(), vertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get(),
+                    alphaMaskTextureFail.Get());
+                constexpr Pixel discarded{};
+                passed &= compare(
+                    vanillaDiscard,
+                    discarded,
+                    label + " vanilla alpha-mask discard");
+                passed &= compare(
+                    replacementDiscard,
+                    vanillaDiscard,
+                    label + " disabled alpha-mask discard parity");
+            }
             if (contract.pipboy()) {
                 const auto vanillaRawPipboy = render(
                     device.Get(), context.Get(), vertexShader,
@@ -1976,7 +2046,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 332 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 387 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

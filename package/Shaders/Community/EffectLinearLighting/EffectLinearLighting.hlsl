@@ -94,6 +94,9 @@ cbuffer EffectPerGeometry : register(b2)
 };
 
 SamplerState EffectSampler : register(s0);
+#if (EFFECT_TECHNIQUE & 0x00020000) != 0
+SamplerState EffectAlphaMaskSampler : register(s2);
+#endif
 #if (EFFECT_TECHNIQUE & 0x00006000) != 0
 SamplerState EffectGrayscaleSampler : register(s4);
 #endif
@@ -101,6 +104,9 @@ SamplerState EffectGrayscaleSampler : register(s4);
 SamplerState EffectPipboySampler : register(s6);
 #endif
 Texture2D<float4> EffectTexture : register(t0);
+#if (EFFECT_TECHNIQUE & 0x00020000) != 0
+Texture2D<float4> EffectAlphaMaskTexture : register(t2);
+#endif
 Texture2D<float4> EffectDepthTexture : register(t3);
 #if (EFFECT_TECHNIQUE & 0x00006000) != 0
 Texture2D<float4> EffectGrayscaleTexture : register(t4);
@@ -303,6 +309,14 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     const float4 textureColor = EffectTexture.Sample(
         EffectSampler,
         input.texCoord.xy);
+#if (EFFECT_TECHNIQUE & 0x00020000) != 0
+    const float alphaMask = EffectAlphaMaskTexture.Sample(
+        EffectAlphaMaskSampler,
+        input.texCoord.zw).w;
+    if (alphaMask - EffectAlphaTest.x < 0.0f) {
+        discard;
+    }
+#endif
     float4 baseColor = textureColor;
     baseColor.xyz = LinearLightingEffect(baseColor.xyz);
 #if (EFFECT_TECHNIQUE & 0x1) != 0
