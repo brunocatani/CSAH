@@ -147,6 +147,16 @@ namespace
             return (descriptor & 0x4000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool falloff() const noexcept
+        {
+            return (descriptor & 0x10U) != 0;
+        }
+
+        [[nodiscard]] constexpr bool rgbFalloff() const noexcept
+        {
+            return (descriptor & 0x00200000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool usesBaseTextureAlpha() const noexcept
         {
             return textured() && !grayscaleAlpha();
@@ -154,7 +164,7 @@ namespace
 
         [[nodiscard]] constexpr bool depthTested() const noexcept
         {
-            return (descriptor & 0x01000000U) != 0;
+            return (descriptor & 0x03000000U) != 0;
         }
 
         [[nodiscard]] constexpr bool pipboy() const noexcept
@@ -183,7 +193,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 205> kEffectContracts{ {
+    constexpr std::array<EffectContract, 332> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -389,6 +399,133 @@ namespace
         { "EffectVertexColorTexturedParticleGrayscaleColorAlphaPremultipliedAlpha_4000608D", 0x4000608DU },
         { "EffectVertexColorTexturedAdditiveParticleGrayscaleColorAlphaPremultipliedAlpha_400060AD", 0x400060ADU },
         { "EffectVertexColorTexturedParticleSoftGrayscaleColorAlphaPremultipliedAlpha_4000708D", 0x4000708DU },
+        { "EffectFalloffFamily_00800010", 0x00800010U },
+        { "EffectFalloffFamily_00800011", 0x00800011U },
+        { "EffectFalloffFamily_00800014", 0x00800014U },
+        { "EffectFalloffFamily_00800015", 0x00800015U },
+        { "EffectFalloffFamily_00800030", 0x00800030U },
+        { "EffectFalloffFamily_00800031", 0x00800031U },
+        { "EffectFalloffFamily_00800034", 0x00800034U },
+        { "EffectFalloffFamily_00800035", 0x00800035U },
+        { "EffectFalloffFamily_00800410", 0x00800410U },
+        { "EffectFalloffFamily_00800411", 0x00800411U },
+        { "EffectFalloffFamily_00800414", 0x00800414U },
+        { "EffectFalloffFamily_00800415", 0x00800415U },
+        { "EffectFalloffFamily_00800430", 0x00800430U },
+        { "EffectFalloffFamily_00800431", 0x00800431U },
+        { "EffectFalloffFamily_00800434", 0x00800434U },
+        { "EffectFalloffFamily_00800435", 0x00800435U },
+        { "EffectFalloffFamily_00801010", 0x00801010U },
+        { "EffectFalloffFamily_00801011", 0x00801011U },
+        { "EffectFalloffFamily_00801014", 0x00801014U },
+        { "EffectFalloffFamily_00801015", 0x00801015U },
+        { "EffectFalloffFamily_00801030", 0x00801030U },
+        { "EffectFalloffFamily_00801031", 0x00801031U },
+        { "EffectFalloffFamily_00801034", 0x00801034U },
+        { "EffectFalloffFamily_00801035", 0x00801035U },
+        { "EffectFalloffFamily_00801055", 0x00801055U },
+        { "EffectFalloffFamily_00801411", 0x00801411U },
+        { "EffectFalloffFamily_00801414", 0x00801414U },
+        { "EffectFalloffFamily_00801415", 0x00801415U },
+        { "EffectFalloffFamily_00801430", 0x00801430U },
+        { "EffectFalloffFamily_00801431", 0x00801431U },
+        { "EffectFalloffFamily_00801434", 0x00801434U },
+        { "EffectFalloffFamily_00801435", 0x00801435U },
+        { "EffectFalloffFamily_00802014", 0x00802014U },
+        { "EffectFalloffFamily_00802015", 0x00802015U },
+        { "EffectFalloffFamily_00802034", 0x00802034U },
+        { "EffectFalloffFamily_00802035", 0x00802035U },
+        { "EffectFalloffFamily_00802415", 0x00802415U },
+        { "EffectFalloffFamily_00802435", 0x00802435U },
+        { "EffectFalloffFamily_00803015", 0x00803015U },
+        { "EffectFalloffFamily_00803034", 0x00803034U },
+        { "EffectFalloffFamily_00803035", 0x00803035U },
+        { "EffectFalloffFamily_00803414", 0x00803414U },
+        { "EffectFalloffFamily_00803415", 0x00803415U },
+        { "EffectFalloffFamily_00803434", 0x00803434U },
+        { "EffectFalloffFamily_00803435", 0x00803435U },
+        { "EffectFalloffFamily_00804434", 0x00804434U },
+        { "EffectFalloffFamily_00805455", 0x00805455U },
+        { "EffectFalloffFamily_00A00004", 0x00A00004U },
+        { "EffectFalloffFamily_00A00005", 0x00A00005U },
+        { "EffectFalloffFamily_00A00011", 0x00A00011U },
+        { "EffectFalloffFamily_00A00014", 0x00A00014U },
+        { "EffectFalloffFamily_00A00020", 0x00A00020U },
+        { "EffectFalloffFamily_00A00024", 0x00A00024U },
+        { "EffectFalloffFamily_00A00030", 0x00A00030U },
+        { "EffectFalloffFamily_00A00031", 0x00A00031U },
+        { "EffectFalloffFamily_00A00035", 0x00A00035U },
+        { "EffectFalloffFamily_00A00404", 0x00A00404U },
+        { "EffectFalloffFamily_00A00405", 0x00A00405U },
+        { "EffectFalloffFamily_00A00414", 0x00A00414U },
+        { "EffectFalloffFamily_00A00424", 0x00A00424U },
+        { "EffectFalloffFamily_00A00430", 0x00A00430U },
+        { "EffectFalloffFamily_00A01005", 0x00A01005U },
+        { "EffectFalloffFamily_00A01014", 0x00A01014U },
+        { "EffectFalloffFamily_00A01015", 0x00A01015U },
+        { "EffectFalloffFamily_00A01024", 0x00A01024U },
+        { "EffectFalloffFamily_00A01025", 0x00A01025U },
+        { "EffectFalloffFamily_00A01030", 0x00A01030U },
+        { "EffectFalloffFamily_00A01034", 0x00A01034U },
+        { "EffectFalloffFamily_00A01035", 0x00A01035U },
+        { "EffectFalloffFamily_00A01401", 0x00A01401U },
+        { "EffectFalloffFamily_00A01424", 0x00A01424U },
+        { "EffectFalloffFamily_00A01431", 0x00A01431U },
+        { "EffectFalloffFamily_00A04015", 0x00A04015U },
+        { "EffectFalloffFamily_00A04034", 0x00A04034U },
+        { "EffectFalloffFamily_00A04035", 0x00A04035U },
+        { "EffectFalloffFamily_00A05005", 0x00A05005U },
+        { "EffectFalloffFamily_00A05014", 0x00A05014U },
+        { "EffectFalloffFamily_00A05035", 0x00A05035U },
+        { "EffectFalloffFamily_00A05055", 0x00A05055U },
+        { "EffectFalloffFamily_00A05414", 0x00A05414U },
+        { "EffectFalloffFamily_00A05415", 0x00A05415U },
+        { "EffectFalloffFamily_00A05435", 0x00A05435U },
+        { "EffectFalloffFamily_00A07055", 0x00A07055U },
+        { "EffectFalloffFamily_01001414", 0x01001414U },
+        { "EffectFalloffFamily_40800010", 0x40800010U },
+        { "EffectFalloffFamily_40800011", 0x40800011U },
+        { "EffectFalloffFamily_40800014", 0x40800014U },
+        { "EffectFalloffFamily_40800015", 0x40800015U },
+        { "EffectFalloffFamily_40800030", 0x40800030U },
+        { "EffectFalloffFamily_40800031", 0x40800031U },
+        { "EffectFalloffFamily_40800034", 0x40800034U },
+        { "EffectFalloffFamily_40800035", 0x40800035U },
+        { "EffectFalloffFamily_40800414", 0x40800414U },
+        { "EffectFalloffFamily_40800415", 0x40800415U },
+        { "EffectFalloffFamily_40800430", 0x40800430U },
+        { "EffectFalloffFamily_40800434", 0x40800434U },
+        { "EffectFalloffFamily_40800435", 0x40800435U },
+        { "EffectFalloffFamily_40801015", 0x40801015U },
+        { "EffectFalloffFamily_40801031", 0x40801031U },
+        { "EffectFalloffFamily_40801034", 0x40801034U },
+        { "EffectFalloffFamily_40801035", 0x40801035U },
+        { "EffectFalloffFamily_40801415", 0x40801415U },
+        { "EffectFalloffFamily_40801431", 0x40801431U },
+        { "EffectFalloffFamily_40801435", 0x40801435U },
+        { "EffectFalloffFamily_40802034", 0x40802034U },
+        { "EffectFalloffFamily_40802035", 0x40802035U },
+        { "EffectFalloffFamily_40802415", 0x40802415U },
+        { "EffectFalloffFamily_40802435", 0x40802435U },
+        { "EffectFalloffFamily_40803015", 0x40803015U },
+        { "EffectFalloffFamily_40803034", 0x40803034U },
+        { "EffectFalloffFamily_40803035", 0x40803035U },
+        { "EffectFalloffFamily_40803414", 0x40803414U },
+        { "EffectFalloffFamily_40803415", 0x40803415U },
+        { "EffectFalloffFamily_40803435", 0x40803435U },
+        { "EffectFalloffFamily_40804435", 0x40804435U },
+        { "EffectFalloffFamily_40806015", 0x40806015U },
+        { "EffectFalloffFamily_40806435", 0x40806435U },
+        { "EffectFalloffFamily_40807034", 0x40807034U },
+        { "EffectFalloffFamily_40A01014", 0x40A01014U },
+        { "EffectFalloffFamily_40A02014", 0x40A02014U },
+        { "EffectFalloffFamily_40A04035", 0x40A04035U },
+        { "EffectFalloffFamily_40A05014", 0x40A05014U },
+        { "EffectFalloffFamily_40A05015", 0x40A05015U },
+        { "EffectFalloffFamily_40A05035", 0x40A05035U },
+        { "EffectFalloffFamily_40A05415", 0x40A05415U },
+        { "EffectFalloffFamily_40A06424", 0x40A06424U },
+        { "EffectFalloffFamily_40A07014", 0x40A07014U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1032,6 +1169,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (contract.soft() && !contract.grayscaleAlpha()) {
             alpha *= expectedSoftFade();
         }
+        if (contract.falloff() && !contract.grayscaleAlpha()) {
+            alpha *= kGrayscaleInput;
+        }
         auto pipboyColor = kPipboyTexture;
         if (contract.pipboy() && pipboyControls[1] == 0.0F) {
             for (auto& channel : pipboyColor) {
@@ -1048,7 +1188,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
         const auto grayscaleColor = grayscaleColorSample(contract);
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            const auto baseColor = contract.grayscaleColor() ?
+            auto baseColor = contract.grayscaleColor() ?
                 grayscaleColor[channel] * kBaseColorScale :
                 kBaseColor[channel] *
                     (contract.vertexColored() ?
@@ -1057,6 +1197,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (contract.textured() ?
                             kTextureColor[channel] :
                             1.0F);
+            if (contract.rgbFalloff() && !contract.grayscaleColor()) {
+                baseColor *= kGrayscaleInput;
+            }
             const auto propertyColor = contract.lighting() ?
                 expectedLightingColor(eyeIndex, nullptr)[channel] :
                 kPropertyColor[channel];
@@ -1138,6 +1281,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         if (contract.soft() && !contract.grayscaleAlpha()) {
             rawAlpha *= expectedSoftFade();
         }
+        if (contract.falloff() && !contract.grayscaleAlpha()) {
+            rawAlpha *= kGrayscaleInput;
+        }
         auto pipboyColor = kPipboyTexture;
         if (contract.pipboy() && pipboyControls[1] == 0.0F) {
             for (std::size_t channel = 0; channel < 3; ++channel) {
@@ -1182,6 +1328,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         std::abs(kTextureColor[channel]),
                         settings.effectGamma);
                 }
+            }
+            if (contract.rgbFalloff() && !contract.grayscaleColor()) {
+                base *= kGrayscaleInput;
             }
             const auto property = contract.lighting() ?
                 expectedLightingColor(eyeIndex, &settings)[channel] :
@@ -1370,10 +1519,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             device.Get(), false, false, true, false, true, false);
         const auto rightEyeDepthTestLightingVertexShader = createVertexShader(
             device.Get(), false, false, true, false, true, true);
+        const auto depthTestParticleLightingVertexShader = createVertexShader(
+            device.Get(), false, true, true, false, true, false);
+        const auto rightEyeDepthTestParticleLightingVertexShader =
+            createVertexShader(
+                device.Get(), false, true, true, false, true, true);
         const auto selectVertexShader = [&](const EffectContract& contract,
                                             bool rightEye) {
             if (contract.lighting()) {
                 if (contract.depthTested()) {
+                    if (contract.needsParticleData()) {
+                        return rightEye ?
+                            rightEyeDepthTestParticleLightingVertexShader.Get() :
+                            depthTestParticleLightingVertexShader.Get();
+                    }
                     return rightEye ?
                         rightEyeDepthTestLightingVertexShader.Get() :
                         depthTestLightingVertexShader.Get();
@@ -1623,7 +1782,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 205 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 332 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

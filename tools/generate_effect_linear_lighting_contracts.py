@@ -220,6 +220,133 @@ EXPECTED_CONTRACTS = {
     0x4000608D: ((1492, "21abf267a19f59abb8a59ba398d0e92c"), ()),
     0x400060AD: ((1484, "dd12e8ebee3f562aad087233879f389d"), ()),
     0x4000708D: ((2012, "5e0de32f3b0fa8697140b0ece2bf7710"), (0x40807015,)),
+    0x00800010: ((984, "7b749050b4fffa95a44368ba214d2992"), ()),
+    0x00800011: ((1128, "44cc9ccebd57f1508760318c1833d097"), ()),
+    0x00800014: ((992, "47f71bbfd1bc4477f67d612f2bf28843"), (0x10800014,)),
+    0x00800015: ((1136, "7ba5dc23b870149b1dc111f4251227b3"), ()),
+    0x00800030: ((976, "9a546c3abfda471145e9c380937d660b"), ()),
+    0x00800031: ((1120, "8d88d6cea162492bf1db8a830f3106ce"), ()),
+    0x00800034: ((984, "cacf497bbd11d0a9404de97fd8473df0"), (0x10800034,)),
+    0x00800035: ((1128, "da384e758cb7ba215d144eeb5a87f9d4"), ()),
+    0x00800410: ((2396, "ca630f11487e47fdb7a52f18e42bc104"), ()),
+    0x00800411: ((2540, "4ccb38b5ba07b2dbd7416a1e2b8697d8"), ()),
+    0x00800414: ((2436, "9d568eea9de24547db94064e622f87b7"), ()),
+    0x00800415: ((2580, "9de28278bb5644df0c137e835d6cb3ca"), ()),
+    0x00800430: ((2388, "25c3dbd9431bc06bc8c12449d941a7ed"), ()),
+    0x00800431: ((2532, "af0b8cc68ca12093d79d3e20f28f48e5"), ()),
+    0x00800434: ((2428, "770e1dfd794ac6f4ecf15419dd7c233c"), ()),
+    0x00800435: ((2572, "0f4a43b0c7d012d2b3a3edb2e8c67d5c"), ()),
+    0x00801010: ((1580, "08f61b62a80de7cc445b639d29d1fe72"), (0x10801010,)),
+    0x00801011: ((1724, "59cd067ce5fe96587c10a7075a7d0b3a"), ()),
+    0x00801014: ((1588, "fe1e503120997dbaeb8b1ad6fa444023"), ()),
+    0x00801015: ((1732, "6640a879559348b04f4cf047b9ddc2a6"), ()),
+    0x00801030: ((1572, "a410f3fd993c0751550e9828def6815d"), (0x10801030,)),
+    0x00801031: ((1716, "1dcd59a15e30d022bb161dbe9d43d7d6"), ()),
+    0x00801034: ((1580, "06f2ea497927aa4b5131a0de3768f660"), ()),
+    0x00801035: ((1724, "9c219e066d5aac2a211ff8b881b1df71"), (0x10801035,)),
+    0x00801055: ((1860, "3ac165c287b82d4f7759b53c8791db2c"), ()),
+    0x00801411: ((3136, "653d898ffe8784ca8a786332cb1226ea"), ()),
+    0x00801414: ((3032, "e01ab72a7338a82230dbe12595b7912f"), ()),
+    0x00801415: ((3176, "850a5061d57b6b2c9d0c6cccfa633375"), ()),
+    0x00801430: ((2984, "d6ea9484a77fa1cda288a272a3725d99"), ()),
+    0x00801431: ((3128, "e93759dafcba38bb3611d9efecddd830"), ()),
+    0x00801434: ((3024, "f3f4b2d990a100af5216998818227261"), ()),
+    0x00801435: ((3168, "24c643322a02eac034b3a5203186a818"), ()),
+    0x00802014: ((1244, "edc2342c5c29dbd97921bb7dde02a352"), (0x00A02014,)),
+    0x00802015: ((1416, "26b03971ea05cb4c417549e614fb6c01"), (0x00A02015,)),
+    0x00802034: ((1236, "3ec81029f5e758590fc396db08d34be9"), ()),
+    0x00802035: ((1408, "4415dd0d74c4ea4bb8b68b7e93bdc419"), (0x00A02035,)),
+    0x00802415: ((2860, "27e05f95ff1047ea647859e55c024a57"), ()),
+    0x00802435: ((2852, "48a38544d48fbb107e231d39d68f4d70"), (0x00A02435,)),
+    0x00803015: ((2012, "df51d6f31c78a0c79941183483130c95"), (0x00A03015,)),
+    0x00803034: ((1892, "ddf88b68a5f3c8541d0b9de7212868ff"), ()),
+    0x00803035: ((2004, "273b58f776f67967e35048bec87d8083"), (0x00A03035,)),
+    0x00803414: ((3344, "a5ec1e2d3cfb4ba56d6ac3c58154827a"), ()),
+    0x00803415: ((3456, "22d7625147b92c58ec565285cc039b9a"), (0x00A03415,)),
+    0x00803434: ((3336, "5f296807ea77ef7235a3b6dd86e7b581"), ()),
+    0x00803435: ((3448, "b0a03b0467affe94b2aba1e298bb3940"), ()),
+    0x00804434: ((2608, "f2568d26901ff6a13a9892b11c6be99c"), ()),
+    0x00805455: ((3512, "5291bc41d334d7e2c64ae2dfd2cb22f6"), ()),
+    0x00A00004: ((972, "7f43688268389b77593d339921152ea8"), ()),
+    0x00A00005: ((1116, "97d501397e40e9ac0736fe51861131d0"), ()),
+    0x00A00011: ((1088, "ebe572e9871b1517d310211ef5fdacef"), ()),
+    0x00A00014: ((972, "0550612286c68eb2f78c5f4d80838dce"), ()),
+    0x00A00020: ((976, "c3f23de5bcf887613d907fbddcc07c33"), ()),
+    0x00A00024: ((964, "95e9062e28063c24983d4c74783bf5ab"), ()),
+    0x00A00030: ((936, "38f4017aefccd703a902b014218ac0a1"), ()),
+    0x00A00031: ((1080, "557e8da159754a1a103d63e0bc30c2e9"), ()),
+    0x00A00035: ((1108, "4855258dea69f98e76d9a2d36d6f74c5"), (0x10A00035,)),
+    0x00A00404: ((2416, "bf48cb1426109ac619eec635af28c869"), ()),
+    0x00A00405: ((2560, "415a8e573c147269d57333948ac1f795"), ()),
+    0x00A00414: ((2416, "221096afce9a1b563f89f01d2456b94e"), ()),
+    0x00A00424: ((2408, "7eea6ea2c337802ac20db0cf68a60285"), ()),
+    0x00A00430: ((2348, "875b7452402d3523e40f1c1f410b772a"), ()),
+    0x00A01005: ((1712, "1c91797df324710a66ee94061e29c2e0"), ()),
+    0x00A01014: ((1568, "890c5d18df11dbe7ef104274fa9481bc"), ()),
+    0x00A01015: ((1712, "09de654de8ffe6228678795e18033eb8"), ()),
+    0x00A01024: ((1560, "9c44525e2ca83da2032c1e366a97e1a2"), ()),
+    0x00A01025: ((1704, "cb5b983d5068fd67f7fce6a030854c71"), ()),
+    0x00A01030: ((1532, "8c1757c7fe78604e41ac03473421f0aa"), ()),
+    0x00A01034: ((1560, "d9a22b232ac4dab90d7f771dc35c76b4"), ()),
+    0x00A01035: ((1704, "0122f6215b0d82930b8359c2463c649e"), ()),
+    0x00A01401: ((3136, "972b8eafa0f82c2c75768a3b0f5812ef"), ()),
+    0x00A01424: ((3004, "4ccf84664f68736e5dc26a2e671f995e"), ()),
+    0x00A01431: ((3088, "5f6d18788ca570b2bfcb3ea4416a0213"), ()),
+    0x00A04015: ((1372, "c9762c339cd29c6d43315c596edc322b"), ()),
+    0x00A04034: ((1192, "ec0eda4a83e92a54d99db11890e04b97"), ()),
+    0x00A04035: ((1364, "2ebb7e7e964426be4e09fe56f92bc6a2"), ()),
+    0x00A05005: ((2000, "4529a3d77a238d50a0ca6ee983704b0b"), (0x00A05015,)),
+    0x00A05014: ((1796, "c48bb4bf6928fc9aa776e5c45d6f6358"), ()),
+    0x00A05035: ((1992, "3afa29a2739021d94e69698c97018b7a"), ()),
+    0x00A05055: ((2128, "8fca1a77a08a4f4536b5c41f68bfe649"), ()),
+    0x00A05414: ((3240, "b62e41e441296f4dc7d05b4cbcfb8276"), ()),
+    0x00A05415: ((3412, "b3d339a9f9dcc14b95f4820b03f5a500"), ()),
+    0x00A05435: ((3404, "f49556dcc8004576a6ab100643c04ee3"), ()),
+    0x00A07055: ((2112, "a99c3b726a4b28b113a1a7e28280c2a8"), ()),
+    0x01001414: ((3356, "5e8a4a7c73ab8efc8961a2e7d50e84ec"), (0x02001414,)),
+    0x40800010: ((1012, "b46824435f34ad9b84651a01a2ce82f4"), ()),
+    0x40800011: ((1156, "91aa43689c65e69d2a90c32fa78fdf69"), ()),
+    0x40800014: ((1020, "07eeaf50974b0ba8f5698c1b54925dd7"), ()),
+    0x40800015: ((1164, "991e15dff88598253b5b96952e5c2150"), ()),
+    0x40800030: ((1004, "5c04622b282d3756d4e85dbc9d37bed8"), ()),
+    0x40800031: ((1148, "e94da29c01de594e18a1c4d3f20305b7"), ()),
+    0x40800034: ((1012, "a06d7d7e4269dabcf42acca764d90df1"), ()),
+    0x40800035: ((1156, "068b3ea46b97183635bc27a7b2c665cc"), ()),
+    0x40800414: ((2464, "d5766d4dbda29fb0b289d31cb3e0ff21"), ()),
+    0x40800415: ((2608, "a8a7ae57b9980663c95192b249cdcd97"), ()),
+    0x40800430: ((2416, "a8d82828e60196436f32f9d8b3aa9a84"), ()),
+    0x40800434: ((2456, "944d554923fb279e75d1513b29f52efe"), ()),
+    0x40800435: ((2600, "f18decdac20d34dd401320c4d9ac4cfb"), ()),
+    0x40801015: ((1760, "714b5fe5d32134dbae29120d8b826297"), ()),
+    0x40801031: ((1744, "0f95b3959af128419b4e793d76de3453"), ()),
+    0x40801034: ((1608, "bf6769538603b1882b0a812b3448864d"), ()),
+    0x40801035: ((1752, "6ce325f401394fc0d9f4d64915440cc4"), (0x50801035,)),
+    0x40801415: ((3204, "f4efd5fb6c8786781b89eb61de8632e1"), ()),
+    0x40801431: ((3156, "654c41eacdaaf7ab532259028f395dbf"), ()),
+    0x40801435: ((3196, "2c55b6b51e89be6c74f784affa08c8e6"), ()),
+    0x40802034: ((1264, "025d345e7e5098e825e1bab2be2ae6ef"), ()),
+    0x40802035: ((1436, "65bab06a41f37470d38be521cd28fdcc"), ()),
+    0x40802415: ((2888, "5fcc484bbe6f76bbd4a12aa33f5a5718"), ()),
+    0x40802435: ((2880, "490aafd6193a5e9729a763f859613d2d"), ()),
+    0x40803015: ((2040, "6ab3b6f5a646719006d261f3fd6fa386"), ()),
+    0x40803034: ((1920, "310f50047843c1bd17110b9bcdbca3a4"), ()),
+    0x40803035: ((2032, "59d24938731a8d57e05caff6a9b75e4a"), ()),
+    0x40803414: ((3372, "a2d45ef14044ddf122bd15ea4f48d7b0"), ()),
+    0x40803415: ((3484, "3dd593a66914efe31532e06983701397"), ()),
+    0x40803435: ((3476, "bd6a1ae1fcf56b4f6d00a3f67a4c919d"), ()),
+    0x40804435: ((2808, "6e3ff4dd601b1eb70674f7baa55c00e5"), ()),
+    0x40806015: ((1468, "734c4423abe1f460a36a547d87fd59d0"), ()),
+    0x40806435: ((2904, "ee9a04f7b2977a607ff3887e1f264480"), ()),
+    0x40807034: ((1940, "f31fa7ae662846e2929c8c483933f493"), ()),
+    0x40A01014: ((1596, "ba29627ae101808e15905db8fe36b06a"), ()),
+    0x40A02014: ((1272, "f08650d1c2ccf488027c3910610d8519"), ()),
+    0x40A04035: ((1392, "c42ed8a02989d63673f4b0b6f5282b1d"), ()),
+    0x40A05014: ((1824, "480121cffd99d32fb359fb860ee7ecd8"), ()),
+    0x40A05015: ((2028, "acfd2f3fad2cc084aa24994c1ad33354"), ()),
+    0x40A05035: ((2020, "13c92ec62cddfb2a0e47a9c8c5f36fd6"), ()),
+    0x40A05415: ((3440, "8eb725a2bf8c3d8dc119528203ecf329"), ()),
+    0x40A06424: ((2760, "f0ad5a3f5673241d71e91ce3912937d3"), ()),
+    0x40A07014: ((1948, "d8e829e7752d788edf2098b038e0e3e0"), ()),
 }
 
 
@@ -233,7 +360,7 @@ def read_manifest(root: Path) -> list[dict[str, object]]:
     )
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, list) or len(value) != len(EXPECTED_CONTRACTS):
-        raise ContractError("Effect manifest must contain 205 contracts")
+        raise ContractError("Effect manifest must contain 332 contracts")
 
     names: set[str] = set()
     descriptors: set[int] = set()
@@ -309,6 +436,40 @@ def run_fxc(arguments: list[str], label: str) -> None:
         raise ContractError(f"fxc failed for {label}: {details}")
 
 
+def compile_effect_shader(
+    fxc: Path,
+    source: Path,
+    source_directory: Path,
+    descriptor: int,
+    output: Path,
+    assembly: Path,
+    label: str,
+) -> None:
+    run_fxc(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "ps_5_0",
+            "/E",
+            "PSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/D",
+            f"EFFECT_TECHNIQUE=0x{descriptor:08X}",
+            "/I",
+            str(source_directory),
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        label,
+    )
+
+
 def signature_contract(assembly: str) -> str:
     try:
         start = assembly.index("// Input signature:")
@@ -352,7 +513,11 @@ def compile_candidates(
         "EffectUnusedPerMaterial.x",
         "(EFFECT_TECHNIQUE & 0x00100000)",
         "(EFFECT_TECHNIQUE & 0x00000400)",
-        "(EFFECT_TECHNIQUE & 0x01000000)",
+        "(EFFECT_TECHNIQUE & 0x03000000)",
+        "(EFFECT_TECHNIQUE & 0x00000010)",
+        "(EFFECT_TECHNIQUE & 0x00200000)",
+        "baseColor.w *= input.texCoord.z;",
+        "baseColor.xyz *= input.texCoord.z;",
         "(EFFECT_TECHNIQUE & 0x08000000)",
         "(EFFECT_TECHNIQUE & 0x40000000)",
         "EffectUIMaskTechniqueData[rectangleIndex + 2]",
@@ -384,29 +549,34 @@ def compile_candidates(
         candidate_assembly_path = output_directory / f"{name}.asm.txt"
         original_path = output_directory / f"{name}.vanilla.dxbc"
         original_assembly_path = output_directory / f"{name}.vanilla.asm.txt"
-        run_fxc(
-            [
-                str(fxc),
-                "/nologo",
-                "/T",
-                "ps_5_0",
-                "/E",
-                "PSMain",
-                "/O3",
-                "/Ges",
-                "/WX",
-                "/D",
-                f"EFFECT_TECHNIQUE=0x{descriptor:08X}",
-                "/I",
-                str(source_directory),
-                "/Fo",
-                str(candidate_path),
-                "/Fc",
-                str(candidate_assembly_path),
-                str(source),
-            ],
+        compile_effect_shader(
+            fxc,
+            source,
+            source_directory,
+            descriptor,
+            candidate_path,
+            candidate_assembly_path,
             name,
         )
+        candidate_data = candidate_path.read_bytes()
+        for alias in EXPECTED_CONTRACTS[descriptor][1]:
+            alias_path = output_directory / f"{name}.alias.{alias:08X}.dxbc"
+            alias_assembly_path = (
+                output_directory / f"{name}.alias.{alias:08X}.asm.txt"
+            )
+            compile_effect_shader(
+                fxc,
+                source,
+                source_directory,
+                alias,
+                alias_path,
+                alias_assembly_path,
+                f"{name} alias 0x{alias:08X}",
+            )
+            if alias_path.read_bytes() != candidate_data:
+                raise ContractError(
+                    f"{name} alias 0x{alias:08X} changed candidate bytecode"
+                )
         original_path.write_bytes(original.data)
         run_fxc(
             [
@@ -446,7 +616,7 @@ def compile_candidates(
             or candidate_declarations.textures != original_declarations.textures
         ):
             raise ContractError(f"{name} changed texture/sampler bindings")
-        candidates[descriptor] = candidate_path.read_bytes()
+        candidates[descriptor] = candidate_data
     return candidates
 
 
@@ -469,7 +639,7 @@ def render_contracts(
     rows = [
         "// Generated by tools/generate_effect_linear_lighting_contracts.py.",
         "// Do not edit this file by hand.",
-        "constexpr std::array<EffectShaderContractDefinition, 205> "
+        "constexpr std::array<EffectShaderContractDefinition, 332> "
         "kEffectShaderContracts{ {",
     ]
     for entry in manifest:

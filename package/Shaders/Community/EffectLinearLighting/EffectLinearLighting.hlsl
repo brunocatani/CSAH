@@ -11,7 +11,7 @@ struct EffectPixelInput
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
     float4 pipboyTexCoord : TEXCOORD4;
 #endif
-#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+#if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 depthTestData : TEXCOORD3;
 #endif
 #if (EFFECT_TECHNIQUE & 0x1) != 0
@@ -49,7 +49,7 @@ cbuffer EffectPerMaterial : register(b1)
     float4 EffectBaseColor : packoffset(c0);
     float4 EffectUnusedPerMaterial : packoffset(c1);
     float4 EffectLightingInfluence : packoffset(c2);
-#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+#if (EFFECT_TECHNIQUE & 0x03000000) != 0
     float4 EffectUnusedPerMaterialDepthTest : packoffset(c3);
     float4 EffectDepthTestParameters : packoffset(c4);
 #endif
@@ -98,7 +98,7 @@ Texture2D<float4> EffectGrayscaleTexture : register(t4);
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
 Texture2D<float4> EffectPipboyTexture : register(t6);
 #endif
-#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+#if (EFFECT_TECHNIQUE & 0x03000000) != 0
 Texture2D<float4> EffectDepthTestTexture : register(t8);
 #endif
 
@@ -279,7 +279,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #endif
     return float4(outputColor, outputAlpha);
 #else
-#if (EFFECT_TECHNIQUE & 0x01000000) != 0
+#if (EFFECT_TECHNIQUE & 0x03000000) != 0
     const int2 depthTestCoordinate = int2(
         (input.depthTestData.xy + 1.0f) *
         EffectDepthTestParameters.x * 0.5f);
@@ -371,6 +371,14 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         input.position.xy,
         input.particleData.z);
 #endif
+#endif
+#if (EFFECT_TECHNIQUE & 0x00000010) != 0 && \
+    (EFFECT_TECHNIQUE & 0x00004000) == 0
+    baseColor.w *= input.texCoord.z;
+#endif
+#if (EFFECT_TECHNIQUE & 0x00200000) != 0 && \
+    (EFFECT_TECHNIQUE & 0x00002000) == 0
+    baseColor.xyz *= input.texCoord.z;
 #endif
 #if (EFFECT_TECHNIQUE & 0x00000400) != 0
     const float3 propertyColor = EffectLightingColor(

@@ -1228,5 +1228,767 @@
     "descriptor": 1073770637,
     "aliases": [1082159125],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_GRAYSCALE_4000708D_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800010",
+    "descriptor": 8388624,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800010_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800011",
+    "descriptor": 8388625,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800011_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800014",
+    "descriptor": 8388628,
+    "aliases": [276824084],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800015",
+    "descriptor": 8388629,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800030",
+    "descriptor": 8388656,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800030_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800031",
+    "descriptor": 8388657,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800031_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800034",
+    "descriptor": 8388660,
+    "aliases": [276824116],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800035",
+    "descriptor": 8388661,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800410",
+    "descriptor": 8389648,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800410_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800411",
+    "descriptor": 8389649,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800411_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800414",
+    "descriptor": 8389652,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800415",
+    "descriptor": 8389653,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800430",
+    "descriptor": 8389680,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800430_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800431",
+    "descriptor": 8389681,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800431_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800434",
+    "descriptor": 8389684,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800434_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00800435",
+    "descriptor": 8389685,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00800435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801010",
+    "descriptor": 8392720,
+    "aliases": [276828176],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801010_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801011",
+    "descriptor": 8392721,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801011_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801014",
+    "descriptor": 8392724,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801015",
+    "descriptor": 8392725,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801030",
+    "descriptor": 8392752,
+    "aliases": [276828208],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801030_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801031",
+    "descriptor": 8392753,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801031_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801034",
+    "descriptor": 8392756,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801035",
+    "descriptor": 8392757,
+    "aliases": [276828213],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801055",
+    "descriptor": 8392789,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801055_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801411",
+    "descriptor": 8393745,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801411_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801414",
+    "descriptor": 8393748,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801415",
+    "descriptor": 8393749,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801430",
+    "descriptor": 8393776,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801430_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801431",
+    "descriptor": 8393777,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801431_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801434",
+    "descriptor": 8393780,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801434_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00801435",
+    "descriptor": 8393781,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00801435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802014",
+    "descriptor": 8396820,
+    "aliases": [10493972],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802015",
+    "descriptor": 8396821,
+    "aliases": [10493973],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802034",
+    "descriptor": 8396852,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802035",
+    "descriptor": 8396853,
+    "aliases": [10494005],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802415",
+    "descriptor": 8397845,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00802435",
+    "descriptor": 8397877,
+    "aliases": [10495029],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00802435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803015",
+    "descriptor": 8400917,
+    "aliases": [10498069],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803034",
+    "descriptor": 8400948,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803035",
+    "descriptor": 8400949,
+    "aliases": [10498101],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803414",
+    "descriptor": 8401940,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803415",
+    "descriptor": 8401941,
+    "aliases": [10499093],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803434",
+    "descriptor": 8401972,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803434_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00803435",
+    "descriptor": 8401973,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00803435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00804434",
+    "descriptor": 8406068,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00804434_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00805455",
+    "descriptor": 8410197,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00805455_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00004",
+    "descriptor": 10485764,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00004_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00005",
+    "descriptor": 10485765,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00005_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00011",
+    "descriptor": 10485777,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00011_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00014",
+    "descriptor": 10485780,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00020",
+    "descriptor": 10485792,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00020_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00024",
+    "descriptor": 10485796,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00024_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00030",
+    "descriptor": 10485808,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00030_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00031",
+    "descriptor": 10485809,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00031_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00035",
+    "descriptor": 10485813,
+    "aliases": [278921269],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00404",
+    "descriptor": 10486788,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00404_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00405",
+    "descriptor": 10486789,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00405_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00414",
+    "descriptor": 10486804,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00424",
+    "descriptor": 10486820,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00424_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A00430",
+    "descriptor": 10486832,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A00430_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01005",
+    "descriptor": 10489861,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01005_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01014",
+    "descriptor": 10489876,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01015",
+    "descriptor": 10489877,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01024",
+    "descriptor": 10489892,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01024_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01025",
+    "descriptor": 10489893,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01025_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01030",
+    "descriptor": 10489904,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01030_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01034",
+    "descriptor": 10489908,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01035",
+    "descriptor": 10489909,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01401",
+    "descriptor": 10490881,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01401_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01424",
+    "descriptor": 10490916,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01424_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A01431",
+    "descriptor": 10490929,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A01431_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A04015",
+    "descriptor": 10502165,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A04015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A04034",
+    "descriptor": 10502196,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A04034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A04035",
+    "descriptor": 10502197,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A04035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05005",
+    "descriptor": 10506245,
+    "aliases": [10506261],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05005_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05014",
+    "descriptor": 10506260,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05035",
+    "descriptor": 10506293,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05055",
+    "descriptor": 10506325,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05055_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05414",
+    "descriptor": 10507284,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05415",
+    "descriptor": 10507285,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A05435",
+    "descriptor": 10507317,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A05435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_00A07055",
+    "descriptor": 10514517,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_00A07055_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_01001414",
+    "descriptor": 16782356,
+    "aliases": [33559572],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_01001414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800010",
+    "descriptor": 1082130448,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800010_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800011",
+    "descriptor": 1082130449,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800011_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800014",
+    "descriptor": 1082130452,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800015",
+    "descriptor": 1082130453,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800030",
+    "descriptor": 1082130480,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800030_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800031",
+    "descriptor": 1082130481,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800031_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800034",
+    "descriptor": 1082130484,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800035",
+    "descriptor": 1082130485,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800414",
+    "descriptor": 1082131476,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800415",
+    "descriptor": 1082131477,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800430",
+    "descriptor": 1082131504,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800430_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800434",
+    "descriptor": 1082131508,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800434_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40800435",
+    "descriptor": 1082131509,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40800435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801015",
+    "descriptor": 1082134549,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801031",
+    "descriptor": 1082134577,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801031_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801034",
+    "descriptor": 1082134580,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801035",
+    "descriptor": 1082134581,
+    "aliases": [1350570037],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801415",
+    "descriptor": 1082135573,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801431",
+    "descriptor": 1082135601,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801431_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40801435",
+    "descriptor": 1082135605,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40801435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40802034",
+    "descriptor": 1082138676,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40802034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40802035",
+    "descriptor": 1082138677,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40802035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40802415",
+    "descriptor": 1082139669,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40802415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40802435",
+    "descriptor": 1082139701,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40802435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803015",
+    "descriptor": 1082142741,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803034",
+    "descriptor": 1082142772,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803035",
+    "descriptor": 1082142773,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803414",
+    "descriptor": 1082143764,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803414_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803415",
+    "descriptor": 1082143765,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40803435",
+    "descriptor": 1082143797,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40803435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40804435",
+    "descriptor": 1082147893,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40804435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40806015",
+    "descriptor": 1082155029,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40806015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40806435",
+    "descriptor": 1082156085,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40806435_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40807034",
+    "descriptor": 1082159156,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40807034_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A01014",
+    "descriptor": 1084231700,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A01014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A02014",
+    "descriptor": 1084235796,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A02014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A04035",
+    "descriptor": 1084244021,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A04035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A05014",
+    "descriptor": 1084248084,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A05014_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A05015",
+    "descriptor": 1084248085,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A05015_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A05035",
+    "descriptor": 1084248117,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A05035_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A05415",
+    "descriptor": 1084249109,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A05415_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A06424",
+    "descriptor": 1084253220,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A06424_PS"
+  },
+  {
+    "name": "EffectFalloffFamily_40A07014",
+    "descriptor": 1084256276,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_FALLOFF_40A07014_PS"
   }
 ]
