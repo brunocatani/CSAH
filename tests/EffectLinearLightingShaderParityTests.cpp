@@ -172,6 +172,11 @@ namespace
             return (descriptor & 0x00020000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool ignoresTextureAlpha() const noexcept
+        {
+            return (descriptor & 0x00008000U) != 0;
+        }
+
         [[nodiscard]] constexpr bool usesBaseTextureAlpha() const noexcept
         {
             return textured() && !grayscaleAlpha();
@@ -208,7 +213,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 387> kEffectContracts{ {
+    constexpr std::array<EffectContract, 406> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -596,6 +601,25 @@ namespace
         { "EffectMembraneAlphaMask_00826225", 0x00826225U },
         { "EffectMembraneAlphaMask_00826606", 0x00826606U },
         { "EffectMembraneAlphaMask_00826607", 0x00826607U },
+        { "EffectMembraneVertexNormal_00800607", 0x00800607U },
+        { "EffectMembraneVertexNormal_00804207", 0x00804207U },
+        { "EffectMembraneVertexNormal_00804627", 0x00804627U },
+        { "EffectMembraneVertexNormal_00806607", 0x00806607U },
+        { "EffectMembraneVertexNormal_00808204", 0x00808204U },
+        { "EffectMembraneVertexNormal_00808205", 0x00808205U },
+        { "EffectMembraneVertexNormal_00808226", 0x00808226U },
+        { "EffectMembraneVertexNormal_00808227", 0x00808227U },
+        { "EffectMembraneVertexNormal_0080A226", 0x0080A226U },
+        { "EffectMembraneVertexNormal_0080A227", 0x0080A227U },
+        { "EffectMembraneVertexNormal_0080E205", 0x0080E205U },
+        { "EffectMembraneVertexNormal_0080EA27", 0x0080EA27U },
+        { "EffectMembraneVertexNormal_0080EE07", 0x0080EE07U },
+        { "EffectMembraneVertexNormal_00828204", 0x00828204U },
+        { "EffectMembraneVertexNormal_00828205", 0x00828205U },
+        { "EffectMembraneVertexNormal_00828226", 0x00828226U },
+        { "EffectMembraneVertexNormal_00828227", 0x00828227U },
+        { "EffectMembraneVertexNormal_0082A226", 0x0082A226U },
+        { "EffectMembraneVertexNormal_0082A227", 0x0082A227U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -1125,6 +1149,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         };
 
         Pixel baseColor = kTextureColor;
+        if (contract.ignoresTextureAlpha()) {
+            baseColor[3] = 1.0F;
+        }
         for (std::size_t channel = 0; channel < 3; ++channel) {
             baseColor[channel] =
                 effectColor(kTextureColor[channel]) *
@@ -2046,7 +2073,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 387 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 406 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

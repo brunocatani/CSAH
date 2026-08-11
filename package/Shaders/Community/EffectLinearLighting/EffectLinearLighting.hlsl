@@ -318,6 +318,9 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
     }
 #endif
     float4 baseColor = textureColor;
+#if (EFFECT_TECHNIQUE & 0x00008000) != 0
+    baseColor.w = 1.0f;
+#endif
     baseColor.xyz = LinearLightingEffect(baseColor.xyz);
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     const float4 vertexColor =
