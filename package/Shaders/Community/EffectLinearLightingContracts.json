@@ -820,5 +820,77 @@
     "descriptor": 1090520100,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_LIGHTING_DEPTH_TEST_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectSoftLighting_00001400",
+    "descriptor": 5120,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorSoftLighting_00001401",
+    "descriptor": 5121,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedSoftLighting_00001404",
+    "descriptor": 5124,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedSoftLighting_00001405",
+    "descriptor": 5125,
+    "aliases": [5253, 5261],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorAdditiveSoftLighting_00001421",
+    "descriptor": 5153,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_ADDITIVE_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveSoftLighting_00001424",
+    "descriptor": 5156,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveSoftLighting_00001425",
+    "descriptor": 5157,
+    "aliases": [5285, 5293],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendParticleSoftLighting_000014CD",
+    "descriptor": 5325,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_PARTICLE_SOFT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectSoftLightingPremultipliedAlpha_40001400",
+    "descriptor": 1073746944,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_SOFT_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedSoftLightingPremultipliedAlpha_40001405",
+    "descriptor": 1073746949,
+    "aliases": [1073747085],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_SOFT_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveSoftLightingPremultipliedAlpha_40001425",
+    "descriptor": 1073746981,
+    "aliases": [1073747117],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_SOFT_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendParticleSoftLightingPremultipliedAlpha_400014CD",
+    "descriptor": 1073747149,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_PARTICLE_SOFT_LIGHTING_PREMULTIPLIED_ALPHA_PS"
   }
 ]
