@@ -60,6 +60,38 @@ namespace
     constexpr Pixel kUIMaskControls{ 1.0F, 4.0F, 0.0F, 0.75F };
     constexpr Pixel kUIMaskRectangle{ -0.6F, 0.4F, 0.8F, 0.8F };
     constexpr Pixel kUIMaskColor{ 0.25F, 0.5F, 0.75F, 0.0F };
+    constexpr Pixel kModelPosition{ 0.2F, -0.1F, 0.3F, 0.0F };
+    constexpr std::array<Pixel, 2> kPointLightPositionX{ {
+        { 1.0F, -0.8F, 0.4F, 1.5F },
+        { -0.5F, 0.9F, -1.2F, 0.1F },
+    } };
+    constexpr std::array<Pixel, 2> kPointLightPositionY{ {
+        { 0.3F, -1.0F, 0.7F, -0.6F },
+        { 1.1F, -0.4F, 0.2F, -1.3F },
+    } };
+    constexpr std::array<Pixel, 2> kPointLightPositionZ{ {
+        { -0.2F, 0.8F, 1.4F, 0.1F },
+        { 0.6F, -0.9F, 1.0F, 1.7F },
+    } };
+    constexpr std::array<Pixel, 2> kSpotLightDirectionX{ {
+        { -0.8F, 0.6F, -0.2F, -0.4F },
+        { 0.4F, -0.7F, 0.8F, 0.1F },
+    } };
+    constexpr std::array<Pixel, 2> kSpotLightDirectionY{ {
+        { 0.1F, -0.7F, 0.5F, 0.8F },
+        { -0.6F, 0.2F, -0.1F, 0.9F },
+    } };
+    constexpr std::array<Pixel, 2> kSpotLightDirectionZ{ {
+        { 0.6F, 0.4F, -0.84F, -0.45F },
+        { 0.69F, 0.68F, 0.59F, -0.42F },
+    } };
+    constexpr Pixel kSpotLightExponent{ 1.5F, 0.0F, 2.0F, 0.5F };
+    constexpr Pixel kSpotLightCosHalfAngle{ 0.2F, 0.0F, 0.5F, -0.2F };
+    constexpr Pixel kPointLightInverseRadius{ 0.4F, 0.5F, 0.35F, 0.25F };
+    constexpr Pixel kPointLightColorR{ 0.35F, 0.15F, 0.55F, 0.25F };
+    constexpr Pixel kPointLightColorG{ 0.1F, 0.45F, 0.2F, 0.6F };
+    constexpr Pixel kPointLightColorB{ 0.5F, 0.3F, 0.12F, 0.4F };
+    constexpr Pixel kDirectionalLightColor{ 0.12F, 0.08F, 0.18F, 0.0F };
     constexpr Pixel kVertexColor{ 0.55F, 0.75F, 0.35F, 0.6F };
     constexpr float kLightingInfluence = 0.35F;
     constexpr float kSoftDepthScale = 1.0F;
@@ -135,6 +167,11 @@ namespace
             return (descriptor & 0x08000000U) != 0;
         }
 
+        [[nodiscard]] constexpr bool lighting() const noexcept
+        {
+            return (descriptor & 0x00000400U) != 0;
+        }
+
         [[nodiscard]] constexpr bool premultipliedAlpha() const noexcept
         {
             return (descriptor & 0x40000000U) != 0;
@@ -146,7 +183,7 @@ namespace
         }
     };
 
-    constexpr std::array<EffectContract, 112> kEffectContracts{ {
+    constexpr std::array<EffectContract, 137> kEffectContracts{ {
         { "EffectDefault_00000000", 0x00000000U },
         { "EffectVertexColor_00000001", 0x00000001U },
         { "EffectTextured_00000004", 0x00000004U },
@@ -259,6 +296,31 @@ namespace
         { "EffectTexturedUIMaskRects_08000004", 0x08000004U },
         { "EffectTexturedPipboyUIMaskRects_08100004", 0x08100004U },
         { "EffectTexturedUIMaskRectsPremultipliedAlpha_48000004", 0x48000004U },
+        { "EffectLighting_00000400", 0x00000400U },
+        { "EffectVertexColorLighting_00000401", 0x00000401U },
+        { "EffectTexturedLighting_00000404", 0x00000404U },
+        { "EffectVertexColorTexturedLighting_00000405", 0x00000405U },
+        { "EffectAdditiveLighting_00000420", 0x00000420U },
+        { "EffectVertexColorAdditiveLighting_00000421", 0x00000421U },
+        { "EffectTexturedAdditiveLighting_00000424", 0x00000424U },
+        { "EffectVertexColorTexturedAdditiveLighting_00000425", 0x00000425U },
+        { "EffectMultiplyBlendLighting_00000440", 0x00000440U },
+        { "EffectVertexColorMultiplyBlendLighting_00000441", 0x00000441U },
+        { "EffectTexturedMultiplyBlendLighting_00000444", 0x00000444U },
+        { "EffectVertexColorTexturedMultiplyBlendLighting_00000445", 0x00000445U },
+        { "EffectVertexColorTexturedParticleLighting_00000485", 0x00000485U },
+        { "EffectVertexColorTexturedAdditiveParticleLighting_000004A5", 0x000004A5U },
+        { "EffectVertexColorTexturedMultiplyBlendParticleLighting_000004CD", 0x000004CDU },
+        { "EffectTexturedLightingDepthTest_01000404", 0x01000404U },
+        { "EffectTexturedAdditiveLightingDepthTest_01000424", 0x01000424U },
+        { "EffectLightingPremultipliedAlpha_40000400", 0x40000400U },
+        { "EffectTexturedLightingPremultipliedAlpha_40000404", 0x40000404U },
+        { "EffectVertexColorTexturedLightingPremultipliedAlpha_40000405", 0x40000405U },
+        { "EffectTexturedAdditiveLightingPremultipliedAlpha_40000424", 0x40000424U },
+        { "EffectVertexColorTexturedAdditiveLightingPremultipliedAlpha_40000425", 0x40000425U },
+        { "EffectVertexColorTexturedParticleLightingPremultipliedAlpha_4000048D", 0x4000048DU },
+        { "EffectVertexColorTexturedAdditiveParticleLightingPremultipliedAlpha_400004A5", 0x400004A5U },
+        { "EffectTexturedAdditiveLightingDepthTestPremultipliedAlpha_41000424", 0x41000424U },
     } };
 
     struct alignas(16) EffectPerTechnique
@@ -287,14 +349,33 @@ namespace
 
     struct alignas(16) EffectPerGeometry
     {
-        std::array<Pixel, 12> unusedBeforePipboy{};
+        std::array<Pixel, 2> pointLightPositionX{};
+        std::array<Pixel, 2> pointLightPositionY{};
+        std::array<Pixel, 2> pointLightPositionZ{};
+        std::array<Pixel, 2> spotLightDirectionX{};
+        std::array<Pixel, 2> spotLightDirectionY{};
+        std::array<Pixel, 2> spotLightDirectionZ{};
         Pixel pipboyControls{};
-        std::array<Pixel, 7> unusedAfterPipboy{};
+        Pixel spotLightExponent{};
+        Pixel spotLightCosHalfAngle{};
+        Pixel pointLightInverseRadius{};
+        Pixel pointLightColorR{};
+        Pixel pointLightColorG{};
+        Pixel pointLightColorB{};
+        Pixel directionalLightColor{};
         Pixel propertyColor{};
         Pixel alphaTest{};
     };
     static_assert(sizeof(EffectPerGeometry) == 22 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerGeometry, spotLightDirectionX) == 6 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, pipboyControls) == 12 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerGeometry, pointLightInverseRadius) ==
+        15 * sizeof(Pixel));
+    static_assert(
+        offsetof(EffectPerGeometry, directionalLightColor) ==
+        19 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, propertyColor) == 20 * sizeof(Pixel));
     static_assert(offsetof(EffectPerGeometry, alphaTest) == 21 * sizeof(Pixel));
 
@@ -357,7 +438,9 @@ namespace
         bool vertexColored,
         bool needsParticleData,
         bool depthTested,
-        bool pipboy)
+        bool pipboy,
+        bool lighting,
+        bool rightEye)
     {
         constexpr char source[] = R"(
 struct VSOutput
@@ -376,6 +459,9 @@ struct VSOutput
     float4 color : COLOR1;
 #ifdef EFFECT_PIPBOY
     float3 pipboyData : TEXCOORD1;
+#endif
+#ifdef EFFECT_LIGHTING
+    float3 modelPosition : TEXCOORD6;
 #endif
 #ifdef EFFECT_PARTICLE
     float3 particleData : TEXCOORD5;
@@ -399,6 +485,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
     output.pipboyTexCoord = 0.0.xxxx;
     output.pipboyData = 0.0.xxx;
 #endif
+#ifdef EFFECT_LIGHTING
+    output.modelPosition = float3(0.2, -0.1, 0.3);
+#endif
 #ifdef EFFECT_DEPTH_TEST
     output.depthTestData = float4(0.0, 0.0, 0.25, 0.0);
 #endif
@@ -409,7 +498,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 #ifdef EFFECT_PARTICLE
     output.particleData = float3(0.2, 0.4, 0.75);
 #endif
+#ifdef EFFECT_RIGHT_EYE
+    output.eyeIndex = 1;
+#else
     output.eyeIndex = 0;
+#endif
     output.cullDistance = 1.0;
     output.clipDistance = 1.0;
     return output;
@@ -417,7 +510,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 )";
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
-        std::array<D3D_SHADER_MACRO, 5> macros{};
+        std::array<D3D_SHADER_MACRO, 7> macros{};
         std::size_t macroCount = 0;
         if (vertexColored) {
             macros[macroCount++] = { "EFFECT_VERTEX_COLOR", "1" };
@@ -430,6 +523,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
         if (pipboy) {
             macros[macroCount++] = { "EFFECT_PIPBOY", "1" };
+        }
+        if (lighting) {
+            macros[macroCount++] = { "EFFECT_LIGHTING", "1" };
+        }
+        if (rightEye) {
+            macros[macroCount++] = { "EFFECT_RIGHT_EYE", "1" };
         }
         const auto result = D3DCompile(
             source,
@@ -738,11 +837,91 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return rectangleMask * verticalRamp * kUIMaskControls[3];
     }
 
+    Pixel expectedLightingColor(
+        std::uint32_t eyeIndex,
+        const Settings* enabledSettings)
+    {
+        if (eyeIndex >= kPointLightPositionX.size()) {
+            throw std::runtime_error("invalid Effect lighting eye index");
+        }
+
+        Pixel attenuation{};
+        for (std::size_t light = 0; light < attenuation.size(); ++light) {
+            const auto deltaX =
+                kModelPosition[0] - kPointLightPositionX[eyeIndex][light];
+            const auto deltaY =
+                kModelPosition[1] - kPointLightPositionY[eyeIndex][light];
+            const auto deltaZ =
+                kModelPosition[2] - kPointLightPositionZ[eyeIndex][light];
+            const auto distance = std::sqrt(
+                deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+            const auto scaledDistance = std::clamp(
+                distance * kPointLightInverseRadius[light],
+                0.0F,
+                1.0F);
+            auto distanceFade =
+                1.0F - scaledDistance * scaledDistance;
+            if (enabledSettings == nullptr) {
+                distanceFade = std::pow(distanceFade, 2.2F);
+            }
+
+            const auto safeDistance = std::max(distance, 0.001F);
+            const auto spotCosine = std::clamp(
+                deltaX / safeDistance *
+                    kSpotLightDirectionX[eyeIndex][light] +
+                deltaY / safeDistance *
+                    kSpotLightDirectionY[eyeIndex][light] +
+                deltaZ / safeDistance *
+                    kSpotLightDirectionZ[eyeIndex][light],
+                0.0F,
+                1.0F);
+            const auto coneFade = std::clamp(
+                1.0F -
+                    (1.0F - spotCosine) /
+                        (1.0F - kSpotLightCosHalfAngle[light]),
+                0.0F,
+                1.0F);
+            const auto spotFade = kSpotLightExponent[light] != 0.0F ?
+                std::min(
+                    std::pow(coneFade, kSpotLightExponent[light]),
+                    1.0F) :
+                1.0F;
+            attenuation[light] = distanceFade * spotFade;
+        }
+
+        Pixel result = kDirectionalLightColor;
+        constexpr float pi = 3.14159265358979323846F;
+        const std::array<const Pixel*, 3> packedColors{
+            &kPointLightColorR,
+            &kPointLightColorG,
+            &kPointLightColorB,
+        };
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            if (enabledSettings != nullptr) {
+                result[channel] *=
+                    enabledSettings->effectLightingMultiplier;
+            }
+            for (std::size_t light = 0; light < attenuation.size(); ++light) {
+                auto lightColor = (*packedColors[channel])[light];
+                if (enabledSettings != nullptr) {
+                    lightColor = std::pow(
+                        std::abs(lightColor),
+                        enabledSettings->lightGamma) *
+                        pi * enabledSettings->pointLightMultiplier *
+                        enabledSettings->effectLightingMultiplier;
+                }
+                result[channel] += attenuation[light] * lightColor;
+            }
+        }
+        return result;
+    }
+
     Pixel expectedVanilla(
         const EffectContract& contract,
         const Pixel& pipboyControls = kPipboyControlsConverted,
         bool usePipboyAlpha = true,
-        bool uiMaskColorIsLinear = false)
+        bool uiMaskColorIsLinear = false,
+        std::uint32_t eyeIndex = 0)
     {
         if (contract.uiMaskRects()) {
             auto alpha = kTextureColor[3] *
@@ -810,9 +989,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     (contract.textured() ?
                             kTextureColor[channel] :
                             1.0F);
+            const auto propertyColor = contract.lighting() ?
+                expectedLightingColor(eyeIndex, nullptr)[channel] :
+                kPropertyColor[channel];
             const auto lightColor = baseColor +
                 kLightingInfluence *
-                    (kPropertyColor[channel] * baseColor - baseColor);
+                    (propertyColor * baseColor - baseColor);
             if (contract.additive()) {
                 result[channel] = lightColor * (1.0F - kFogParam[3]);
             } else if (contract.multiplyBlend()) {
@@ -845,7 +1027,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const Settings& settings,
         const Pixel& pipboyControls = kPipboyControlsConverted,
         bool usePipboyAlpha = true,
-        bool uiMaskColorIsLinear = false)
+        bool uiMaskColorIsLinear = false,
+        std::uint32_t eyeIndex = 0)
     {
         if (contract.uiMaskRects()) {
             auto alpha = kTextureColor[3] *
@@ -932,8 +1115,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         settings.effectGamma);
                 }
             }
-            const auto property = std::pow(
-                std::abs(kPropertyColor[channel]), settings.effectGamma);
+            const auto property = contract.lighting() ?
+                expectedLightingColor(eyeIndex, &settings)[channel] :
+                std::pow(
+                    std::abs(kPropertyColor[channel]),
+                    settings.effectGamma);
             const auto lightColor =
                 (base + kLightingInfluence * (property * base - base)) *
                 settings.otherEffectMultiplier;
@@ -1003,7 +1189,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         materialConstants.lightingInfluence[1] = kSoftDepthScale;
         materialConstants.depthTestParameters[0] = 1.0F;
         EffectPerGeometry geometryConstants{};
+        geometryConstants.pointLightPositionX = kPointLightPositionX;
+        geometryConstants.pointLightPositionY = kPointLightPositionY;
+        geometryConstants.pointLightPositionZ = kPointLightPositionZ;
+        geometryConstants.spotLightDirectionX = kSpotLightDirectionX;
+        geometryConstants.spotLightDirectionY = kSpotLightDirectionY;
+        geometryConstants.spotLightDirectionZ = kSpotLightDirectionZ;
         geometryConstants.pipboyControls = kPipboyControlsConverted;
+        geometryConstants.spotLightExponent = kSpotLightExponent;
+        geometryConstants.spotLightCosHalfAngle = kSpotLightCosHalfAngle;
+        geometryConstants.pointLightInverseRadius = kPointLightInverseRadius;
+        geometryConstants.pointLightColorR = kPointLightColorR;
+        geometryConstants.pointLightColorG = kPointLightColorG;
+        geometryConstants.pointLightColorB = kPointLightColorB;
+        geometryConstants.directionalLightColor = kDirectionalLightColor;
         geometryConstants.propertyColor = kPropertyColor;
         geometryConstants.alphaTest = { 0.001F, 0.8F, 0.0F, 1.0F };
         auto rawPipboyGeometryConstants = geometryConstants;
@@ -1026,8 +1225,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         enabledSettings.enabled = true;
         enabledSettings.effectGamma = 1.65F;
         enabledSettings.effectAlphaGamma = 1.3F;
+        enabledSettings.lightGamma = 1.7F;
         enabledSettings.fogGamma = 1.85F;
         enabledSettings.fogAlphaGamma = 1.45F;
+        enabledSettings.pointLightMultiplier = 0.85F;
+        enabledSettings.effectLightingMultiplier = 0.4F;
         enabledSettings.otherEffectMultiplier = 1.25F;
         const FrameData disabledFrame =
             makeFrameData(disabledSettings, true, false, 1.0F);
@@ -1059,34 +1261,94 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             "CreateSamplerState");
 
         const auto defaultVertexShader =
-            createVertexShader(device.Get(), false, false, false, false);
+            createVertexShader(
+                device.Get(), false, false, false, false, false, false);
         const auto vertexColorVertexShader =
-            createVertexShader(device.Get(), true, false, false, false);
+            createVertexShader(
+                device.Get(), true, false, false, false, false, false);
         const auto particleVertexShader =
-            createVertexShader(device.Get(), false, true, false, false);
+            createVertexShader(
+                device.Get(), false, true, false, false, false, false);
         const auto vertexColorParticleVertexShader =
-            createVertexShader(device.Get(), true, true, false, false);
+            createVertexShader(
+                device.Get(), true, true, false, false, false, false);
         const auto depthTestVertexShader =
-            createVertexShader(device.Get(), false, false, true, false);
+            createVertexShader(
+                device.Get(), false, false, true, false, false, false);
         const auto pipboyVertexShader =
-            createVertexShader(device.Get(), false, false, false, true);
+            createVertexShader(
+                device.Get(), false, false, false, true, false, false);
         const auto vertexColorPipboyVertexShader =
-            createVertexShader(device.Get(), true, false, false, true);
+            createVertexShader(
+                device.Get(), true, false, false, true, false, false);
+        const auto lightingVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, true, false);
+        const auto rightEyeLightingVertexShader = createVertexShader(
+            device.Get(), false, false, false, false, true, true);
+        const auto vertexColorLightingVertexShader = createVertexShader(
+            device.Get(), true, false, false, false, true, false);
+        const auto rightEyeVertexColorLightingVertexShader = createVertexShader(
+            device.Get(), true, false, false, false, true, true);
+        const auto particleLightingVertexShader = createVertexShader(
+            device.Get(), false, true, false, false, true, false);
+        const auto rightEyeParticleLightingVertexShader = createVertexShader(
+            device.Get(), false, true, false, false, true, true);
+        const auto vertexColorParticleLightingVertexShader = createVertexShader(
+            device.Get(), true, true, false, false, true, false);
+        const auto rightEyeVertexColorParticleLightingVertexShader =
+            createVertexShader(
+                device.Get(), true, true, false, false, true, true);
+        const auto depthTestLightingVertexShader = createVertexShader(
+            device.Get(), false, false, true, false, true, false);
+        const auto rightEyeDepthTestLightingVertexShader = createVertexShader(
+            device.Get(), false, false, true, false, true, true);
+        const auto selectVertexShader = [&](const EffectContract& contract,
+                                            bool rightEye) {
+            if (contract.lighting()) {
+                if (contract.depthTested()) {
+                    return rightEye ?
+                        rightEyeDepthTestLightingVertexShader.Get() :
+                        depthTestLightingVertexShader.Get();
+                }
+                if (contract.needsParticleData()) {
+                    if (contract.vertexColored()) {
+                        return rightEye ?
+                            rightEyeVertexColorParticleLightingVertexShader.Get() :
+                            vertexColorParticleLightingVertexShader.Get();
+                    }
+                    return rightEye ?
+                        rightEyeParticleLightingVertexShader.Get() :
+                        particleLightingVertexShader.Get();
+                }
+                if (contract.vertexColored()) {
+                    return rightEye ?
+                        rightEyeVertexColorLightingVertexShader.Get() :
+                        vertexColorLightingVertexShader.Get();
+                }
+                return rightEye ?
+                    rightEyeLightingVertexShader.Get() :
+                    lightingVertexShader.Get();
+            }
+            if (contract.depthTested()) {
+                return depthTestVertexShader.Get();
+            }
+            if (contract.pipboy()) {
+                return contract.vertexColored() ?
+                    vertexColorPipboyVertexShader.Get() :
+                    pipboyVertexShader.Get();
+            }
+            if (contract.needsParticleData()) {
+                return contract.vertexColored() ?
+                    vertexColorParticleVertexShader.Get() :
+                    particleVertexShader.Get();
+            }
+            return contract.vertexColored() ?
+                vertexColorVertexShader.Get() :
+                defaultVertexShader.Get();
+        };
         bool passed = true;
         for (const auto& contract : kEffectContracts) {
-            auto* vertexShader = contract.depthTested() ?
-                depthTestVertexShader.Get() :
-                contract.pipboy() ?
-                (contract.vertexColored() ?
-                        vertexColorPipboyVertexShader.Get() :
-                        pipboyVertexShader.Get()) :
-                contract.needsParticleData() ?
-                (contract.vertexColored() ?
-                        vertexColorParticleVertexShader.Get() :
-                        particleVertexShader.Get()) :
-                (contract.vertexColored() ?
-                        vertexColorVertexShader.Get() :
-                        defaultVertexShader.Get());
+            auto* vertexShader = selectVertexShader(contract, false);
             const auto vanillaShader = createPixelShader(
                 device.Get(),
                 root /
@@ -1129,6 +1391,54 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 enabled,
                 expectedEnabled(contract, enabledSettings),
                 label + " enabled model");
+            if (contract.lighting()) {
+                auto* rightEyeVertexShader =
+                    selectVertexShader(contract, true);
+                const auto rightEyeVanilla = render(
+                    device.Get(), context.Get(), rightEyeVertexShader,
+                    vanillaShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                const auto rightEyeDisabled = render(
+                    device.Get(), context.Get(), rightEyeVertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    disabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                const auto rightEyeEnabled = render(
+                    device.Get(), context.Get(), rightEyeVertexShader,
+                    replacementShader.Get(), techniqueBuffer.Get(),
+                    materialBuffer.Get(), geometryBuffer.Get(),
+                    enabledFrameBuffer.Get(), texture.Get(),
+                    depthTexture.Get(), depthTestTexturePass.Get(),
+                    grayscaleTexture.Get(), pipboyTexture.Get(), sampler.Get());
+                passed &= compare(
+                    rightEyeVanilla,
+                    expectedVanilla(
+                        contract,
+                        kPipboyControlsConverted,
+                        true,
+                        false,
+                        1),
+                    label + " right-eye vanilla model");
+                passed &= compare(
+                    rightEyeDisabled,
+                    rightEyeVanilla,
+                    label + " right-eye disabled parity");
+                passed &= compare(
+                    rightEyeEnabled,
+                    expectedEnabled(
+                        contract,
+                        enabledSettings,
+                        kPipboyControlsConverted,
+                        true,
+                        false,
+                        1),
+                    label + " right-eye enabled model");
+            }
             if (contract.uiMaskRects()) {
                 const auto vanillaLinearColor = render(
                     device.Get(), context.Get(), vertexShader,
@@ -1245,7 +1555,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             return 1;
         }
         std::cout <<
-            "All 112 Effect Linear Lighting parity and enabled model tests passed.\n";
+            "All 137 Effect Linear Lighting parity and enabled model tests passed.\n";
         return 0;
     }
 }

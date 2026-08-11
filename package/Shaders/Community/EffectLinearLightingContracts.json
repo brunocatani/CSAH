@@ -670,5 +670,155 @@
     "descriptor": 1207959556,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_EFFECT_UI_MASK_RECTS_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectLighting_00000400",
+    "descriptor": 1024,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorLighting_00000401",
+    "descriptor": 1025,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedLighting_00000404",
+    "descriptor": 1028,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedLighting_00000405",
+    "descriptor": 1029,
+    "aliases": [268436485],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_LIGHTING_PS"
+  },
+  {
+    "name": "EffectAdditiveLighting_00000420",
+    "descriptor": 1056,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_ADDITIVE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorAdditiveLighting_00000421",
+    "descriptor": 1057,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_ADDITIVE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveLighting_00000424",
+    "descriptor": 1060,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveLighting_00000425",
+    "descriptor": 1061,
+    "aliases": [268436517],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectMultiplyBlendLighting_00000440",
+    "descriptor": 1088,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_MULTIPLY_BLEND_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorMultiplyBlendLighting_00000441",
+    "descriptor": 1089,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_MULTIPLY_BLEND_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedMultiplyBlendLighting_00000444",
+    "descriptor": 1092,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_MULTIPLY_BLEND_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendLighting_00000445",
+    "descriptor": 1093,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleLighting_00000485",
+    "descriptor": 1157,
+    "aliases": [1165],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PARTICLE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleLighting_000004A5",
+    "descriptor": 1189,
+    "aliases": [1197],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_PARTICLE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedMultiplyBlendParticleLighting_000004CD",
+    "descriptor": 1229,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_MULTIPLY_BLEND_PARTICLE_LIGHTING_PS"
+  },
+  {
+    "name": "EffectTexturedLightingDepthTest_01000404",
+    "descriptor": 16778244,
+    "aliases": [33555460],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_LIGHTING_DEPTH_TEST_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveLightingDepthTest_01000424",
+    "descriptor": 16778276,
+    "aliases": [33555492],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_LIGHTING_DEPTH_TEST_PS"
+  },
+  {
+    "name": "EffectLightingPremultipliedAlpha_40000400",
+    "descriptor": 1073742848,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectTexturedLightingPremultipliedAlpha_40000404",
+    "descriptor": 1073742852,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedLightingPremultipliedAlpha_40000405",
+    "descriptor": 1073742853,
+    "aliases": [1342178309],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveLightingPremultipliedAlpha_40000424",
+    "descriptor": 1073742884,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveLightingPremultipliedAlpha_40000425",
+    "descriptor": 1073742885,
+    "aliases": [1342178341],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedParticleLightingPremultipliedAlpha_4000048D",
+    "descriptor": 1073742989,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_PARTICLE_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectVertexColorTexturedAdditiveParticleLightingPremultipliedAlpha_400004A5",
+    "descriptor": 1073743013,
+    "aliases": [1073743021],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_VERTEX_COLOR_TEXTURED_ADDITIVE_PARTICLE_LIGHTING_PREMULTIPLIED_ALPHA_PS"
+  },
+  {
+    "name": "EffectTexturedAdditiveLightingDepthTestPremultipliedAlpha_41000424",
+    "descriptor": 1090520100,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_EFFECT_TEXTURED_ADDITIVE_LIGHTING_DEPTH_TEST_PREMULTIPLIED_ALPHA_PS"
   }
 ]

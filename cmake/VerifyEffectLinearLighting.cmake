@@ -30,7 +30,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kEffectShaderContractCount = 112"
+    "kEffectShaderContractCount = 137"
     "EffectContractMask matchingEffectShaderContractMask"
     "AtomicEffectContractMask matchingEffectShaderContractMask_"
     "matchingEffectShaderContractMask"
@@ -58,11 +58,15 @@ foreach(required IN ITEMS
     "EffectGrayscaleSampler,"
     "EffectUnusedPerMaterial.x"
     "(EFFECT_TECHNIQUE & 0x00100000)"
+    "(EFFECT_TECHNIQUE & 0x00000400)"
     "(EFFECT_TECHNIQUE & 0x01000000)"
     "(EFFECT_TECHNIQUE & 0x08000000)"
     "(EFFECT_TECHNIQUE & 0x40000000)"
     "EffectUIMaskTechniqueData[rectangleIndex + 2]"
     "LinearLightingEffect(EffectUIMaskTechniqueData[18].xyz)"
+    "EffectPointLightPositionX[eyeIndex]"
+    "EffectPointLightColorToLinear"
+    "effectLightingMult"
     "LinearLightingFog(input.fogParam.xyz)"
     "LinearLightingFogAlpha(input.fogParam.w)"
     "EffectAlphaTest.y - sampledAlpha"
@@ -86,9 +90,9 @@ string(REGEX MATCHALL
   "IDR_LINEAR_LIGHTING_EFFECT_[A-Z0-9_]+_PS RCDATA"
   effectResources "${resourceSource}")
 list(LENGTH effectResources effectResourceCount)
-if(NOT effectResourceCount EQUAL 112)
+if(NOT effectResourceCount EQUAL 137)
   message(FATAL_ERROR
-    "Effect Linear Lighting regression: expected 112 embedded shaders")
+    "Effect Linear Lighting regression: expected 137 embedded shaders")
 endif()
 
 string(FIND "${runtimeSource}"

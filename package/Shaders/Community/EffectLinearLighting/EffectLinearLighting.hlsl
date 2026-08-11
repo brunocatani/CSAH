@@ -21,6 +21,9 @@ struct EffectPixelInput
 #if (EFFECT_TECHNIQUE & 0x00100000) != 0
     float3 pipboyData : TEXCOORD1;
 #endif
+#if (EFFECT_TECHNIQUE & 0x00000400) != 0
+    float3 modelPosition : TEXCOORD6;
+#endif
 #if (EFFECT_TECHNIQUE & 0x1080) != 0
     float3 particleData : TEXCOORD5;
 #endif
@@ -54,7 +57,22 @@ cbuffer EffectPerMaterial : register(b1)
 
 cbuffer EffectPerGeometry : register(b2)
 {
-#if (EFFECT_TECHNIQUE & 0x00100000) != 0
+#if (EFFECT_TECHNIQUE & 0x00000400) != 0
+    float4 EffectPointLightPositionX[2] : packoffset(c0);
+    float4 EffectPointLightPositionY[2] : packoffset(c2);
+    float4 EffectPointLightPositionZ[2] : packoffset(c4);
+    float4 EffectSpotLightDirectionX[2] : packoffset(c6);
+    float4 EffectSpotLightDirectionY[2] : packoffset(c8);
+    float4 EffectSpotLightDirectionZ[2] : packoffset(c10);
+    float4 EffectUnusedLightingGeometry : packoffset(c12);
+    float4 EffectSpotLightExponent : packoffset(c13);
+    float4 EffectSpotLightCosHalfAngle : packoffset(c14);
+    float4 EffectPointLightInverseRadius : packoffset(c15);
+    float4 EffectPointLightColorR : packoffset(c16);
+    float4 EffectPointLightColorG : packoffset(c17);
+    float4 EffectPointLightColorB : packoffset(c18);
+    float4 EffectDirectionalLightColor : packoffset(c19);
+#elif (EFFECT_TECHNIQUE & 0x00100000) != 0
     float4 EffectUnusedPerGeometryBeforePipboy[12] : packoffset(c0);
     float4 EffectPipboyControls : packoffset(c12);
     float4 EffectUnusedPerGeometryAfterPipboy[7] : packoffset(c13);
@@ -123,6 +141,64 @@ float EffectSoftParticleFade(float2 pixelPosition, float particleDepth)
     cameraFade = cameraFade * cameraFade * (3.0f - 2.0f * cameraFade);
     return intersectionFade * cameraFade;
 }
+
+#if (EFFECT_TECHNIQUE & 0x00000400) != 0
+float4 EffectPointLightColorToLinear(float4 color)
+{
+    return enableLinearLighting != 0u ?
+        pow(abs(color), lightGamma) *
+            LinearLightingPi * pointLightMult * effectLightingMult :
+        color;
+}
+
+float3 EffectLightingColor(float3 modelPosition, uint eyeIndex)
+{
+    const float4 deltaX =
+        modelPosition.xxxx - EffectPointLightPositionX[eyeIndex];
+    const float4 deltaY =
+        modelPosition.yyyy - EffectPointLightPositionY[eyeIndex];
+    const float4 deltaZ =
+        modelPosition.zzzz - EffectPointLightPositionZ[eyeIndex];
+    const float4 distance = sqrt(
+        deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+    float4 distanceFade = 1.0f.xxxx -
+        saturate(distance * EffectPointLightInverseRadius) *
+        saturate(distance * EffectPointLightInverseRadius);
+    if (enableLinearLighting == 0u) {
+        distanceFade = exp2(log2(distanceFade) * 2.2f);
+    }
+
+    const float4 safeDistance = max(distance, 0.001f.xxxx);
+    const float4 lightDirectionX = deltaX / safeDistance;
+    const float4 lightDirectionY = deltaY / safeDistance;
+    const float4 lightDirectionZ = deltaZ / safeDistance;
+    const float4 spotCosine = saturate(
+        lightDirectionX * EffectSpotLightDirectionX[eyeIndex] +
+        lightDirectionY * EffectSpotLightDirectionY[eyeIndex] +
+        lightDirectionZ * EffectSpotLightDirectionZ[eyeIndex]);
+    const float4 coneFade = saturate(
+        1.0f.xxxx -
+        (1.0f.xxxx - spotCosine) /
+            (1.0f.xxxx - EffectSpotLightCosHalfAngle));
+    float4 spotFade = min(
+        exp2(log2(coneFade) * EffectSpotLightExponent),
+        1.0f.xxxx);
+    spotFade = EffectSpotLightExponent != 0.0f.xxxx ?
+        spotFade : 1.0f.xxxx;
+
+    const float4 attenuation = distanceFade * spotFade;
+    const float3 pointLighting = float3(
+        dot(attenuation, EffectPointLightColorToLinear(
+            EffectPointLightColorR)),
+        dot(attenuation, EffectPointLightColorToLinear(
+            EffectPointLightColorG)),
+        dot(attenuation, EffectPointLightColorToLinear(
+            EffectPointLightColorB)));
+    const float3 directionalLighting = EffectDirectionalLightColor.xyz *
+        (enableLinearLighting != 0u ? effectLightingMult : 1.0f);
+    return directionalLighting + pointLighting;
+}
+#endif
 
 float4 PSMain(EffectPixelInput input) : SV_Target0
 {
@@ -296,8 +372,14 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         input.particleData.z);
 #endif
 #endif
+#if (EFFECT_TECHNIQUE & 0x00000400) != 0
+    const float3 propertyColor = EffectLightingColor(
+        input.modelPosition,
+        input.eyeIndex);
+#else
     const float3 propertyColor =
         LinearLightingEffect(EffectPropertyColor.xyz);
+#endif
     float3 lightColor = lerp(
         baseColor.xyz,
         propertyColor * baseColor.xyz,
