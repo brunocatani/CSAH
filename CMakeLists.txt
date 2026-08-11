@@ -48,9 +48,17 @@ if(NOT EXISTS
     "CommonLibF4VR path not found in '${COMMON_LIB_F4VR_PATH_SELECTED}'")
 endif()
 
-set(ROCK_SDK_PATH_SELECTED
-  "${WORKSPACE_ROOT}/main_projects/ROCK/SDK/ROCK/include"
-  CACHE PATH "ROCK provider SDK include directory")
+set(ROCK_SDK_DEFAULT_PATH
+  "${WORKSPACE_ROOT}/main_projects/RPS_SDK/SDK/ROCK/include")
+set(ROCK_SDK_LEGACY_PATH
+  "${WORKSPACE_ROOT}/main_projects/ROCK/SDK/ROCK/include")
+if(NOT DEFINED ROCK_SDK_PATH_SELECTED OR
+    ROCK_SDK_PATH_SELECTED STREQUAL "" OR
+    ROCK_SDK_PATH_SELECTED STREQUAL "${ROCK_SDK_LEGACY_PATH}")
+  set(ROCK_SDK_PATH_SELECTED
+    "${ROCK_SDK_DEFAULT_PATH}"
+    CACHE PATH "ROCK provider SDK include directory" FORCE)
+endif()
 if(NOT EXISTS "${ROCK_SDK_PATH_SELECTED}/ROCKProviderApi.h")
   message(FATAL_ERROR
     "ROCK provider SDK not found in '${ROCK_SDK_PATH_SELECTED}'")
