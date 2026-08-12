@@ -4,9 +4,58 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <cstdint>
 
 namespace community_shaders::ibl
 {
+    enum class ReflectionFreeCaptureRejection : std::uint8_t
+    {
+        none,
+        notAttempted,
+        invalidResources,
+        deviceMismatch,
+        sampleMask,
+        blendEnabled,
+        renderTargetWriteMask,
+        logicOperation,
+        streamOutput,
+        renderTargetLayout,
+        depthStencilStateCreation,
+        appliedStateMismatch,
+    };
+
+    [[nodiscard]] constexpr const char* reflectionFreeCaptureRejectionName(
+        ReflectionFreeCaptureRejection rejection) noexcept
+    {
+        switch (rejection) {
+        case ReflectionFreeCaptureRejection::none:
+            return "none";
+        case ReflectionFreeCaptureRejection::notAttempted:
+            return "not-attempted";
+        case ReflectionFreeCaptureRejection::invalidResources:
+            return "invalid-resources";
+        case ReflectionFreeCaptureRejection::deviceMismatch:
+            return "device-mismatch";
+        case ReflectionFreeCaptureRejection::sampleMask:
+            return "sample-mask";
+        case ReflectionFreeCaptureRejection::blendEnabled:
+            return "blend-enabled";
+        case ReflectionFreeCaptureRejection::renderTargetWriteMask:
+            return "render-target-write-mask";
+        case ReflectionFreeCaptureRejection::logicOperation:
+            return "logic-operation";
+        case ReflectionFreeCaptureRejection::streamOutput:
+            return "stream-output";
+        case ReflectionFreeCaptureRejection::renderTargetLayout:
+            return "render-target-layout";
+        case ReflectionFreeCaptureRejection::depthStencilStateCreation:
+            return "depth-stencil-state-creation";
+        case ReflectionFreeCaptureRejection::appliedStateMismatch:
+            return "applied-state-mismatch";
+        }
+        return "unknown";
+    }
+
     // Owns the reflection-neutral inputs and one output-compatible scratch
     // target. Resource replacement is transactional: an existing compatible
     // set remains live if a resize/reformat rebuild fails.
@@ -105,6 +154,12 @@ namespace community_shaders::ibl
             return active_;
         }
 
+        [[nodiscard]] ReflectionFreeCaptureRejection rejection() const
+            noexcept
+        {
+            return rejection_;
+        }
+
         [[nodiscard]] bool restore() noexcept;
 
     private:
@@ -134,5 +189,8 @@ namespace community_shaders::ibl
         UINT stencilReference_{};
         bool stateCaptured_{};
         bool active_{};
+        ReflectionFreeCaptureRejection rejection_{
+            ReflectionFreeCaptureRejection::notAttempted
+        };
     };
 }

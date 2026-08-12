@@ -248,12 +248,14 @@ namespace community_shaders::ibl
             !resources.scratchRenderTarget() ||
             !resources.blackEnvironment() ||
             !resources.blackScreenReflection()) {
+            rejection_ = ReflectionFreeCaptureRejection::invalidResources;
             context_ = nullptr;
             return;
         }
         ComPtr<ID3D11Device> contextDevice;
         context_->GetDevice(&contextDevice);
         if (contextDevice.Get() != resources.device()) {
+            rejection_ = ReflectionFreeCaptureRejection::deviceMismatch;
             context_ = nullptr;
             return;
         }
@@ -262,15 +264,22 @@ namespace community_shaders::ibl
         UINT sampleMask{};
         context_->OMGetBlendState(&blendState, nullptr, &sampleMask);
         if ((sampleMask & 1U) == 0) {
+            rejection_ = ReflectionFreeCaptureRejection::sampleMask;
             context_ = nullptr;
             return;
         }
         if (blendState) {
             D3D11_BLEND_DESC blendDescription{};
             blendState->GetDesc(&blendDescription);
-            if (blendDescription.RenderTarget[0].BlendEnable ||
-                blendDescription.RenderTarget[0].RenderTargetWriteMask !=
-                    D3D11_COLOR_WRITE_ENABLE_ALL) {
+            if (blendDescription.RenderTarget[0].BlendEnable) {
+                rejection_ = ReflectionFreeCaptureRejection::blendEnabled;
+                context_ = nullptr;
+                return;
+            }
+            if (blendDescription.RenderTarget[0].RenderTargetWriteMask !=
+                D3D11_COLOR_WRITE_ENABLE_ALL) {
+                rejection_ = ReflectionFreeCaptureRejection::
+                    renderTargetWriteMask;
                 context_ = nullptr;
                 return;
             }
@@ -279,6 +288,8 @@ namespace community_shaders::ibl
                 D3D11_BLEND_DESC1 blendDescription1{};
                 blendState1->GetDesc1(&blendDescription1);
                 if (blendDescription1.RenderTarget[0].LogicOpEnable) {
+                    rejection_ = ReflectionFreeCaptureRejection::
+                        logicOperation;
                     context_ = nullptr;
                     return;
                 }
@@ -300,6 +311,7 @@ namespace community_shaders::ibl
                 streamOutputTargets[index] != nullptr;
         }
         if (hasStreamOutputTarget) {
+            rejection_ = ReflectionFreeCaptureRejection::streamOutput;
             context_ = nullptr;
             return;
         }
@@ -320,6 +332,7 @@ namespace community_shaders::ibl
         depthStencil_.Attach(rawDepthStencil);
         if (renderTargetCount_ != 1 || !renderTargets_[0] ||
             !resources.scratchMatches(renderTargets_[0].Get())) {
+            rejection_ = ReflectionFreeCaptureRejection::renderTargetLayout;
             context_ = nullptr;
             renderTargets_ = {};
             depthStencil_.Reset();
@@ -375,6 +388,8 @@ namespace community_shaders::ibl
         if (!device || FAILED(device->CreateDepthStencilState(
                 &depthStencilDescription,
                 &captureDepthStencilState_))) {
+            rejection_ = ReflectionFreeCaptureRejection::
+                depthStencilStateCreation;
             context_ = nullptr;
             renderTargets_ = {};
             depthStencil_.Reset();
@@ -415,7 +430,11 @@ namespace community_shaders::ibl
             blackEnvironment,
             blackScreenReflection);
         if (!active_) {
+            rejection_ = ReflectionFreeCaptureRejection::
+                appliedStateMismatch;
             (void)restore();
+        } else {
+            rejection_ = ReflectionFreeCaptureRejection::none;
         }
     }
 
@@ -437,13 +456,15 @@ namespace community_shaders::ibl
         renderTargetCount_(other.renderTargetCount_),
         stencilReference_(other.stencilReference_),
         stateCaptured_(other.stateCaptured_),
-        active_(other.active_)
+        active_(other.active_),
+        rejection_(other.rejection_)
     {
         other.context_ = nullptr;
         other.renderTargetCount_ = 0;
         other.stencilReference_ = 0;
         other.stateCaptured_ = false;
         other.active_ = false;
+        other.rejection_ = ReflectionFreeCaptureRejection::notAttempted;
     }
 
     bool ScopedReflectionFreeCapture::appliedStateMatches(

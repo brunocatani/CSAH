@@ -925,14 +925,17 @@ namespace community_shaders::ibl
             context,
             reflectionFreeCaptureResources_);
         if (!capture.active()) {
+            const auto rejection = capture.rejection();
             readback->completed = true;
             readback->failureLogged = true;
             sceneRadianceProbeFailures_.fetch_add(
                 1,
                 std::memory_order_relaxed);
             logging::warn(
-                "IBL reflection-free duplicate could not establish its exact fail-closed render-state transaction for format {}; no duplicate draw was issued.",
-                sceneProbeFormatName(readback->format));
+                "IBL reflection-free duplicate could not establish its exact fail-closed render-state transaction for format {} (reason={}, code={}); no duplicate draw was issued.",
+                sceneProbeFormatName(readback->format),
+                reflectionFreeCaptureRejectionName(rejection),
+                static_cast<unsigned>(rejection));
         }
         return capture;
     }

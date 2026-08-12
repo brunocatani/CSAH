@@ -16,6 +16,7 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
+    using community_shaders::ibl::ReflectionFreeCaptureRejection;
     using community_shaders::ibl::ReflectionFreeCaptureResources;
     using community_shaders::ibl::ScopedReflectionFreeCapture;
 
@@ -426,6 +427,9 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
                 d3d.context.Get(),
                 resources);
             require(capture.active(), "reflection-free scope did not activate");
+            require(
+                capture.rejection() == ReflectionFreeCaptureRejection::none,
+                "active reflection-free scope retained a rejection reason");
             ID3D11DepthStencilState* captureDepthStencilStateRaw{};
             UINT captureStencilReference{};
             d3d.context->OMGetDepthStencilState(
@@ -550,6 +554,10 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             require(
                 !rejected.active(),
                 "blended duplicate draw was not rejected");
+            require(
+                rejected.rejection() ==
+                    ReflectionFreeCaptureRejection::blendEnabled,
+                "blended duplicate reported the wrong rejection reason");
         }
         ID3D11BlendState* observedBlendStateRaw{};
         d3d.context->OMGetBlendState(
@@ -587,6 +595,10 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             require(
                 !rejected.active(),
                 "stream-output duplicate draw was not rejected");
+            require(
+                rejected.rejection() ==
+                    ReflectionFreeCaptureRejection::streamOutput,
+                "stream-output duplicate reported the wrong rejection reason");
         }
         ID3D11Buffer* observedStreamOutputRaw{};
         d3d.context->SOGetTargets(1, &observedStreamOutputRaw);

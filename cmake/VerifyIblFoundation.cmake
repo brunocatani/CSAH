@@ -57,6 +57,8 @@ endforeach()
 foreach(required IN ITEMS
     "class ReflectionFreeCaptureResources"
     "class ScopedReflectionFreeCapture"
+    "enum class ReflectionFreeCaptureRejection"
+    "reflectionFreeCaptureRejectionName"
     "prepareScratch"
     "scratchMatches"
     "blackEnvironment"
@@ -110,6 +112,7 @@ foreach(required IN ITEMS
     "rollingReady"
     "beginReflectionFreeCapture"
     "onReflectionFreeCaptureDrawComplete"
+    "reason={}, code={}"
     "onCaptureProbeDrawComplete"
     "IBL scene-radiance pass-end final-draw snapshot DFComposite"
     "IBL scene-radiance PS-t{}"
