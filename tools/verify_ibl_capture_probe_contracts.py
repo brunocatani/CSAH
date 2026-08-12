@@ -27,6 +27,25 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
+def parse_contract_array(
+    header: str,
+    name: str,
+) -> list[tuple[int, str]]:
+    declaration = header.find(name)
+    if declaration < 0:
+        fail(f"capture-probe contract array is missing: {name}")
+    initializer = header.find("{ {", declaration)
+    terminator = header.find("} };", initializer)
+    if initializer < 0 or terminator < 0:
+        fail(f"capture-probe contract array is malformed: {name}")
+    return [
+        (int(size), checksum.lower())
+        for size, checksum in CONTRACT_PATTERN.findall(
+            header[initializer:terminator]
+        )
+    ]
+
+
 def is_environment_consumer(assembly: str) -> bool:
     return bool(
         re.search(r"dcl_resource_texturecubearray.*\st8$", assembly, re.MULTILINE)
@@ -46,17 +65,28 @@ def main() -> int:
     if not fxp_path.is_file():
         fail(f"local FXP authority is missing: {fxp_path}")
 
-    contracts = [
-        (int(size), checksum.lower())
-        for size, checksum in CONTRACT_PATTERN.findall(
-            header_path.read_text(encoding="utf-8")
-        )
-    ]
+    header = header_path.read_text(encoding="utf-8")
+    contracts = parse_contract_array(header, "kCaptureProbeContracts")
     if len(contracts) != 41 or len(set(contracts)) != 41:
         fail(
             "capture-probe contracts must contain exactly 41 unique identities; "
             f"found {len(contracts)}/{len(set(contracts))}"
         )
+    boundary_contracts = parse_contract_array(
+        header,
+        "kDFCompositeBoundaryContracts",
+    )
+    if len(boundary_contracts) != 38 or len(set(boundary_contracts)) != 38:
+        fail(
+            "DFComposite boundary contracts must contain exactly 38 unique "
+            f"identities; found {len(boundary_contracts)}/"
+            f"{len(set(boundary_contracts))}"
+        )
+    contract_set = set(contracts)
+    boundary_contract_set = set(boundary_contracts)
+    if contract_set & boundary_contract_set:
+        fail("environment and boundary contract sets overlap")
+    complete_contract_set = contract_set | boundary_contract_set
 
     inventory = census.parse_fxp(fxp_path.read_bytes())
     composite = [
@@ -67,9 +97,12 @@ def main() -> int:
     by_identity: dict[tuple[int, str], list[census.DxbcContainer]] = {}
     for container in composite:
         by_identity.setdefault(container.identity, []).append(container)
-    missing = sorted(set(contracts) - set(by_identity))
+    missing = sorted(complete_contract_set - set(by_identity))
     if missing:
         fail(f"capture-probe identities missing from DFComposite: {missing}")
+    extra = sorted(set(by_identity) - complete_contract_set)
+    if extra:
+        fail(f"DFComposite identities missing from capture boundary: {extra}")
 
     fxc = census.find_fxc(None)
     environment_identities: set[tuple[int, str]] = set()
@@ -81,7 +114,6 @@ def main() -> int:
             if is_environment_consumer(census.disassemble(fxc, shader_path)):
                 environment_identities.add(identity)
 
-    contract_set = set(contracts)
     if environment_identities != contract_set:
         fail(
             "capture-probe coverage differs from exact TextureCubeArray-t8 "
@@ -91,10 +123,19 @@ def main() -> int:
     alias_count = sum(len(by_identity[identity]) for identity in contract_set)
     if alias_count != 83:
         fail(f"expected 83 DFComposite aliases, found {alias_count}")
+    complete_alias_count = sum(
+        len(by_identity[identity]) for identity in complete_contract_set
+    )
+    if complete_alias_count != 183:
+        fail(
+            "expected 183 complete-family DFComposite aliases, found "
+            f"{complete_alias_count}"
+        )
 
     print(
         "IBL capture-probe contracts verified: 41 exact DFComposite "
-        "environment identities / 83 aliases."
+        "environment identities / 83 aliases; complete pass boundary "
+        "79 identities / 183 aliases."
     )
     return 0
 

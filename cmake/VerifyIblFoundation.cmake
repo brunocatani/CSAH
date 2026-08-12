@@ -2,6 +2,7 @@ foreach(variable IN ITEMS
     IBL_RUNTIME_SOURCE
     IBL_RUNTIME_HEADER
     IBL_PROJECTION_MODEL
+    IBL_CAPTURE_PROBE_MODEL
     IBL_SCENE_RADIANCE_PROBE_MODEL
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
@@ -15,6 +16,7 @@ endforeach()
 file(READ "${IBL_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${IBL_PROJECTION_MODEL}" projectionModel)
+file(READ "${IBL_CAPTURE_PROBE_MODEL}" captureProbeModel)
 file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
@@ -33,7 +35,7 @@ foreach(required IN ITEMS
     "Dispatch(1, 1, 1)"
     "CopyResource"
     "onDFLightAmbientBind"
-    "matchCaptureProbeContract"
+    "classifyCaptureProbeShader"
     "PSGetShaderResources"
     "PSGetConstantBuffers(12, 1"
     "OMGetRenderTargets"
@@ -54,15 +56,40 @@ foreach(required IN ITEMS
     "createSceneRadianceProbeResources"
     "consumeSceneRadianceProbeReadbacks"
     "D3D11_MAP_FLAG_DO_NOT_WAIT"
-    "IBL scene-radiance OM-before:"
+    "IBL scene-radiance pass-end DFComposite"
     "\"PS-t5\""
     "\"PS-t6\""
-    "IBL scene-radiance OM-after:"
-    "onCaptureProbeDrawComplete")
+    "IBL scene-radiance OM-composite:"
+    "onCaptureProbePassComplete")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL scene-radiance probe regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+string(FIND "${runtimeHeader}"
+  "kCaptureShaderSlotCount = 256" foundCaptureRegistryCapacity)
+if(foundCaptureRegistryCapacity EQUAL -1)
+  message(FATAL_ERROR
+    "IBL capture-probe regression: complete-family registry capacity changed")
+endif()
+
+string(FIND "${captureProbeModel}"
+  "shouldCaptureCompletedProbePass" foundCapturePassTransition)
+if(foundCapturePassTransition EQUAL -1)
+  message(FATAL_ERROR
+    "IBL capture-probe regression: pass-complete transition model is missing")
+endif()
+
+foreach(required IN ITEMS
+    "kDFCompositeBoundaryContracts"
+    "classifyCaptureProbeShader"
+    "advanceCaptureProbePass")
+  string(FIND "${captureProbeModel}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL capture-probe regression: complete-family model is missing '${required}'")
   endif()
 endforeach()
 
@@ -135,11 +162,13 @@ foreach(required IN ITEMS
     "#include \"Features/ibl/IblRuntime.h\""
     "ibl::Runtime::get().onDeviceCreated"
     "ibl::Runtime::get().onPixelShaderCreated"
-    "ibl::Runtime::get().captureProbeForShader"
+    "ibl::Runtime::get().captureProbeBindingForShader"
     "ibl::Runtime::get().onCaptureProbeDraw"
-    "ibl::Runtime::get().onCaptureProbeDrawComplete"
-    "beginActiveIblCaptureProbe"
-    "completeActiveIblCaptureProbe"
+    "ibl::Runtime::get().onCaptureProbePassComplete"
+    "recordActiveIblCaptureProbe"
+    "completeIblCaptureProbePass"
+    "ibl::shouldCaptureCompletedProbePass"
+    "ibl::advanceCaptureProbePass"
     "qualificationSessionActive.load"
     "ReplacementShaderFamily::dFLightAmbient"
     "ibl::Runtime::get().onDFLightAmbientBind")

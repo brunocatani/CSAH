@@ -36,13 +36,6 @@ namespace community_shaders::ibl
         DiffuseSH latestDiffuseSH{};
     };
 
-    struct CaptureProbeDrawToken
-    {
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> outputTexture;
-        std::uint16_t contractPlusOne{};
-        std::uint8_t readbackSlotPlusOne{};
-    };
-
     class Runtime
     {
     public:
@@ -61,7 +54,7 @@ namespace community_shaders::ibl
             std::size_t bytecodeSize,
             ID3D11PixelShader* shader) noexcept;
 
-        [[nodiscard]] std::uint16_t captureProbeForShader(
+        [[nodiscard]] CaptureProbeShaderBinding captureProbeBindingForShader(
             ID3D11PixelShader* shader) const noexcept;
 
         // Called only inside the existing PostLoadGame/NewGame qualification
@@ -69,15 +62,17 @@ namespace community_shaders::ibl
         // changes no state, and distinguishes world evidence from menu draws.
         // This Batch-0 staging readback is removed when its selected source
         // is replaced by the production capture/update provider.
-        [[nodiscard]] CaptureProbeDrawToken onCaptureProbeDraw(
+        void onCaptureProbeDraw(
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
 
-        // Completes the bounded before/after sample transaction after the
-        // original qualified draw. The token never escapes that draw hook.
-        void onCaptureProbeDrawComplete(
+        // Called before PSSetShader leaves the complete qualified DFComposite
+        // family. The previous shader resources and accumulated output are
+        // still bound, so this is the pass-complete read-only evidence
+        // boundary rather than an arbitrary early draw.
+        void onCaptureProbePassComplete(
             ID3D11DeviceContext* context,
-            const CaptureProbeDrawToken& token) noexcept;
+            std::uint16_t contractPlusOne) noexcept;
 
         // Called only at an exact DFLight ambient shader bind. The initial
         // observe-only stage performs at most one tiny projection every
@@ -94,7 +89,9 @@ namespace community_shaders::ibl
             std::uint64_t generation{};
         };
 
-        static constexpr std::size_t kCaptureShaderSlotCount = 128;
+        // The local FXP contains 183 DFComposite PS records. Keep bounded
+        // headroom even if the engine creates a distinct object per alias.
+        static constexpr std::size_t kCaptureShaderSlotCount = 256;
 
         struct CaptureShaderSlot
         {
@@ -105,17 +102,15 @@ namespace community_shaders::ibl
 
         struct SceneRadianceReadbackSlot
         {
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> beforeTexture;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> afterTexture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> compositeTexture;
             DXGI_FORMAT format{ DXGI_FORMAT_UNKNOWN };
             UINT sourceWidth{};
             UINT sourceHeight{};
             std::uint16_t contractPlusOne{};
             std::uint32_t checksumPrefix{};
             std::uint32_t pendingPolls{};
-            bool armed{};
             bool pending{};
             bool completed{};
             bool pixelShaderT5Copied{};

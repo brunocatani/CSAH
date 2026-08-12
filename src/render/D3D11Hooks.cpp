@@ -182,7 +182,7 @@ namespace community_shaders::render
         thread_local std::uint64_t activeQualificationSessionId{};
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
-        thread_local std::uint16_t activeIblCaptureProbePlusOne{};
+        thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
 
         class RecursionGuard final
         {
@@ -559,7 +559,7 @@ namespace community_shaders::render
                     std::memory_order_release);
                 activeQualificationSessionId = requested;
                 activeReplacementBinding = {};
-                activeIblCaptureProbePlusOne = 0;
+                activeIblCaptureProbePass = {};
                 qualificationSessionActive.store(
                     true,
                     std::memory_order_release);
@@ -954,23 +954,31 @@ namespace community_shaders::render
                     activeReplacementBinding);
         }
 
-        [[nodiscard]] ibl::CaptureProbeDrawToken beginActiveIblCaptureProbe(
+        void recordActiveIblCaptureProbe(
             ID3D11DeviceContext* context) noexcept
         {
             if (!qualificationSessionActive.load(std::memory_order_acquire) ||
-                activeIblCaptureProbePlusOne == 0) {
-                return {};
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
+                return;
             }
-            return ibl::Runtime::get().onCaptureProbeDraw(
+            ibl::Runtime::get().onCaptureProbeDraw(
                 context,
-                activeIblCaptureProbePlusOne);
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne);
         }
 
-        void completeActiveIblCaptureProbe(
+        void completeIblCaptureProbePass(
             ID3D11DeviceContext* context,
-            const ibl::CaptureProbeDrawToken& token) noexcept
+            ibl::CaptureProbeShaderBinding nextBinding) noexcept
         {
-            ibl::Runtime::get().onCaptureProbeDrawComplete(context, token);
+            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
+                !ibl::shouldCaptureCompletedProbePass(
+                    activeIblCaptureProbePass,
+                    nextBinding)) {
+                return;
+            }
+            ibl::Runtime::get().onCaptureProbePassComplete(
+                context,
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne);
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -1076,22 +1084,28 @@ namespace community_shaders::render
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
-                activeIblCaptureProbePlusOne = 0;
+                activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
-                activeIblCaptureProbePlusOne = 0;
+                activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
             }
 
             const RecursionGuard recursionGuard(insidePSSetShaderHook);
             activatePendingQualificationSession();
-            activeIblCaptureProbePlusOne =
-                ibl::Runtime::get().captureProbeForShader(shader);
+            const auto nextIblCaptureProbeBinding =
+                ibl::Runtime::get().captureProbeBindingForShader(shader);
+            completeIblCaptureProbePass(
+                context,
+                nextIblCaptureProbeBinding);
+            activeIblCaptureProbePass = ibl::advanceCaptureProbePass(
+                activeIblCaptureProbePass,
+                nextIblCaptureProbeBinding);
             const auto selection =
                 linear_lighting::Runtime::get().selectPixelShader(
                 context,
@@ -1132,7 +1146,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto iblCapture = beginActiveIblCaptureProbe(context);
+            recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
                     1,
@@ -1146,7 +1160,6 @@ namespace community_shaders::render
                     startIndexLocation,
                     baseVertexLocation);
             }
-            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDraw(
@@ -1156,7 +1169,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto iblCapture = beginActiveIblCaptureProbe(context);
+            recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
                 recordQualificationDraw(context);
@@ -1164,7 +1177,6 @@ namespace community_shaders::render
             if (originalDraw) {
                 originalDraw(context, vertexCount, startVertexLocation);
             }
-            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDrawIndexedInstanced(
@@ -1177,7 +1189,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto iblCapture = beginActiveIblCaptureProbe(context);
+            recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
                     1,
@@ -1193,7 +1205,6 @@ namespace community_shaders::render
                     baseVertexLocation,
                     startInstanceLocation);
             }
-            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         void STDMETHODCALLTYPE hookDrawInstanced(
@@ -1205,7 +1216,7 @@ namespace community_shaders::render
         {
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto iblCapture = beginActiveIblCaptureProbe(context);
+            recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
                     1,
@@ -1220,7 +1231,6 @@ namespace community_shaders::render
                     startVertexLocation,
                     startInstanceLocation);
             }
-            completeActiveIblCaptureProbe(context, iblCapture);
         }
 
         [[nodiscard]] bool createQualificationDrawDetour(
