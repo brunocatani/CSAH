@@ -276,8 +276,12 @@ namespace community_shaders::ibl
                 context_ = nullptr;
                 return;
             }
-            if (blendDescription.RenderTarget[0].RenderTargetWriteMask !=
-                D3D11_COLOR_WRITE_ENABLE_ALL) {
+            constexpr UINT radianceWriteMask =
+                D3D11_COLOR_WRITE_ENABLE_RED |
+                D3D11_COLOR_WRITE_ENABLE_GREEN |
+                D3D11_COLOR_WRITE_ENABLE_BLUE;
+            if ((blendDescription.RenderTarget[0].RenderTargetWriteMask &
+                    radianceWriteMask) != radianceWriteMask) {
                 rejection_ = ReflectionFreeCaptureRejection::
                     renderTargetWriteMask;
                 context_ = nullptr;

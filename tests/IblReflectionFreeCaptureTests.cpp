@@ -524,6 +524,76 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         requireNear(visible.y, 1.0f, "visible green");
         requireNear(visible.z, 1.25f, "visible blue");
 
+        D3D11_BLEND_DESC rgbOnlyBlendDescription{};
+        rgbOnlyBlendDescription.RenderTarget[0].RenderTargetWriteMask =
+            D3D11_COLOR_WRITE_ENABLE_RED |
+            D3D11_COLOR_WRITE_ENABLE_GREEN |
+            D3D11_COLOR_WRITE_ENABLE_BLUE;
+        ComPtr<ID3D11BlendState> rgbOnlyBlendState;
+        requireSucceeded(
+            d3d.device->CreateBlendState(
+                &rgbOnlyBlendDescription,
+                &rgbOnlyBlendState),
+            "CreateBlendState(RGB-only)");
+        d3d.context->OMSetBlendState(
+            rgbOnlyBlendState.Get(),
+            nullptr,
+            UINT_MAX);
+        {
+            ScopedReflectionFreeCapture accepted(
+                d3d.context.Get(),
+                resources);
+            require(
+                accepted.active(),
+                "RGB-only radiance target was rejected");
+            require(
+                accepted.rejection() ==
+                    ReflectionFreeCaptureRejection::none,
+                "RGB-only radiance target retained a rejection reason");
+            require(
+                accepted.restore(),
+                "RGB-only radiance target did not restore");
+        }
+        ID3D11BlendState* restoredRgbOnlyBlendStateRaw{};
+        d3d.context->OMGetBlendState(
+            &restoredRgbOnlyBlendStateRaw,
+            nullptr,
+            nullptr);
+        ComPtr<ID3D11BlendState> restoredRgbOnlyBlendState;
+        restoredRgbOnlyBlendState.Attach(restoredRgbOnlyBlendStateRaw);
+        require(
+            restoredRgbOnlyBlendState.Get() == rgbOnlyBlendState.Get(),
+            "RGB-only blend-state identity was not preserved");
+
+        auto incompleteRadianceBlendDescription = rgbOnlyBlendDescription;
+        incompleteRadianceBlendDescription.RenderTarget[0]
+            .RenderTargetWriteMask =
+            D3D11_COLOR_WRITE_ENABLE_RED |
+            D3D11_COLOR_WRITE_ENABLE_GREEN;
+        ComPtr<ID3D11BlendState> incompleteRadianceBlendState;
+        requireSucceeded(
+            d3d.device->CreateBlendState(
+                &incompleteRadianceBlendDescription,
+                &incompleteRadianceBlendState),
+            "CreateBlendState(incomplete radiance)");
+        d3d.context->OMSetBlendState(
+            incompleteRadianceBlendState.Get(),
+            nullptr,
+            UINT_MAX);
+        {
+            ScopedReflectionFreeCapture rejected(
+                d3d.context.Get(),
+                resources);
+            require(
+                !rejected.active(),
+                "incomplete radiance write mask was accepted");
+            require(
+                rejected.rejection() == ReflectionFreeCaptureRejection::
+                    renderTargetWriteMask,
+                "incomplete radiance mask reported the wrong rejection");
+        }
+        d3d.context->OMSetBlendState(nullptr, nullptr, UINT_MAX);
+
         D3D11_BLEND_DESC unsafeBlendDescription{};
         unsafeBlendDescription.RenderTarget[0].BlendEnable = TRUE;
         unsafeBlendDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;

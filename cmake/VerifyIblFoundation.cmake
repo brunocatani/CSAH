@@ -83,6 +83,7 @@ foreach(required IN ITEMS
     "D3D11_KEEP_UNORDERED_ACCESS_VIEWS"
     "OMGetBlendState"
     "RenderTargetWriteMask"
+    "radianceWriteMask"
     "LogicOpEnable"
     "sampleMask & 1U"
     "SOGetTargets"
