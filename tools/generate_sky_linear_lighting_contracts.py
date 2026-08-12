@@ -108,11 +108,30 @@ def compile_candidates(
     for required in (
         '#include "../LinearLighting/LinearLighting.hlsli"',
         "LinearLightingSky(baseColor.xyz)",
-        "LinearLightingSky(input.color.xyz)",
+        "LinearLightingSkyProducerColor(input.color.xyz)",
+        "color *= skyParameters.y;",
         "output.motion = ComputeMotionVector(input);",
     ):
         if required not in source_text:
             raise ContractError(f"Sky HLSL is missing required contract: {required}")
+    for forbidden in (
+        "LinearLightingSky(input.color.xyz)",
+        "LinearLightingSky(skyParameters.yyy)",
+    ):
+        if forbidden in source_text:
+            raise ContractError(f"Sky HLSL contains forbidden color-domain path: {forbidden}")
+
+    include_text = (
+        source_directory.parent / "LinearLighting" / "LinearLighting.hlsli"
+    ).read_text(encoding="utf-8")
+    for required in (
+        "kLinearLightingSkyProducerGamma = 2.2f",
+        "skyGamma / kLinearLightingSkyProducerGamma",
+    ):
+        if required not in include_text:
+            raise ContractError(
+                f"Linear Lighting include is missing Sky producer contract: {required}"
+            )
 
     candidates: dict[int, bytes] = {}
     for entry in manifest:

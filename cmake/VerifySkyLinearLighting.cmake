@@ -56,12 +56,23 @@ endforeach()
 foreach(required IN ITEMS
     "#include \"../LinearLighting/LinearLighting.hlsli\""
     "LinearLightingSky(baseColor.xyz)"
-    "LinearLightingSky(input.color.xyz)"
+    "LinearLightingSkyProducerColor(input.color.xyz)"
+    "color *= skyParameters.y;"
     "output.motion = ComputeMotionVector(input);")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Sky Linear Lighting regression: shader is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "LinearLightingSky(input.color.xyz)"
+    "LinearLightingSky(skyParameters.yyy)")
+  string(FIND "${shaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Sky Linear Lighting regression: shader contains forbidden color-domain path '${forbidden}'")
   endif()
 endforeach()
 

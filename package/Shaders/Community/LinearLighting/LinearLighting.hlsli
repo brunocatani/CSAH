@@ -147,6 +147,17 @@ float3 LinearLightingSky(float3 color)
     return enableLinearLighting != 0u ? pow(abs(color), skyGamma) : color;
 }
 
+// FO4VR's Sky producer uploads vertex RGB after applying a fixed 2.2 decode.
+// Apply only the remaining exponent so the configured sky gamma is not
+// compounded with the producer decode.
+static const float kLinearLightingSkyProducerGamma = 2.2f;
+
+float3 LinearLightingSkyProducerColor(float3 color)
+{
+    return enableLinearLighting != 0u ?
+        pow(abs(color), skyGamma / kLinearLightingSkyProducerGamma) : color;
+}
+
 float3 LinearLightingWater(float3 color)
 {
     return enableLinearLighting != 0u ? pow(abs(color), waterGamma) : color;

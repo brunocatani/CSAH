@@ -34,6 +34,7 @@ namespace
     constexpr float kScale = 1.25F;
     constexpr float kHorizonFade = 0.6F;
     constexpr float kSkyGamma = 1.8F;
+    constexpr float kSkyProducerGamma = 2.2F;
 
     struct RenderTarget
     {
@@ -354,17 +355,24 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return std::pow(std::abs(value), kSkyGamma);
     }
 
+    float skyProducerColor(float value)
+    {
+        return std::pow(
+            std::abs(value), kSkyGamma / kSkyProducerGamma);
+    }
+
     Pixel expectedEnabled(std::uint32_t descriptor)
     {
         Pixel expected{};
         const auto scaledProduct = [](float lhs, float rhs) {
-            return sky(lhs) * sky(rhs) * sky(kScale);
+            return sky(lhs) * skyProducerColor(rhs) * kScale;
         };
         const float noise = kNoise * 0.0078125F - 0.001953125F;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             switch (descriptor) {
             case 1:
-                expected[channel] = sky(kVertexColor[channel]) * sky(kScale) + noise;
+                expected[channel] =
+                    skyProducerColor(kVertexColor[channel]) * kScale + noise;
                 break;
             case 2:
                 expected[channel] = sky(kBaseColor[channel]);
@@ -385,7 +393,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         sky(kBaseColor[channel]),
                         sky(kBlendColor[channel]),
                         kBlend) *
-                    sky(kVertexColor[channel]) * sky(kScale);
+                    skyProducerColor(kVertexColor[channel]) * kScale;
                 break;
             case 8:
                 expected[channel] =
