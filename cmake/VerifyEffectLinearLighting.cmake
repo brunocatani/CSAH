@@ -13,6 +13,12 @@ file(READ "${LINEAR_LIGHTING_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${EFFECT_LINEAR_LIGHTING_SHADER_SOURCE}" shaderSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
+string(FIND "${shaderSource}" "LinearLightingPi" found)
+if(NOT found EQUAL -1)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: stale Skyrim PI compensation remains")
+endif()
+
 foreach(required IN ITEMS
     "GeneratedEffectLinearLightingContracts.inl"
     "kEffectShaderContracts"

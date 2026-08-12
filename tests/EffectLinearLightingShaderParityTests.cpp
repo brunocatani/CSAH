@@ -1835,7 +1835,6 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         }
 
         Pixel result = kDirectionalLightColor;
-        constexpr float pi = 3.14159265358979323846F;
         const std::array<const Pixel*, 3> packedColors{
             &kPointLightColorR,
             &kPointLightColorG,
@@ -1852,7 +1851,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     lightColor = std::pow(
                         std::abs(lightColor),
                         enabledSettings->lightGamma) *
-                        pi * enabledSettings->pointLightMultiplier *
+                        enabledSettings->pointLightMultiplier *
                         enabledSettings->effectLightingMultiplier;
                 }
                 result[channel] += attenuation[light] * lightColor;

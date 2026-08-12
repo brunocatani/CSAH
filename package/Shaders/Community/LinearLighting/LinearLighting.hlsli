@@ -47,8 +47,6 @@ cbuffer LinearLightingGeometry : register(b8)
     float3 linearLightingGeometryPad0;
 };
 
-static const float LinearLightingPi = 3.14159265358979323846f;
-
 float LinearLightingSkyrimGammaToLinear(float color)
 {
     return pow(abs(color), 1.6f);
@@ -91,14 +89,14 @@ float3 LinearLightingDirectionalLight(float3 color, bool isLinear)
 {
     return LinearLightingLight(color, isLinear) *
         ((enableLinearLighting != 0u && !isLinear) ?
-            LinearLightingPi * directionalLightMult : 1.0f);
+            directionalLightMult : 1.0f);
 }
 
 float3 LinearLightingPointLight(float3 color, bool isLinear)
 {
     return LinearLightingLight(color, isLinear) *
         ((enableLinearLighting != 0u && !isLinear) ?
-            LinearLightingPi * pointLightMult : 1.0f);
+            pointLightMult : 1.0f);
 }
 
 float3 LinearLightingEmitColor(float3 color)
@@ -192,11 +190,6 @@ float3 LinearLightingIrradianceToGamma(float3 color)
 {
     return enableLinearLighting != 0u ? color :
         LinearLightingLinearToSkyrimGamma(color);
-}
-
-float LinearLightingVanillaNormalization()
-{
-    return enableLinearLighting != 0u ? 1.0f / LinearLightingPi : 1.0f;
 }
 
 #endif

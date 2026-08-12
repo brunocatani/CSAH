@@ -3,7 +3,6 @@
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
 #include <cstdint>
-#include <numbers>
 
 namespace community_shaders::linear_lighting
 {
@@ -53,8 +52,11 @@ namespace community_shaders::linear_lighting
         return {
             .enabled = true,
             .directionalGamma = safe.lightGamma,
-            .directionalMultiplier =
-                std::numbers::pi_v<float> * safe.directionalLightMultiplier,
+            // FO4VR's DFLight shaders consume the produced RGB directly for
+            // diffuse lighting. Their PI literal belongs to the specular
+            // branch; unlike Skyrim's PBR path, there is no reciprocal-PI
+            // normalization for this producer to compensate.
+            .directionalMultiplier = safe.directionalLightMultiplier,
             .ambientGamma = safe.ambientGamma,
             .ambientMultiplier = safe.ambientMultiplier,
         };

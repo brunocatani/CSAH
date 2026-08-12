@@ -46,14 +46,19 @@ foreach(required IN ITEMS
     "LinearLightingDirectionalLight("
     "LinearLightingAmbient("
     "LinearLightingFog(input.fog.xyz)"
-    "LinearLightingFogAlpha(input.fog.w)"
-    "LinearLightingVanillaNormalization()")
+    "LinearLightingFogAlpha(input.fog.w)")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "DistantTree Linear Lighting regression: shader is missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${shaderSource}" "LinearLightingVanillaNormalization" found)
+if(NOT found EQUAL -1)
+  message(FATAL_ERROR
+    "DistantTree Linear Lighting regression: stale reciprocal-PI normalization remains")
+endif()
 
 string(FIND "${shaderSource}" "register(b8)" found)
 if(NOT found EQUAL -1)

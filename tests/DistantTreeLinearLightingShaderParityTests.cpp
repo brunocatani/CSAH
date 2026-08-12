@@ -28,7 +28,6 @@ namespace
     using Pixel = std::array<float, 4>;
 
     constexpr float kTolerance = 8.0e-5F;
-    constexpr float kPi = 3.14159265358979323846F;
     constexpr Pixel kDiffuse{ 0.42F, 0.63F, 0.31F, 0.77F };
     constexpr std::array<float, 3> kDirectional{ 0.7F, 0.5F, 0.3F };
     constexpr Pixel kAmbient{ 0.15F, 0.2F, 0.25F, 0.85F };
@@ -300,8 +299,8 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 kDirectional[channel] / kRuntimeDirectionalScale;
             const float directional =
                 std::pow(std::abs(directionalInput), settings.lightGamma) *
-                kPi * settings.directionalLightMultiplier *
-                kRuntimeDirectionalScale / kPi;
+                settings.directionalLightMultiplier *
+                kRuntimeDirectionalScale;
             const float ambient =
                 std::pow(std::abs(kAmbient[channel]), settings.ambientGamma) *
                 settings.ambientMultiplier;

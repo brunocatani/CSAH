@@ -2,8 +2,6 @@
 
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
-#include <numbers>
-
 namespace community_shaders::linear_lighting
 {
     constexpr float kVanillaPointLightGamma = 2.2f;
@@ -25,8 +23,9 @@ namespace community_shaders::linear_lighting
         return {
             .enabled = true,
             .gamma = safe.lightGamma,
-            .colorMultiplier = std::numbers::pi_v<float> *
-                safe.pointLightMultiplier,
+            // FO4VR's tiled-light compute shaders consume record color at
+            // engine scale and contain no reciprocal-PI normalization.
+            .colorMultiplier = safe.pointLightMultiplier,
         };
     }
 }

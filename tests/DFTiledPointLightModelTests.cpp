@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
-#include <numbers>
 
 namespace
 {
@@ -47,10 +46,8 @@ int main()
     passed &= expect(linear.enabled, "enabled state was lost");
     passed &= expect(near(linear.gamma, 1.8f), "configured gamma was lost");
     passed &= expect(
-        near(
-            linear.colorMultiplier,
-            std::numbers::pi_v<float> * 0.5f),
-        "point-light PI compensation was not applied");
+        near(linear.colorMultiplier, 0.5f),
+        "FO4VR point-light multiplier was not retained at engine scale");
 
     enabled.lightGamma = std::numeric_limits<float>::infinity();
     enabled.pointLightMultiplier = -4.0f;

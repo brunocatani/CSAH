@@ -31,7 +31,7 @@ float4 PSMain(DistantTreePixelInput input) : SV_Target0
     const float3 directional = LinearLightingDirectionalLight(
         distantTreeDirectionalColor.xyz / runtimeDirectionalScale,
         isDirLightLinear != 0u) *
-        runtimeDirectionalScale * LinearLightingVanillaNormalization();
+        runtimeDirectionalScale;
     const float3 ambient = LinearLightingAmbient(
         distantTreeAmbientColor.xyz);
     const float3 surface = LinearLightingDiffuse(sampledDiffuse) *

@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <numbers>
 
 namespace
 {
@@ -82,9 +81,9 @@ int main()
     passed &= expect(
         nearlyEqual(
             enabledState.directionalMultiplier,
-            std::numbers::pi_v<float> * 0.5f) &&
+            0.5f) &&
             nearlyEqual(enabledState.ambientMultiplier, 0.75f),
-        "DFLight producer multipliers were not derived correctly");
+        "FO4VR DFLight producer multipliers were not retained at engine scale");
 
     return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -14,12 +14,12 @@ constexpr DistantTreeShaderContractDefinition kDistantTreeShaderContract{
         },
     },
     {
-        4020,
+        3924,
         {
-            std::byte{ 0x57 }, std::byte{ 0x16 }, std::byte{ 0x04 }, std::byte{ 0x5B },
-            std::byte{ 0x0E }, std::byte{ 0x4A }, std::byte{ 0xFD }, std::byte{ 0x74 },
-            std::byte{ 0xFB }, std::byte{ 0x01 }, std::byte{ 0xA9 }, std::byte{ 0x91 },
-            std::byte{ 0x1F }, std::byte{ 0xB7 }, std::byte{ 0x30 }, std::byte{ 0xD3 },
+            std::byte{ 0x15 }, std::byte{ 0x5B }, std::byte{ 0x95 }, std::byte{ 0x4F },
+            std::byte{ 0xD2 }, std::byte{ 0x3A }, std::byte{ 0x19 }, std::byte{ 0xE2 },
+            std::byte{ 0x7B }, std::byte{ 0xB9 }, std::byte{ 0xF3 }, std::byte{ 0xD5 },
+            std::byte{ 0xC7 }, std::byte{ 0x01 }, std::byte{ 0xB0 }, std::byte{ 0x10 },
         },
     },
 };

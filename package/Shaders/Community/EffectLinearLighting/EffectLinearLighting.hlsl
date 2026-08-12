@@ -238,7 +238,7 @@ float4 EffectPointLightColorToLinear(float4 color)
 {
     return enableLinearLighting != 0u ?
         pow(abs(color), lightGamma) *
-            LinearLightingPi * pointLightMult * effectLightingMult :
+            pointLightMult * effectLightingMult :
         color;
 }
 
