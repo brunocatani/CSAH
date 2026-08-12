@@ -246,6 +246,9 @@ namespace
         const auto mipCount = provider.snapshot().mipCount;
         for (std::uint32_t mip = 0; mip < mipCount; ++mip) {
             require(provider.writableMip(mip) != nullptr, "missing mip UAV");
+            require(
+                provider.writableValidityMip(mip) != nullptr,
+                "missing validity mip UAV");
             for (std::uint32_t face = 0;
                  face < community_shaders::ibl::kEnvironmentCubeFaceCount;
                  ++face) {
@@ -278,12 +281,24 @@ namespace
         require(
             provider.writableTexture() != nullptr,
             "active update did not expose its private texture");
+        require(
+            provider.writableValidityTexture() != nullptr,
+            "active update did not expose private validity");
         markCompleteGeneration(provider);
         require(provider.publishUpdate(), "complete update did not publish");
         auto* firstPublishedView = provider.publishedEnvironment();
+        auto* firstPublishedValidity = provider.publishedValidity();
         auto* firstPublishedTexture = provider.publishedTexture();
+        auto* firstPublishedValidityTexture =
+            provider.publishedValidityTexture();
         require(firstPublishedView != nullptr, "published SRV is null");
+        require(
+            firstPublishedValidity != nullptr,
+            "published validity SRV is null");
         require(firstPublishedTexture != nullptr, "published texture is null");
+        require(
+            firstPublishedValidityTexture != nullptr,
+            "published validity texture is null");
         require(
             provider.snapshot().publishedGeneration == 1,
             "first generation identity changed");
@@ -293,8 +308,11 @@ namespace
             "invalid rebuild unexpectedly succeeded");
         require(
             provider.publishedEnvironment() == firstPublishedView &&
-                provider.publishedTexture() == firstPublishedTexture,
-            "failed rebuild replaced the published chain");
+                provider.publishedValidity() == firstPublishedValidity &&
+                provider.publishedTexture() == firstPublishedTexture &&
+                provider.publishedValidityTexture() ==
+                    firstPublishedValidityTexture,
+            "failed rebuild replaced the published pair");
         require(
             provider.snapshot().state == EnvironmentProviderState::ready,
             "failed rebuild disabled valid resources");
@@ -315,6 +333,9 @@ namespace
         require(
             provider.publishedEnvironment() == firstPublishedView,
             "aborted update replaced the published chain");
+        require(
+            provider.publishedValidity() == firstPublishedValidity,
+            "aborted update replaced published validity");
 
         require(provider.beginUpdate(), "replacement update did not begin");
         markCompleteGeneration(provider);
@@ -322,6 +343,10 @@ namespace
         require(
             provider.publishedTexture() != firstPublishedTexture,
             "double buffer did not swap after complete publication");
+        require(
+            provider.publishedValidityTexture() !=
+                firstPublishedValidityTexture,
+            "validity buffer did not swap with radiance");
         require(
             provider.snapshot().publishedGeneration == 3,
             "aborted generation was not kept private");

@@ -17,6 +17,8 @@ foreach(variable IN ITEMS
     IBL_PROJECTION_SHADER_ASSET
     IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE
     IBL_ENVIRONMENT_UPDATE_SHADER_ASSET
+    IBL_ENVIRONMENT_FILTER_SHADER_SOURCE
+    IBL_ENVIRONMENT_FILTER_SHADER_ASSET
     D3D11_HOOK_SOURCE
     PLUGIN_SOURCE
     RESOURCE_SOURCE)
@@ -41,6 +43,7 @@ file(READ "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}" reflectionFreeCaptureSource)
 file(READ "${IBL_REFLECTION_FREE_CAPTURE_HEADER}" reflectionFreeCaptureHeader)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
+file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}" filterShaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
@@ -70,14 +73,14 @@ endforeach()
 
 foreach(required IN ITEMS
     "class EnvironmentUpdater"
-    "dispatchDiagnostic"
-    "consumeDiagnostic"
+    "dispatchUpdate"
+    "consumeUpdate"
     "ScopedComputeState restore("
     "PSGetShaderResources(7, 1"
     "PSGetConstantBuffers(12, 1"
-    "environmentUpdater_.dispatchDiagnostic"
-    "environmentUpdater_.consumeDiagnostic"
-    "provider.abortUpdate()"
+    "environmentUpdater_.dispatchUpdate"
+    "environmentUpdater_.consumeUpdate"
+    "provider.publishUpdate()"
     "CopySubresourceRegion"
     "D3D11_QUERY_EVENT"
     "D3D11_ASYNC_GETDATA_DONOTFLUSH")
@@ -106,6 +109,7 @@ foreach(required IN ITEMS
     "Texture2D<float3> ReflectionFreeRadiance : register(t0)"
     "Texture2D<float> SceneDepth : register(t1)"
     "RWTexture2DArray<float3> EnvironmentMip : register(u0)"
+    "RWTexture2DArray<float> EnvironmentValidity : register(u1)"
     "EnvironmentUpdateConstants : register(b11)"
     "Fo4VrSceneConstants : register(b12)"
     "63u + eye * 4u"
@@ -120,6 +124,24 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "TextureCube<float3> CapturedRadiance : register(t0)"
+    "TextureCube<float> CapturedValidity : register(t1)"
+    "RWTexture2DArray<float3> FilteredRadiance : register(u0)"
+    "RWTexture2DArray<float> FilteredValidity : register(u1)"
+    "EnvironmentFilterConstants : register(b11)"
+    "SampleCount = 32u"
+    "SampleGgx"
+    "RadicalInverse"
+    "saturate(validWeight / totalWeight)"
+    "numthreads(8, 8, 1)")
+  string(FIND "${filterShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL environment-filter regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
     "class EnvironmentProvider"
     "EnvironmentProviderState"
     "beginUpdate"
@@ -127,6 +149,7 @@ foreach(required IN ITEMS
     "publishUpdate"
     "abortUpdate"
     "publishedEnvironment"
+    "publishedValidity"
     "publishedGeneration")
   string(FIND "${environmentProviderHeader}" "${required}" found)
   if(found EQUAL -1)
@@ -141,6 +164,9 @@ foreach(required IN ITEMS
     "D3D11_BIND_UNORDERED_ACCESS"
     "D3D11_SRV_DIMENSION_TEXTURECUBE"
     "D3D11_UAV_DIMENSION_TEXTURE2DARRAY"
+    "kValidityFormat"
+    "chain.radiance"
+    "chain.validity"
     "ResourceSet candidate"
     "frontChain_ = 1 - frontChain_"
     "coverage_.complete")
@@ -389,10 +415,10 @@ if(NOT foundQualificationCoupling EQUAL -1)
     "IBL world-session regression: capture hooks were recoupled to Linear Lighting qualification")
 endif()
 
-string(FIND "${runtimeHeader}" "observe" foundObserveContract)
-if(foundObserveContract EQUAL -1)
+string(FIND "${runtimeHeader}" "image-neutral" foundImageNeutralContract)
+if(foundImageNeutralContract EQUAL -1)
   message(FATAL_ERROR
-    "IBL foundation regression: header no longer documents observe-only ownership")
+    "IBL foundation regression: header no longer documents image-neutral ownership")
 endif()
 
 string(FIND "${resourceSource}"
@@ -409,6 +435,13 @@ if(foundUpdateResource EQUAL -1)
     "IBL environment-update regression: compute shader is not embedded")
 endif()
 
+string(FIND "${resourceSource}"
+  "IDR_IBL_ENVIRONMENT_FILTER_CS RCDATA" foundFilterResource)
+if(foundFilterResource EQUAL -1)
+  message(FATAL_ERROR
+    "IBL environment-filter regression: compute shader is not embedded")
+endif()
+
 file(READ "${IBL_PROJECTION_SHADER_ASSET}" shaderBytecode HEX)
 string(SUBSTRING "${shaderBytecode}" 0 8 shaderMagic)
 if(NOT shaderMagic STREQUAL "44584243")
@@ -421,4 +454,11 @@ string(SUBSTRING "${updateShaderBytecode}" 0 8 updateShaderMagic)
 if(NOT updateShaderMagic STREQUAL "44584243")
   message(FATAL_ERROR
     "IBL environment-update regression: compute shader asset is not DXBC")
+endif()
+
+file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_ASSET}" filterShaderBytecode HEX)
+string(SUBSTRING "${filterShaderBytecode}" 0 8 filterShaderMagic)
+if(NOT filterShaderMagic STREQUAL "44584243")
+  message(FATAL_ERROR
+    "IBL environment-filter regression: compute shader asset is not DXBC")
 endif()

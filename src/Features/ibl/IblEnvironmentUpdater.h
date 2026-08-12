@@ -12,7 +12,7 @@
 
 namespace community_shaders::ibl
 {
-    enum class EnvironmentDiagnosticConsumeResult : std::uint8_t
+    enum class EnvironmentUpdateConsumeResult : std::uint8_t
     {
         idle,
         pending,
@@ -20,46 +20,52 @@ namespace community_shaders::ibl
         failed,
     };
 
-    struct EnvironmentDiagnosticSummary
+    struct EnvironmentUpdateSummary
     {
         bool initialized{};
         bool pending{};
         std::uint64_t dispatches{};
+        std::uint64_t publishedUpdates{};
         std::uint64_t completedReadbacks{};
         std::uint64_t failedUpdates{};
         std::uint64_t generation{};
         Float3 average{};
         std::array<float, kEnvironmentCubeFaceCount> faceAverageLuminance{};
         float peak{};
+        float averageValidity{};
         std::uint32_t nonBlackSamples{};
+        std::uint32_t coveredSamples{};
         std::uint32_t sampleCount{};
     };
 
-    // Render-thread-only diagnostic updater. One dispatch fills every face
-    // and mip of the provider's private back chain from the exact packed
-    // stereo reflection-free source, stages mip zero for nonblocking
-    // readback, and aborts the provider generation without publication.
+    // Render-thread-only transactional updater. It captures one shared
+    // stereo cube plus directional validity, builds a bounded scene-linear
+    // GGX mip chain in the provider's private back pair, and publishes only
+    // after a nonblocking readback validates the completed generation.
     class EnvironmentUpdater final
     {
     public:
         [[nodiscard]] bool initialize(
             ID3D11Device* device,
-            const void* shaderBytecode,
-            std::size_t shaderBytecodeSize,
+            const void* captureShaderBytecode,
+            std::size_t captureShaderBytecodeSize,
+            const void* filterShaderBytecode,
+            std::size_t filterShaderBytecodeSize,
             std::uint32_t extent) noexcept;
         void reset() noexcept;
 
-        [[nodiscard]] bool dispatchDiagnostic(
+        [[nodiscard]] bool dispatchUpdate(
             ID3D11DeviceContext* context,
             EnvironmentProvider& provider,
             ID3D11ShaderResourceView* reflectionFreeRadiance,
             ID3D11ShaderResourceView* sceneDepth,
             ID3D11Buffer* sceneConstants) noexcept;
 
-        [[nodiscard]] EnvironmentDiagnosticConsumeResult consumeDiagnostic(
-            ID3D11DeviceContext* context) noexcept;
+        [[nodiscard]] EnvironmentUpdateConsumeResult consumeUpdate(
+            ID3D11DeviceContext* context,
+            EnvironmentProvider& provider) noexcept;
 
-        [[nodiscard]] EnvironmentDiagnosticSummary snapshot() const noexcept
+        [[nodiscard]] EnvironmentUpdateSummary snapshot() const noexcept
         {
             return summary_;
         }
@@ -68,10 +74,23 @@ namespace community_shaders::ibl
         struct Resources
         {
             Microsoft::WRL::ComPtr<ID3D11Device> device;
-            Microsoft::WRL::ComPtr<ID3D11ComputeShader> shader;
+            Microsoft::WRL::ComPtr<ID3D11ComputeShader> captureShader;
+            Microsoft::WRL::ComPtr<ID3D11ComputeShader> filterShader;
             Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler;
-            Microsoft::WRL::ComPtr<ID3D11Buffer> updateConstants;
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingMipZero;
+            Microsoft::WRL::ComPtr<ID3D11Buffer> captureConstants;
+            Microsoft::WRL::ComPtr<ID3D11Buffer> filterConstants;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> capturedRadiance;
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+                capturedRadianceView;
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+                capturedRadianceOutput;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> capturedValidity;
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+                capturedValidityView;
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+                capturedValidityOutput;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingRadiance;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingValidity;
             Microsoft::WRL::ComPtr<ID3D11Query> completionEvent;
             std::uint32_t extent{};
         };
@@ -86,6 +105,16 @@ namespace community_shaders::ibl
 
         static_assert(sizeof(UpdateConstants) == 16);
 
+        struct FilterConstants
+        {
+            std::uint32_t targetExtent{};
+            std::uint32_t mipLevel{};
+            std::uint32_t mipCount{};
+            float roughness{};
+        };
+
+        static_assert(sizeof(FilterConstants) == 16);
+
         [[nodiscard]] bool validateInputs(
             ID3D11DeviceContext* context,
             const EnvironmentProvider& provider,
@@ -96,7 +125,6 @@ namespace community_shaders::ibl
         void recordFailure() noexcept;
 
         Resources resources_{};
-        EnvironmentDiagnosticSummary summary_{};
-        std::uint64_t nextGeneration_{ 1 };
+        EnvironmentUpdateSummary summary_{};
     };
 }

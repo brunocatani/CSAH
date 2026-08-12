@@ -39,6 +39,8 @@ namespace community_shaders::ibl
     public:
         static constexpr DXGI_FORMAT kFormat =
             DXGI_FORMAT_R11G11B10_FLOAT;
+        static constexpr DXGI_FORMAT kValidityFormat =
+            DXGI_FORMAT_R32_FLOAT;
 
         [[nodiscard]] bool initialize(
             ID3D11Device* device,
@@ -54,14 +56,22 @@ namespace community_shaders::ibl
 
         [[nodiscard]] ID3D11UnorderedAccessView* writableMip(
             std::uint32_t mipLevel) const noexcept;
+        [[nodiscard]] ID3D11UnorderedAccessView* writableValidityMip(
+            std::uint32_t mipLevel) const noexcept;
         [[nodiscard]] ID3D11Texture2D* writableTexture() const noexcept;
+        [[nodiscard]] ID3D11Texture2D* writableValidityTexture()
+            const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* publishedEnvironment()
             const noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView* publishedValidity()
+            const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedTexture() const noexcept;
+        [[nodiscard]] ID3D11Texture2D* publishedValidityTexture()
+            const noexcept;
         [[nodiscard]] EnvironmentProviderSnapshot snapshot() const noexcept;
 
     private:
-        struct CubeChain
+        struct CubeTexture
         {
             Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource;
@@ -69,6 +79,12 @@ namespace community_shaders::ibl
                 Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>,
                 kEnvironmentMaximumMipCount>
                 mipUnorderedAccess;
+        };
+
+        struct CubeChain
+        {
+            CubeTexture radiance;
+            CubeTexture validity;
         };
 
         struct ResourceSet
@@ -81,6 +97,12 @@ namespace community_shaders::ibl
 
         [[nodiscard]] static bool validExtent(
             std::uint32_t extent) noexcept;
+        [[nodiscard]] static bool createCubeTexture(
+            ID3D11Device* device,
+            std::uint32_t extent,
+            std::uint32_t mipCount,
+            DXGI_FORMAT format,
+            CubeTexture& texture) noexcept;
         [[nodiscard]] static bool createChain(
             ID3D11Device* device,
             std::uint32_t extent,

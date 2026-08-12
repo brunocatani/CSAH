@@ -16,6 +16,7 @@ class VerificationError(RuntimeError):
 SHADERS = (
     ("DiffuseIblProjectionCS.hlsl", "DiffuseIblProjectionCS.dxbc"),
     ("UpdateEnvironmentCS.hlsl", "UpdateEnvironmentCS.dxbc"),
+    ("FilterEnvironmentCS.hlsl", "FilterEnvironmentCS.dxbc"),
 )
 
 

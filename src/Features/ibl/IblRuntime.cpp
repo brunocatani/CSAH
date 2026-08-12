@@ -496,7 +496,7 @@ namespace community_shaders::ibl
         resourcesReady_.store(true, std::memory_order_release);
         const auto environment = environmentProvider_.snapshot();
         logging::info(
-            "IBL projection foundation initialized in observe-only mode; transactional environment provider state={}, extent={}, mips={}, stereo diagnostic updater ready={}, and native lighting remains unchanged.",
+            "IBL projection foundation initialized in image-neutral provider mode; transactional radiance/validity state={}, extent={}, mips={}, filtered updater ready={}, and native material lighting remains unchanged.",
             static_cast<unsigned>(environment.state),
             environment.extent,
             environment.mipCount,
@@ -925,8 +925,6 @@ namespace community_shaders::ibl
         if (scratchDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
             environmentUpdateAttemptedSessionId_ !=
                 activeCaptureProbeSessionId_) {
-            environmentUpdateAttemptedSessionId_ =
-                activeCaptureProbeSessionId_;
             ID3D11ShaderResourceView* depthRaw{};
             context->PSGetShaderResources(7, 1, &depthRaw);
             ComPtr<ID3D11ShaderResourceView> depth;
@@ -935,20 +933,22 @@ namespace community_shaders::ibl
             context->PSGetConstantBuffers(12, 1, &sceneConstantsRaw);
             ComPtr<ID3D11Buffer> sceneConstants;
             sceneConstants.Attach(sceneConstantsRaw);
-            if (environmentUpdater_.dispatchDiagnostic(
+            if (environmentUpdater_.dispatchUpdate(
                     context,
                     environmentProvider_,
                     reflectionFreeCaptureResources_.scratchShaderResource(),
                     depth.Get(),
                     sceneConstants.Get())) {
+                environmentUpdateAttemptedSessionId_ =
+                    activeCaptureProbeSessionId_;
                 const auto update = environmentUpdater_.snapshot();
                 logging::info(
-                    "IBL stereo environment diagnostic generation {} dispatched into all private back-chain faces/mips from exact reflection-free color, t7 depth, and b12 matrices; publication remains null and the image is unchanged.",
+                    "IBL stereo environment generation {} dispatched into the private radiance/validity back pair with bounded scene-linear GGX filtering; publication awaits nonblocking validation and the image remains unchanged.",
                     update.generation);
             } else if (!loggedEnvironmentUpdateFailure_) {
                 loggedEnvironmentUpdateFailure_ = true;
                 logging::warn(
-                    "IBL stereo environment diagnostic rejected its exact capture inputs; the private generation was aborted and native lighting remains unchanged.");
+                    "IBL stereo environment update rejected its exact capture inputs; the private generation was aborted and native lighting remains unchanged.");
             }
         }
     }
@@ -1148,12 +1148,18 @@ namespace community_shaders::ibl
 
         const auto updateEmbedded = loadEmbeddedShader(
             IDR_IBL_ENVIRONMENT_UPDATE_CS);
+        const auto filterEmbedded = loadEmbeddedShader(
+            IDR_IBL_ENVIRONMENT_FILTER_CS);
         if (!updateEmbedded.data || updateEmbedded.size < 20 ||
             std::memcmp(updateEmbedded.data, "DXBC", 4) != 0 ||
+            !filterEmbedded.data || filterEmbedded.size < 20 ||
+            std::memcmp(filterEmbedded.data, "DXBC", 4) != 0 ||
             !environmentUpdater_.initialize(
                 device_.Get(),
                 updateEmbedded.data,
                 updateEmbedded.size,
+                filterEmbedded.data,
+                filterEmbedded.size,
                 128)) {
             return false;
         }
@@ -1215,7 +1221,7 @@ namespace community_shaders::ibl
         }
         if (!environmentProvider_.initialize(device_.Get(), 128)) {
             logging::warn(
-                "IBL transactional environment provider could not allocate its R11G11B10_FLOAT cube chains; capture diagnostics remain available and visual integration remains fail-closed.");
+                "IBL transactional environment provider could not allocate its paired R11G11B10_FLOAT/R32_FLOAT cube chains; capture diagnostics remain available and visual integration remains fail-closed.");
         }
         return true;
     }
@@ -1679,36 +1685,39 @@ namespace community_shaders::ibl
         consumeCompletedReadbacks();
         consumeSceneRadianceProbeReadbacks();
         const auto environmentReadback =
-            environmentUpdater_.consumeDiagnostic(context);
+            environmentUpdater_.consumeUpdate(context, environmentProvider_);
         if (environmentReadback ==
-            EnvironmentDiagnosticConsumeResult::completed) {
-            const auto diagnostic = environmentUpdater_.snapshot();
-            if (diagnostic.generation !=
+            EnvironmentUpdateConsumeResult::completed) {
+            const auto update = environmentUpdater_.snapshot();
+            if (update.generation !=
                 lastLoggedEnvironmentUpdateGeneration_) {
                 lastLoggedEnvironmentUpdateGeneration_ =
-                    diagnostic.generation;
+                    update.generation;
                 logging::info(
-                    "IBL stereo environment diagnostic generation {} completed without publication: avg=({}, {}, {}), peak={}, nonBlack={}/{}, faceLuminance=[{},{},{},{},{},{}]; native lighting remains unchanged.",
-                    diagnostic.generation,
-                    diagnostic.average.x,
-                    diagnostic.average.y,
-                    diagnostic.average.z,
-                    diagnostic.peak,
-                    diagnostic.nonBlackSamples,
-                    diagnostic.sampleCount,
-                    diagnostic.faceAverageLuminance[0],
-                    diagnostic.faceAverageLuminance[1],
-                    diagnostic.faceAverageLuminance[2],
-                    diagnostic.faceAverageLuminance[3],
-                    diagnostic.faceAverageLuminance[4],
-                    diagnostic.faceAverageLuminance[5]);
+                    "IBL stereo environment generation {} atomically published as a radiance/validity pair: avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, faceLuminance=[{},{},{},{},{},{}]; material consumption remains disabled and the image is unchanged.",
+                    update.generation,
+                    update.average.x,
+                    update.average.y,
+                    update.average.z,
+                    update.peak,
+                    update.averageValidity,
+                    update.coveredSamples,
+                    update.sampleCount,
+                    update.nonBlackSamples,
+                    update.sampleCount,
+                    update.faceAverageLuminance[0],
+                    update.faceAverageLuminance[1],
+                    update.faceAverageLuminance[2],
+                    update.faceAverageLuminance[3],
+                    update.faceAverageLuminance[4],
+                    update.faceAverageLuminance[5]);
             }
         } else if (environmentReadback ==
-                EnvironmentDiagnosticConsumeResult::failed &&
+                EnvironmentUpdateConsumeResult::failed &&
             !loggedEnvironmentUpdateFailure_) {
             loggedEnvironmentUpdateFailure_ = true;
             logging::warn(
-                "IBL stereo environment diagnostic readback failed; no environment generation was published and native lighting remains unchanged.");
+                "IBL stereo environment validation failed; the private generation was aborted, the previous pair remains published, and native lighting remains unchanged.");
         }
         if (refreshNativeCubemap()) {
             dispatchProjection();

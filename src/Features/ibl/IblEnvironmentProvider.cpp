@@ -10,18 +10,19 @@ namespace community_shaders::ibl
         return extent >= 16 && extent <= 512 && std::has_single_bit(extent);
     }
 
-    bool EnvironmentProvider::createChain(
+    bool EnvironmentProvider::createCubeTexture(
         ID3D11Device* device,
         std::uint32_t extent,
         std::uint32_t mipCount,
-        CubeChain& chain) noexcept
+        DXGI_FORMAT format,
+        CubeTexture& texture) noexcept
     {
         D3D11_TEXTURE2D_DESC textureDescription{};
         textureDescription.Width = extent;
         textureDescription.Height = extent;
         textureDescription.MipLevels = mipCount;
         textureDescription.ArraySize = kEnvironmentCubeFaceCount;
-        textureDescription.Format = kFormat;
+        textureDescription.Format = format;
         textureDescription.SampleDesc.Count = 1;
         textureDescription.Usage = D3D11_USAGE_DEFAULT;
         textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE |
@@ -30,26 +31,26 @@ namespace community_shaders::ibl
         if (FAILED(device->CreateTexture2D(
                 &textureDescription,
                 nullptr,
-                &chain.texture))) {
+                &texture.texture))) {
             return false;
         }
 
         D3D11_SHADER_RESOURCE_VIEW_DESC shaderResourceDescription{};
-        shaderResourceDescription.Format = kFormat;
+        shaderResourceDescription.Format = format;
         shaderResourceDescription.ViewDimension =
             D3D11_SRV_DIMENSION_TEXTURECUBE;
         shaderResourceDescription.TextureCube.MostDetailedMip = 0;
         shaderResourceDescription.TextureCube.MipLevels = mipCount;
         if (FAILED(device->CreateShaderResourceView(
-                chain.texture.Get(),
+                texture.texture.Get(),
                 &shaderResourceDescription,
-                &chain.shaderResource))) {
+                &texture.shaderResource))) {
             return false;
         }
 
         for (std::uint32_t mipLevel = 0; mipLevel < mipCount; ++mipLevel) {
             D3D11_UNORDERED_ACCESS_VIEW_DESC unorderedAccessDescription{};
-            unorderedAccessDescription.Format = kFormat;
+            unorderedAccessDescription.Format = format;
             unorderedAccessDescription.ViewDimension =
                 D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
             unorderedAccessDescription.Texture2DArray.MipSlice = mipLevel;
@@ -57,13 +58,33 @@ namespace community_shaders::ibl
             unorderedAccessDescription.Texture2DArray.ArraySize =
                 kEnvironmentCubeFaceCount;
             if (FAILED(device->CreateUnorderedAccessView(
-                    chain.texture.Get(),
+                    texture.texture.Get(),
                     &unorderedAccessDescription,
-                    &chain.mipUnorderedAccess[mipLevel]))) {
+                    &texture.mipUnorderedAccess[mipLevel]))) {
                 return false;
             }
         }
         return true;
+    }
+
+    bool EnvironmentProvider::createChain(
+        ID3D11Device* device,
+        std::uint32_t extent,
+        std::uint32_t mipCount,
+        CubeChain& chain) noexcept
+    {
+        return createCubeTexture(
+                   device,
+                   extent,
+                   mipCount,
+                   kFormat,
+                   chain.radiance) &&
+            createCubeTexture(
+                   device,
+                   extent,
+                   mipCount,
+                   kValidityFormat,
+                   chain.validity);
     }
 
     bool EnvironmentProvider::initialize(
@@ -83,13 +104,19 @@ namespace community_shaders::ibl
         }
 
         UINT formatSupport{};
+        UINT validityFormatSupport{};
         constexpr UINT requiredFormatSupport =
             D3D11_FORMAT_SUPPORT_TEXTURE2D |
             D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
             D3D11_FORMAT_SUPPORT_MIP |
             D3D11_FORMAT_SUPPORT_TYPED_UNORDERED_ACCESS_VIEW;
         if (FAILED(device->CheckFormatSupport(kFormat, &formatSupport)) ||
-            (formatSupport & requiredFormatSupport) != requiredFormatSupport) {
+            (formatSupport & requiredFormatSupport) != requiredFormatSupport ||
+            FAILED(device->CheckFormatSupport(
+                kValidityFormat,
+                &validityFormatSupport)) ||
+            (validityFormatSupport & requiredFormatSupport) !=
+                requiredFormatSupport) {
             ++rebuildFailures_;
             if (!resources_.device) {
                 state_ = EnvironmentProviderState::disabledFailed;
@@ -194,7 +221,19 @@ namespace community_shaders::ibl
             return nullptr;
         }
         return resources_.chains[1 - frontChain_]
-            .mipUnorderedAccess[mipLevel]
+            .radiance.mipUnorderedAccess[mipLevel]
+            .Get();
+    }
+
+    ID3D11UnorderedAccessView* EnvironmentProvider::writableValidityMip(
+        std::uint32_t mipLevel) const noexcept
+    {
+        if (state_ != EnvironmentProviderState::updating ||
+            mipLevel >= resources_.mipCount) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_]
+            .validity.mipUnorderedAccess[mipLevel]
             .Get();
     }
 
@@ -203,7 +242,16 @@ namespace community_shaders::ibl
         if (state_ != EnvironmentProviderState::updating) {
             return nullptr;
         }
-        return resources_.chains[1 - frontChain_].texture.Get();
+        return resources_.chains[1 - frontChain_].radiance.texture.Get();
+    }
+
+    ID3D11Texture2D* EnvironmentProvider::writableValidityTexture()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::updating) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_].validity.texture.Get();
     }
 
     ID3D11ShaderResourceView* EnvironmentProvider::publishedEnvironment()
@@ -212,7 +260,16 @@ namespace community_shaders::ibl
         if (publishedGeneration_ == 0) {
             return nullptr;
         }
-        return resources_.chains[frontChain_].shaderResource.Get();
+        return resources_.chains[frontChain_].radiance.shaderResource.Get();
+    }
+
+    ID3D11ShaderResourceView* EnvironmentProvider::publishedValidity()
+        const noexcept
+    {
+        if (publishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[frontChain_].validity.shaderResource.Get();
     }
 
     ID3D11Texture2D* EnvironmentProvider::publishedTexture() const noexcept
@@ -220,7 +277,16 @@ namespace community_shaders::ibl
         if (publishedGeneration_ == 0) {
             return nullptr;
         }
-        return resources_.chains[frontChain_].texture.Get();
+        return resources_.chains[frontChain_].radiance.texture.Get();
+    }
+
+    ID3D11Texture2D* EnvironmentProvider::publishedValidityTexture()
+        const noexcept
+    {
+        if (publishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[frontChain_].validity.texture.Get();
     }
 
     EnvironmentProviderSnapshot EnvironmentProvider::snapshot() const

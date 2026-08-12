@@ -1,11 +1,13 @@
 // Image-neutral FO4VR stereo environment update diagnostic. The shader
 // projects one shared world-space cube into both halves of the exact packed
-// DFComposite radiance/depth pair. It writes only the provider's private back
-// chain; publication and material consumption are separate transactions.
+// DFComposite radiance/depth pair. Radiance and directional validity are
+// written separately so uncovered directions can retain each material's
+// localized vanilla cubemap during later consumption.
 
 Texture2D<float3> ReflectionFreeRadiance : register(t0);
 Texture2D<float> SceneDepth : register(t1);
 RWTexture2DArray<float3> EnvironmentMip : register(u0);
+RWTexture2DArray<float> EnvironmentValidity : register(u1);
 SamplerState LinearClampSampler : register(s0);
 
 cbuffer EnvironmentUpdateConstants : register(b11)
@@ -147,6 +149,11 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
         }
     }
 
-    EnvironmentMip[dispatchId] = totalWeight > 0.0f ?
+    const float validity = saturate(totalWeight);
+    const float3 normalizedRadiance = totalWeight > 0.0f ?
         accumulated / totalWeight : 0.0f;
+    // Store premultiplied radiance so cube filtering across validity edges
+    // cannot darken or amplify the normalized published result.
+    EnvironmentMip[dispatchId] = normalizedRadiance * validity;
+    EnvironmentValidity[dispatchId] = validity;
 }

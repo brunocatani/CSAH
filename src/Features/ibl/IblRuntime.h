@@ -103,9 +103,9 @@ namespace community_shaders::ibl
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
 
-        // Called only at an exact DFLight ambient shader bind. The initial
-        // observe-only stage performs at most one tiny projection every
-        // 250 ms, never waits for the GPU, and does not alter lighting.
+        // Called only at an exact DFLight ambient shader bind. The
+        // image-neutral provider stage performs bounded nonblocking work,
+        // never waits for the GPU, and does not alter material lighting.
         void onDFLightAmbientBind(ID3D11DeviceContext* context) noexcept;
 
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;

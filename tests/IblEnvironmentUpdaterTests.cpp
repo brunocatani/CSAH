@@ -23,7 +23,7 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::EnvironmentDiagnosticConsumeResult;
+    using community_shaders::ibl::EnvironmentUpdateConsumeResult;
     using community_shaders::ibl::EnvironmentProvider;
     using community_shaders::ibl::EnvironmentProviderState;
     using community_shaders::ibl::EnvironmentUpdater;
@@ -213,6 +213,13 @@ namespace
             bytecode.size() >= 20 &&
                 std::memcmp(bytecode.data(), "DXBC", 4) == 0,
             "environment update asset is not DXBC");
+        const auto filterBytecode = readFile(
+            root / "package" / "Shaders" / "Community" / "IBL" /
+            "FilterEnvironmentCS.dxbc");
+        require(
+            filterBytecode.size() >= 20 &&
+                std::memcmp(filterBytecode.data(), "DXBC", 4) == 0,
+            "environment filter asset is not DXBC");
 
         auto d3d = createDevice();
         EnvironmentProvider provider;
@@ -225,6 +232,8 @@ namespace
                 d3d.device.Get(),
                 bytecode.data(),
                 bytecode.size(),
+                filterBytecode.data(),
+                filterBytecode.size(),
                 16),
             "updater initialization failed");
 
@@ -232,48 +241,53 @@ namespace
         const auto depth = createPackedDepth(*d3d.device.Get());
         const auto constants = createSceneConstants(*d3d.device.Get());
         require(
-            updater.dispatchDiagnostic(
+            updater.dispatchUpdate(
                 d3d.context.Get(),
                 provider,
                 radiance.Get(),
                 depth.Get(),
                 constants.Get()),
-            "diagnostic update dispatch failed");
+            "environment update dispatch failed");
         const auto providerAfterDispatch = provider.snapshot();
         require(
-            providerAfterDispatch.state == EnvironmentProviderState::ready,
-            "diagnostic generation was not aborted after staging");
+            providerAfterDispatch.state == EnvironmentProviderState::updating,
+            "private generation was not retained pending validation");
         require(
             providerAfterDispatch.publishedGeneration == 0 &&
-                provider.publishedEnvironment() == nullptr,
-            "diagnostic generation escaped into publication");
+                provider.publishedEnvironment() == nullptr &&
+                provider.publishedValidity() == nullptr,
+            "unvalidated generation escaped into publication");
 
         d3d.context->Flush();
         const auto deadline =
             std::chrono::steady_clock::now() + std::chrono::seconds(5);
-        EnvironmentDiagnosticConsumeResult result{};
+        EnvironmentUpdateConsumeResult result{};
         do {
-            result = updater.consumeDiagnostic(d3d.context.Get());
-            if (result == EnvironmentDiagnosticConsumeResult::pending) {
+            result = updater.consumeUpdate(d3d.context.Get(), provider);
+            if (result == EnvironmentUpdateConsumeResult::pending) {
                 require(
                     std::chrono::steady_clock::now() < deadline,
-                    "timed out waiting for diagnostic readback");
+                    "timed out waiting for environment validation");
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
-        } while (result == EnvironmentDiagnosticConsumeResult::pending);
+        } while (result == EnvironmentUpdateConsumeResult::pending);
         require(
-            result == EnvironmentDiagnosticConsumeResult::completed,
-            "diagnostic readback did not complete");
+            result == EnvironmentUpdateConsumeResult::completed,
+            "environment validation did not complete");
 
         const auto summary = updater.snapshot();
-        require(!summary.pending, "completed diagnostic remained pending");
+        require(!summary.pending, "published update remained pending");
         require(
-            summary.dispatches == 1 && summary.completedReadbacks == 1 &&
+            summary.dispatches == 1 && summary.publishedUpdates == 1 &&
+                summary.completedReadbacks == 1 &&
                 summary.failedUpdates == 0,
-            "diagnostic counters changed");
+            "environment update counters changed");
         require(
             summary.sampleCount == 16 * 16 * 6,
-            "diagnostic did not stage every mip-zero cube face");
+            "update did not stage every mip-zero cube face");
+        require(
+            summary.coveredSamples > 0 && summary.averageValidity > 0.0f,
+            "published pair contained no directional validity");
         require(
             summary.nonBlackSamples > 0,
             "projected cube contained no stereo radiance");
@@ -288,8 +302,14 @@ namespace
             std::abs(summary.average.x - summary.average.z) < 0.01f,
             "left/right packed eyes were not merged symmetrically");
         require(
-            updater.consumeDiagnostic(d3d.context.Get()) ==
-                EnvironmentDiagnosticConsumeResult::idle,
+            provider.snapshot().state == EnvironmentProviderState::ready &&
+                provider.snapshot().publishedGeneration == 1 &&
+                provider.publishedEnvironment() != nullptr &&
+                provider.publishedValidity() != nullptr,
+            "validated radiance/validity pair was not atomically published");
+        require(
+            updater.consumeUpdate(d3d.context.Get(), provider) ==
+                EnvironmentUpdateConsumeResult::idle,
             "completed readback was consumed twice");
     }
 }
