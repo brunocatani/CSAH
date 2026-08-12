@@ -202,12 +202,7 @@ namespace community_shaders::render
         std::atomic_uint32_t deepestStage{};
         std::atomic_uint32_t lastDescriptor{};
         std::atomic_uint32_t lastSourceEmissiveMultiplierBits{};
-        std::atomic_bool directionalEnergySampleClaimed{};
-        std::atomic_bool directionalEnergySampleReady{};
-        DirectionalProducerEnergySample directionalEnergySampleStorage{};
         thread_local std::uint32_t activeDFLightDescriptor{};
-        thread_local bool captureDirectionalEnergySample{};
-        thread_local std::size_t directionalEnergySampleIndex{};
         alignas(16) thread_local linear_lighting::DirectionalAmbientTransform
             scaledAmbientTransform{};
 
@@ -215,49 +210,14 @@ namespace community_shaders::render
         {
         public:
             explicit DFLightDescriptorScope(std::uint32_t descriptor) noexcept :
-                previous_(activeDFLightDescriptor),
-                previousCapture_(captureDirectionalEnergySample),
-                previousSampleIndex_(directionalEnergySampleIndex)
+                previous_(activeDFLightDescriptor)
             {
                 activeDFLightDescriptor = descriptor;
-                captureDirectionalEnergySample = false;
-                directionalEnergySampleIndex = 0;
-                if (linear_lighting::classifyDFLightProducer(descriptor) ==
-                        linear_lighting::DFLightProducerKind::directional &&
-                    !directionalEnergySampleReady.load(
-                        std::memory_order_acquire)) {
-                    auto expected = false;
-                    if (directionalEnergySampleClaimed.compare_exchange_strong(
-                            expected,
-                            true,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed)) {
-                        // Process-lifetime, first-transaction diagnostic only.
-                        // Remove it after the FO4VR producer energy formula is
-                        // selected and verified in the headset.
-                        directionalEnergySampleStorage = {};
-                        directionalEnergySampleStorage.descriptor = descriptor;
-                        captureDirectionalEnergySample = true;
-                    }
-                }
             }
 
             ~DFLightDescriptorScope() noexcept
             {
-                if (captureDirectionalEnergySample) {
-                    if (directionalEnergySampleIndex ==
-                        directionalEnergySampleStorage.source.size()) {
-                        directionalEnergySampleStorage.captured = true;
-                        directionalEnergySampleReady.store(
-                            true, std::memory_order_release);
-                    } else {
-                        directionalEnergySampleClaimed.store(
-                            false, std::memory_order_release);
-                    }
-                }
                 activeDFLightDescriptor = previous_;
-                captureDirectionalEnergySample = previousCapture_;
-                directionalEnergySampleIndex = previousSampleIndex_;
             }
 
             DFLightDescriptorScope(const DFLightDescriptorScope&) = delete;
@@ -266,8 +226,6 @@ namespace community_shaders::render
 
         private:
             std::uint32_t previous_{};
-            bool previousCapture_{};
-            std::size_t previousSampleIndex_{};
         };
 
         void recordStage(GeometrySourceStage stage) noexcept
@@ -580,18 +538,6 @@ namespace community_shaders::render
                 passThrough.fetch_add(1, std::memory_order_relaxed);
                 completed.fetch_add(1, std::memory_order_release);
                 return fallback;
-            }
-            if (captureDirectionalEnergySample &&
-                directionalEnergySampleIndex <
-                    directionalEnergySampleStorage.source.size()) {
-                const auto index = directionalEnergySampleIndex++;
-                directionalEnergySampleStorage.gamma = gamma;
-                directionalEnergySampleStorage.multiplier = multiplier;
-                directionalEnergySampleStorage.vanillaExponent =
-                    vanillaExponent;
-                directionalEnergySampleStorage.source[index] = value;
-                directionalEnergySampleStorage.gammaOutput[index] = converted;
-                directionalEnergySampleStorage.finalOutput[index] = result;
             }
             modified.fetch_add(1, std::memory_order_relaxed);
             completed.fetch_add(1, std::memory_order_release);
@@ -1279,10 +1225,6 @@ namespace community_shaders::render
         const auto geometryOwned = hookInstalled &&
             readPointerCell(geometrySetupCell) ==
                 reinterpret_cast<void*>(&hookGeometrySetup);
-        DirectionalProducerEnergySample energySample{};
-        if (directionalEnergySampleReady.load(std::memory_order_acquire)) {
-            energySample = directionalEnergySampleStorage;
-        }
         return {
             .installed = hookInstalled,
             .vtableCellOwned = techniqueOwned && geometryOwned,
@@ -1339,7 +1281,6 @@ namespace community_shaders::render
                 std::bit_cast<float>(desiredAmbientMultiplierBits.load(
                     std::memory_order_relaxed)) :
                 1.0f,
-            .directionalEnergySample = energySample,
         };
     }
 }

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 namespace community_shaders::linear_lighting
@@ -10,18 +9,6 @@ namespace community_shaders::linear_lighting
 
 namespace community_shaders::render
 {
-    struct DirectionalProducerEnergySample
-    {
-        bool captured{};
-        std::uint32_t descriptor{};
-        float gamma{};
-        float multiplier{ 1.0f };
-        float vanillaExponent{};
-        std::array<float, 3> source{};
-        std::array<float, 3> gammaOutput{};
-        std::array<float, 3> finalOutput{};
-    };
-
     enum class GeometrySourceStage : std::uint32_t
     {
         none = 0,
@@ -59,7 +46,6 @@ namespace community_shaders::render
         float activeDirectionalMultiplier{};
         float activeAmbientGamma{};
         float activeAmbientMultiplier{};
-        DirectionalProducerEnergySample directionalEnergySample{};
     };
 
     // Installs a process-lifetime patch on the verified Fallout4VR.exe 1.2.72

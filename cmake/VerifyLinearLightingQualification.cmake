@@ -76,12 +76,7 @@ foreach(required IN ITEMS
     "MoveFileExW"
     "MOVEFILE_REPLACE_EXISTING"
     "capture.sample.sessionActivated"
-    "{ \"schemaVersion\", 13 }"
-    "producerEnergyDiagnostic"
-    "sourceBeforePow"
-    "outputBeforeMultiplier"
-    "colorAfterGammaBeforeMultiplier"
-    "Linear Lighting producer-energy diagnostic (read-only)"
+    "{ \"schemaVersion\", 14 }"
     "verifiedSkyShaderContracts"
     "matchingSkyShaderContractMask"
     "matchingSkyShadersCreated"
@@ -122,10 +117,12 @@ foreach(required IN ITEMS
     "dFLightProducerCallsitesOwned"
     "ambientTransformPrepared"
     "ambientShaderReplacementBinds"
+    "ambientProducerPreviouslyProven"
     "dFLightAmbientReplacementBinds"
     "matchingDFLightAmbientContractMask"
     "readyDFLightAmbientContractMask"
     "directionalPowModified"
+    "directionalProducerPreviouslyProven"
     "dFLightInvalidPowResults"
     "pointLightDetourOwned"
     "pointLightGammaLoadsOwned"
@@ -147,5 +144,18 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Linear Lighting qualification regression: reporter is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "producerEnergyDiagnostic"
+    "producer-energy diagnostic"
+    "sourceBeforePow"
+    "outputBeforeMultiplier"
+    "colorAfterGammaBeforeMultiplier")
+  string(FIND "${qualificationSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Linear Lighting qualification regression: stale temporary diagnostic '${forbidden}' remains")
   endif()
 endforeach()

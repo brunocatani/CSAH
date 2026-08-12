@@ -110,6 +110,9 @@ int main()
         "missing ambient producer proof did not wait");
     passed &= expect(evaluate(noAmbientProof, true).status == Status::failed,
         "missing ambient producer proof did not fail at timeout");
+    noAmbientProof.ambientProducerPreviouslyProven = true;
+    passed &= expect(evaluate(noAmbientProof, true).status == Status::passed,
+        "retained process-lifetime ambient proof was discarded");
 
     auto noAmbientShaderProof = completeSample();
     noAmbientShaderProof.ambientShaderReplacementBinds = 0;
@@ -122,6 +125,13 @@ int main()
     passed &= expect(
         evaluate(noDirectionalProof, false).status == Status::waiting,
         "missing directional producer proof did not wait");
+    passed &= expect(
+        evaluate(noDirectionalProof, true).status == Status::failed,
+        "missing directional producer proof did not fail at timeout");
+    noDirectionalProof.directionalProducerPreviouslyProven = true;
+    passed &= expect(
+        evaluate(noDirectionalProof, true).status == Status::passed,
+        "retained process-lifetime directional proof was discarded");
 
     auto invalidDFLight = completeSample();
     invalidDFLight.dFLightInvalidPowResults = 1;

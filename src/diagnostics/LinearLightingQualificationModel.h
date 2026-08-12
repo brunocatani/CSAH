@@ -55,6 +55,8 @@ namespace community_shaders::diagnostics::qualification_model
         bool geometryHookOwned{};
         bool pointLightHookOwned{};
         bool dFLightProducerCallsitesOwned{};
+        bool ambientProducerPreviouslyProven{};
+        bool directionalProducerPreviouslyProven{};
         std::uint32_t expectedShaderContracts{};
         std::uint32_t verifiedShaderContracts{};
         linear_lighting::ContractMask matchingShaderContractMask{};
@@ -151,11 +153,13 @@ namespace community_shaders::diagnostics::qualification_model
         if (sample.geometryUpdateRejects > 0) {
             result.reasonMask |= Failure_GeometryUpdateRejected;
         }
-        if (sample.ambientTransformPrepared == 0 ||
-            sample.ambientShaderReplacementBinds == 0) {
+        if (!sample.ambientProducerPreviouslyProven &&
+            (sample.ambientTransformPrepared == 0 ||
+                sample.ambientShaderReplacementBinds == 0)) {
             result.reasonMask |= Failure_NoAmbientProducerProof;
         }
-        if (sample.directionalPowModified == 0) {
+        if (!sample.directionalProducerPreviouslyProven &&
+            sample.directionalPowModified == 0) {
             result.reasonMask |= Failure_NoDirectionalProducerProof;
         }
         if (sample.dFLightInvalidPowResults > 0) {

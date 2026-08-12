@@ -23,9 +23,6 @@ foreach(required IN ITEMS
     "originalPointLightRecord("
     "&scaledColor"
     "hookOwnershipReady"
-    "pointLightEnergySampleClaimed"
-    "pointLightEnergySampleReady.store("
-    ".postGammaColor = {"
     "synchronizeExponentStorage()"
     "kVanillaPointLightGamma"
     "completedCalls.fetch_add(1, std::memory_order_release)")
@@ -41,6 +38,7 @@ foreach(forbidden IN ITEMS
     "kVanillaGammaRva = 0x02C96CE4;\n        *"
     "std::vector"
     "std::mutex"
+    "pointLightEnergySample"
     "pow("
     "powf(")
   string(FIND "${source}" "${forbidden}" found)

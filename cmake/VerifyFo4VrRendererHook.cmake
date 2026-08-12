@@ -45,9 +45,6 @@ foreach(required IN ITEMS
     "directionalAmbientInputScale("
     "scaleDirectionalAmbientTransform("
     "producerOwnershipReady"
-    "directionalEnergySampleClaimed"
-    "directionalEnergySampleReady.store("
-    "directionalEnergySampleStorage.source[index] = value"
     "publishDFLightProducerSettings("
     "completed.fetch_add(1, std::memory_order_release)"
     "isReadableRange"
@@ -71,7 +68,8 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "hookAmbientScalarPow"
-    "kAmbientPowCallsites")
+    "kAmbientPowCallsites"
+    "directionalEnergySample")
   string(FIND "${source}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
