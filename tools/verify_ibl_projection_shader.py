@@ -13,20 +13,19 @@ class VerificationError(RuntimeError):
     pass
 
 
-def compile_shader(root: Path) -> bytes:
-    source = (
-        root
-        / "package"
-        / "Shaders"
-        / "Community"
-        / "IBL"
-        / "DiffuseIblProjectionCS.hlsl"
-    )
+SHADERS = (
+    ("DiffuseIblProjectionCS.hlsl", "DiffuseIblProjectionCS.dxbc"),
+    ("UpdateEnvironmentCS.hlsl", "UpdateEnvironmentCS.dxbc"),
+)
+
+
+def compile_shader(root: Path, source_name: str, asset_name: str) -> bytes:
+    source = root / "package" / "Shaders" / "Community" / "IBL" / source_name
     if not source.is_file():
-        raise VerificationError(f"IBL projection source is missing: {source}")
+        raise VerificationError(f"IBL compute source is missing: {source}")
     fxc = shader_tools.find_fxc(None)
     with tempfile.TemporaryDirectory(prefix="fo4vr_ibl_projection_") as temporary:
-        output = Path(temporary) / "DiffuseIblProjectionCS.dxbc"
+        output = Path(temporary) / asset_name
         completed = subprocess.run(
             [
                 str(fxc),
@@ -48,7 +47,7 @@ def compile_shader(root: Path) -> bytes:
         )
         if completed.returncode != 0:
             details = (completed.stdout + completed.stderr).strip()
-            raise VerificationError(f"fxc failed for IBL projection: {details}")
+            raise VerificationError(f"fxc failed for {source_name}: {details}")
         bytecode = output.read_bytes()
     if len(bytecode) < 20 or bytecode[:4] != b"DXBC":
         raise VerificationError("fxc did not produce a valid DXBC container")
@@ -67,27 +66,22 @@ def main() -> int:
 
     try:
         root = arguments.root.resolve()
-        asset = (
-            root
-            / "package"
-            / "Shaders"
-            / "Community"
-            / "IBL"
-            / "DiffuseIblProjectionCS.dxbc"
-        )
-        generated = compile_shader(root)
-        if arguments.write:
-            asset.parent.mkdir(parents=True, exist_ok=True)
-            asset.write_bytes(generated)
-            print(f"wrote {asset}")
-            return 0
-        if not asset.is_file():
-            raise VerificationError(f"IBL projection asset is missing: {asset}")
-        if asset.read_bytes() != generated:
-            raise VerificationError(
-                "IBL projection DXBC is stale; run this tool with --write"
-            )
-        print("IBL projection DXBC matches its HLSL source")
+        shader_directory = root / "package" / "Shaders" / "Community" / "IBL"
+        for source_name, asset_name in SHADERS:
+            asset = shader_directory / asset_name
+            generated = compile_shader(root, source_name, asset_name)
+            if arguments.write:
+                asset.parent.mkdir(parents=True, exist_ok=True)
+                asset.write_bytes(generated)
+                print(f"wrote {asset}")
+                continue
+            if not asset.is_file():
+                raise VerificationError(f"IBL compute asset is missing: {asset}")
+            if asset.read_bytes() != generated:
+                raise VerificationError(
+                    f"{asset_name} is stale; run this tool with --write"
+                )
+            print(f"{asset_name} matches its HLSL source")
         return 0
     except (OSError, VerificationError, shader_tools.CensusError) as error:
         print(f"FAILED: {error}", file=sys.stderr)

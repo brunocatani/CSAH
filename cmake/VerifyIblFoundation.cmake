@@ -4,6 +4,8 @@ foreach(variable IN ITEMS
     IBL_PROVIDER_MODEL
     IBL_ENVIRONMENT_PROVIDER_SOURCE
     IBL_ENVIRONMENT_PROVIDER_HEADER
+    IBL_ENVIRONMENT_UPDATER_SOURCE
+    IBL_ENVIRONMENT_UPDATER_HEADER
     IBL_COMPUTE_STATE_SCOPE_SOURCE
     IBL_COMPUTE_STATE_SCOPE_HEADER
     IBL_PROJECTION_MODEL
@@ -13,6 +15,8 @@ foreach(variable IN ITEMS
     IBL_REFLECTION_FREE_CAPTURE_HEADER
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
+    IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE
+    IBL_ENVIRONMENT_UPDATE_SHADER_ASSET
     D3D11_HOOK_SOURCE
     PLUGIN_SOURCE
     RESOURCE_SOURCE)
@@ -26,6 +30,8 @@ file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${IBL_PROVIDER_MODEL}" providerModel)
 file(READ "${IBL_ENVIRONMENT_PROVIDER_SOURCE}" environmentProviderSource)
 file(READ "${IBL_ENVIRONMENT_PROVIDER_HEADER}" environmentProviderHeader)
+file(READ "${IBL_ENVIRONMENT_UPDATER_SOURCE}" environmentUpdaterSource)
+file(READ "${IBL_ENVIRONMENT_UPDATER_HEADER}" environmentUpdaterHeader)
 file(READ "${IBL_COMPUTE_STATE_SCOPE_SOURCE}" computeStateScopeSource)
 file(READ "${IBL_COMPUTE_STATE_SCOPE_HEADER}" computeStateScopeHeader)
 file(READ "${IBL_PROJECTION_MODEL}" projectionModel)
@@ -34,6 +40,7 @@ file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
 file(READ "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}" reflectionFreeCaptureSource)
 file(READ "${IBL_REFLECTION_FREE_CAPTURE_HEADER}" reflectionFreeCaptureHeader)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
+file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
@@ -62,6 +69,28 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "class EnvironmentUpdater"
+    "dispatchDiagnostic"
+    "consumeDiagnostic"
+    "ScopedComputeState restore("
+    "PSGetShaderResources(7, 1"
+    "PSGetConstantBuffers(12, 1"
+    "environmentUpdater_.dispatchDiagnostic"
+    "environmentUpdater_.consumeDiagnostic"
+    "provider.abortUpdate()"
+    "CopySubresourceRegion"
+    "D3D11_QUERY_EVENT"
+    "D3D11_ASYNC_GETDATA_DONOTFLUSH")
+  string(FIND
+    "${runtimeSource}${environmentUpdaterSource}${environmentUpdaterHeader}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL environment-update regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
     "class EnvironmentUpdateCoverage"
     "environmentCubeDirection"
     "kEnvironmentCubeFaceCount = 6"
@@ -70,6 +99,23 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL provider-model regression: model is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "Texture2D<float3> ReflectionFreeRadiance : register(t0)"
+    "Texture2D<float> SceneDepth : register(t1)"
+    "RWTexture2DArray<float3> EnvironmentMip : register(u0)"
+    "EnvironmentUpdateConstants : register(b11)"
+    "Fo4VrSceneConstants : register(b12)"
+    "63u + eye * 4u"
+    "float2(0.5f, -0.5f)"
+    "dispatchId.z >= 6u"
+    "numthreads(8, 8, 1)")
+  string(FIND "${updateShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL environment-update shader regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -356,9 +402,23 @@ if(foundResource EQUAL -1)
     "IBL foundation regression: compute shader is not embedded")
 endif()
 
+string(FIND "${resourceSource}"
+  "IDR_IBL_ENVIRONMENT_UPDATE_CS RCDATA" foundUpdateResource)
+if(foundUpdateResource EQUAL -1)
+  message(FATAL_ERROR
+    "IBL environment-update regression: compute shader is not embedded")
+endif()
+
 file(READ "${IBL_PROJECTION_SHADER_ASSET}" shaderBytecode HEX)
 string(SUBSTRING "${shaderBytecode}" 0 8 shaderMagic)
 if(NOT shaderMagic STREQUAL "44584243")
   message(FATAL_ERROR
     "IBL foundation regression: compute shader asset is not DXBC")
+endif()
+
+file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_ASSET}" updateShaderBytecode HEX)
+string(SUBSTRING "${updateShaderBytecode}" 0 8 updateShaderMagic)
+if(NOT updateShaderMagic STREQUAL "44584243")
+  message(FATAL_ERROR
+    "IBL environment-update regression: compute shader asset is not DXBC")
 endif()

@@ -54,6 +54,7 @@ namespace community_shaders::ibl
 
         [[nodiscard]] ID3D11UnorderedAccessView* writableMip(
             std::uint32_t mipLevel) const noexcept;
+        [[nodiscard]] ID3D11Texture2D* writableTexture() const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* publishedEnvironment()
             const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedTexture() const noexcept;

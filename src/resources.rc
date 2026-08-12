@@ -951,3 +951,4 @@ IDR_LINEAR_LIGHTING_WATER_00018010_PS RCDATA "../package/Shaders/Community/Water
 IDR_LINEAR_LIGHTING_WATER_00020204_PS RCDATA "../package/Shaders/Community/WaterLinearLighting/WaterColor_00020204.dxbc"
 IDR_LINEAR_LIGHTING_VLS_COMPOSITE_PS RCDATA "../package/Shaders/Community/VLSCompositeLinearLighting/VLSComposite_ImageSpace098.dxbc"
 IDR_IBL_DIFFUSE_PROJECTION_CS RCDATA "../package/Shaders/Community/IBL/DiffuseIblProjectionCS.dxbc"
+IDR_IBL_ENVIRONMENT_UPDATE_CS RCDATA "../package/Shaders/Community/IBL/UpdateEnvironmentCS.dxbc"

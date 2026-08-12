@@ -496,10 +496,11 @@ namespace community_shaders::ibl
         resourcesReady_.store(true, std::memory_order_release);
         const auto environment = environmentProvider_.snapshot();
         logging::info(
-            "IBL projection foundation initialized in observe-only mode; transactional environment provider state={}, extent={}, mips={}, and native lighting remains unchanged.",
+            "IBL projection foundation initialized in observe-only mode; transactional environment provider state={}, extent={}, mips={}, stereo diagnostic updater ready={}, and native lighting remains unchanged.",
             static_cast<unsigned>(environment.state),
             environment.extent,
-            environment.mipCount);
+            environment.mipCount,
+            environmentUpdater_.snapshot().initialized);
     }
 
     void Runtime::beginWorldCaptureProbeSession() noexcept
@@ -920,6 +921,36 @@ namespace community_shaders::ibl
         logging::info(
             "IBL reflection-free duplicate DFComposite[{:02}] captured with t8/t14 neutralized and exact render-state restoration; the visible draw remains untouched.",
             contractPlusOne);
+
+        if (scratchDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
+            environmentUpdateAttemptedSessionId_ !=
+                activeCaptureProbeSessionId_) {
+            environmentUpdateAttemptedSessionId_ =
+                activeCaptureProbeSessionId_;
+            ID3D11ShaderResourceView* depthRaw{};
+            context->PSGetShaderResources(7, 1, &depthRaw);
+            ComPtr<ID3D11ShaderResourceView> depth;
+            depth.Attach(depthRaw);
+            ID3D11Buffer* sceneConstantsRaw{};
+            context->PSGetConstantBuffers(12, 1, &sceneConstantsRaw);
+            ComPtr<ID3D11Buffer> sceneConstants;
+            sceneConstants.Attach(sceneConstantsRaw);
+            if (environmentUpdater_.dispatchDiagnostic(
+                    context,
+                    environmentProvider_,
+                    reflectionFreeCaptureResources_.scratchShaderResource(),
+                    depth.Get(),
+                    sceneConstants.Get())) {
+                const auto update = environmentUpdater_.snapshot();
+                logging::info(
+                    "IBL stereo environment diagnostic generation {} dispatched into all private back-chain faces/mips from exact reflection-free color, t7 depth, and b12 matrices; publication remains null and the image is unchanged.",
+                    update.generation);
+            } else if (!loggedEnvironmentUpdateFailure_) {
+                loggedEnvironmentUpdateFailure_ = true;
+                logging::warn(
+                    "IBL stereo environment diagnostic rejected its exact capture inputs; the private generation was aborted and native lighting remains unchanged.");
+            }
+        }
     }
 
     void Runtime::onCaptureProbeDrawComplete(
@@ -1112,6 +1143,18 @@ namespace community_shaders::ibl
                 embedded.size,
                 nullptr,
                 &projectionShader_))) {
+            return false;
+        }
+
+        const auto updateEmbedded = loadEmbeddedShader(
+            IDR_IBL_ENVIRONMENT_UPDATE_CS);
+        if (!updateEmbedded.data || updateEmbedded.size < 20 ||
+            std::memcmp(updateEmbedded.data, "DXBC", 4) != 0 ||
+            !environmentUpdater_.initialize(
+                device_.Get(),
+                updateEmbedded.data,
+                updateEmbedded.size,
+                128)) {
             return false;
         }
 
@@ -1635,6 +1678,38 @@ namespace community_shaders::ibl
         cadenceTicks_.fetch_add(1, std::memory_order_relaxed);
         consumeCompletedReadbacks();
         consumeSceneRadianceProbeReadbacks();
+        const auto environmentReadback =
+            environmentUpdater_.consumeDiagnostic(context);
+        if (environmentReadback ==
+            EnvironmentDiagnosticConsumeResult::completed) {
+            const auto diagnostic = environmentUpdater_.snapshot();
+            if (diagnostic.generation !=
+                lastLoggedEnvironmentUpdateGeneration_) {
+                lastLoggedEnvironmentUpdateGeneration_ =
+                    diagnostic.generation;
+                logging::info(
+                    "IBL stereo environment diagnostic generation {} completed without publication: avg=({}, {}, {}), peak={}, nonBlack={}/{}, faceLuminance=[{},{},{},{},{},{}]; native lighting remains unchanged.",
+                    diagnostic.generation,
+                    diagnostic.average.x,
+                    diagnostic.average.y,
+                    diagnostic.average.z,
+                    diagnostic.peak,
+                    diagnostic.nonBlackSamples,
+                    diagnostic.sampleCount,
+                    diagnostic.faceAverageLuminance[0],
+                    diagnostic.faceAverageLuminance[1],
+                    diagnostic.faceAverageLuminance[2],
+                    diagnostic.faceAverageLuminance[3],
+                    diagnostic.faceAverageLuminance[4],
+                    diagnostic.faceAverageLuminance[5]);
+            }
+        } else if (environmentReadback ==
+                EnvironmentDiagnosticConsumeResult::failed &&
+            !loggedEnvironmentUpdateFailure_) {
+            loggedEnvironmentUpdateFailure_ = true;
+            logging::warn(
+                "IBL stereo environment diagnostic readback failed; no environment generation was published and native lighting remains unchanged.");
+        }
         if (refreshNativeCubemap()) {
             dispatchProjection();
         }
@@ -1773,6 +1848,7 @@ namespace community_shaders::ibl
             slot = {};
         }
         environmentProvider_.reset();
+        environmentUpdater_.reset();
         reflectionFreeCaptureResources_.reset();
         projectionUav_.Reset();
         projectionTexture_.Reset();
@@ -1805,7 +1881,10 @@ namespace community_shaders::ibl
             std::memory_order_relaxed);
         activeCaptureProbeSessionId_ = 0;
         activeCaptureProbeEarliestTickMilliseconds_ = 0;
+        environmentUpdateAttemptedSessionId_ = 0;
+        lastLoggedEnvironmentUpdateGeneration_ = 0;
         captureProbeSessionComplete_ = true;
+        loggedEnvironmentUpdateFailure_ = false;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);

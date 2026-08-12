@@ -198,6 +198,14 @@ namespace community_shaders::ibl
             .Get();
     }
 
+    ID3D11Texture2D* EnvironmentProvider::writableTexture() const noexcept
+    {
+        if (state_ != EnvironmentProviderState::updating) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_].texture.Get();
+    }
+
     ID3D11ShaderResourceView* EnvironmentProvider::publishedEnvironment()
         const noexcept
     {

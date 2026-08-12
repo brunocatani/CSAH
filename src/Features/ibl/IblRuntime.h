@@ -2,6 +2,7 @@
 
 #include "Features/ibl/IblCaptureProbeModel.h"
 #include "Features/ibl/IblEnvironmentProvider.h"
+#include "Features/ibl/IblEnvironmentUpdater.h"
 #include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
@@ -191,6 +192,7 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> projectionUav_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
         EnvironmentProvider environmentProvider_;
+        EnvironmentUpdater environmentUpdater_;
         ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
         std::array<ReadbackSlot, 3> readbackRing_{};
         std::array<SceneRadianceReadbackSlot, 2>
@@ -204,6 +206,8 @@ namespace community_shaders::ibl
         std::atomic_uint64_t requestedCaptureProbeEarliestTickMilliseconds_{};
         std::uint64_t activeCaptureProbeSessionId_{};
         std::uint64_t activeCaptureProbeEarliestTickMilliseconds_{};
+        std::uint64_t environmentUpdateAttemptedSessionId_{};
+        std::uint64_t lastLoggedEnvironmentUpdateGeneration_{};
         bool captureProbeSessionComplete_{ true };
         std::uint64_t nextGeneration_{ 1 };
         std::uint64_t lastProcessedGeneration_{};
@@ -215,6 +219,7 @@ namespace community_shaders::ibl
         bool loggedBlackStreak_{};
         bool loggedSourceUnavailable_{};
         bool loggedReadbackFailure_{};
+        bool loggedEnvironmentUpdateFailure_{};
 
         std::atomic_bool resourcesReady_{};
         std::atomic_bool nativeCubemapReady_{};

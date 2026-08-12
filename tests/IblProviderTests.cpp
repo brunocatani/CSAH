@@ -275,6 +275,9 @@ namespace
             "uninitialized front chain was published");
 
         require(provider.beginUpdate(), "first update did not begin");
+        require(
+            provider.writableTexture() != nullptr,
+            "active update did not expose its private texture");
         markCompleteGeneration(provider);
         require(provider.publishUpdate(), "complete update did not publish");
         auto* firstPublishedView = provider.publishedEnvironment();
@@ -306,6 +309,9 @@ namespace
             !provider.publishUpdate(),
             "incomplete update was published");
         provider.abortUpdate();
+        require(
+            provider.writableTexture() == nullptr,
+            "aborted update retained writable texture access");
         require(
             provider.publishedEnvironment() == firstPublishedView,
             "aborted update replaced the published chain");
