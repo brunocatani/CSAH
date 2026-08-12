@@ -534,11 +534,13 @@ namespace community_shaders::linear_lighting
         }
 
         const auto safeSettings = sanitize(settings_);
+        const auto producerState = dFTiledPointLightProducerFrameState();
         const auto frameData = makeFrameData(
             safeSettings,
             true,
             false,
-            1.0f);
+            1.0f,
+            producerState.gamma);
         const GeometryData geometryData{};
         const D3D11_SUBRESOURCE_DATA frameInitial{ &frameData, 0, 0 };
         const D3D11_SUBRESOURCE_DATA geometryInitial{ &geometryData, 0, 0 };
@@ -580,6 +582,7 @@ namespace community_shaders::linear_lighting
         effectReplacementShaders_ = std::move(effectReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
+        publishedLightProducerRevision_ = producerState.revision;
         enabled_.store(settings_.enabled, std::memory_order_release);
         frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
         return true;
@@ -1450,6 +1453,7 @@ namespace community_shaders::linear_lighting
             return ScopedReplacementPixelConstants{};
         }
 
+        synchronizeLightProducerFrameState();
         replacementConstantScopes_.fetch_add(1, std::memory_order_relaxed);
         return ScopedReplacementPixelConstants(
             context,
@@ -1667,13 +1671,28 @@ namespace community_shaders::linear_lighting
         publishFrameData();
     }
 
+    void Runtime::synchronizeLightProducerFrameState() noexcept
+    {
+        const auto producerState = dFTiledPointLightProducerFrameState();
+        if (producerState.revision != publishedLightProducerRevision_) {
+            publishFrameData();
+        }
+    }
+
     void Runtime::publishFrameData() noexcept
     {
         if (!context_ || !frameBuffer_) {
             return;
         }
-        const auto data = makeFrameData(settings_, true, false, 1.0f);
+        const auto producerState = dFTiledPointLightProducerFrameState();
+        const auto data = makeFrameData(
+            settings_,
+            true,
+            false,
+            1.0f,
+            producerState.gamma);
         context_->UpdateSubresource(frameBuffer_.Get(), 0, nullptr, &data, 0, 0);
+        publishedLightProducerRevision_ = producerState.revision;
         frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
     }
 

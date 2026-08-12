@@ -1,6 +1,7 @@
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 
 namespace community_shaders::linear_lighting
@@ -86,7 +87,8 @@ namespace community_shaders::linear_lighting
         const Settings& settings,
         bool runtimeEnabled,
         bool isDirectionalLightLinear,
-        float directionalLightRuntimeMultiplier) noexcept
+        float directionalLightRuntimeMultiplier,
+        float lightProducerGamma) noexcept
     {
         const auto safe = sanitize(settings);
         FrameData data{};
@@ -121,6 +123,8 @@ namespace community_shaders::linear_lighting
         data.projectedEffectMultiplier = 1.0f;
         data.deferredEffectMultiplier = 1.0f;
         data.otherEffectMultiplier = safe.otherEffectMultiplier;
+        data.lightProducerGammaBits = std::bit_cast<std::uint32_t>(
+            sanitizeGamma(lightProducerGamma, 2.2f));
         return data;
     }
 }

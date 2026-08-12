@@ -307,7 +307,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const float surface = diffuse *
                 (kDirectionalAmount * directional + ambient);
             const float fog =
-                std::pow(std::abs(kFog[channel]), settings.fogGamma);
+                std::pow(
+                    std::abs(kFog[channel]),
+                    settings.fogGamma / 2.2F);
             const float fogAlpha =
                 std::pow(std::abs(kFogAmount), settings.fogAlphaGamma);
             result[channel] =

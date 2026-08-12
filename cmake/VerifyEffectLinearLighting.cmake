@@ -27,6 +27,9 @@ foreach(required IN ITEMS
     "matchingEffectShaderContractMask_"
     "ReplacementShaderFamily::effect"
     "effectReplacementBinds_.fetch_add"
+    "synchronizeLightProducerFrameState()"
+    "dFTiledPointLightProducerFrameState()"
+    "publishedLightProducerRevision_"
     "validEffect")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
@@ -51,7 +54,10 @@ endforeach()
 foreach(required IN ITEMS
     "#include \"../LinearLighting/LinearLighting.hlsli\""
     "LinearLightingEffect(baseColor.xyz)"
-    "LinearLightingEffect(EffectPropertyColor.xyz)"
+    "LinearLightingEffectMaterialColor(EffectBaseColor.xyz)"
+    "LinearLightingEffectMaterialColor(baseColor.xyz)"
+    "LinearLightingEffectGeometryColor("
+    "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x)"
     "(EFFECT_TECHNIQUE & 0x1)"
     "(EFFECT_TECHNIQUE & 0x4)"
     "(EFFECT_TECHNIQUE & 0x20)"
@@ -109,6 +115,36 @@ foreach(required IN ITEMS
       "Effect Linear Lighting regression: shader is missing '${required}'")
   endif()
 endforeach()
+
+foreach(forbidden IN ITEMS
+    "LinearLightingEffect(EffectBaseColor.xyz)"
+    "LinearLightingEffect(EffectPropertyColor.xyz)"
+    "pow(abs(EffectPropertyColor.x), 1.0f / 2.2f)")
+  string(FIND "${shaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Effect Linear Lighting regression: stale producer-domain conversion '${forbidden}'")
+  endif()
+endforeach()
+
+string(FIND "${shaderSource}"
+  "float4 EffectPointLightColorToLinear" pointLightColorStart)
+string(FIND "${shaderSource}"
+  "float3 EffectLightingColor" pointLightColorEnd)
+if(pointLightColorStart EQUAL -1 OR pointLightColorEnd EQUAL -1 OR
+   NOT pointLightColorStart LESS pointLightColorEnd)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: point-light conversion boundary is missing")
+endif()
+math(EXPR pointLightColorLength
+  "${pointLightColorEnd} - ${pointLightColorStart}")
+string(SUBSTRING "${shaderSource}" ${pointLightColorStart}
+  ${pointLightColorLength} pointLightColorSource)
+string(FIND "${pointLightColorSource}" "pow(" found)
+if(NOT found EQUAL -1)
+  message(FATAL_ERROR
+    "Effect Linear Lighting regression: producer-decoded point light is decoded again")
+endif()
 
 string(FIND "${shaderSource}" "register(b8)" found)
 if(NOT found EQUAL -1)

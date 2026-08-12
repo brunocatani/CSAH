@@ -237,8 +237,7 @@ void EffectDistortedTextureSamples(
 float4 EffectPointLightColorToLinear(float4 color)
 {
     return enableLinearLighting != 0u ?
-        pow(abs(color), lightGamma) *
-            pointLightMult * effectLightingMult :
+        color * pointLightMult * effectLightingMult :
         color;
 }
 
@@ -419,12 +418,13 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         LinearLightingEffectVertexColor(input.vertexColor);
     baseColor *= vertexColor;
 #endif
-    baseColor.xyz *= LinearLightingEffect(EffectPropertyColor.xyz);
+    baseColor.xyz *= LinearLightingEffectGeometryColor(
+        EffectPropertyColor.xyz);
     baseColor.w *= EffectPropertyColor.w;
 
 #if (EFFECT_TECHNIQUE & 0x00002000) != 0
     float grayscaleColorY =
-        pow(abs(EffectPropertyColor.x), 1.0f / 2.2f) *
+        LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x) *
         membraneGrayscaleScale;
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleColorY *= input.vertexColor.x;
@@ -484,7 +484,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #else
 #if (EFFECT_TECHNIQUE & 0x00006000) != 0
     float4 baseColor = float4(
-        LinearLightingEffect(EffectBaseColor.xyz),
+        LinearLightingEffectMaterialColor(EffectBaseColor.xyz),
         EffectBaseColor.w);
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     baseColor.xyz *= LinearLightingEffectVertexColor(input.vertexColor).xyz;
@@ -585,7 +585,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
 #endif
 #else
     float4 baseColor = EffectBaseColor;
-    baseColor.xyz = LinearLightingEffect(baseColor.xyz);
+    baseColor.xyz = LinearLightingEffectMaterialColor(baseColor.xyz);
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     baseColor *= LinearLightingEffectVertexColor(input.vertexColor);
 #endif
@@ -656,7 +656,7 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         input.eyeIndex);
 #else
     const float3 propertyColor =
-        LinearLightingEffect(EffectPropertyColor.xyz);
+        LinearLightingEffectGeometryColor(EffectPropertyColor.xyz);
 #endif
     float3 lightColor = lerp(
         baseColor.xyz,

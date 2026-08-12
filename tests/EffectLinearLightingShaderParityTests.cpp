@@ -1634,6 +1634,13 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::pow(std::abs(color), settings->effectGamma) :
                 color;
         };
+        const auto effectGeometryColor = [&](float color) {
+            return enabled ?
+                std::pow(
+                    std::abs(color),
+                    settings->effectGamma / settings->lightGamma) :
+                color;
+        };
 
         Pixel membraneNormal = kMembraneNormal;
         const Pixel* membraneViewVector = &kMembraneViewVector;
@@ -1671,7 +1678,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         for (std::size_t channel = 0; channel < 3; ++channel) {
             baseColor[channel] =
                 effectColor(kTextureColor[channel]) *
-                effectColor(kPropertyColor[channel]);
+                effectGeometryColor(kPropertyColor[channel]);
             if (contract.vertexColored()) {
                 baseColor[channel] *= enabled ?
                     effectColor(kVertexColor[channel]) :
@@ -1687,7 +1694,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
 
         if (contract.grayscaleColor()) {
             auto v =
-                std::pow(kPropertyColor[0], 1.0F / 2.2F) *
+                std::pow(
+                    kPropertyColor[0],
+                    1.0F / (enabled ? settings->lightGamma : 2.2F)) *
                 membraneGrayscaleScale;
             if (contract.vertexColored()) {
                 v *= kVertexColor[0];
@@ -1743,7 +1752,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 const auto fogColor = enabled ?
                     std::pow(
                         std::abs(kFogParam[channel]),
-                        settings->fogGamma) :
+                        settings->fogGamma / 2.2F) :
                     kFogParam[channel];
                 result[channel] = baseColor[channel] +
                     fogFactor * (fogColor - baseColor[channel]);
@@ -1848,10 +1857,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             for (std::size_t light = 0; light < attenuation.size(); ++light) {
                 auto lightColor = (*packedColors[channel])[light];
                 if (enabledSettings != nullptr) {
-                    lightColor = std::pow(
-                        std::abs(lightColor),
-                        enabledSettings->lightGamma) *
-                        enabledSettings->pointLightMultiplier *
+                    lightColor *= enabledSettings->pointLightMultiplier *
                         enabledSettings->effectLightingMultiplier;
                 }
                 result[channel] += attenuation[light] * lightColor;
@@ -2070,7 +2076,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             } else {
                 base = std::pow(
                     std::abs(kBaseColor[channel]),
-                    settings.effectGamma);
+                    settings.effectGamma / 2.2F);
                 if (contract.vertexColored()) {
                     base *= std::pow(
                         std::abs(kVertexColor[channel]),
@@ -2093,7 +2099,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 expectedLightingColor(eyeIndex, &settings)[channel] :
                 std::pow(
                     std::abs(kPropertyColor[channel]),
-                    settings.effectGamma);
+                    settings.effectGamma / settings.lightGamma);
             const auto lightColor =
                 (base + kLightingInfluence * (property * base - base)) *
                 settings.otherEffectMultiplier;
@@ -2108,7 +2114,9 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                     1.0F + outputAlpha * (foggedColor - 1.0F);
             } else {
                 const auto fogColor =
-                    std::pow(std::abs(kFogParam[channel]), settings.fogGamma);
+                    std::pow(
+                        std::abs(kFogParam[channel]),
+                        settings.fogGamma / 2.2F);
                 result[channel] = lightColor +
                     fogFactor * (fogColor - lightColor);
             }
@@ -2212,7 +2220,12 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         const FrameData disabledFrame =
             makeFrameData(disabledSettings, true, false, 1.0F);
         const FrameData enabledFrame =
-            makeFrameData(enabledSettings, true, false, 1.0F);
+            makeFrameData(
+                enabledSettings,
+                true,
+                false,
+                1.0F,
+                enabledSettings.lightGamma);
         const auto disabledFrameBuffer =
             createConstantBuffer(device.Get(), disabledFrame);
         const auto enabledFrameBuffer =

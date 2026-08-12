@@ -125,8 +125,8 @@ def compile_candidates(
         source_directory.parent / "LinearLighting" / "LinearLighting.hlsli"
     ).read_text(encoding="utf-8")
     for required in (
-        "kLinearLightingSkyProducerGamma = 2.2f",
-        "skyGamma / kLinearLightingSkyProducerGamma",
+        "kLinearLightingVanillaProducerGamma = 2.2f",
+        "skyGamma / kLinearLightingVanillaProducerGamma",
     ):
         if required not in include_text:
             raise ContractError(

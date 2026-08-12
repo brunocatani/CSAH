@@ -1587,7 +1587,7 @@ namespace community_shaders::render
 
             if (!linear_lighting::installDFTiledPointLightHook()) {
                 logging::warn(
-                    "Verified DFTiled point-light producer hook remains unavailable; point lighting stays vanilla while material Linear Lighting remains active.");
+                    "Verified DFTiled/Effect producer hook remains unavailable; native 2.2 producer gamma is retained and replacement frame constants remain fail-closed.");
             }
 
             linear_lighting::Runtime::get().onDeviceCreated(

@@ -280,6 +280,7 @@ namespace community_shaders::linear_lighting
             ID3D11PixelShader* requested,
             std::size_t contractIndex) noexcept;
         void applyQueuedSettingsForRenderBoundary() noexcept;
+        void synchronizeLightProducerFrameState() noexcept;
         void publishFrameData() noexcept;
 
         using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
@@ -444,6 +445,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t geometryInvalidSourceRejects_{};
         std::atomic_uint32_t firstReplacementContractPlusOne_{};
         std::atomic_uint64_t frameDataUploads_{};
+        std::uint64_t publishedLightProducerRevision_{};
         std::array<std::atomic_bool, kShaderContractCount>
             originalCapacityWarningLogged_{};
         std::array<std::atomic_bool, kSkyShaderContractCount>

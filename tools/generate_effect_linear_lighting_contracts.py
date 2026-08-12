@@ -685,8 +685,10 @@ def compile_candidates(
     required_source = (
         '#include "../LinearLighting/LinearLighting.hlsli"',
         "LinearLightingEffect(baseColor.xyz)",
-        "LinearLightingEffect(EffectBaseColor.xyz)",
-        "LinearLightingEffect(EffectPropertyColor.xyz)",
+        "LinearLightingEffectMaterialColor(EffectBaseColor.xyz)",
+        "LinearLightingEffectMaterialColor(baseColor.xyz)",
+        "LinearLightingEffectGeometryColor(",
+        "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x)",
         "(EFFECT_TECHNIQUE & 0x1)",
         "(EFFECT_TECHNIQUE & 0x00006004)",
         "(EFFECT_TECHNIQUE & 0x20)",
@@ -751,6 +753,24 @@ def compile_candidates(
     for required in required_source:
         if required not in source_text:
             raise ContractError(f"Effect HLSL is missing contract: {required}")
+    forbidden_source = (
+        "LinearLightingEffect(EffectBaseColor.xyz)",
+        "LinearLightingEffect(EffectPropertyColor.xyz)",
+        "pow(abs(EffectPropertyColor.x), 1.0f / 2.2f)",
+    )
+    for forbidden in forbidden_source:
+        if forbidden in source_text:
+            raise ContractError(
+                f"Effect HLSL retains stale producer conversion: {forbidden}"
+            )
+    point_light_start = source_text.index(
+        "float4 EffectPointLightColorToLinear"
+    )
+    point_light_end = source_text.index("float3 EffectLightingColor")
+    if "pow(" in source_text[point_light_start:point_light_end]:
+        raise ContractError(
+            "Effect HLSL decodes producer-space point-light RGB twice"
+        )
     if source_text.index("lightColor *= otherEffectMult;") > source_text.index(
         "float3 blendedColor = lerp(lightColor, fogColor, fogFactor);"
     ):
@@ -832,7 +852,10 @@ def compile_candidates(
         original_declarations = census.parse_declarations(original_assembly)
         candidate_buffers = dict(candidate_declarations.constant_buffers)
         original_buffers = dict(original_declarations.constant_buffers)
-        expected_frame_buffer_size = 6 if descriptor & 0x00000200 else 7
+        # Membrane shaders now consume b5[6].w as the verified native
+        # Effect-property producer exponent; every Effect contract therefore
+        # owns the complete seven-register frame buffer and still no b8.
+        expected_frame_buffer_size = 7
         if candidate_buffers.get(5) != expected_frame_buffer_size:
             raise ContractError(
                 f"{name} does not consume frame-only "

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 
@@ -66,7 +67,8 @@ namespace community_shaders::linear_lighting
         float projectedEffectMultiplier{ 1.0f };
         float deferredEffectMultiplier{ 1.0f };
         float otherEffectMultiplier{ 1.0f };
-        std::uint32_t padding{};
+        std::uint32_t lightProducerGammaBits{
+            std::bit_cast<std::uint32_t>(2.2f) };
     };
 
     struct alignas(16) GeometryData
@@ -84,7 +86,7 @@ namespace community_shaders::linear_lighting
     static_assert(offsetof(FrameData, colorGamma) == 16);
     static_assert(offsetof(FrameData, vanillaDiffuseColorMultiplier) == 60);
     static_assert(offsetof(FrameData, otherEffectMultiplier) == 104);
-    static_assert(offsetof(FrameData, padding) == 108);
+    static_assert(offsetof(FrameData, lightProducerGammaBits) == 108);
 
     [[nodiscard]] Settings sanitize(const Settings& settings) noexcept;
 
@@ -92,5 +94,6 @@ namespace community_shaders::linear_lighting
         const Settings& settings,
         bool runtimeEnabled,
         bool isDirectionalLightLinear,
-        float directionalLightRuntimeMultiplier) noexcept;
+        float directionalLightRuntimeMultiplier,
+        float lightProducerGamma = 2.2f) noexcept;
 }

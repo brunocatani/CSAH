@@ -22,23 +22,64 @@ namespace community_shaders::linear_lighting
 {
     namespace
     {
+        struct ProducerGammaLoadContract
+        {
+            std::uintptr_t rva{};
+            std::size_t instructionBytes{};
+            std::size_t displacementOffset{};
+            std::size_t opcodeBytes{};
+            std::array<std::byte, 5> opcode{};
+        };
+
         // Independently derived from raw Fallout4VR.exe 1.2.72 disassembly.
         // 0x1427EE6C0 converts source light RGB with three powf calls and then
         // calls the sole 64-byte DFTiled record constructor at 0x142889940.
+        // BSEffectShader::SetupGeometry at 0x1428CF8C0 uses the same fixed
+        // exponent for directional lights, point lights, and PropertyColor.
         constexpr std::uintptr_t kPointLightProducerCallsiteRva = 0x027EE9AB;
         constexpr std::uintptr_t kPointLightRecordConstructorRva = 0x02889940;
         constexpr std::uintptr_t kVanillaGammaRva = 0x02C96CE4;
-        constexpr std::array<std::uintptr_t, 3> kPointLightGammaLoadRvas{
-            0x027EE8B6,
-            0x027EE8ED,
-            0x027EE907,
-        };
-        constexpr std::size_t kGammaLoadInstructionBytes = 8;
-        constexpr std::size_t kGammaLoadDisplacementOffset = 4;
-        constexpr std::array<std::byte, 4> kGammaLoadOpcode{
-            std::byte{ 0xF3 }, std::byte{ 0x0F },
-            std::byte{ 0x10 }, std::byte{ 0x0D },
-        };
+        constexpr std::array<ProducerGammaLoadContract, 7>
+            kProducerGammaLoads{ {
+                { 0x027EE8B6, 8, 4, 4,
+                  { std::byte{ 0xF3 }, std::byte{ 0x0F },
+                    std::byte{ 0x10 }, std::byte{ 0x0D } } },
+                { 0x027EE8ED, 8, 4, 4,
+                  { std::byte{ 0xF3 }, std::byte{ 0x0F },
+                    std::byte{ 0x10 }, std::byte{ 0x0D } } },
+                { 0x027EE907, 8, 4, 4,
+                  { std::byte{ 0xF3 }, std::byte{ 0x0F },
+                    std::byte{ 0x10 }, std::byte{ 0x0D } } },
+                { 0x028CFFE7, 9, 5, 5,
+                  { std::byte{ 0xF3 }, std::byte{ 0x44 },
+                    std::byte{ 0x0F }, std::byte{ 0x10 },
+                    std::byte{ 0x3D } } },
+                { 0x028D0062, 8, 4, 4,
+                  { std::byte{ 0xF3 }, std::byte{ 0x0F },
+                    std::byte{ 0x10 }, std::byte{ 0x0D } } },
+                { 0x028D026A, 9, 5, 5,
+                  { std::byte{ 0xF3 }, std::byte{ 0x44 },
+                    std::byte{ 0x0F }, std::byte{ 0x10 },
+                    std::byte{ 0x3D } } },
+                { 0x028D079A, 9, 5, 5,
+                  { std::byte{ 0xF3 }, std::byte{ 0x44 },
+                    std::byte{ 0x0F }, std::byte{ 0x10 },
+                    std::byte{ 0x3D } } },
+            } };
+        constexpr bool validProducerGammaLoadContracts() noexcept
+        {
+            for (const auto& contract : kProducerGammaLoads) {
+                if (contract.instructionBytes == 0 ||
+                    contract.opcodeBytes == 0 ||
+                    contract.opcodeBytes > contract.opcode.size() ||
+                    contract.displacementOffset + sizeof(std::int32_t) >
+                        contract.instructionBytes) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        static_assert(validProducerGammaLoadContracts());
         constexpr std::array<std::byte, 5> kProducerCallsiteSignature{
             std::byte{ 0xE8 }, std::byte{ 0x90 }, std::byte{ 0xAF },
             std::byte{ 0x09 }, std::byte{ 0x00 },
@@ -93,7 +134,7 @@ namespace community_shaders::linear_lighting
         PointLightRecordFunction originalPointLightRecord{};
         std::byte* pointLightRecordTarget{};
         std::atomic<std::uint32_t*> exponentStorage{};
-        std::array<std::int32_t, kPointLightGammaLoadRvas.size()>
+        std::array<std::int32_t, kProducerGammaLoads.size()>
             originalGammaDisplacements{};
         DetourPatchIdentity pointLightRecordPatch{};
         std::atomic_bool installed{};
@@ -108,6 +149,26 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t passThroughCalls{};
         std::atomic_uint64_t invalidColorSources{};
         std::atomic_uint64_t validationFailures{};
+        std::atomic_uint64_t producerFrameRevision{ 1 };
+
+        [[nodiscard]] std::uint32_t effectiveProducerGammaBits() noexcept
+        {
+            const auto active = hookOwnershipReady.load(
+                                    std::memory_order_acquire) &&
+                desiredEnabled.load(std::memory_order_acquire);
+            return active ?
+                desiredGammaBits.load(std::memory_order_relaxed) :
+                std::bit_cast<std::uint32_t>(kVanillaPointLightGamma);
+        }
+
+        void publishProducerFrameRevision(
+            std::uint32_t previousGammaBits) noexcept
+        {
+            if (effectiveProducerGammaBits() != previousGammaBits) {
+                producerFrameRevision.fetch_add(1, std::memory_order_release);
+            }
+        }
+
         [[nodiscard]] bool isReadableRange(
             const void* address,
             std::size_t size) noexcept
@@ -284,14 +345,14 @@ namespace community_shaders::linear_lighting
                 std::numeric_limits<std::uintptr_t>::max() - imageSize) {
                 return nullptr;
             }
-            std::array<std::uintptr_t, kPointLightGammaLoadRvas.size()>
+            std::array<std::uintptr_t, kProducerGammaLoads.size()>
                 nextInstructions{};
             for (std::size_t index = 0;
-                 index < kPointLightGammaLoadRvas.size();
+                 index < kProducerGammaLoads.size();
                  ++index) {
+                const auto& contract = kProducerGammaLoads[index];
                 nextInstructions[index] = imageAddress +
-                    kPointLightGammaLoadRvas[index] +
-                    kGammaLoadInstructionBytes;
+                    contract.rva + contract.instructionBytes;
             }
             auto* result = support::near_allocation::allocateReachablePage(
                 nextInstructions,
@@ -307,9 +368,10 @@ namespace community_shaders::linear_lighting
 
         [[nodiscard]] bool writeDisplacement(
             std::byte* instruction,
+            const ProducerGammaLoadContract& contract,
             std::int32_t displacement) noexcept
         {
-            auto* target = instruction + kGammaLoadDisplacementOffset;
+            auto* target = instruction + contract.displacementOffset;
             DWORD oldProtection{};
             if (!VirtualProtect(
                     target,
@@ -328,17 +390,18 @@ namespace community_shaders::linear_lighting
             FlushInstructionCache(
                 GetCurrentProcess(),
                 instruction,
-                kGammaLoadInstructionBytes);
+                contract.instructionBytes);
             return restored != FALSE;
         }
 
         [[nodiscard]] bool displacementForTarget(
             const std::byte* instruction,
+            const ProducerGammaLoadContract& contract,
             const void* target,
             std::int32_t& displacement) noexcept
         {
             const auto next = reinterpret_cast<std::uintptr_t>(instruction) +
-                kGammaLoadInstructionBytes;
+                contract.instructionBytes;
             const auto destination = reinterpret_cast<std::uintptr_t>(target);
             const auto delta = static_cast<std::int64_t>(destination) -
                 static_cast<std::int64_t>(next);
@@ -355,20 +418,20 @@ namespace community_shaders::linear_lighting
             if (!storage) {
                 return false;
             }
-            for (const auto rva : kPointLightGammaLoadRvas) {
+            for (const auto& contract : kProducerGammaLoads) {
                 auto* instruction = reinterpret_cast<const std::byte*>(
-                    GetModuleHandleW(nullptr)) + rva;
+                    GetModuleHandleW(nullptr)) + contract.rva;
                 if (!isExecutableRange(
                         instruction,
-                        kGammaLoadInstructionBytes) ||
+                        contract.instructionBytes) ||
                     std::memcmp(
                         instruction,
-                        kGammaLoadOpcode.data(),
-                        kGammaLoadOpcode.size()) != 0 ||
+                        contract.opcode.data(),
+                        contract.opcodeBytes) != 0 ||
                     resolveRelativeTarget(
                         instruction,
-                        kGammaLoadDisplacementOffset,
-                        kGammaLoadInstructionBytes) !=
+                        contract.displacementOffset,
+                        contract.instructionBytes) !=
                         reinterpret_cast<const std::byte*>(storage)) {
                     return false;
                 }
@@ -393,18 +456,23 @@ namespace community_shaders::linear_lighting
                 std::memory_order_release);
         }
 
-        void restoreGammaLoads(std::size_t count) noexcept
+        [[nodiscard]] bool restoreGammaLoads(std::size_t count) noexcept
         {
             auto* image = reinterpret_cast<std::byte*>(
                 GetModuleHandleW(nullptr));
+            bool restored = image != nullptr;
             for (std::size_t index = 0;
                  image && index < count &&
-                     index < kPointLightGammaLoadRvas.size();
+                     index < kProducerGammaLoads.size();
                  ++index) {
-                (void)writeDisplacement(
-                    image + kPointLightGammaLoadRvas[index],
-                    originalGammaDisplacements[index]);
+                const auto& contract = kProducerGammaLoads[index];
+                restored = writeDisplacement(
+                               image + contract.rva,
+                               contract,
+                               originalGammaDisplacements[index]) &&
+                    restored;
             }
+            return restored;
         }
 
         [[nodiscard]] bool finiteColor(const Float3& color) noexcept
@@ -509,11 +577,11 @@ namespace community_shaders::linear_lighting
                 "DFTiled point-light hook rejected invalid PE image bounds.");
             return false;
         }
-        for (const auto rva : kPointLightGammaLoadRvas) {
-            if (rva + kGammaLoadInstructionBytes >
+        for (const auto& contract : kProducerGammaLoads) {
+            if (contract.rva + contract.instructionBytes >
                 nt->OptionalHeader.SizeOfImage) {
                 logging::error(
-                    "DFTiled point-light hook rejected a gamma-load image bound.");
+                    "DFTiled/Effect producer hook rejected a gamma-load image bound.");
                 return false;
             }
         }
@@ -553,28 +621,29 @@ namespace community_shaders::linear_lighting
             return false;
         }
         for (std::size_t index = 0;
-             index < kPointLightGammaLoadRvas.size();
+             index < kProducerGammaLoads.size();
              ++index) {
-            auto* instruction = image + kPointLightGammaLoadRvas[index];
+            const auto& contract = kProducerGammaLoads[index];
+            auto* instruction = image + contract.rva;
             if (!isExecutableRange(
                     instruction,
-                    kGammaLoadInstructionBytes) ||
+                    contract.instructionBytes) ||
                 std::memcmp(
                     instruction,
-                    kGammaLoadOpcode.data(),
-                    kGammaLoadOpcode.size()) != 0 ||
+                    contract.opcode.data(),
+                    contract.opcodeBytes) != 0 ||
                 resolveRelativeTarget(
                     instruction,
-                    kGammaLoadDisplacementOffset,
-                    kGammaLoadInstructionBytes) != vanillaGamma) {
+                    contract.displacementOffset,
+                    contract.instructionBytes) != vanillaGamma) {
                 logging::error(
-                    "DFTiled point-light gamma-load identity gate failed at index {}; point lighting remains vanilla.",
+                    "DFTiled/Effect producer gamma-load identity gate failed at index {}; lighting remains vanilla.",
                     index);
                 return false;
             }
             std::memcpy(
                 &originalGammaDisplacements[index],
-                instruction + kGammaLoadDisplacementOffset,
+                instruction + contract.displacementOffset,
                 sizeof(originalGammaDisplacements[index]));
         }
 
@@ -589,30 +658,34 @@ namespace community_shaders::linear_lighting
 
         std::size_t patchedLoads{};
         for (std::size_t index = 0;
-             index < kPointLightGammaLoadRvas.size();
+             index < kProducerGammaLoads.size();
              ++index) {
-            auto* instruction = image + kPointLightGammaLoadRvas[index];
+            const auto& contract = kProducerGammaLoads[index];
+            auto* instruction = image + contract.rva;
             std::int32_t displacement{};
             if (!displacementForTarget(
                     instruction,
+                    contract,
                     storage,
                     displacement)) {
-                restoreGammaLoads(patchedLoads);
-                (void)VirtualFree(storage, 0, MEM_RELEASE);
+                const auto restored = restoreGammaLoads(patchedLoads);
+                if (restored) {
+                    (void)VirtualFree(storage, 0, MEM_RELEASE);
+                }
                 logging::error(
-                    "DFTiled point-light exponent storage was out of RIP-relative range; point lighting remains vanilla.");
+                    "DFTiled/Effect producer exponent storage was out of RIP-relative range; lighting remains vanilla.");
                 return false;
             }
             ++patchedLoads;
-            if (!writeDisplacement(instruction, displacement)) {
+            if (!writeDisplacement(instruction, contract, displacement)) {
                 std::atomic_ref<std::uint32_t>(*storage).store(
                     std::bit_cast<std::uint32_t>(kVanillaPointLightGamma),
                     std::memory_order_release);
-                restoreGammaLoads(patchedLoads);
+                (void)restoreGammaLoads(patchedLoads);
                 // Keep the page resident if protection restoration failed;
                 // an incompletely restored instruction must never dangle.
                 logging::error(
-                    "DFTiled point-light gamma-load patch failed at index {}; point lighting remains vanilla.",
+                    "DFTiled/Effect producer gamma-load patch failed at index {}; lighting remains vanilla.",
                     index);
                 return false;
             }
@@ -627,7 +700,7 @@ namespace community_shaders::linear_lighting
             std::atomic_ref<std::uint32_t>(*storage).store(
                 std::bit_cast<std::uint32_t>(kVanillaPointLightGamma),
                 std::memory_order_release);
-            restoreGammaLoads(patchedLoads);
+            (void)restoreGammaLoads(patchedLoads);
             if (status == MH_OK) {
                 (void)MH_RemoveHook(recordTarget);
             }
@@ -649,7 +722,7 @@ namespace community_shaders::linear_lighting
             std::atomic_ref<std::uint32_t>(*storage).store(
                 std::bit_cast<std::uint32_t>(kVanillaPointLightGamma),
                 std::memory_order_release);
-            restoreGammaLoads(patchedLoads);
+            (void)restoreGammaLoads(patchedLoads);
             logging::error(
                 "DFTiled point-light detour activation/ownership validation failed: {} ({}); point lighting remains vanilla.",
                 MH_StatusToString(status),
@@ -664,22 +737,24 @@ namespace community_shaders::linear_lighting
         synchronizeExponentStorage();
         installed.store(true, std::memory_order_release);
         logging::info(
-            "Installed verified FO4VR DFTiled point-light producer hook (record RVA 0x02889940, gamma loads 3, vanilla exponent 2.2).");
+            "Installed verified FO4VR DFTiled/Effect light producer hook (record RVA 0x02889940, gamma loads 7, vanilla exponent 2.2).");
         return true;
     }
 
     bool validateDFTiledPointLightHook(const char* trigger) noexcept
     {
+        const auto previousGammaBits = effectiveProducerGammaBits();
         const auto hookInstalled = installed.load(std::memory_order_acquire);
         const auto detourOwned = hookInstalled && detourPatchOwned();
         const auto loadsOwned = hookInstalled && gammaLoadsOwned();
         const auto owned = detourOwned && loadsOwned;
         hookOwnershipReady.store(owned, std::memory_order_release);
         synchronizeExponentStorage();
+        publishProducerFrameRevision(previousGammaBits);
         if (!owned && hookInstalled) {
             validationFailures.fetch_add(1, std::memory_order_relaxed);
             logging::error(
-                "DFTiled point-light hook ownership validation failed at '{}' (detourOwned={}, gammaLoadsOwned={}); point-light producer is fail-closed to vanilla gamma.",
+                "DFTiled/Effect producer hook ownership validation failed at '{}' (detourOwned={}, gammaLoadsOwned={}); producer gamma is fail-closed to vanilla 2.2.",
                 trigger ? trigger : "unknown",
                 detourOwned,
                 loadsOwned);
@@ -689,6 +764,7 @@ namespace community_shaders::linear_lighting
 
     void publishDFTiledPointLightSettings(const Settings& settings) noexcept
     {
+        const auto previousGammaBits = effectiveProducerGammaBits();
         const auto state = makeDFTiledPointLightProducerState(settings);
         desiredGammaBits.store(
             std::bit_cast<std::uint32_t>(state.gamma),
@@ -698,6 +774,7 @@ namespace community_shaders::linear_lighting
             std::memory_order_relaxed);
         desiredEnabled.store(state.enabled, std::memory_order_release);
         synchronizeExponentStorage();
+        publishProducerFrameRevision(previousGammaBits);
     }
 
     DFTiledPointLightHookSnapshot dFTiledPointLightHookSnapshot() noexcept
@@ -727,6 +804,30 @@ namespace community_shaders::linear_lighting
                 std::bit_cast<float>(desiredColorMultiplierBits.load(
                     std::memory_order_relaxed)) :
                 1.0f,
+        };
+    }
+
+    DFTiledPointLightProducerFrameState
+    dFTiledPointLightProducerFrameState() noexcept
+    {
+        for (std::size_t attempt = 0; attempt < 2; ++attempt) {
+            const auto revision =
+                producerFrameRevision.load(std::memory_order_acquire);
+            const auto gammaBits = effectiveProducerGammaBits();
+            if (producerFrameRevision.load(std::memory_order_acquire) ==
+                revision) {
+                return {
+                    .revision = revision,
+                    .gamma = std::bit_cast<float>(gammaBits),
+                };
+            }
+        }
+
+        // A concurrent ownership/settings transition is retried on the next
+        // replacement draw. Native 2.2 is the safe producer-domain fallback.
+        return {
+            .revision = 0,
+            .gamma = kVanillaPointLightGamma,
         };
     }
 }

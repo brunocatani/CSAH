@@ -74,6 +74,16 @@ int main()
     require(enabled.enableLinearLighting == 1, "settings and runtime gate enable GPU feature");
     require(enabled.isDirectionalLightLinear == 1, "directional light space flag");
     require(near(enabled.directionalLightRuntimeMultiplier, 2.0f), "runtime directional multiplier");
+    require(
+        near(std::bit_cast<float>(enabled.lightProducerGammaBits), 2.2f),
+        "native producer gamma defaults to 2.2");
+    const auto customProducer =
+        makeFrameData(invalid, true, true, 2.0f, 1.7f);
+    require(
+        near(
+            std::bit_cast<float>(customProducer.lightProducerGammaBits),
+            1.7f),
+        "verified producer gamma is published in the ABI slot");
     require(near(enabled.bloodEffectMultiplier, 1.0f),
         "unsupported Blood ABI slot must remain neutral");
     require(near(enabled.projectedEffectMultiplier, 1.0f),
