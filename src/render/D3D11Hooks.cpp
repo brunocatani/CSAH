@@ -957,8 +957,7 @@ namespace community_shaders::render
         void recordActiveIblCaptureProbe(
             ID3D11DeviceContext* context) noexcept
         {
-            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
-                activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
+            if (activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
                 return;
             }
             ibl::Runtime::get().onCaptureProbeDraw(
@@ -969,8 +968,7 @@ namespace community_shaders::render
         void preserveActiveIblCaptureProbeDraw(
             ID3D11DeviceContext* context) noexcept
         {
-            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
-                activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
+            if (activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
                 return;
             }
             ibl::Runtime::get().onCaptureProbeDrawComplete(
@@ -982,8 +980,7 @@ namespace community_shaders::render
             ID3D11DeviceContext* context,
             ibl::CaptureProbeShaderBinding nextBinding) noexcept
         {
-            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
-                !ibl::shouldCaptureCompletedProbePass(
+            if (!ibl::shouldCaptureCompletedProbePass(
                     activeIblCaptureProbePass,
                     nextBinding)) {
                 return;

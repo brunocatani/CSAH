@@ -27,11 +27,15 @@ int main()
     using namespace community_shaders::ibl;
 
     constexpr auto coordinates = sceneProbeCoordinates(5376, 2880);
-    static_assert(coordinates[0].x == 672 && coordinates[0].y == 720);
-    static_assert(coordinates[1].x == 2016 && coordinates[1].y == 720);
-    static_assert(coordinates[2].x == 3360 && coordinates[2].y == 720);
-    static_assert(coordinates[3].x == 4704 && coordinates[3].y == 720);
-    static_assert(coordinates[4].y == 2160 && coordinates[7].y == 2160);
+    static_assert(kSceneProbeSampleCount == 64);
+    static_assert(coordinates[0].x == 168 && coordinates[0].y == 360);
+    static_assert(coordinates[7].x == 2520 && coordinates[7].y == 360);
+    static_assert(coordinates[8].x == 2856 && coordinates[8].y == 360);
+    static_assert(coordinates[15].x == 5208 && coordinates[15].y == 360);
+    static_assert(coordinates[16].y == 1080);
+    static_assert(coordinates[32].y == 1800);
+    static_assert(coordinates[48].y == 2520);
+    static_assert(coordinates[63].y == 2520);
 
     constexpr auto r11One = 15u << 6;
     constexpr auto g11One = (15u << 6) << 11;
@@ -54,17 +58,19 @@ int main()
     require(near(unorm.blue, 0.0f), "RGBA8 blue decoding");
 
     std::array<SceneProbeRgb, kSceneProbeSampleCount> stereoSamples{};
-    stereoSamples[0] = { 1.0f, 0.0f, 0.0f };
-    stereoSamples[1] = { 1.0f, 0.0f, 0.0f };
-    stereoSamples[2] = { 0.0f, 0.0f, 1.0f };
-    stereoSamples[3] = { 0.0f, 0.0f, 1.0f };
-    stereoSamples[4] = stereoSamples[0];
-    stereoSamples[5] = stereoSamples[1];
-    stereoSamples[6] = stereoSamples[2];
-    stereoSamples[7] = stereoSamples[3];
+    for (std::size_t index = 0; index < stereoSamples.size(); ++index) {
+        const auto column = index % kSceneProbeColumnCount;
+        stereoSamples[index] = column < kSceneProbeColumnCount / 2 ?
+            SceneProbeRgb{ 1.0f, 0.0f, 0.0f } :
+            SceneProbeRgb{ 0.0f, 0.0f, 1.0f };
+    }
     const auto summary = summarizeSceneProbe(stereoSamples);
-    require(summary.validSamples == 8, "all samples are valid");
-    require(summary.nonBlackSamples == 8, "all samples are non-black");
+    require(
+        summary.validSamples == kSceneProbeSampleCount,
+        "all samples are valid");
+    require(
+        summary.nonBlackSamples == kSceneProbeSampleCount,
+        "all samples are non-black");
     require(near(summary.average.red, 0.5f), "combined red average");
     require(near(summary.average.blue, 0.5f), "combined blue average");
     require(near(summary.leftEyeAverage.red, 1.0f), "left-eye partition");

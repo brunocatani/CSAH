@@ -32,15 +32,20 @@ namespace community_shaders::ibl
         constexpr std::uintptr_t kNativeCubemapSrvRva = 0x0623C3C0;
         constexpr UINT kNativeCubemapExtent = 512;
         constexpr std::uint64_t kProjectionCadenceMilliseconds = 250;
+        constexpr std::uint64_t kWorldCaptureProbeSettleMilliseconds = 5000;
         constexpr std::uint32_t kBlackReadbackWarningThreshold = 8;
         constexpr UINT kCaptureShaderResourceCount = 16;
-        // Exact DFComposite FXP identities declare and sample both bindings,
-        // and the live 5376x2880 R11 draw exposes both at output resolution.
-        // Their production meaning remains untrusted until this probe records
+        // Exact DFComposite DXBC samples t5/t6 in the final lighting path and
+        // repeatedly samples t10 in the complex path. Live world evidence
+        // exposes them at the packed-stereo output resolution. Their
+        // production meaning remains untrusted until this probe records
         // non-black stereo radiance; these are evidence sources, not an IBL
         // integration contract.
-        constexpr UINT kSceneRadianceCandidateT5Slot = 5;
-        constexpr UINT kSceneRadianceCandidateT6Slot = 6;
+        constexpr std::array<UINT, 3> kSceneRadianceCandidateSlots{
+            5,
+            6,
+            10,
+        };
         constexpr std::uint32_t kSceneRadianceMaximumReadbackPolls = 80;
         constexpr UINT kCaptureRenderTargetCount =
             D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT;
@@ -559,6 +564,64 @@ namespace community_shaders::ibl
             "IBL projection foundation initialized in observe-only mode; native lighting remains unchanged.");
     }
 
+    void Runtime::beginWorldCaptureProbeSession() noexcept
+    {
+        const auto earliestTick =
+            GetTickCount64() + kWorldCaptureProbeSettleMilliseconds;
+        requestedCaptureProbeEarliestTickMilliseconds_.store(
+            earliestTick,
+            std::memory_order_release);
+        auto sessionId = requestedCaptureProbeSessionId_.fetch_add(
+                             1,
+                             std::memory_order_release) +
+            1;
+        if (sessionId == 0) {
+            sessionId = 1;
+            requestedCaptureProbeSessionId_.store(
+                sessionId,
+                std::memory_order_release);
+        }
+        logging::info(
+            "IBL world-capture diagnostic session {} armed; sampling begins after a {} ms world-settle interval and remains image-neutral.",
+            sessionId,
+            kWorldCaptureProbeSettleMilliseconds);
+    }
+
+    bool Runtime::activateWorldCaptureProbeSession() noexcept
+    {
+        const auto requestedSessionId =
+            requestedCaptureProbeSessionId_.load(std::memory_order_acquire);
+        if (requestedSessionId == 0) {
+            return false;
+        }
+        if (requestedSessionId != activeCaptureProbeSessionId_) {
+            activeCaptureProbeSessionId_ = requestedSessionId;
+            activeCaptureProbeEarliestTickMilliseconds_ =
+                requestedCaptureProbeEarliestTickMilliseconds_.load(
+                    std::memory_order_relaxed);
+            captureProbeSessionComplete_ = false;
+            for (auto& logged : captureProbeLogged_) {
+                logged.store(false, std::memory_order_relaxed);
+            }
+            for (auto& slot : sceneRadianceReadbackSlots_) {
+                slot.sourceWidth = 0;
+                slot.sourceHeight = 0;
+                slot.contractPlusOne = 0;
+                slot.checksumPrefix = 0;
+                slot.pendingPolls = 0;
+                slot.rollingReady = false;
+                slot.rollingPixelShaderCopied.fill(false);
+                slot.pending = false;
+                slot.completed = false;
+                slot.pixelShaderCopied.fill(false);
+                slot.failureLogged = false;
+            }
+            completedCaptureProbes_.store(0, std::memory_order_relaxed);
+        }
+        return !captureProbeSessionComplete_ &&
+            GetTickCount64() >= activeCaptureProbeEarliestTickMilliseconds_;
+    }
+
     void Runtime::onPixelShaderCreated(
         const void* bytecode,
         std::size_t bytecodeSize,
@@ -647,7 +710,9 @@ namespace community_shaders::ibl
         std::uint16_t contractPlusOne) noexcept
     {
         if (!context || context != context_.Get() || contractPlusOne == 0 ||
-            contractPlusOne > kCaptureProbeContracts.size()) {
+            contractPlusOne > kCaptureProbeContracts.size() ||
+            !resourcesReady_.load(std::memory_order_acquire) ||
+            !activateWorldCaptureProbeSession()) {
             return;
         }
         const auto contractIndex =
@@ -801,7 +866,8 @@ namespace community_shaders::ibl
     {
         if (!context || context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
-            !resourcesReady_.load(std::memory_order_acquire)) {
+            !resourcesReady_.load(std::memory_order_acquire) ||
+            !activateWorldCaptureProbeSession()) {
             return;
         }
 
@@ -835,23 +901,15 @@ namespace community_shaders::ibl
                 return slot.format == outputDescription.Format;
             });
         if (readback == sceneRadianceReadbackSlots_.end() ||
-            readback->pending || readback->completed ||
-            !readback->rollingPixelShaderT5Texture ||
-            !readback->rollingPixelShaderT6Texture ||
+            readback->rollingReady || readback->pending ||
+            readback->completed ||
             !readback->rollingCompositeTexture ||
-            !copySceneProbeSamples(
-                context,
-                outputTexture.Get(),
-                readback->rollingCompositeTexture.Get(),
-                outputDescription)) {
+            !std::ranges::all_of(
+                readback->rollingPixelShaderTextures,
+                [](const auto& texture) { return texture != nullptr; })) {
             return;
         }
 
-        std::array<ID3D11ShaderResourceView*, 2> candidateViews{};
-        context->PSGetShaderResources(
-            kSceneRadianceCandidateT5Slot,
-            static_cast<UINT>(candidateViews.size()),
-            candidateViews.data());
         const auto acquireCandidate = [](ID3D11ShaderResourceView* rawView,
                                           ComPtr<ID3D11Texture2D>& texture,
                                           D3D11_TEXTURE2D_DESC& description) {
@@ -866,43 +924,60 @@ namespace community_shaders::ibl
                 texture->GetDesc(&description);
             }
         };
-        ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
-        D3D11_TEXTURE2D_DESC pixelShaderT5Description{};
-        acquireCandidate(
-            candidateViews[0],
-            pixelShaderT5Texture,
-            pixelShaderT5Description);
-        ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
-        D3D11_TEXTURE2D_DESC pixelShaderT6Description{};
-        acquireCandidate(
-            candidateViews[1],
-            pixelShaderT6Texture,
-            pixelShaderT6Description);
+        std::array<ComPtr<ID3D11Texture2D>, kSceneRadianceCandidateCount>
+            candidateTextures{};
+        std::array<D3D11_TEXTURE2D_DESC, kSceneRadianceCandidateCount>
+            candidateDescriptions{};
+        for (std::size_t index = 0;
+             index < kSceneRadianceCandidateSlots.size();
+             ++index) {
+            ID3D11ShaderResourceView* candidateView{};
+            context->PSGetShaderResources(
+                kSceneRadianceCandidateSlots[index],
+                1,
+                &candidateView);
+            acquireCandidate(
+                candidateView,
+                candidateTextures[index],
+                candidateDescriptions[index]);
+        }
 
-        const auto copyCandidate = [context, &outputDescription](
-                                       ID3D11Texture2D* source,
-                                       const D3D11_TEXTURE2D_DESC& description,
-                                       ID3D11Texture2D* destination) {
+        const auto candidateCompatible = [&outputDescription](
+                                             ID3D11Texture2D* source,
+                                             const D3D11_TEXTURE2D_DESC& description) {
             return source &&
                 description.Width == outputDescription.Width &&
                 description.Height == outputDescription.Height &&
                 description.Format == outputDescription.Format &&
                 description.ArraySize == 1 && description.MipLevels > 0 &&
-                description.SampleDesc.Count == 1 &&
+                description.SampleDesc.Count == 1;
+        };
+        constexpr auto t10CandidateIndex = std::size_t{ 2 };
+        if (!candidateCompatible(
+                candidateTextures[t10CandidateIndex].Get(),
+                candidateDescriptions[t10CandidateIndex])) {
+            return;
+        }
+        if (!copySceneProbeSamples(
+                context,
+                outputTexture.Get(),
+                readback->rollingCompositeTexture.Get(),
+                outputDescription)) {
+            return;
+        }
+        for (std::size_t index = 0;
+             index < kSceneRadianceCandidateSlots.size();
+             ++index) {
+            readback->rollingPixelShaderCopied[index] =
+                candidateCompatible(
+                    candidateTextures[index].Get(),
+                    candidateDescriptions[index]) &&
                 copySceneProbeSamples(
                     context,
-                    source,
-                    destination,
-                    description);
-        };
-        readback->rollingPixelShaderT5Copied = copyCandidate(
-            pixelShaderT5Texture.Get(),
-            pixelShaderT5Description,
-            readback->rollingPixelShaderT5Texture.Get());
-        readback->rollingPixelShaderT6Copied = copyCandidate(
-            pixelShaderT6Texture.Get(),
-            pixelShaderT6Description,
-            readback->rollingPixelShaderT6Texture.Get());
+                    candidateTextures[index].Get(),
+                    readback->rollingPixelShaderTextures[index].Get(),
+                    candidateDescriptions[index]);
+        }
 
         const auto contractIndex = static_cast<std::size_t>(
             contractPlusOne - 1);
@@ -924,7 +999,8 @@ namespace community_shaders::ibl
     {
         if (!context || context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
-            !resourcesReady_.load(std::memory_order_acquire)) {
+            !resourcesReady_.load(std::memory_order_acquire) ||
+            !activateWorldCaptureProbeSession()) {
             return;
         }
 
@@ -938,23 +1014,18 @@ namespace community_shaders::ibl
             context->CopyResource(
                 readback.compositeTexture.Get(),
                 readback.rollingCompositeTexture.Get());
-            readback.pixelShaderT5Copied =
-                readback.rollingPixelShaderT5Copied &&
-                readback.rollingPixelShaderT5Texture &&
-                readback.pixelShaderT5Texture;
-            if (readback.pixelShaderT5Copied) {
-                context->CopyResource(
-                    readback.pixelShaderT5Texture.Get(),
-                    readback.rollingPixelShaderT5Texture.Get());
-            }
-            readback.pixelShaderT6Copied =
-                readback.rollingPixelShaderT6Copied &&
-                readback.rollingPixelShaderT6Texture &&
-                readback.pixelShaderT6Texture;
-            if (readback.pixelShaderT6Copied) {
-                context->CopyResource(
-                    readback.pixelShaderT6Texture.Get(),
-                    readback.rollingPixelShaderT6Texture.Get());
+            for (std::size_t index = 0;
+                 index < kSceneRadianceCandidateSlots.size();
+                 ++index) {
+                readback.pixelShaderCopied[index] =
+                    readback.rollingPixelShaderCopied[index] &&
+                    readback.rollingPixelShaderTextures[index] &&
+                    readback.pixelShaderTextures[index];
+                if (readback.pixelShaderCopied[index]) {
+                    context->CopyResource(
+                        readback.pixelShaderTextures[index].Get(),
+                        readback.rollingPixelShaderTextures[index].Get());
+                }
             }
 
             readback.rollingReady = false;
@@ -1050,15 +1121,15 @@ namespace community_shaders::ibl
             description.Format = slot.format;
             description.SampleDesc.Count = 1;
             description.Usage = D3D11_USAGE_DEFAULT;
+            for (auto& texture : slot.rollingPixelShaderTextures) {
+                if (FAILED(device_->CreateTexture2D(
+                        &description,
+                        nullptr,
+                        &texture))) {
+                    return false;
+                }
+            }
             if (FAILED(device_->CreateTexture2D(
-                    &description,
-                    nullptr,
-                    &slot.rollingPixelShaderT5Texture)) ||
-                FAILED(device_->CreateTexture2D(
-                    &description,
-                    nullptr,
-                    &slot.rollingPixelShaderT6Texture)) ||
-                FAILED(device_->CreateTexture2D(
                     &description,
                     nullptr,
                     &slot.rollingCompositeTexture))) {
@@ -1067,15 +1138,15 @@ namespace community_shaders::ibl
 
             description.Usage = D3D11_USAGE_STAGING;
             description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            for (auto& texture : slot.pixelShaderTextures) {
+                if (FAILED(device_->CreateTexture2D(
+                        &description,
+                        nullptr,
+                        &texture))) {
+                    return false;
+                }
+            }
             if (FAILED(device_->CreateTexture2D(
-                    &description,
-                    nullptr,
-                    &slot.pixelShaderT5Texture)) ||
-                FAILED(device_->CreateTexture2D(
-                    &description,
-                    nullptr,
-                    &slot.pixelShaderT6Texture)) ||
-                FAILED(device_->CreateTexture2D(
                     &description,
                     nullptr,
                     &slot.compositeTexture))) {
@@ -1247,30 +1318,34 @@ namespace community_shaders::ibl
                 continue;
             }
 
-            std::array<SceneProbeRgb, kSceneProbeSampleCount> pixelShaderT5{};
-            std::array<SceneProbeRgb, kSceneProbeSampleCount> pixelShaderT6{};
+            std::array<
+                std::array<SceneProbeRgb, kSceneProbeSampleCount>,
+                kSceneRadianceCandidateCount>
+                pixelShaderCandidates{};
             std::array<SceneProbeRgb, kSceneProbeSampleCount> composite{};
-            const auto pixelShaderT5Result = slot.pixelShaderT5Copied ?
-                readSceneProbeSamples(
-                    context_.Get(),
-                    slot.pixelShaderT5Texture.Get(),
-                    slot.format,
-                    pixelShaderT5) :
-                SceneProbeReadResult::ready;
-            const auto pixelShaderT6Result = slot.pixelShaderT6Copied ?
-                readSceneProbeSamples(
-                    context_.Get(),
-                    slot.pixelShaderT6Texture.Get(),
-                    slot.format,
-                    pixelShaderT6) :
-                SceneProbeReadResult::ready;
+            std::array<SceneProbeReadResult, kSceneRadianceCandidateCount>
+                candidateResults{};
+            candidateResults.fill(SceneProbeReadResult::ready);
+            for (std::size_t index = 0;
+                 index < kSceneRadianceCandidateSlots.size();
+                 ++index) {
+                if (slot.pixelShaderCopied[index]) {
+                    candidateResults[index] = readSceneProbeSamples(
+                        context_.Get(),
+                        slot.pixelShaderTextures[index].Get(),
+                        slot.format,
+                        pixelShaderCandidates[index]);
+                }
+            }
             const auto compositeResult = readSceneProbeSamples(
                 context_.Get(),
                 slot.compositeTexture.Get(),
                 slot.format,
                 composite);
-            if (pixelShaderT5Result == SceneProbeReadResult::pending ||
-                pixelShaderT6Result == SceneProbeReadResult::pending ||
+            if (std::ranges::find(
+                    candidateResults,
+                    SceneProbeReadResult::pending) !=
+                    candidateResults.end() ||
                 compositeResult == SceneProbeReadResult::pending) {
                 ++slot.pendingPolls;
                 if (slot.pendingPolls <
@@ -1291,8 +1366,10 @@ namespace community_shaders::ibl
                 }
                 continue;
             }
-            if (pixelShaderT5Result == SceneProbeReadResult::failed ||
-                pixelShaderT6Result == SceneProbeReadResult::failed ||
+            if (std::ranges::find(
+                    candidateResults,
+                    SceneProbeReadResult::failed) !=
+                    candidateResults.end() ||
                 compositeResult == SceneProbeReadResult::failed) {
                 slot.pending = false;
                 slot.completed = true;
@@ -1318,19 +1395,19 @@ namespace community_shaders::ibl
                 slot.sourceHeight,
                 kSceneProbeSampleCount);
             const auto logPixelShaderCandidate = [&composite](
-                                                     const char* name,
+                                                     UINT shaderSlot,
                                                      bool copied,
                                                      const auto& samples) {
                 if (!copied) {
                     logging::info(
-                        "IBL scene-radiance {}: no same-format full-resolution candidate was bound at this boundary.",
-                        name);
+                        "IBL scene-radiance PS-t{}: no same-format full-resolution candidate was bound at this boundary.",
+                        shaderSlot);
                     return;
                 }
                 const auto candidateSummary = summarizeSceneProbe(samples);
                 logging::info(
-                    "IBL scene-radiance {}: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}, meanAbsDeltaToComposite={}.",
-                    name,
+                    "IBL scene-radiance PS-t{}: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}, meanAbsDeltaToComposite={}.",
+                    shaderSlot,
                     candidateSummary.average.red,
                     candidateSummary.average.green,
                     candidateSummary.average.blue,
@@ -1345,14 +1422,14 @@ namespace community_shaders::ibl
                     candidateSummary.validSamples,
                     meanAbsoluteSceneProbeDifference(samples, composite));
             };
-            logPixelShaderCandidate(
-                "PS-t5",
-                slot.pixelShaderT5Copied,
-                pixelShaderT5);
-            logPixelShaderCandidate(
-                "PS-t6",
-                slot.pixelShaderT6Copied,
-                pixelShaderT6);
+            for (std::size_t index = 0;
+                 index < kSceneRadianceCandidateSlots.size();
+                 ++index) {
+                logPixelShaderCandidate(
+                    kSceneRadianceCandidateSlots[index],
+                    slot.pixelShaderCopied[index],
+                    pixelShaderCandidates[index]);
+            }
             logging::info(
                 "IBL scene-radiance OM-composite: avg=({}, {}, {}), left=({}, {}, {}), right=({}, {}, {}), peak={}, nonBlack={}/{}.",
                 compositeSummary.average.red,
@@ -1373,6 +1450,11 @@ namespace community_shaders::ibl
             sceneRadianceProbeReadbacks_.fetch_add(
                 1,
                 std::memory_order_relaxed);
+        }
+        if (std::ranges::all_of(
+                sceneRadianceReadbackSlots_,
+                [](const auto& slot) { return slot.completed; })) {
+            captureProbeSessionComplete_ = true;
         }
     }
 
@@ -1585,6 +1667,13 @@ namespace community_shaders::ibl
         sceneRadianceProbeCaptures_.store(0, std::memory_order_relaxed);
         sceneRadianceProbeReadbacks_.store(0, std::memory_order_relaxed);
         sceneRadianceProbeFailures_.store(0, std::memory_order_relaxed);
+        requestedCaptureProbeSessionId_.store(0, std::memory_order_relaxed);
+        requestedCaptureProbeEarliestTickMilliseconds_.store(
+            0,
+            std::memory_order_relaxed);
+        activeCaptureProbeSessionId_ = 0;
+        activeCaptureProbeEarliestTickMilliseconds_ = 0;
+        captureProbeSessionComplete_ = true;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);

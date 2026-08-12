@@ -9,7 +9,10 @@
 
 namespace community_shaders::ibl
 {
-    constexpr std::size_t kSceneProbeSampleCount = 8;
+    constexpr std::size_t kSceneProbeColumnCount = 16;
+    constexpr std::size_t kSceneProbeRowCount = 4;
+    constexpr std::size_t kSceneProbeSampleCount =
+        kSceneProbeColumnCount * kSceneProbeRowCount;
 
     struct SceneProbeCoordinate
     {
@@ -42,23 +45,21 @@ namespace community_shaders::ibl
         std::uint32_t height) noexcept
     {
         std::array<SceneProbeCoordinate, kSceneProbeSampleCount> result{};
-        if (width < 4 || height < 2) {
+        if (width == 0 || height == 0) {
             return result;
         }
 
-        const std::array<std::uint32_t, 4> xCoordinates{
-            width / 8,
-            (width * 3) / 8,
-            (width * 5) / 8,
-            (width * 7) / 8,
-        };
-        const std::array<std::uint32_t, 2> yCoordinates{
-            height / 4,
-            (height * 3) / 4,
-        };
         std::size_t index{};
-        for (const auto y : yCoordinates) {
-            for (const auto x : xCoordinates) {
+        for (std::size_t row = 0; row < kSceneProbeRowCount; ++row) {
+            const auto y = static_cast<std::uint32_t>(
+                ((2ull * row + 1ull) * height) /
+                (2ull * kSceneProbeRowCount));
+            for (std::size_t column = 0;
+                 column < kSceneProbeColumnCount;
+                 ++column) {
+                const auto x = static_cast<std::uint32_t>(
+                    ((2ull * column + 1ull) * width) /
+                    (2ull * kSceneProbeColumnCount));
                 result[index++] = {
                     std::min(x, width - 1),
                     std::min(y, height - 1),
@@ -145,7 +146,9 @@ namespace community_shaders::ibl
                 ++result.nonBlackSamples;
             }
 
-            const auto leftEye = (index % 4) < 2;
+            const auto leftEye =
+                (index % kSceneProbeColumnCount) <
+                (kSceneProbeColumnCount / 2);
             auto& eyeAverage = leftEye ?
                 result.leftEyeAverage :
                 result.rightEyeAverage;

@@ -7,6 +7,7 @@ foreach(variable IN ITEMS
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
     D3D11_HOOK_SOURCE
+    PLUGIN_SOURCE
     RESOURCE_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
     message(FATAL_ERROR "${variable} is missing")
@@ -20,6 +21,7 @@ file(READ "${IBL_CAPTURE_PROBE_MODEL}" captureProbeModel)
 file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
+file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
 foreach(required IN ITEMS
@@ -49,8 +51,10 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kSceneRadianceCandidateT5Slot = 5"
-    "kSceneRadianceCandidateT6Slot = 6"
+    "kWorldCaptureProbeSettleMilliseconds = 5000"
+    "kSceneRadianceCandidateSlots"
+    "t10CandidateIndex"
+    "activateWorldCaptureProbeSession"
     "kSceneRadianceMaximumReadbackPolls = 80"
     "CopySubresourceRegion"
     "createSceneRadianceProbeResources"
@@ -60,8 +64,7 @@ foreach(required IN ITEMS
     "rollingReady"
     "onCaptureProbeDrawComplete"
     "IBL scene-radiance pass-end final-draw snapshot DFComposite"
-    "\"PS-t5\""
-    "\"PS-t6\""
+    "IBL scene-radiance PS-t{}"
     "IBL scene-radiance OM-composite:"
     "onCaptureProbePassComplete")
   string(FIND "${runtimeSource}" "${required}" found)
@@ -97,7 +100,8 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kSceneProbeSampleCount = 8"
+    "kSceneProbeColumnCount = 16"
+    "kSceneProbeRowCount = 4"
     "sceneProbeCoordinates"
     "decodeR11G11B10Float"
     "decodeR8G8B8A8Unorm"
@@ -113,13 +117,23 @@ endforeach()
 foreach(forbidden IN ITEMS
     "GetRendererData"
     "cubemapRenderTargets"
-    "kSceneRadianceCandidateSlot"
-    "PS-t10"
     "RE::")
   string(FIND "${runtimeSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
       "IBL foundation regression: runtime contains forbidden flat-layout access '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "kSceneRadianceCandidateT5Slot"
+    "kSceneRadianceCandidateT6Slot"
+    "rollingPixelShaderT5Texture"
+    "rollingPixelShaderT6Texture")
+  string(FIND "${runtimeSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL scene-radiance regression: obsolete sparse-probe path '${forbidden}' returned")
   endif()
 endforeach()
 
@@ -132,6 +146,16 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL foundation regression: projection model is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "#include \"Features/ibl/IblRuntime.h\""
+    "beginWorldCaptureProbeSession")
+  string(FIND "${pluginSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL world-session regression: plugin source is missing '${required}'")
   endif()
 endforeach()
 
@@ -174,7 +198,8 @@ foreach(required IN ITEMS
     "completeIblCaptureProbePass"
     "ibl::shouldCaptureCompletedProbePass"
     "ibl::advanceCaptureProbePass"
-    "qualificationSessionActive.load"
+    "if (activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0)"
+    "if (!ibl::shouldCaptureCompletedProbePass("
     "ReplacementShaderFamily::dFLightAmbient"
     "ibl::Runtime::get().onDFLightAmbientBind")
   string(FIND "${hookSource}" "${required}" found)
@@ -183,6 +208,14 @@ foreach(required IN ITEMS
       "IBL foundation regression: D3D hook is missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${hookSource}"
+  "qualificationSessionActive.load(std::memory_order_acquire) ||\n                activeIblCaptureProbePass"
+  foundQualificationCoupling)
+if(NOT foundQualificationCoupling EQUAL -1)
+  message(FATAL_ERROR
+    "IBL world-session regression: capture hooks were recoupled to Linear Lighting qualification")
+endif()
 
 string(FIND "${runtimeHeader}" "observe" foundObserveContract)
 if(foundObserveContract EQUAL -1)

@@ -47,6 +47,12 @@ namespace community_shaders::ibl
             ID3D11Device* device,
             ID3D11DeviceContext* immediateContext) noexcept;
 
+        // May be called from the game-message thread. The render thread
+        // consumes the request and waits for the world to settle before any
+        // diagnostic capture. This lifetime is deliberately independent of
+        // the Linear Lighting qualification window.
+        void beginWorldCaptureProbeSession() noexcept;
+
         // Creation-time identity registration is bounded and retains only
         // exact local-FXP matches. Draw-time lookup is allocation-free.
         void onPixelShaderCreated(
@@ -57,19 +63,19 @@ namespace community_shaders::ibl
         [[nodiscard]] CaptureProbeShaderBinding captureProbeBindingForShader(
             ID3D11PixelShader* shader) const noexcept;
 
-        // Called only inside the existing PostLoadGame/NewGame qualification
-        // window. It reads current D3D11 bindings once per exact contract,
-        // changes no state, and distinguishes world evidence from menu draws.
-        // This Batch-0 staging readback is removed when its selected source
-        // is replaced by the production capture/update provider.
+        // Called for an exact qualified DFComposite draw. The runtime's
+        // delayed world-session gate decides whether to inspect it. It reads
+        // current D3D11 bindings once per exact contract and changes no state.
+        // This staging readback is removed when its selected source is
+        // replaced by the production capture/update provider.
         void onCaptureProbeDraw(
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
 
         // Called immediately after a qualified DFComposite draw while its
-        // render target and inputs remain bound. It preserves only eight GPU
-        // pixels per supported format; CPU readback waits for the family
-        // boundary and never stalls the draw hook.
+        // render target and inputs remain bound. It preserves one bounded
+        // stereo sample grid per supported format; CPU readback waits for the
+        // family boundary and never stalls the draw hook.
         void onCaptureProbeDrawComplete(
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
@@ -107,16 +113,20 @@ namespace community_shaders::ibl
             std::atomic<std::uint16_t> contractPlusOne{};
         };
 
+        static constexpr std::size_t kSceneRadianceCandidateCount = 3;
+
         struct SceneRadianceReadbackSlot
         {
-            Microsoft::WRL::ComPtr<ID3D11Texture2D>
-                rollingPixelShaderT5Texture;
-            Microsoft::WRL::ComPtr<ID3D11Texture2D>
-                rollingPixelShaderT6Texture;
+            std::array<
+                Microsoft::WRL::ComPtr<ID3D11Texture2D>,
+                kSceneRadianceCandidateCount>
+                rollingPixelShaderTextures;
             Microsoft::WRL::ComPtr<ID3D11Texture2D>
                 rollingCompositeTexture;
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
+            std::array<
+                Microsoft::WRL::ComPtr<ID3D11Texture2D>,
+                kSceneRadianceCandidateCount>
+                pixelShaderTextures;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> compositeTexture;
             DXGI_FORMAT format{ DXGI_FORMAT_UNKNOWN };
             UINT sourceWidth{};
@@ -125,12 +135,12 @@ namespace community_shaders::ibl
             std::uint32_t checksumPrefix{};
             std::uint32_t pendingPolls{};
             bool rollingReady{};
-            bool rollingPixelShaderT5Copied{};
-            bool rollingPixelShaderT6Copied{};
+            std::array<bool, kSceneRadianceCandidateCount>
+                rollingPixelShaderCopied{};
             bool pending{};
             bool completed{};
-            bool pixelShaderT5Copied{};
-            bool pixelShaderT6Copied{};
+            std::array<bool, kSceneRadianceCandidateCount>
+                pixelShaderCopied{};
             bool failureLogged{};
         };
 
@@ -147,6 +157,7 @@ namespace community_shaders::ibl
         void publishUnavailable(
             std::uint64_t generation,
             std::uint64_t tickMilliseconds) noexcept;
+        [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
         void resetCaptureProbes() noexcept;
         void resetResources() noexcept;
 
@@ -165,6 +176,11 @@ namespace community_shaders::ibl
             captureShaderSlots_{};
         std::array<std::atomic_bool, kCaptureProbeContracts.size()>
             captureProbeLogged_{};
+        std::atomic_uint64_t requestedCaptureProbeSessionId_{};
+        std::atomic_uint64_t requestedCaptureProbeEarliestTickMilliseconds_{};
+        std::uint64_t activeCaptureProbeSessionId_{};
+        std::uint64_t activeCaptureProbeEarliestTickMilliseconds_{};
+        bool captureProbeSessionComplete_{ true };
         std::uint64_t nextGeneration_{ 1 };
         std::uint64_t lastProcessedGeneration_{};
         std::uint64_t nextCadenceTickMilliseconds_{};

@@ -1,5 +1,6 @@
 #include "PCH.h"
 
+#include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
@@ -116,11 +117,15 @@ namespace
         }
         case F4SE::MessagingInterface::kPostLoadGame:
             community_shaders::ui::onGameSessionReady();
+            community_shaders::ibl::Runtime::get()
+                .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("PostLoadGame");
             break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::ui::onGameSessionReady();
+            community_shaders::ibl::Runtime::get()
+                .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("NewGame");
             break;
