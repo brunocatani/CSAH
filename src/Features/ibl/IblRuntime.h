@@ -7,6 +7,7 @@
 #include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
+#include "Features/ibl/IblSettings.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -21,6 +22,7 @@ namespace community_shaders::ibl
 {
     struct RuntimeSnapshot
     {
+        bool enabled{};
         bool resourcesReady{};
         bool nativeCubemapReady{};
         bool diffuseSHUsable{};
@@ -71,6 +73,11 @@ namespace community_shaders::ibl
         };
 
         static Runtime& get() noexcept;
+
+        // Thread-safe feature control. Disabling immediately restores the
+        // exact vanilla DFComposite selection path. Re-enabling requests a
+        // fresh world capture before material consumption can resume.
+        void setEnabled(bool enabled) noexcept;
 
         // Render-thread only. The device/context are retained for the process
         // lifetime; no engine pointer is retained by this subsystem.
@@ -232,6 +239,7 @@ namespace community_shaders::ibl
         void publishUnavailable(
             std::uint64_t generation,
             std::uint64_t tickMilliseconds) noexcept;
+        [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
         [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
         void resetCaptureProbes() noexcept;
         void resetResources() noexcept;
@@ -264,9 +272,13 @@ namespace community_shaders::ibl
         std::atomic_uint64_t requestedCaptureProbeEarliestTickMilliseconds_{};
         std::uint64_t activeCaptureProbeSessionId_{};
         std::uint64_t activeCaptureProbeEarliestTickMilliseconds_{};
-        std::uint64_t environmentUpdateAttemptedSessionId_{};
+        std::uint64_t pendingEnvironmentUpdateSessionId_{};
+        std::uint64_t publishedEnvironmentSessionId_{};
+        std::uint64_t nextEnvironmentCaptureTickMilliseconds_{};
         std::uint64_t lastLoggedEnvironmentUpdateGeneration_{};
         bool captureProbeSessionComplete_{ true };
+        bool reflectionFreeCaptureDiagnosticReserved_{};
+        bool reflectionFreeCaptureProductionReserved_{};
         std::uint64_t nextGeneration_{ 1 };
         std::uint64_t lastProcessedGeneration_{};
         std::uint64_t nextCadenceTickMilliseconds_{};
@@ -277,12 +289,14 @@ namespace community_shaders::ibl
         bool loggedBlackStreak_{};
         bool loggedSourceUnavailable_{};
         bool loggedReadbackFailure_{};
+        bool loggedReflectionFreeCaptureFailure_{};
         bool loggedEnvironmentUpdateFailure_{};
         bool loggedFirstMaterialBind_{};
         bool loggedMaterialBindingFailure_{};
         bool materialConsumptionFailed_{};
 
         std::atomic_bool resourcesReady_{};
+        std::atomic_bool enabled_{ true };
         std::atomic_bool nativeCubemapReady_{};
         std::atomic_uint64_t cadenceTicks_{};
         std::atomic_uint64_t projectionDispatches_{};

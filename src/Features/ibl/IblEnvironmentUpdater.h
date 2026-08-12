@@ -24,6 +24,7 @@ namespace community_shaders::ibl
     {
         bool initialized{};
         bool pending{};
+        bool historyUsed{};
         std::uint64_t dispatches{};
         std::uint64_t publishedUpdates{};
         std::uint64_t completedReadbacks{};
@@ -59,7 +60,8 @@ namespace community_shaders::ibl
             EnvironmentProvider& provider,
             ID3D11ShaderResourceView* reflectionFreeRadiance,
             ID3D11ShaderResourceView* sceneDepth,
-            ID3D11Buffer* sceneConstants) noexcept;
+            ID3D11Buffer* sceneConstants,
+            bool usePublishedHistory) noexcept;
 
         [[nodiscard]] EnvironmentUpdateConsumeResult consumeUpdate(
             ID3D11DeviceContext* context,
@@ -100,10 +102,12 @@ namespace community_shaders::ibl
             std::uint32_t sourceWidth{};
             std::uint32_t sourceHeight{};
             std::uint32_t targetExtent{};
-            std::uint32_t reserved{};
+            std::uint32_t historyAvailable{};
+            float historyDecay{};
+            std::array<std::uint32_t, 3> reserved{};
         };
 
-        static_assert(sizeof(UpdateConstants) == 16);
+        static_assert(sizeof(UpdateConstants) == 32);
 
         struct FilterConstants
         {
@@ -121,6 +125,7 @@ namespace community_shaders::ibl
             ID3D11ShaderResourceView* reflectionFreeRadiance,
             ID3D11ShaderResourceView* sceneDepth,
             ID3D11Buffer* sceneConstants,
+            bool usePublishedHistory,
             D3D11_TEXTURE2D_DESC& radianceDescription) const noexcept;
         void recordFailure() noexcept;
 

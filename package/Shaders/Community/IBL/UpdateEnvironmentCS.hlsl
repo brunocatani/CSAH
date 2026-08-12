@@ -1,11 +1,12 @@
-// Image-neutral FO4VR stereo environment update diagnostic. The shader
-// projects one shared world-space cube into both halves of the exact packed
-// DFComposite radiance/depth pair. Radiance and directional validity are
-// written separately so uncovered directions can retain each material's
-// localized vanilla cubemap during later consumption.
+// FO4VR stereo environment update. The shader projects one shared
+// world-space cube into both halves of the exact packed DFComposite
+// radiance/depth pair, then retains bounded validity-weighted history for
+// directions outside the current stereo frusta.
 
 Texture2D<float3> ReflectionFreeRadiance : register(t0);
 Texture2D<float> SceneDepth : register(t1);
+TextureCube<float3> PreviousEnvironment : register(t2);
+TextureCube<float> PreviousValidity : register(t3);
 RWTexture2DArray<float3> EnvironmentMip : register(u0);
 RWTexture2DArray<float> EnvironmentValidity : register(u1);
 SamplerState LinearClampSampler : register(s0);
@@ -14,7 +15,9 @@ cbuffer EnvironmentUpdateConstants : register(b11)
 {
     uint2 SourceExtent;
     uint TargetExtent;
-    uint Reserved;
+    uint HistoryAvailable;
+    float HistoryDecay;
+    uint3 Reserved;
 };
 
 // The exact FO4VR DFComposite draw binds an 85-float4 buffer at b12. Local
@@ -149,11 +152,24 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
         }
     }
 
-    const float validity = saturate(totalWeight);
+    const float currentValidity = saturate(totalWeight);
     const float3 normalizedRadiance = totalWeight > 0.0f ?
         accumulated / totalWeight : 0.0f;
+    const float previousValidity = HistoryAvailable != 0u ?
+        saturate(PreviousValidity.SampleLevel(
+            LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+    const float retainedValidity = previousValidity *
+        saturate(HistoryDecay) * (1.0f - currentValidity);
+    const float combinedValidity = saturate(
+        currentValidity + retainedValidity);
+    const float3 previousRadiance = retainedValidity > 0.0f ?
+        max(0.0f, PreviousEnvironment.SampleLevel(
+            LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+    const float3 combinedPremultiplied =
+        normalizedRadiance * currentValidity +
+        previousRadiance * retainedValidity;
     // Store premultiplied radiance so cube filtering across validity edges
     // cannot darken or amplify the normalized published result.
-    EnvironmentMip[dispatchId] = normalizedRadiance * validity;
-    EnvironmentValidity[dispatchId] = validity;
+    EnvironmentMip[dispatchId] = max(0.0f, combinedPremultiplied);
+    EnvironmentValidity[dispatchId] = combinedValidity;
 }

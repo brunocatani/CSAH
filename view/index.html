@@ -63,7 +63,7 @@
       inset: 0 0 auto 0;
       height: 126px;
       display: grid;
-      grid-template-columns: 1fr 390px;
+      grid-template-columns: 1fr 330px 330px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
       background: rgba(9,18,22,.94);
@@ -101,15 +101,21 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
-      padding: 22px 30px;
+      gap: 14px;
+      min-width: 0;
+      padding: 16px 22px;
       background: linear-gradient(115deg, rgba(230,173,85,.06), transparent 52%);
     }
+
+    .master + .master { border-left: 1px solid var(--line); }
+
+    .master-copy { min-width: 0; }
 
     .master-copy strong {
       display: block;
       color: var(--paper);
-      font-size: 18px;
+      font-size: 16px;
+      line-height: 1.15;
       letter-spacing: 1.1px;
       text-transform: uppercase;
     }
@@ -398,6 +404,13 @@
         </div>
         <div id="masterSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
       </div>
+      <div class="master">
+        <div class="master-copy">
+          <strong>Image Based Lighting</strong>
+          <span id="iblState">VANILLA ENVIRONMENT</span>
+        </div>
+        <div id="iblSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+      </div>
     </header>
 
     <main>
@@ -496,12 +509,21 @@
       const wrist = model.wrist || {};
       const coverage = model.coverage || {};
       const qualification = model.qualification || {};
+      const ibl = model.ibl || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
       master.classList.toggle("on", enabled);
       master.setAttribute("aria-checked", String(enabled));
       document.getElementById("masterState").textContent = enabled ? "FULL LINEAR LIGHTING ARMED" : "VANILLA PASS-THROUGH";
+
+      const iblEnabled = !!ibl.enabled;
+      const iblSwitch = document.getElementById("iblSwitch");
+      iblSwitch.classList.toggle("on", iblEnabled);
+      iblSwitch.setAttribute("aria-checked", String(iblEnabled));
+      document.getElementById("iblState").textContent = iblEnabled ?
+        (ibl.resourcesReady ? "DYNAMIC ENVIRONMENT ARMED" : "WAITING FOR PROVIDER") :
+        "VANILLA ENVIRONMENT";
 
       for (const control of controls) {
         const input = document.getElementById(control.key);
@@ -554,10 +576,24 @@
       render();
     }
 
+    function toggleIblEnabled() {
+      const ibl = (state.model || {}).ibl || {};
+      const enabled = !ibl.enabled;
+      bridge({ type: "iblEnabled", value: enabled });
+      if (state.model) {
+        state.model.ibl = { ...ibl, enabled };
+      }
+      render();
+    }
+
     createControls();
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
+    });
+    document.getElementById("iblSwitch").addEventListener("click", toggleIblEnabled);
+    document.getElementById("iblSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleIblEnabled();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

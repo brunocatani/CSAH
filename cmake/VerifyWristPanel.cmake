@@ -94,6 +94,18 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "type == \"iblEnabled\""
+    "ibl::Runtime::get().setEnabled"
+    "ibl::saveSettings"
+    "iblRuntime.resourcesReady")
+  string(FIND "${source}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Wrist-panel IBL control regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
     "SHGetFolderPathW"
     "CSIDL_MYDOCUMENTS"
     "L\"My Games\""
@@ -134,6 +146,10 @@ endforeach()
 
 foreach(required IN ITEMS
     "FULL LINEAR LIGHTING ARMED"
+    "Image Based Lighting"
+    "id=\"iblSwitch\""
+    "toggleIblEnabled"
+    "type: \"iblEnabled\""
     "const qualification = model.qualification || {}"
     "Runtime qualification:"
     "metric(\"Qualification\""

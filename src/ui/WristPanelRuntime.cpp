@@ -5,6 +5,8 @@
 #include "ROCKProviderApi.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "Features/ibl/IblRuntime.h"
+#include "Features/ibl/IblSettingsStore.h"
 #include "diagnostics/LinearLightingQualification.h"
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
@@ -587,6 +589,7 @@ namespace community_shaders::ui
         [[nodiscard]] std::uint64_t diagnosticsRevision() noexcept
         {
             const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -609,7 +612,13 @@ namespace community_shaders::ui
                 (runtime.waterReplacementBinds << 47) ^
                 (runtime.vlsCompositeReplacementBinds << 48) ^
                 (runtime.effectReplacementBinds << 49) ^
-                (runtime.shaderBindingLookupFailures << 50);
+                (runtime.shaderBindingLookupFailures << 50) ^
+                (iblRuntime.materialReplacementBinds << 51) ^
+                (iblRuntime.materialBindingFailures << 52) ^
+                (static_cast<std::uint64_t>(iblRuntime.enabled) << 53) ^
+                (static_cast<std::uint64_t>(
+                     iblRuntime.resourcesReady)
+                    << 54);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -620,6 +629,7 @@ namespace community_shaders::ui
                 settings = uiSettings;
             }
             const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -627,6 +637,15 @@ namespace community_shaders::ui
             nlohmann::json model{
                 { "revision", uiRevision.load(std::memory_order_acquire) },
                 { "settings", settingsJson(settings) },
+                { "ibl",
+                    {
+                        { "enabled", iblRuntime.enabled },
+                        { "resourcesReady", iblRuntime.resourcesReady },
+                        { "materialReplacementBinds",
+                            iblRuntime.materialReplacementBinds },
+                        { "materialBindingFailures",
+                            iblRuntime.materialBindingFailures },
+                    } },
                 { "coverage",
                     {
                         { "label", "FO4VR Linear Lighting shader coverage" },
@@ -1205,6 +1224,21 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "iblEnabled" && action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    const ibl::Settings nextIbl{
+                        action["value"].get<bool>()
+                    };
+                    ibl::Runtime::get().setEnabled(nextIbl.enabled);
+                    const auto saved = ibl::saveSettings(nextIbl);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Image Based Lighting wrist action accepted; enabled={}, settings save={}.",
+                        nextIbl.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
 
                 linear_lighting::Settings next{};
                 {
@@ -1214,6 +1248,9 @@ namespace community_shaders::ui
                 auto changed = false;
                 if (type == "reset") {
                     next = {};
+                    const ibl::Settings nextIbl{};
+                    ibl::Runtime::get().setEnabled(nextIbl.enabled);
+                    (void)ibl::saveSettings(nextIbl);
                     changed = true;
                 } else if (type == "enabled" && action.contains("value") &&
                            action["value"].is_boolean()) {

@@ -67,6 +67,7 @@ namespace community_shaders::ibl
         constexpr std::uintptr_t kNativeCubemapSrvRva = 0x0623C3C0;
         constexpr UINT kNativeCubemapExtent = 512;
         constexpr std::uint64_t kProjectionCadenceMilliseconds = 250;
+        constexpr std::uint64_t kEnvironmentCaptureCadenceMilliseconds = 1000;
         constexpr std::uint64_t kWorldCaptureProbeSettleMilliseconds = 5000;
         constexpr std::uint32_t kBlackReadbackWarningThreshold = 8;
         constexpr UINT kCaptureShaderResourceCount = 16;
@@ -526,6 +527,16 @@ namespace community_shaders::ibl
         return instance;
     }
 
+    void Runtime::setEnabled(bool enabled) noexcept
+    {
+        const auto previous = enabled_.exchange(
+            enabled,
+            std::memory_order_acq_rel);
+        if (!previous && enabled) {
+            beginWorldCaptureProbeSession();
+        }
+    }
+
     void Runtime::onDeviceCreated(
         ID3D11Device* device,
         ID3D11DeviceContext* immediateContext,
@@ -573,12 +584,12 @@ namespace community_shaders::ibl
                 std::memory_order_release);
         }
         logging::info(
-            "IBL world-capture diagnostic session {} armed; sampling begins after a {} ms world-settle interval and remains image-neutral.",
+            "IBL world environment session {} armed; diagnostic and provider sampling begin after a {} ms settle interval.",
             sessionId,
             kWorldCaptureProbeSettleMilliseconds);
     }
 
-    bool Runtime::activateWorldCaptureProbeSession() noexcept
+    bool Runtime::synchronizeWorldCaptureSession() noexcept
     {
         const auto requestedSessionId =
             requestedCaptureProbeSessionId_.load(std::memory_order_acquire);
@@ -611,9 +622,21 @@ namespace community_shaders::ibl
                 slot.failureLogged = false;
             }
             completedCaptureProbes_.store(0, std::memory_order_relaxed);
+            nextEnvironmentCaptureTickMilliseconds_ =
+                activeCaptureProbeEarliestTickMilliseconds_;
+            reflectionFreeCaptureDiagnosticReserved_ = false;
+            reflectionFreeCaptureProductionReserved_ = false;
+            loggedReflectionFreeCaptureFailure_ = false;
+            loggedEnvironmentUpdateFailure_ = false;
         }
-        return !captureProbeSessionComplete_ &&
-            GetTickCount64() >= activeCaptureProbeEarliestTickMilliseconds_;
+        return GetTickCount64() >=
+            activeCaptureProbeEarliestTickMilliseconds_;
+    }
+
+    bool Runtime::activateWorldCaptureProbeSession() noexcept
+    {
+        return synchronizeWorldCaptureSession() &&
+            !captureProbeSessionComplete_;
     }
 
     void Runtime::onPixelShaderCreated(
@@ -705,8 +728,13 @@ namespace community_shaders::ibl
     {
         MaterialPixelShaderSelection selection{ original, {} };
         if (!context || context != context_.Get() || !original ||
+            !enabled_.load(std::memory_order_acquire) ||
             materialConsumptionFailed_ ||
             !resourcesReady_.load(std::memory_order_acquire) ||
+            publishedEnvironmentSessionId_ == 0 ||
+            publishedEnvironmentSessionId_ !=
+                requestedCaptureProbeSessionId_.load(
+                    std::memory_order_acquire) ||
             !environmentProvider_.publishedEnvironment() ||
             !environmentProvider_.publishedValidity()) {
             return selection;
@@ -748,6 +776,7 @@ namespace community_shaders::ibl
         bool enabled) noexcept
     {
         if (!binding || !context || context != context_.Get() ||
+            (enabled && !enabled_.load(std::memory_order_acquire)) ||
             materialConsumptionFailed_ ||
             !resourcesReady_.load(std::memory_order_acquire)) {
             return {};
@@ -964,10 +993,10 @@ namespace community_shaders::ibl
     {
         if (!context || context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
-            !resourcesReady_.load(std::memory_order_acquire) ||
-            !activateWorldCaptureProbeSession()) {
+            !resourcesReady_.load(std::memory_order_acquire)) {
             return {};
         }
+        const auto worldCaptureReady = synchronizeWorldCaptureSession();
 
         ID3D11RenderTargetView* outputViewRaw{};
         context->OMGetRenderTargets(1, &outputViewRaw, nullptr);
@@ -990,25 +1019,52 @@ namespace community_shaders::ibl
             [&outputDescription](const auto& slot) {
                 return slot.format == outputDescription.Format;
             });
-        if (readback == sceneRadianceReadbackSlots_.end() ||
-            readback->reflectionFreeCaptureAttempted ||
-            readback->rollingReady || readback->pending ||
-            readback->completed ||
-            !readback->rollingReflectionFreeTexture) {
+        const auto diagnosticRequested = worldCaptureReady &&
+            !captureProbeSessionComplete_ &&
+            readback != sceneRadianceReadbackSlots_.end() &&
+            !readback->reflectionFreeCaptureAttempted &&
+            !readback->rollingReady && !readback->pending &&
+            !readback->completed &&
+            readback->rollingReflectionFreeTexture;
+        const auto now = GetTickCount64();
+        const auto productionRequested = worldCaptureReady &&
+            enabled_.load(std::memory_order_acquire) &&
+            outputDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
+            !environmentUpdater_.snapshot().pending &&
+            now >= nextEnvironmentCaptureTickMilliseconds_;
+        if (!diagnosticRequested && !productionRequested) {
             return {};
         }
 
-        readback->reflectionFreeCaptureAttempted = true;
+        reflectionFreeCaptureDiagnosticReserved_ = diagnosticRequested;
+        reflectionFreeCaptureProductionReserved_ = productionRequested;
+        if (diagnosticRequested) {
+            readback->reflectionFreeCaptureAttempted = true;
+        }
+        if (productionRequested) {
+            nextEnvironmentCaptureTickMilliseconds_ =
+                now + kEnvironmentCaptureCadenceMilliseconds;
+        }
         if (!reflectionFreeCaptureResources_.prepareScratch(
                 outputView.Get())) {
-            readback->completed = true;
-            readback->failureLogged = true;
-            sceneRadianceProbeFailures_.fetch_add(
-                1,
-                std::memory_order_relaxed);
-            logging::warn(
-                "IBL reflection-free duplicate rejected an incompatible DFComposite output for format {}; the diagnostic remains fail-closed.",
-                sceneProbeFormatName(readback->format));
+            if (diagnosticRequested) {
+                readback->completed = true;
+                readback->failureLogged = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            if (diagnosticRequested ||
+                !loggedReflectionFreeCaptureFailure_) {
+                loggedReflectionFreeCaptureFailure_ = true;
+                logging::warn(
+                    "IBL reflection-free duplicate rejected an incompatible DFComposite output for format {}; requested diagnostic={}, provider update={}; both remain fail-closed.",
+                    sceneProbeFormatName(outputDescription.Format),
+                    diagnosticRequested,
+                    productionRequested);
+            }
+            reflectionFreeCaptureDiagnosticReserved_ = false;
+            reflectionFreeCaptureProductionReserved_ = false;
             return {};
         }
 
@@ -1021,16 +1077,26 @@ namespace community_shaders::ibl
             reflectionFreeCaptureResources_);
         if (!capture.active()) {
             const auto rejection = capture.rejection();
-            readback->completed = true;
-            readback->failureLogged = true;
-            sceneRadianceProbeFailures_.fetch_add(
-                1,
-                std::memory_order_relaxed);
-            logging::warn(
-                "IBL reflection-free duplicate could not establish its exact fail-closed render-state transaction for format {} (reason={}, code={}); no duplicate draw was issued.",
-                sceneProbeFormatName(readback->format),
-                reflectionFreeCaptureRejectionName(rejection),
-                static_cast<unsigned>(rejection));
+            if (diagnosticRequested) {
+                readback->completed = true;
+                readback->failureLogged = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            if (diagnosticRequested ||
+                !loggedReflectionFreeCaptureFailure_) {
+                loggedReflectionFreeCaptureFailure_ = true;
+                logging::warn(
+                    "IBL reflection-free duplicate could not establish its exact fail-closed render-state transaction for format {} (reason={}, code={}, diagnostic={}, providerUpdate={}); no duplicate draw was issued.",
+                    sceneProbeFormatName(outputDescription.Format),
+                    reflectionFreeCaptureRejectionName(rejection),
+                    static_cast<unsigned>(rejection),
+                    diagnosticRequested,
+                    productionRequested);
+            }
+            reflectionFreeCaptureDiagnosticReserved_ = false;
+            reflectionFreeCaptureProductionReserved_ = false;
         }
         return capture;
     }
@@ -1045,6 +1111,15 @@ namespace community_shaders::ibl
             !resourcesReady_.load(std::memory_order_acquire)) {
             return;
         }
+        const auto diagnosticReserved =
+            reflectionFreeCaptureDiagnosticReserved_;
+        const auto productionReserved =
+            reflectionFreeCaptureProductionReserved_;
+        reflectionFreeCaptureDiagnosticReserved_ = false;
+        reflectionFreeCaptureProductionReserved_ = false;
+        if (!diagnosticReserved && !productionReserved) {
+            return;
+        }
         const auto& scratchDescription =
             reflectionFreeCaptureResources_.scratchDescription();
         const auto readback = std::ranges::find_if(
@@ -1052,35 +1127,53 @@ namespace community_shaders::ibl
             [&scratchDescription](const auto& slot) {
                 return slot.format == scratchDescription.Format;
             });
-        if (readback == sceneRadianceReadbackSlots_.end() ||
-            !readback->reflectionFreeCaptureAttempted ||
-            readback->rollingReflectionFreeCopied || readback->completed) {
+        if (!stateRestored) {
+            if (diagnosticReserved &&
+                readback != sceneRadianceReadbackSlots_.end()) {
+                readback->completed = true;
+                readback->failureLogged = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            if (diagnosticReserved ||
+                !loggedReflectionFreeCaptureFailure_) {
+                loggedReflectionFreeCaptureFailure_ = true;
+                logging::warn(
+                    "IBL reflection-free duplicate did not complete with exact state restoration for format {}; diagnostic and provider results were discarded.",
+                    sceneProbeFormatName(scratchDescription.Format));
+            }
             return;
         }
-        if (!stateRestored ||
-            !copySceneProbeSamples(
-                context,
-                reflectionFreeCaptureResources_.scratchTexture(),
-                readback->rollingReflectionFreeTexture.Get(),
-                scratchDescription)) {
-            readback->completed = true;
-            readback->failureLogged = true;
-            sceneRadianceProbeFailures_.fetch_add(
-                1,
-                std::memory_order_relaxed);
-            logging::warn(
-                "IBL reflection-free duplicate did not complete with exact state restoration for format {}; its result was discarded.",
-                sceneProbeFormatName(readback->format));
-            return;
-        }
-        readback->rollingReflectionFreeCopied = true;
-        logging::info(
-            "IBL reflection-free duplicate DFComposite[{:02}] captured with t8/t14 neutralized and exact render-state restoration; the visible draw remains untouched.",
-            contractPlusOne);
 
-        if (scratchDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
-            environmentUpdateAttemptedSessionId_ !=
-                activeCaptureProbeSessionId_) {
+        if (diagnosticReserved &&
+            readback != sceneRadianceReadbackSlots_.end() &&
+            readback->reflectionFreeCaptureAttempted &&
+            !readback->rollingReflectionFreeCopied && !readback->completed) {
+            if (copySceneProbeSamples(
+                    context,
+                    reflectionFreeCaptureResources_.scratchTexture(),
+                    readback->rollingReflectionFreeTexture.Get(),
+                    scratchDescription)) {
+                readback->rollingReflectionFreeCopied = true;
+                logging::info(
+                    "IBL reflection-free diagnostic DFComposite[{:02}] captured with t8/t14 neutralized and exact render-state restoration.",
+                    contractPlusOne);
+            } else {
+                readback->completed = true;
+                readback->failureLogged = true;
+                sceneRadianceProbeFailures_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                logging::warn(
+                    "IBL reflection-free diagnostic copy failed for format {}; the diagnostic result was discarded.",
+                    sceneProbeFormatName(readback->format));
+            }
+        }
+
+        if (productionReserved &&
+            enabled_.load(std::memory_order_acquire) &&
+            scratchDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT) {
             ID3D11ShaderResourceView* depthRaw{};
             context->PSGetShaderResources(7, 1, &depthRaw);
             ComPtr<ID3D11ShaderResourceView> depth;
@@ -1089,22 +1182,31 @@ namespace community_shaders::ibl
             context->PSGetConstantBuffers(12, 1, &sceneConstantsRaw);
             ComPtr<ID3D11Buffer> sceneConstants;
             sceneConstants.Attach(sceneConstantsRaw);
+            const auto useHistory = publishedEnvironmentSessionId_ ==
+                    activeCaptureProbeSessionId_ &&
+                environmentProvider_.publishedEnvironment() &&
+                environmentProvider_.publishedValidity();
             if (environmentUpdater_.dispatchUpdate(
                     context,
                     environmentProvider_,
                     reflectionFreeCaptureResources_.scratchShaderResource(),
                     depth.Get(),
-                    sceneConstants.Get())) {
-                environmentUpdateAttemptedSessionId_ =
+                    sceneConstants.Get(),
+                    useHistory)) {
+                pendingEnvironmentUpdateSessionId_ =
                     activeCaptureProbeSessionId_;
                 const auto update = environmentUpdater_.snapshot();
-                logging::info(
-                    "IBL stereo environment generation {} dispatched into the private radiance/validity back pair with bounded scene-linear GGX filtering; publication awaits nonblocking validation and the image remains unchanged.",
-                    update.generation);
+                if (update.dispatches == 1 ||
+                    (update.dispatches % 30) == 0) {
+                    logging::info(
+                        "IBL stereo environment generation {} dispatched into the private radiance/validity back pair with history={} and bounded scene-linear GGX filtering; publication awaits nonblocking validation.",
+                        update.generation,
+                        useHistory);
+                }
             } else if (!loggedEnvironmentUpdateFailure_) {
                 loggedEnvironmentUpdateFailure_ = true;
                 logging::warn(
-                    "IBL stereo environment update rejected its exact capture inputs; the private generation was aborted and native lighting remains unchanged.");
+                    "IBL stereo environment update rejected its exact capture inputs; the private generation was aborted and the previous validated pair remains selected.");
             }
         }
     }
@@ -1912,13 +2014,19 @@ namespace community_shaders::ibl
         if (environmentReadback ==
             EnvironmentUpdateConsumeResult::completed) {
             const auto update = environmentUpdater_.snapshot();
-            if (update.generation !=
-                lastLoggedEnvironmentUpdateGeneration_) {
+            publishedEnvironmentSessionId_ =
+                pendingEnvironmentUpdateSessionId_;
+            pendingEnvironmentUpdateSessionId_ = 0;
+            if (lastLoggedEnvironmentUpdateGeneration_ == 0 ||
+                update.generation >=
+                    lastLoggedEnvironmentUpdateGeneration_ + 30) {
                 lastLoggedEnvironmentUpdateGeneration_ =
                     update.generation;
                 logging::info(
-                    "IBL stereo environment generation {} atomically published as a radiance/validity pair: avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, faceLuminance=[{},{},{},{},{},{}]; material consumption remains disabled and the image is unchanged.",
+                    "IBL stereo environment generation {} atomically published for world session {} as a radiance/validity pair: history={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, faceLuminance=[{},{},{},{},{},{}]; enabled material consumers may now sample the pair with per-direction vanilla fallback.",
                     update.generation,
+                    publishedEnvironmentSessionId_,
+                    update.historyUsed,
                     update.average.x,
                     update.average.y,
                     update.average.z,
@@ -1936,11 +2044,13 @@ namespace community_shaders::ibl
                     update.faceAverageLuminance[5]);
             }
         } else if (environmentReadback ==
-                EnvironmentUpdateConsumeResult::failed &&
-            !loggedEnvironmentUpdateFailure_) {
-            loggedEnvironmentUpdateFailure_ = true;
-            logging::warn(
-                "IBL stereo environment validation failed; the private generation was aborted, the previous pair remains published, and native lighting remains unchanged.");
+            EnvironmentUpdateConsumeResult::failed) {
+            pendingEnvironmentUpdateSessionId_ = 0;
+            if (!loggedEnvironmentUpdateFailure_) {
+                loggedEnvironmentUpdateFailure_ = true;
+                logging::warn(
+                    "IBL stereo environment validation failed; the private generation was aborted and the previous validated pair remains published.");
+            }
         }
         if (refreshNativeCubemap()) {
             dispatchProjection();
@@ -1985,6 +2095,7 @@ namespace community_shaders::ibl
     RuntimeSnapshot Runtime::snapshot() const noexcept
     {
         RuntimeSnapshot result{
+            .enabled = enabled_.load(std::memory_order_acquire),
             .resourcesReady = resourcesReady_.load(std::memory_order_acquire),
             .nativeCubemapReady = nativeCubemapReady_.load(
                 std::memory_order_acquire),
@@ -2124,9 +2235,14 @@ namespace community_shaders::ibl
             std::memory_order_relaxed);
         activeCaptureProbeSessionId_ = 0;
         activeCaptureProbeEarliestTickMilliseconds_ = 0;
-        environmentUpdateAttemptedSessionId_ = 0;
+        pendingEnvironmentUpdateSessionId_ = 0;
+        publishedEnvironmentSessionId_ = 0;
+        nextEnvironmentCaptureTickMilliseconds_ = 0;
         lastLoggedEnvironmentUpdateGeneration_ = 0;
         captureProbeSessionComplete_ = true;
+        reflectionFreeCaptureDiagnosticReserved_ = false;
+        reflectionFreeCaptureProductionReserved_ = false;
+        loggedReflectionFreeCaptureFailure_ = false;
         loggedEnvironmentUpdateFailure_ = false;
         loggedFirstMaterialBind_ = false;
         loggedMaterialBindingFailure_ = false;

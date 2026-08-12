@@ -248,6 +248,7 @@ namespace community_shaders::ibl
         ID3D11ShaderResourceView* reflectionFreeRadiance,
         ID3D11ShaderResourceView* sceneDepth,
         ID3D11Buffer* sceneConstants,
+        bool usePublishedHistory,
         D3D11_TEXTURE2D_DESC& radianceDescription) const noexcept
     {
         if (!summary_.initialized || summary_.pending || !context ||
@@ -255,6 +256,16 @@ namespace community_shaders::ibl
             !sameDevice(reflectionFreeRadiance, resources_.device.Get()) ||
             !sameDevice(sceneDepth, resources_.device.Get()) ||
             !sameDevice(sceneConstants, resources_.device.Get())) {
+            return false;
+        }
+
+        if (usePublishedHistory &&
+            (!sameDevice(
+                 provider.publishedEnvironment(),
+                 resources_.device.Get()) ||
+                !sameDevice(
+                    provider.publishedValidity(),
+                    resources_.device.Get()))) {
             return false;
         }
 
@@ -313,7 +324,8 @@ namespace community_shaders::ibl
         EnvironmentProvider& provider,
         ID3D11ShaderResourceView* reflectionFreeRadiance,
         ID3D11ShaderResourceView* sceneDepth,
-        ID3D11Buffer* sceneConstants) noexcept
+        ID3D11Buffer* sceneConstants,
+        bool usePublishedHistory) noexcept
     {
         D3D11_TEXTURE2D_DESC sourceDescription{};
         if (!validateInputs(
@@ -322,6 +334,7 @@ namespace community_shaders::ibl
                 reflectionFreeRadiance,
                 sceneDepth,
                 sceneConstants,
+                usePublishedHistory,
                 sourceDescription) ||
             !provider.beginUpdate()) {
             recordFailure();
@@ -332,7 +345,7 @@ namespace community_shaders::ibl
             context,
             {
                 .firstShaderResource = 0,
-                .shaderResourceCount = 2,
+                .shaderResourceCount = 4,
                 .firstUnorderedAccess = 0,
                 .unorderedAccessCount = 2,
                 .firstSampler = 0,
@@ -346,9 +359,11 @@ namespace community_shaders::ibl
             return false;
         }
 
-        std::array<ID3D11ShaderResourceView*, 2> captureSources{
+        std::array<ID3D11ShaderResourceView*, 4> captureSources{
             reflectionFreeRadiance,
             sceneDepth,
+            usePublishedHistory ? provider.publishedEnvironment() : nullptr,
+            usePublishedHistory ? provider.publishedValidity() : nullptr,
         };
         std::array<ID3D11UnorderedAccessView*, 2> captureDestinations{
             resources_.capturedRadianceOutput.Get(),
@@ -362,7 +377,9 @@ namespace community_shaders::ibl
             sourceDescription.Width,
             sourceDescription.Height,
             resources_.extent,
-            0,
+            usePublishedHistory ? 1U : 0U,
+            0.98F,
+            {},
         };
         context->UpdateSubresource(
             resources_.captureConstants.Get(),
@@ -400,7 +417,7 @@ namespace community_shaders::ibl
             static_cast<UINT>(nullDestinations.size()),
             nullDestinations.data(),
             nullptr);
-        std::array<ID3D11ShaderResourceView*, 2> nullSources{};
+        std::array<ID3D11ShaderResourceView*, 4> nullSources{};
         context->CSSetShaderResources(
             0,
             static_cast<UINT>(nullSources.size()),
@@ -521,6 +538,7 @@ namespace community_shaders::ibl
         context->End(resources_.completionEvent.Get());
 
         summary_.pending = true;
+        summary_.historyUsed = usePublishedHistory;
         summary_.generation = provider.snapshot().activeUpdateGeneration;
         ++summary_.dispatches;
         return true;

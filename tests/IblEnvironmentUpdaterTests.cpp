@@ -182,7 +182,8 @@ namespace
     }
 
     [[nodiscard]] ComPtr<ID3D11Buffer> createSceneConstants(
-        ID3D11Device& device)
+        ID3D11Device& device,
+        float forwardSign = 1.0F)
     {
         std::array<Float4, 85> rows{};
         for (std::size_t eye = 0; eye < 2; ++eye) {
@@ -190,7 +191,7 @@ namespace
             rows[base] = { 1.0f, 0.0f, 0.0f, 0.0f };
             rows[base + 1] = { 0.0f, 1.0f, 0.0f, 0.0f };
             rows[base + 2] = { 0.0f, 0.0f, 1.0f, 0.0f };
-            rows[base + 3] = { 0.0f, 0.0f, 1.0f, 0.0f };
+            rows[base + 3] = { 0.0f, 0.0f, forwardSign, 0.0f };
         }
         D3D11_BUFFER_DESC description{};
         description.ByteWidth = static_cast<UINT>(sizeof(rows));
@@ -246,7 +247,8 @@ namespace
                 provider,
                 radiance.Get(),
                 depth.Get(),
-                constants.Get()),
+                constants.Get(),
+                false),
             "environment update dispatch failed");
         const auto providerAfterDispatch = provider.snapshot();
         require(
@@ -311,6 +313,54 @@ namespace
             updater.consumeUpdate(d3d.context.Get(), provider) ==
                 EnvironmentUpdateConsumeResult::idle,
             "completed readback was consumed twice");
+
+        const auto firstCoveredSamples = summary.coveredSamples;
+        const auto oppositeConstants = createSceneConstants(
+            *d3d.device.Get(),
+            -1.0F);
+        require(
+            updater.dispatchUpdate(
+                d3d.context.Get(),
+                provider,
+                radiance.Get(),
+                depth.Get(),
+                oppositeConstants.Get(),
+                true),
+            "history-backed environment update dispatch failed");
+        d3d.context->Flush();
+        const auto secondDeadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        do {
+            result = updater.consumeUpdate(d3d.context.Get(), provider);
+            if (result == EnvironmentUpdateConsumeResult::pending) {
+                require(
+                    std::chrono::steady_clock::now() < secondDeadline,
+                    "timed out waiting for history validation");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        } while (result == EnvironmentUpdateConsumeResult::pending);
+        require(
+            result == EnvironmentUpdateConsumeResult::completed,
+            "history validation did not complete");
+
+        const auto accumulated = updater.snapshot();
+        require(accumulated.historyUsed, "published history was not consumed");
+        require(
+            accumulated.dispatches == 2 &&
+                accumulated.publishedUpdates == 2 &&
+                accumulated.completedReadbacks == 2 &&
+                accumulated.failedUpdates == 0,
+            "history update counters changed");
+        require(
+            accumulated.coveredSamples > firstCoveredSamples * 3 / 2,
+            "opposite view did not accumulate directional coverage");
+        require(
+            accumulated.faceAverageLuminance[4] > 0.01F &&
+                accumulated.faceAverageLuminance[5] > 0.01F,
+            "temporal history did not retain both opposite cube faces");
+        require(
+            provider.snapshot().publishedGeneration == 2,
+            "history-backed pair was not atomically published");
     }
 }
 

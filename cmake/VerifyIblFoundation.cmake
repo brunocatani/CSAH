@@ -1,6 +1,9 @@
 foreach(variable IN ITEMS
     IBL_RUNTIME_SOURCE
     IBL_RUNTIME_HEADER
+    IBL_SETTINGS_HEADER
+    IBL_SETTINGS_STORE_SOURCE
+    IBL_SETTINGS_STORE_HEADER
     IBL_PROVIDER_MODEL
     IBL_ENVIRONMENT_PROVIDER_SOURCE
     IBL_ENVIRONMENT_PROVIDER_HEADER
@@ -23,6 +26,8 @@ foreach(variable IN ITEMS
     IBL_ENVIRONMENT_FILTER_SHADER_SOURCE
     IBL_ENVIRONMENT_FILTER_SHADER_ASSET
     D3D11_HOOK_SOURCE
+    WRIST_PANEL_SOURCE
+    WRIST_PANEL_VIEW_SOURCE
     PLUGIN_SOURCE
     RESOURCE_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
@@ -32,6 +37,9 @@ endforeach()
 
 file(READ "${IBL_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
+file(READ "${IBL_SETTINGS_HEADER}" iblSettingsHeader)
+file(READ "${IBL_SETTINGS_STORE_SOURCE}" iblSettingsStoreSource)
+file(READ "${IBL_SETTINGS_STORE_HEADER}" iblSettingsStoreHeader)
 file(READ "${IBL_PROVIDER_MODEL}" providerModel)
 file(READ "${IBL_ENVIRONMENT_PROVIDER_SOURCE}" environmentProviderSource)
 file(READ "${IBL_ENVIRONMENT_PROVIDER_HEADER}" environmentProviderHeader)
@@ -51,6 +59,8 @@ file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
 file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}" filterShaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
+file(READ "${WRIST_PANEL_SOURCE}" wristPanelSource)
+file(READ "${WRIST_PANEL_VIEW_SOURCE}" wristPanelViewSource)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
@@ -90,6 +100,61 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL material-consumption regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "std::atomic_bool enabled_{ true }"
+    "void Runtime::setEnabled(bool enabled) noexcept"
+    "!enabled_.load(std::memory_order_acquire)"
+    "publishedEnvironmentSessionId_"
+    "kEnvironmentCaptureCadenceMilliseconds = 1000"
+    "synchronizeWorldCaptureSession"
+    "pendingEnvironmentUpdateSessionId_")
+  string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL runtime-control regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kSection = L\"ImageBasedLighting\""
+    "kEnabledKey = L\"bEnabled\""
+    "GetPrivateProfileStringW"
+    "WritePrivateProfileStringW"
+    "parseBoolean"
+    "settings_path::resolveIniPath()")
+  string(FIND
+    "${iblSettingsHeader}${iblSettingsStoreSource}${iblSettingsStoreHeader}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL settings regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "type == \"iblEnabled\""
+    "ibl::Runtime::get().setEnabled"
+    "ibl::saveSettings"
+    "\"ibl\"")
+  string(FIND "${wristPanelSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL wrist-control regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "id=\"iblSwitch\""
+    "Image Based Lighting"
+    "type: \"iblEnabled\""
+    "toggleIblEnabled")
+  string(FIND "${wristPanelViewSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL wrist-view regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -159,11 +224,16 @@ endforeach()
 foreach(required IN ITEMS
     "Texture2D<float3> ReflectionFreeRadiance : register(t0)"
     "Texture2D<float> SceneDepth : register(t1)"
+    "TextureCube<float3> PreviousEnvironment : register(t2)"
+    "TextureCube<float> PreviousValidity : register(t3)"
     "RWTexture2DArray<float3> EnvironmentMip : register(u0)"
     "RWTexture2DArray<float> EnvironmentValidity : register(u1)"
     "EnvironmentUpdateConstants : register(b11)"
     "Fo4VrSceneConstants : register(b12)"
     "63u + eye * 4u"
+    "HistoryAvailable"
+    "HistoryDecay"
+    "retainedValidity"
     "float2(0.5f, -0.5f)"
     "dispatchId.z >= 6u"
     "numthreads(8, 8, 1)")
