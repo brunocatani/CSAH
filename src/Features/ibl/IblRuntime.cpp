@@ -795,7 +795,7 @@ namespace community_shaders::ibl
         completedCaptureProbes_.fetch_add(1, std::memory_order_relaxed);
     }
 
-    void Runtime::onCaptureProbePassComplete(
+    void Runtime::onCaptureProbeDrawComplete(
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
@@ -836,9 +836,14 @@ namespace community_shaders::ibl
             });
         if (readback == sceneRadianceReadbackSlots_.end() ||
             readback->pending || readback->completed ||
-            !readback->pixelShaderT5Texture ||
-            !readback->pixelShaderT6Texture ||
-            !readback->compositeTexture) {
+            !readback->rollingPixelShaderT5Texture ||
+            !readback->rollingPixelShaderT6Texture ||
+            !readback->rollingCompositeTexture ||
+            !copySceneProbeSamples(
+                context,
+                outputTexture.Get(),
+                readback->rollingCompositeTexture.Get(),
+                outputDescription)) {
             return;
         }
 
@@ -890,21 +895,14 @@ namespace community_shaders::ibl
                     destination,
                     description);
         };
-        readback->pixelShaderT5Copied = copyCandidate(
+        readback->rollingPixelShaderT5Copied = copyCandidate(
             pixelShaderT5Texture.Get(),
             pixelShaderT5Description,
-            readback->pixelShaderT5Texture.Get());
-        readback->pixelShaderT6Copied = copyCandidate(
+            readback->rollingPixelShaderT5Texture.Get());
+        readback->rollingPixelShaderT6Copied = copyCandidate(
             pixelShaderT6Texture.Get(),
             pixelShaderT6Description,
-            readback->pixelShaderT6Texture.Get());
-        if (!copySceneProbeSamples(
-                context,
-                outputTexture.Get(),
-                readback->compositeTexture.Get(),
-                outputDescription)) {
-            return;
-        }
+            readback->rollingPixelShaderT6Texture.Get());
 
         const auto contractIndex = static_cast<std::size_t>(
             contractPlusOne - 1);
@@ -917,9 +915,55 @@ namespace community_shaders::ibl
             (static_cast<std::uint32_t>(contract.checksum[1]) << 16) |
             (static_cast<std::uint32_t>(contract.checksum[2]) << 8) |
             static_cast<std::uint32_t>(contract.checksum[3]);
-        readback->pendingPolls = 0;
-        readback->pending = true;
-        sceneRadianceProbeCaptures_.fetch_add(1, std::memory_order_relaxed);
+        readback->rollingReady = true;
+    }
+
+    void Runtime::onCaptureProbePassComplete(
+        ID3D11DeviceContext* context,
+        std::uint16_t contractPlusOne) noexcept
+    {
+        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+            contractPlusOne > kCaptureProbeContracts.size() ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
+            return;
+        }
+
+        for (auto& readback : sceneRadianceReadbackSlots_) {
+            if (!readback.rollingReady || readback.pending ||
+                readback.completed || !readback.rollingCompositeTexture ||
+                !readback.compositeTexture) {
+                continue;
+            }
+
+            context->CopyResource(
+                readback.compositeTexture.Get(),
+                readback.rollingCompositeTexture.Get());
+            readback.pixelShaderT5Copied =
+                readback.rollingPixelShaderT5Copied &&
+                readback.rollingPixelShaderT5Texture &&
+                readback.pixelShaderT5Texture;
+            if (readback.pixelShaderT5Copied) {
+                context->CopyResource(
+                    readback.pixelShaderT5Texture.Get(),
+                    readback.rollingPixelShaderT5Texture.Get());
+            }
+            readback.pixelShaderT6Copied =
+                readback.rollingPixelShaderT6Copied &&
+                readback.rollingPixelShaderT6Texture &&
+                readback.pixelShaderT6Texture;
+            if (readback.pixelShaderT6Copied) {
+                context->CopyResource(
+                    readback.pixelShaderT6Texture.Get(),
+                    readback.rollingPixelShaderT6Texture.Get());
+            }
+
+            readback.rollingReady = false;
+            readback.pendingPolls = 0;
+            readback.pending = true;
+            sceneRadianceProbeCaptures_.fetch_add(
+                1,
+                std::memory_order_relaxed);
+        }
     }
 
     bool Runtime::createResources() noexcept
@@ -1005,6 +1049,22 @@ namespace community_shaders::ibl
             description.ArraySize = 1;
             description.Format = slot.format;
             description.SampleDesc.Count = 1;
+            description.Usage = D3D11_USAGE_DEFAULT;
+            if (FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.rollingPixelShaderT5Texture)) ||
+                FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.rollingPixelShaderT6Texture)) ||
+                FAILED(device_->CreateTexture2D(
+                    &description,
+                    nullptr,
+                    &slot.rollingCompositeTexture))) {
+                return false;
+            }
+
             description.Usage = D3D11_USAGE_STAGING;
             description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
             if (FAILED(device_->CreateTexture2D(
@@ -1250,7 +1310,7 @@ namespace community_shaders::ibl
 
             const auto compositeSummary = summarizeSceneProbe(composite);
             logging::info(
-                "IBL scene-radiance pass-end DFComposite[{:02}] {:08x}: format={}, packedExtent={}x{}, samples={}; image unchanged.",
+                "IBL scene-radiance pass-end final-draw snapshot DFComposite[{:02}] {:08x}: format={}, packedExtent={}x{}, samples={}; image unchanged.",
                 slot.contractPlusOne,
                 slot.checksumPrefix,
                 sceneProbeFormatName(slot.format),

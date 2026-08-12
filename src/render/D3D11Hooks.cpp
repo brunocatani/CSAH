@@ -966,6 +966,18 @@ namespace community_shaders::render
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne);
         }
 
+        void preserveActiveIblCaptureProbeDraw(
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (!qualificationSessionActive.load(std::memory_order_acquire) ||
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne == 0) {
+                return;
+            }
+            ibl::Runtime::get().onCaptureProbeDrawComplete(
+                context,
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne);
+        }
+
         void completeIblCaptureProbePass(
             ID3D11DeviceContext* context,
             ibl::CaptureProbeShaderBinding nextBinding) noexcept
@@ -1159,6 +1171,7 @@ namespace community_shaders::render
                     indexCount,
                     startIndexLocation,
                     baseVertexLocation);
+                preserveActiveIblCaptureProbeDraw(context);
             }
         }
 
@@ -1176,6 +1189,7 @@ namespace community_shaders::render
             }
             if (originalDraw) {
                 originalDraw(context, vertexCount, startVertexLocation);
+                preserveActiveIblCaptureProbeDraw(context);
             }
         }
 
@@ -1204,6 +1218,7 @@ namespace community_shaders::render
                     startIndexLocation,
                     baseVertexLocation,
                     startInstanceLocation);
+                preserveActiveIblCaptureProbeDraw(context);
             }
         }
 
@@ -1230,6 +1245,7 @@ namespace community_shaders::render
                     instanceCount,
                     startVertexLocation,
                     startInstanceLocation);
+                preserveActiveIblCaptureProbeDraw(context);
             }
         }
 

@@ -66,10 +66,17 @@ namespace community_shaders::ibl
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
 
+        // Called immediately after a qualified DFComposite draw while its
+        // render target and inputs remain bound. It preserves only eight GPU
+        // pixels per supported format; CPU readback waits for the family
+        // boundary and never stalls the draw hook.
+        void onCaptureProbeDrawComplete(
+            ID3D11DeviceContext* context,
+            std::uint16_t contractPlusOne) noexcept;
+
         // Called before PSSetShader leaves the complete qualified DFComposite
-        // family. The previous shader resources and accumulated output are
-        // still bound, so this is the pass-complete read-only evidence
-        // boundary rather than an arbitrary early draw.
+        // family. It stages the last post-draw GPU snapshot for nonblocking
+        // readback, avoiding targets that the engine cleared after drawing.
         void onCaptureProbePassComplete(
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
@@ -102,6 +109,12 @@ namespace community_shaders::ibl
 
         struct SceneRadianceReadbackSlot
         {
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>
+                rollingPixelShaderT5Texture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>
+                rollingPixelShaderT6Texture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>
+                rollingCompositeTexture;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT5Texture;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> pixelShaderT6Texture;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> compositeTexture;
@@ -111,6 +124,9 @@ namespace community_shaders::ibl
             std::uint16_t contractPlusOne{};
             std::uint32_t checksumPrefix{};
             std::uint32_t pendingPolls{};
+            bool rollingReady{};
+            bool rollingPixelShaderT5Copied{};
+            bool rollingPixelShaderT6Copied{};
             bool pending{};
             bool completed{};
             bool pixelShaderT5Copied{};
