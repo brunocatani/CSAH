@@ -4,6 +4,8 @@ foreach(variable IN ITEMS
     IBL_PROJECTION_MODEL
     IBL_CAPTURE_PROBE_MODEL
     IBL_SCENE_RADIANCE_PROBE_MODEL
+    IBL_REFLECTION_FREE_CAPTURE_SOURCE
+    IBL_REFLECTION_FREE_CAPTURE_HEADER
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
     D3D11_HOOK_SOURCE
@@ -19,6 +21,8 @@ file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${IBL_PROJECTION_MODEL}" projectionModel)
 file(READ "${IBL_CAPTURE_PROBE_MODEL}" captureProbeModel)
 file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
+file(READ "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}" reflectionFreeCaptureSource)
+file(READ "${IBL_REFLECTION_FREE_CAPTURE_HEADER}" reflectionFreeCaptureHeader)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
@@ -51,9 +55,50 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "class ReflectionFreeCaptureResources"
+    "class ScopedReflectionFreeCapture"
+    "prepareScratch"
+    "scratchMatches"
+    "blackEnvironment"
+    "blackScreenReflection"
+    "restore() noexcept")
+  string(FIND
+    "${reflectionFreeCaptureHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL reflection-free capture regression: header is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kEnvironmentCubeCount = 42"
+    "D3D11_SRV_DIMENSION_TEXTURECUBEARRAY"
+    "D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE"
+    "PSGetShaderResources"
+    "PSSetShaderResources"
+    "OMGetRenderTargets"
+    "OMSetRenderTargetsAndUnorderedAccessViews"
+    "D3D11_KEEP_UNORDERED_ACCESS_VIEWS"
+    "OMGetBlendState"
+    "RenderTargetWriteMask"
+    "LogicOpEnable"
+    "sampleMask & 1U"
+    "SOGetTargets"
+    "D3D11_DEPTH_WRITE_MASK_ZERO"
+    "StencilWriteMask = 0"
+    "appliedStateMatches"
+    "(void)restore()")
+  string(FIND
+    "${reflectionFreeCaptureSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL reflection-free capture regression: source is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
     "kWorldCaptureProbeSettleMilliseconds = 5000"
     "kSceneRadianceCandidateSlots"
-    "t10CandidateIndex"
     "activateWorldCaptureProbeSession"
     "kSceneRadianceMaximumReadbackPolls = 80"
     "CopySubresourceRegion"
@@ -61,11 +106,15 @@ foreach(required IN ITEMS
     "consumeSceneRadianceProbeReadbacks"
     "D3D11_MAP_FLAG_DO_NOT_WAIT"
     "rollingCompositeTexture"
+    "rollingReflectionFreeTexture"
     "rollingReady"
+    "beginReflectionFreeCapture"
+    "onReflectionFreeCaptureDrawComplete"
     "onCaptureProbeDrawComplete"
     "IBL scene-radiance pass-end final-draw snapshot DFComposite"
     "IBL scene-radiance PS-t{}"
     "IBL scene-radiance OM-composite:"
+    "IBL scene-radiance reflection-free split:"
     "onCaptureProbePassComplete")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
@@ -191,6 +240,8 @@ foreach(required IN ITEMS
     "ibl::Runtime::get().onPixelShaderCreated"
     "ibl::Runtime::get().captureProbeBindingForShader"
     "ibl::Runtime::get().onCaptureProbeDraw"
+    ".beginReflectionFreeCapture("
+    ".onReflectionFreeCaptureDrawComplete("
     "ibl::Runtime::get().onCaptureProbeDrawComplete"
     "ibl::Runtime::get().onCaptureProbePassComplete"
     "recordActiveIblCaptureProbe"

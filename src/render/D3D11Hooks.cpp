@@ -1163,6 +1163,25 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexed) {
+                auto reflectionFree = ibl::Runtime::get()
+                    .beginReflectionFreeCapture(
+                        context,
+                        activeIblCaptureProbePass
+                            .lastEnvironmentContractPlusOne);
+                if (reflectionFree.active()) {
+                    originalDrawIndexed(
+                        context,
+                        indexCount,
+                        startIndexLocation,
+                        baseVertexLocation);
+                    const auto restored = reflectionFree.restore();
+                    ibl::Runtime::get()
+                        .onReflectionFreeCaptureDrawComplete(
+                            context,
+                            activeIblCaptureProbePass
+                                .lastEnvironmentContractPlusOne,
+                            restored);
+                }
                 originalDrawIndexed(
                     context,
                     indexCount,
@@ -1185,6 +1204,21 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDraw) {
+                auto reflectionFree = ibl::Runtime::get()
+                    .beginReflectionFreeCapture(
+                        context,
+                        activeIblCaptureProbePass
+                            .lastEnvironmentContractPlusOne);
+                if (reflectionFree.active()) {
+                    originalDraw(context, vertexCount, startVertexLocation);
+                    const auto restored = reflectionFree.restore();
+                    ibl::Runtime::get()
+                        .onReflectionFreeCaptureDrawComplete(
+                            context,
+                            activeIblCaptureProbePass
+                                .lastEnvironmentContractPlusOne,
+                            restored);
+                }
                 originalDraw(context, vertexCount, startVertexLocation);
                 preserveActiveIblCaptureProbeDraw(context);
             }
@@ -1208,6 +1242,27 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexedInstanced) {
+                auto reflectionFree = ibl::Runtime::get()
+                    .beginReflectionFreeCapture(
+                        context,
+                        activeIblCaptureProbePass
+                            .lastEnvironmentContractPlusOne);
+                if (reflectionFree.active()) {
+                    originalDrawIndexedInstanced(
+                        context,
+                        indexCountPerInstance,
+                        instanceCount,
+                        startIndexLocation,
+                        baseVertexLocation,
+                        startInstanceLocation);
+                    const auto restored = reflectionFree.restore();
+                    ibl::Runtime::get()
+                        .onReflectionFreeCaptureDrawComplete(
+                            context,
+                            activeIblCaptureProbePass
+                                .lastEnvironmentContractPlusOne,
+                            restored);
+                }
                 originalDrawIndexedInstanced(
                     context,
                     indexCountPerInstance,
@@ -1236,6 +1291,26 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawInstanced) {
+                auto reflectionFree = ibl::Runtime::get()
+                    .beginReflectionFreeCapture(
+                        context,
+                        activeIblCaptureProbePass
+                            .lastEnvironmentContractPlusOne);
+                if (reflectionFree.active()) {
+                    originalDrawInstanced(
+                        context,
+                        vertexCountPerInstance,
+                        instanceCount,
+                        startVertexLocation,
+                        startInstanceLocation);
+                    const auto restored = reflectionFree.restore();
+                    ibl::Runtime::get()
+                        .onReflectionFreeCaptureDrawComplete(
+                            context,
+                            activeIblCaptureProbePass
+                                .lastEnvironmentContractPlusOne,
+                            restored);
+                }
                 originalDrawInstanced(
                     context,
                     vertexCountPerInstance,

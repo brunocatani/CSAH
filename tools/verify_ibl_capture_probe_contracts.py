@@ -106,19 +106,28 @@ def main() -> int:
 
     fxc = census.find_fxc(None)
     environment_identities: set[tuple[int, str]] = set()
+    environment_uav_writers: set[tuple[int, str]] = set()
     with tempfile.TemporaryDirectory(prefix="fo4vr-cs-ibl-probe-") as directory:
         temporary = Path(directory)
         for identity, occurrences in by_identity.items():
             shader_path = temporary / f"{identity[1]}-{identity[0]}.dxbc"
             shader_path.write_bytes(occurrences[0].data)
-            if is_environment_consumer(census.disassemble(fxc, shader_path)):
+            assembly = census.disassemble(fxc, shader_path)
+            if is_environment_consumer(assembly):
                 environment_identities.add(identity)
+                if re.search(r"^\s*dcl_uav", assembly, re.MULTILINE):
+                    environment_uav_writers.add(identity)
 
     if environment_identities != contract_set:
         fail(
             "capture-probe coverage differs from exact TextureCubeArray-t8 "
             f"DFComposite consumers: missing={sorted(environment_identities - contract_set)}, "
             f"extra={sorted(contract_set - environment_identities)}"
+        )
+    if environment_uav_writers:
+        fail(
+            "reflection-free duplicate draw cannot target DFComposite UAV "
+            f"writers: {sorted(environment_uav_writers)}"
         )
     alias_count = sum(len(by_identity[identity]) for identity in contract_set)
     if alias_count != 83:

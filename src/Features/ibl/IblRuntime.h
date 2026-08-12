@@ -2,6 +2,7 @@
 
 #include "Features/ibl/IblCaptureProbeModel.h"
 #include "Features/ibl/IblProjectionModel.h"
+#include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
 
 #include <d3d11.h>
@@ -72,6 +73,19 @@ namespace community_shaders::ibl
             ID3D11DeviceContext* context,
             std::uint16_t contractPlusOne) noexcept;
 
+        // Begins one image-neutral duplicate draw into an owned target with
+        // the exact shader's environment inputs neutralized. The caller must
+        // issue the same original draw only while the returned scope is
+        // active, restore it, and then report completion below before issuing
+        // the normal visible draw.
+        [[nodiscard]] ScopedReflectionFreeCapture beginReflectionFreeCapture(
+            ID3D11DeviceContext* context,
+            std::uint16_t contractPlusOne) noexcept;
+        void onReflectionFreeCaptureDrawComplete(
+            ID3D11DeviceContext* context,
+            std::uint16_t contractPlusOne,
+            bool stateRestored) noexcept;
+
         // Called immediately after a qualified DFComposite draw while its
         // render target and inputs remain bound. It preserves one bounded
         // stereo sample grid per supported format; CPU readback waits for the
@@ -123,11 +137,15 @@ namespace community_shaders::ibl
                 rollingPixelShaderTextures;
             Microsoft::WRL::ComPtr<ID3D11Texture2D>
                 rollingCompositeTexture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>
+                rollingReflectionFreeTexture;
             std::array<
                 Microsoft::WRL::ComPtr<ID3D11Texture2D>,
                 kSceneRadianceCandidateCount>
                 pixelShaderTextures;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> compositeTexture;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D>
+                reflectionFreeTexture;
             DXGI_FORMAT format{ DXGI_FORMAT_UNKNOWN };
             UINT sourceWidth{};
             UINT sourceHeight{};
@@ -135,10 +153,13 @@ namespace community_shaders::ibl
             std::uint32_t checksumPrefix{};
             std::uint32_t pendingPolls{};
             bool rollingReady{};
+            bool reflectionFreeCaptureAttempted{};
+            bool rollingReflectionFreeCopied{};
             std::array<bool, kSceneRadianceCandidateCount>
                 rollingPixelShaderCopied{};
             bool pending{};
             bool completed{};
+            bool reflectionFreeCopied{};
             std::array<bool, kSceneRadianceCandidateCount>
                 pixelShaderCopied{};
             bool failureLogged{};
@@ -168,6 +189,7 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11Texture2D> projectionTexture_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> projectionUav_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
+        ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
         std::array<ReadbackSlot, 3> readbackRing_{};
         std::array<SceneRadianceReadbackSlot, 2>
             sceneRadianceReadbackSlots_{};
