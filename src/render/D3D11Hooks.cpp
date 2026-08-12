@@ -182,6 +182,8 @@ namespace community_shaders::render
         thread_local std::uint64_t activeQualificationSessionId{};
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
+        thread_local ibl::Runtime::MaterialShaderBinding
+            activeIblMaterialBinding{};
         thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
 
         class RecursionGuard final
@@ -990,6 +992,92 @@ namespace community_shaders::render
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne);
         }
 
+        template <class DrawCall>
+        void issueDrawWithIblMaterial(
+            ID3D11DeviceContext* context,
+            DrawCall&& draw) noexcept
+        {
+            auto& runtime = ibl::Runtime::get();
+            const auto contractPlusOne =
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne;
+
+            if (activeIblMaterialBinding) {
+                auto disabled = runtime.scopeMaterialBindings(
+                    context,
+                    activeIblMaterialBinding,
+                    false);
+                if (disabled.active()) {
+                    auto reflectionFree = runtime.beginReflectionFreeCapture(
+                        context,
+                        contractPlusOne);
+                    if (reflectionFree.active()) {
+                        draw();
+                        const auto reflectionRestored =
+                            reflectionFree.restore();
+                        const auto materialRestored = disabled.restore();
+                        runtime.onMaterialBindingsComplete(
+                            activeIblMaterialBinding,
+                            false,
+                            materialRestored);
+                        runtime.onReflectionFreeCaptureDrawComplete(
+                            context,
+                            contractPlusOne,
+                            reflectionRestored && materialRestored);
+                    } else {
+                        const auto materialRestored = disabled.restore();
+                        runtime.onMaterialBindingsComplete(
+                            activeIblMaterialBinding,
+                            false,
+                            materialRestored);
+                    }
+                }
+            } else {
+                auto reflectionFree = runtime.beginReflectionFreeCapture(
+                    context,
+                    contractPlusOne);
+                if (reflectionFree.active()) {
+                    draw();
+                    const auto restored = reflectionFree.restore();
+                    runtime.onReflectionFreeCaptureDrawComplete(
+                        context,
+                        contractPlusOne,
+                        restored);
+                }
+            }
+
+            if (activeIblMaterialBinding) {
+                auto enabled = runtime.scopeMaterialBindings(
+                    context,
+                    activeIblMaterialBinding,
+                    true);
+                if (enabled.active()) {
+                    draw();
+                    const auto restored = enabled.restore();
+                    runtime.onMaterialBindingsComplete(
+                        activeIblMaterialBinding,
+                        true,
+                        restored);
+                } else if (originalPSSetShader) {
+                    originalPSSetShader(
+                        context,
+                        activeIblMaterialBinding.original,
+                        nullptr,
+                        0);
+                    draw();
+                    originalPSSetShader(
+                        context,
+                        activeIblMaterialBinding.replacement,
+                        nullptr,
+                        0);
+                } else {
+                    draw();
+                }
+            } else {
+                draw();
+            }
+            preserveActiveIblCaptureProbeDraw(context);
+        }
+
         [[nodiscard]] void** findMainModuleImport(
             const char* importedModule,
             const char* importedFunction) noexcept
@@ -1093,6 +1181,7 @@ namespace community_shaders::render
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
+                activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
@@ -1100,6 +1189,7 @@ namespace community_shaders::render
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
+                activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
                 return;
@@ -1119,19 +1209,30 @@ namespace community_shaders::render
                 linear_lighting::Runtime::get().selectPixelShader(
                 context,
                 shader);
+            auto iblSelection = ibl::Runtime::MaterialPixelShaderSelection{
+                selection.shader,
+                {},
+            };
+            if (classInstanceCount == 0 && selection.shader == shader &&
+                selection.binding.family ==
+                    linear_lighting::ReplacementShaderFamily::none) {
+                iblSelection = ibl::Runtime::get()
+                    .selectMaterialPixelShader(context, shader);
+            }
             if (selection.binding.family ==
                 linear_lighting::ReplacementShaderFamily::dFLightAmbient) {
                 ibl::Runtime::get().onDFLightAmbientBind(context);
             }
             original(
                 context,
-                selection.shader,
+                iblSelection.shader,
                 classInstances,
                 classInstanceCount);
             if (selection.retainedForBind && selection.shader) {
                 selection.shader->Release();
             }
             activeReplacementBinding = selection.binding;
+            activeIblMaterialBinding = iblSelection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
                 return;
@@ -1163,31 +1264,13 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexed) {
-                auto reflectionFree = ibl::Runtime::get()
-                    .beginReflectionFreeCapture(
-                        context,
-                        activeIblCaptureProbePass
-                            .lastEnvironmentContractPlusOne);
-                if (reflectionFree.active()) {
+                issueDrawWithIblMaterial(context, [&]() noexcept {
                     originalDrawIndexed(
                         context,
                         indexCount,
                         startIndexLocation,
                         baseVertexLocation);
-                    const auto restored = reflectionFree.restore();
-                    ibl::Runtime::get()
-                        .onReflectionFreeCaptureDrawComplete(
-                            context,
-                            activeIblCaptureProbePass
-                                .lastEnvironmentContractPlusOne,
-                            restored);
-                }
-                originalDrawIndexed(
-                    context,
-                    indexCount,
-                    startIndexLocation,
-                    baseVertexLocation);
-                preserveActiveIblCaptureProbeDraw(context);
+                });
             }
         }
 
@@ -1204,23 +1287,9 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDraw) {
-                auto reflectionFree = ibl::Runtime::get()
-                    .beginReflectionFreeCapture(
-                        context,
-                        activeIblCaptureProbePass
-                            .lastEnvironmentContractPlusOne);
-                if (reflectionFree.active()) {
+                issueDrawWithIblMaterial(context, [&]() noexcept {
                     originalDraw(context, vertexCount, startVertexLocation);
-                    const auto restored = reflectionFree.restore();
-                    ibl::Runtime::get()
-                        .onReflectionFreeCaptureDrawComplete(
-                            context,
-                            activeIblCaptureProbePass
-                                .lastEnvironmentContractPlusOne,
-                            restored);
-                }
-                originalDraw(context, vertexCount, startVertexLocation);
-                preserveActiveIblCaptureProbeDraw(context);
+                });
             }
         }
 
@@ -1242,12 +1311,7 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexedInstanced) {
-                auto reflectionFree = ibl::Runtime::get()
-                    .beginReflectionFreeCapture(
-                        context,
-                        activeIblCaptureProbePass
-                            .lastEnvironmentContractPlusOne);
-                if (reflectionFree.active()) {
+                issueDrawWithIblMaterial(context, [&]() noexcept {
                     originalDrawIndexedInstanced(
                         context,
                         indexCountPerInstance,
@@ -1255,22 +1319,7 @@ namespace community_shaders::render
                         startIndexLocation,
                         baseVertexLocation,
                         startInstanceLocation);
-                    const auto restored = reflectionFree.restore();
-                    ibl::Runtime::get()
-                        .onReflectionFreeCaptureDrawComplete(
-                            context,
-                            activeIblCaptureProbePass
-                                .lastEnvironmentContractPlusOne,
-                            restored);
-                }
-                originalDrawIndexedInstanced(
-                    context,
-                    indexCountPerInstance,
-                    instanceCount,
-                    startIndexLocation,
-                    baseVertexLocation,
-                    startInstanceLocation);
-                preserveActiveIblCaptureProbeDraw(context);
+                });
             }
         }
 
@@ -1291,33 +1340,14 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawInstanced) {
-                auto reflectionFree = ibl::Runtime::get()
-                    .beginReflectionFreeCapture(
-                        context,
-                        activeIblCaptureProbePass
-                            .lastEnvironmentContractPlusOne);
-                if (reflectionFree.active()) {
+                issueDrawWithIblMaterial(context, [&]() noexcept {
                     originalDrawInstanced(
                         context,
                         vertexCountPerInstance,
                         instanceCount,
                         startVertexLocation,
                         startInstanceLocation);
-                    const auto restored = reflectionFree.restore();
-                    ibl::Runtime::get()
-                        .onReflectionFreeCaptureDrawComplete(
-                            context,
-                            activeIblCaptureProbePass
-                                .lastEnvironmentContractPlusOne,
-                            restored);
-                }
-                originalDrawInstanced(
-                    context,
-                    vertexCountPerInstance,
-                    instanceCount,
-                    startVertexLocation,
-                    startInstanceLocation);
-                preserveActiveIblCaptureProbeDraw(context);
+                });
             }
         }
 
@@ -1692,7 +1722,10 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
-            ibl::Runtime::get().onDeviceCreated(*device, *immediateContext);
+            ibl::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext,
+                originalCreatePixelShader);
             shaderInterceptionActive.store(true, std::memory_order_release);
             deviceHooksInstalled.store(true, std::memory_order_release);
             logging::info(

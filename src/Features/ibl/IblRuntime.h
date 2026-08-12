@@ -3,6 +3,7 @@
 #include "Features/ibl/IblCaptureProbeModel.h"
 #include "Features/ibl/IblEnvironmentProvider.h"
 #include "Features/ibl/IblEnvironmentUpdater.h"
+#include "Features/ibl/IblMaterialBindingScope.h"
 #include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
@@ -34,6 +35,8 @@ namespace community_shaders::ibl
         std::uint64_t sceneRadianceProbeCaptures{};
         std::uint64_t sceneRadianceProbeReadbacks{};
         std::uint64_t sceneRadianceProbeFailures{};
+        std::uint64_t materialReplacementBinds{};
+        std::uint64_t materialBindingFailures{};
         std::uint64_t latestSampleGeneration{};
         std::uint64_t latestSampleTickMilliseconds{};
         DiffuseSH latestDiffuseSH{};
@@ -42,13 +45,39 @@ namespace community_shaders::ibl
     class Runtime
     {
     public:
+        using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11PixelShader**);
+
+        struct MaterialShaderBinding
+        {
+            ID3D11PixelShader* original{};
+            ID3D11PixelShader* replacement{};
+            std::uint16_t contractPlusOne{};
+
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return original && replacement && contractPlusOne != 0;
+            }
+        };
+
+        struct MaterialPixelShaderSelection
+        {
+            ID3D11PixelShader* shader{};
+            MaterialShaderBinding binding{};
+        };
+
         static Runtime& get() noexcept;
 
         // Render-thread only. The device/context are retained for the process
         // lifetime; no engine pointer is retained by this subsystem.
         void onDeviceCreated(
             ID3D11Device* device,
-            ID3D11DeviceContext* immediateContext) noexcept;
+            ID3D11DeviceContext* immediateContext,
+            CreatePixelShaderFunction createPixelShader) noexcept;
 
         // May be called from the game-message thread. The render thread
         // consumes the request and waits for the world to settle before any
@@ -65,6 +94,26 @@ namespace community_shaders::ibl
 
         [[nodiscard]] CaptureProbeShaderBinding captureProbeBindingForShader(
             ID3D11PixelShader* shader) const noexcept;
+
+        // Exact-identity material replacement becomes selectable only after
+        // the provider atomically publishes both radiance and validity.
+        // The returned raw pointers remain owned by this runtime and by the
+        // creation-time capture registry for the device lifetime.
+        [[nodiscard]] MaterialPixelShaderSelection selectMaterialPixelShader(
+            ID3D11DeviceContext* context,
+            ID3D11PixelShader* original) noexcept;
+
+        // enabled=true binds the published t30/t31 pair with weight one.
+        // enabled=false binds null provider views and the immutable zero
+        // weight constants used by the reflection-free duplicate draw.
+        [[nodiscard]] ScopedMaterialBindings scopeMaterialBindings(
+            ID3D11DeviceContext* context,
+            MaterialShaderBinding binding,
+            bool enabled) noexcept;
+        void onMaterialBindingsComplete(
+            MaterialShaderBinding binding,
+            bool enabled,
+            bool restored) noexcept;
 
         // Called for an exact qualified DFComposite draw. The runtime's
         // delayed world-session gate decides whether to inspect it. It reads
@@ -167,7 +216,10 @@ namespace community_shaders::ibl
             bool failureLogged{};
         };
 
-        [[nodiscard]] bool createResources() noexcept;
+        [[nodiscard]] bool createResources(
+            CreatePixelShaderFunction createPixelShader) noexcept;
+        [[nodiscard]] bool createMaterialResources(
+            CreatePixelShaderFunction createPixelShader) noexcept;
         [[nodiscard]] bool createSceneRadianceProbeResources() noexcept;
         [[nodiscard]] bool refreshNativeCubemap() noexcept;
         void consumeCompletedReadbacks() noexcept;
@@ -194,6 +246,12 @@ namespace community_shaders::ibl
         EnvironmentProvider environmentProvider_;
         EnvironmentUpdater environmentUpdater_;
         ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
+        std::array<
+            Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kCaptureProbeContracts.size()>
+            materialReplacementShaders_{};
+        Microsoft::WRL::ComPtr<ID3D11Buffer> materialDisabledConstants_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> materialEnabledConstants_;
         std::array<ReadbackSlot, 3> readbackRing_{};
         std::array<SceneRadianceReadbackSlot, 2>
             sceneRadianceReadbackSlots_{};
@@ -220,6 +278,9 @@ namespace community_shaders::ibl
         bool loggedSourceUnavailable_{};
         bool loggedReadbackFailure_{};
         bool loggedEnvironmentUpdateFailure_{};
+        bool loggedFirstMaterialBind_{};
+        bool loggedMaterialBindingFailure_{};
+        bool materialConsumptionFailed_{};
 
         std::atomic_bool resourcesReady_{};
         std::atomic_bool nativeCubemapReady_{};
@@ -234,6 +295,8 @@ namespace community_shaders::ibl
         std::atomic_uint64_t sceneRadianceProbeCaptures_{};
         std::atomic_uint64_t sceneRadianceProbeReadbacks_{};
         std::atomic_uint64_t sceneRadianceProbeFailures_{};
+        std::atomic_uint64_t materialReplacementBinds_{};
+        std::atomic_uint64_t materialBindingFailures_{};
         std::atomic_bool captureRegistryOverflowLogged_{};
         std::atomic_uint64_t publishedSequence_{};
         std::atomic_bool publishedUsable_{};

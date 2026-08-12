@@ -21,6 +21,40 @@ namespace community_shaders::ibl
     {
         using Microsoft::WRL::ComPtr;
 
+        struct IblMaterialShaderDefinition
+        {
+            const char* name{};
+            int resourceId{};
+            CaptureProbeContract originalIdentity{};
+            CaptureProbeContract replacementIdentity{};
+        };
+
+        #include "Features/ibl/GeneratedIblMaterialContracts.inl"
+
+        [[nodiscard]] consteval bool materialDefinitionsMatchCaptureSet()
+        {
+            if (kIblMaterialShaderDefinitions.size() !=
+                kCaptureProbeContracts.size()) {
+                return false;
+            }
+            for (std::size_t index = 0;
+                 index < kCaptureProbeContracts.size();
+                 ++index) {
+                const auto& expected = kCaptureProbeContracts[index];
+                const auto& actual =
+                    kIblMaterialShaderDefinitions[index].originalIdentity;
+                if (expected.bytecodeSize != actual.bytecodeSize ||
+                    expected.checksum != actual.checksum) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static_assert(
+            materialDefinitionsMatchCaptureSet(),
+            "generated IBL material replacements must match the capture set");
+
         // Fallout4VR.exe 1.2.72 raw-disassembly witnesses:
         // - 0x1428A4A60 registers the only cubemap target (index 0), and
         //   0x141D99C00 stores its six-face texture/RTVs/SRV at renderer
@@ -264,6 +298,23 @@ namespace community_shaders::ibl
             return { LockResource(loaded), static_cast<std::size_t>(size) };
         }
 
+        [[nodiscard]] bool matchesIdentity(
+            EmbeddedShader shader,
+            const CaptureProbeContract& identity) noexcept
+        {
+            if (!shader.data || shader.size != identity.bytecodeSize ||
+                shader.size < 20) {
+                return false;
+            }
+            const auto* bytes = static_cast<const std::uint8_t*>(shader.data);
+            return bytes[0] == 'D' && bytes[1] == 'X' &&
+                bytes[2] == 'B' && bytes[3] == 'C' &&
+                std::equal(
+                    identity.checksum.begin(),
+                    identity.checksum.end(),
+                    bytes + 4);
+        }
+
         [[nodiscard]] bool readableRange(
             const void* address,
             std::size_t size,
@@ -477,17 +528,18 @@ namespace community_shaders::ibl
 
     void Runtime::onDeviceCreated(
         ID3D11Device* device,
-        ID3D11DeviceContext* immediateContext) noexcept
+        ID3D11DeviceContext* immediateContext,
+        CreatePixelShaderFunction createPixelShader) noexcept
     {
         resetResources();
-        if (!device || !immediateContext) {
+        if (!device || !immediateContext || !createPixelShader) {
             logging::error(
-                "IBL projection initialization rejected a null D3D11 device/context.");
+                "IBL projection initialization rejected a null D3D11 device/context/pixel-shader trampoline.");
             return;
         }
         device_ = device;
         context_ = immediateContext;
-        if (!createResources()) {
+        if (!createResources(createPixelShader)) {
             logging::error(
                 "IBL projection resources could not be created; the subsystem remains fail-closed and has no visual effect.");
             resetResources();
@@ -496,7 +548,7 @@ namespace community_shaders::ibl
         resourcesReady_.store(true, std::memory_order_release);
         const auto environment = environmentProvider_.snapshot();
         logging::info(
-            "IBL projection foundation initialized in image-neutral provider mode; transactional radiance/validity state={}, extent={}, mips={}, filtered updater ready={}, and native material lighting remains unchanged.",
+            "IBL projection foundation initialized; transactional radiance/validity state={}, extent={}, mips={}, filtered updater ready={}, and 41 exact material replacements are staged fail-closed until publication.",
             static_cast<unsigned>(environment.state),
             environment.extent,
             environment.mipCount,
@@ -645,6 +697,110 @@ namespace community_shaders::ibl
             }
         }
         return {};
+    }
+
+    Runtime::MaterialPixelShaderSelection Runtime::selectMaterialPixelShader(
+        ID3D11DeviceContext* context,
+        ID3D11PixelShader* original) noexcept
+    {
+        MaterialPixelShaderSelection selection{ original, {} };
+        if (!context || context != context_.Get() || !original ||
+            materialConsumptionFailed_ ||
+            !resourcesReady_.load(std::memory_order_acquire) ||
+            !environmentProvider_.publishedEnvironment() ||
+            !environmentProvider_.publishedValidity()) {
+            return selection;
+        }
+        const auto capture = captureProbeBindingForShader(original);
+        if (capture.environmentContractPlusOne == 0 ||
+            capture.environmentContractPlusOne >
+                materialReplacementShaders_.size()) {
+            return selection;
+        }
+        const auto index = static_cast<std::size_t>(
+            capture.environmentContractPlusOne - 1);
+        auto* replacement = materialReplacementShaders_[index].Get();
+        if (!replacement || replacement == original) {
+            return selection;
+        }
+
+        selection.shader = replacement;
+        selection.binding = {
+            original,
+            replacement,
+            capture.environmentContractPlusOne,
+        };
+        materialReplacementBinds_.fetch_add(1, std::memory_order_relaxed);
+        if (!loggedFirstMaterialBind_) {
+            loggedFirstMaterialBind_ = true;
+            const auto provider = environmentProvider_.snapshot();
+            logging::info(
+                "IBL material consumption activated for exact DFComposite[{:02}] from atomically published radiance/validity generation {}; vanilla t8/s8 remains the per-direction fallback.",
+                capture.environmentContractPlusOne,
+                provider.publishedGeneration);
+        }
+        return selection;
+    }
+
+    ScopedMaterialBindings Runtime::scopeMaterialBindings(
+        ID3D11DeviceContext* context,
+        MaterialShaderBinding binding,
+        bool enabled) noexcept
+    {
+        if (!binding || !context || context != context_.Get() ||
+            materialConsumptionFailed_ ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
+            return {};
+        }
+        auto* constants = enabled ? materialEnabledConstants_.Get() :
+                                    materialDisabledConstants_.Get();
+        auto* radiance = enabled ?
+            environmentProvider_.publishedEnvironment() : nullptr;
+        auto* validity = enabled ?
+            environmentProvider_.publishedValidity() : nullptr;
+        if (!constants || (enabled && (!radiance || !validity))) {
+            materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
+            materialConsumptionFailed_ = true;
+            return {};
+        }
+
+        ScopedMaterialBindings scope(
+            context,
+            radiance,
+            validity,
+            constants);
+        if (!scope.active()) {
+            materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
+            materialConsumptionFailed_ = true;
+            if (!loggedMaterialBindingFailure_) {
+                loggedMaterialBindingFailure_ = true;
+                logging::warn(
+                    "IBL material binding transaction failed closed (enabled={}, reason={}, contract={}); the draw uses the exact vanilla shader path.",
+                    enabled,
+                    static_cast<unsigned>(scope.rejection()),
+                    binding.contractPlusOne);
+            }
+        }
+        return scope;
+    }
+
+    void Runtime::onMaterialBindingsComplete(
+        MaterialShaderBinding binding,
+        bool enabled,
+        bool restored) noexcept
+    {
+        if (!binding || restored) {
+            return;
+        }
+        materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
+        materialConsumptionFailed_ = true;
+        if (!loggedMaterialBindingFailure_) {
+            loggedMaterialBindingFailure_ = true;
+            logging::warn(
+                "IBL material binding restoration failed closed (enabled={}, contract={}); later exact draws fall back to their vanilla shader.",
+                enabled,
+                binding.contractPlusOne);
+        }
     }
 
     void Runtime::onCaptureProbeDraw(
@@ -1133,8 +1289,75 @@ namespace community_shaders::ibl
         }
     }
 
-    bool Runtime::createResources() noexcept
+    bool Runtime::createMaterialResources(
+        CreatePixelShaderFunction createPixelShader) noexcept
     {
+        if (!device_ || !createPixelShader) {
+            return false;
+        }
+
+        std::array<
+            ComPtr<ID3D11PixelShader>,
+            kCaptureProbeContracts.size()>
+            replacements{};
+        for (std::size_t index = 0;
+             index < kIblMaterialShaderDefinitions.size();
+             ++index) {
+            const auto& definition = kIblMaterialShaderDefinitions[index];
+            const auto embedded = loadEmbeddedShader(definition.resourceId);
+            if (!matchesIdentity(embedded, definition.replacementIdentity) ||
+                FAILED(createPixelShader(
+                    device_.Get(),
+                    embedded.data,
+                    embedded.size,
+                    nullptr,
+                    &replacements[index])) ||
+                !replacements[index]) {
+                logging::error(
+                    "IBL material replacement '{}' failed its embedded identity/CreatePixelShader gate.",
+                    definition.name);
+                return false;
+            }
+        }
+
+        D3D11_BUFFER_DESC description{};
+        description.ByteWidth = 16;
+        description.Usage = D3D11_USAGE_IMMUTABLE;
+        description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constexpr std::array<float, 4> disabled{};
+        constexpr std::array<float, 4> enabled{ 1.0F, 0.0F, 0.0F, 0.0F };
+        D3D11_SUBRESOURCE_DATA disabledData{};
+        disabledData.pSysMem = disabled.data();
+        D3D11_SUBRESOURCE_DATA enabledData{};
+        enabledData.pSysMem = enabled.data();
+        ComPtr<ID3D11Buffer> disabledConstants;
+        ComPtr<ID3D11Buffer> enabledConstants;
+        if (FAILED(device_->CreateBuffer(
+                &description,
+                &disabledData,
+                &disabledConstants)) ||
+            FAILED(device_->CreateBuffer(
+                &description,
+                &enabledData,
+                &enabledConstants)) ||
+            !disabledConstants || !enabledConstants) {
+            logging::error(
+                "IBL material immutable b5 enable/disable constants could not be created.");
+            return false;
+        }
+
+        materialReplacementShaders_ = std::move(replacements);
+        materialDisabledConstants_ = std::move(disabledConstants);
+        materialEnabledConstants_ = std::move(enabledConstants);
+        return true;
+    }
+
+    bool Runtime::createResources(
+        CreatePixelShaderFunction createPixelShader) noexcept
+    {
+        if (!createMaterialResources(createPixelShader)) {
+            return false;
+        }
         const auto embedded = loadEmbeddedShader(IDR_IBL_DIFFUSE_PROJECTION_CS);
         if (!embedded.data || embedded.size < 20 ||
             std::memcmp(embedded.data, "DXBC", 4) != 0 ||
@@ -1786,6 +2009,10 @@ namespace community_shaders::ibl
                 sceneRadianceProbeReadbacks_.load(std::memory_order_acquire),
             .sceneRadianceProbeFailures =
                 sceneRadianceProbeFailures_.load(std::memory_order_acquire),
+            .materialReplacementBinds =
+                materialReplacementBinds_.load(std::memory_order_acquire),
+            .materialBindingFailures =
+                materialBindingFailures_.load(std::memory_order_acquire),
         };
         constexpr std::uint32_t kMaximumSnapshotAttempts = 3;
         for (std::uint32_t attempt = 0; attempt < kMaximumSnapshotAttempts;
@@ -1859,6 +2086,11 @@ namespace community_shaders::ibl
         environmentProvider_.reset();
         environmentUpdater_.reset();
         reflectionFreeCaptureResources_.reset();
+        for (auto& replacement : materialReplacementShaders_) {
+            replacement.Reset();
+        }
+        materialDisabledConstants_.Reset();
+        materialEnabledConstants_.Reset();
         projectionUav_.Reset();
         projectionTexture_.Reset();
         linearSampler_.Reset();
@@ -1884,6 +2116,8 @@ namespace community_shaders::ibl
         sceneRadianceProbeCaptures_.store(0, std::memory_order_relaxed);
         sceneRadianceProbeReadbacks_.store(0, std::memory_order_relaxed);
         sceneRadianceProbeFailures_.store(0, std::memory_order_relaxed);
+        materialReplacementBinds_.store(0, std::memory_order_relaxed);
+        materialBindingFailures_.store(0, std::memory_order_relaxed);
         requestedCaptureProbeSessionId_.store(0, std::memory_order_relaxed);
         requestedCaptureProbeEarliestTickMilliseconds_.store(
             0,
@@ -1894,6 +2128,9 @@ namespace community_shaders::ibl
         lastLoggedEnvironmentUpdateGeneration_ = 0;
         captureProbeSessionComplete_ = true;
         loggedEnvironmentUpdateFailure_ = false;
+        loggedFirstMaterialBind_ = false;
+        loggedMaterialBindingFailure_ = false;
+        materialConsumptionFailed_ = false;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);

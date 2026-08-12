@@ -13,6 +13,9 @@ foreach(variable IN ITEMS
     IBL_SCENE_RADIANCE_PROBE_MODEL
     IBL_REFLECTION_FREE_CAPTURE_SOURCE
     IBL_REFLECTION_FREE_CAPTURE_HEADER
+    IBL_MATERIAL_BINDING_SCOPE_SOURCE
+    IBL_MATERIAL_BINDING_SCOPE_HEADER
+    IBL_MATERIAL_GENERATED_CONTRACTS
     IBL_PROJECTION_SHADER_SOURCE
     IBL_PROJECTION_SHADER_ASSET
     IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE
@@ -41,6 +44,9 @@ file(READ "${IBL_CAPTURE_PROBE_MODEL}" captureProbeModel)
 file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
 file(READ "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}" reflectionFreeCaptureSource)
 file(READ "${IBL_REFLECTION_FREE_CAPTURE_HEADER}" reflectionFreeCaptureHeader)
+file(READ "${IBL_MATERIAL_BINDING_SCOPE_SOURCE}" materialBindingScopeSource)
+file(READ "${IBL_MATERIAL_BINDING_SCOPE_HEADER}" materialBindingScopeHeader)
+file(READ "${IBL_MATERIAL_GENERATED_CONTRACTS}" materialGeneratedContracts)
 file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
 file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}" filterShaderSource)
@@ -68,6 +74,51 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL foundation regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "selectMaterialPixelShader"
+    "scopeMaterialBindings"
+    "publishedEnvironment()"
+    "publishedValidity()"
+    "materialConsumptionFailed_"
+    "createMaterialResources"
+    "materialDisabledConstants_"
+    "materialEnabledConstants_")
+  string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL material-consumption regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kRadianceSlot = 30"
+    "kValiditySlot = 31"
+    "kConstantSlot = 5"
+    "PSGetShaderResources"
+    "PSSetShaderResources"
+    "PSGetConstantBuffers"
+    "PSSetConstantBuffers"
+    "restoreCaptured()")
+  string(FIND
+    "${materialBindingScopeSource}${materialBindingScopeHeader}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL material-binding transaction regression: scope is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "kIblMaterialShaderDefinitions"
+    "IDR_IBL_MATERIAL_00_PS"
+    "IDR_IBL_MATERIAL_40_PS")
+  string(FIND "${materialGeneratedContracts}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL generated material contract regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -386,6 +437,12 @@ foreach(required IN ITEMS
     "ibl::Runtime::get().onDeviceCreated"
     "ibl::Runtime::get().onPixelShaderCreated"
     "ibl::Runtime::get().captureProbeBindingForShader"
+    ".selectMaterialPixelShader(context, shader)"
+    "activeIblMaterialBinding"
+    "issueDrawWithIblMaterial"
+    "scopeMaterialBindings("
+    "activeIblMaterialBinding.original"
+    "activeIblMaterialBinding.replacement"
     "ibl::Runtime::get().onCaptureProbeDraw"
     ".beginReflectionFreeCapture("
     ".onReflectionFreeCaptureDrawComplete("
