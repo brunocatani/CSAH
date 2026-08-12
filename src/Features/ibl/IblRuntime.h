@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/ibl/IblCaptureProbeModel.h"
+#include "Features/ibl/IblEnvironmentProvider.h"
 #include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
@@ -189,6 +190,7 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11Texture2D> projectionTexture_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> projectionUav_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
+        EnvironmentProvider environmentProvider_;
         ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
         std::array<ReadbackSlot, 3> readbackRing_{};
         std::array<SceneRadianceReadbackSlot, 2>

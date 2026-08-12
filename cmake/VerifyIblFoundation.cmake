@@ -1,6 +1,11 @@
 foreach(variable IN ITEMS
     IBL_RUNTIME_SOURCE
     IBL_RUNTIME_HEADER
+    IBL_PROVIDER_MODEL
+    IBL_ENVIRONMENT_PROVIDER_SOURCE
+    IBL_ENVIRONMENT_PROVIDER_HEADER
+    IBL_COMPUTE_STATE_SCOPE_SOURCE
+    IBL_COMPUTE_STATE_SCOPE_HEADER
     IBL_PROJECTION_MODEL
     IBL_CAPTURE_PROBE_MODEL
     IBL_SCENE_RADIANCE_PROBE_MODEL
@@ -18,6 +23,11 @@ endforeach()
 
 file(READ "${IBL_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${IBL_RUNTIME_HEADER}" runtimeHeader)
+file(READ "${IBL_PROVIDER_MODEL}" providerModel)
+file(READ "${IBL_ENVIRONMENT_PROVIDER_SOURCE}" environmentProviderSource)
+file(READ "${IBL_ENVIRONMENT_PROVIDER_HEADER}" environmentProviderHeader)
+file(READ "${IBL_COMPUTE_STATE_SCOPE_SOURCE}" computeStateScopeSource)
+file(READ "${IBL_COMPUTE_STATE_SCOPE_HEADER}" computeStateScopeHeader)
 file(READ "${IBL_PROJECTION_MODEL}" projectionModel)
 file(READ "${IBL_CAPTURE_PROBE_MODEL}" captureProbeModel)
 file(READ "${IBL_SCENE_RADIANCE_PROBE_MODEL}" sceneProbeModel)
@@ -34,10 +44,7 @@ foreach(required IN ITEMS
     "D3D11_RESOURCE_MISC_TEXTURECUBE"
     "D3D11_SRV_DIMENSION_TEXTURECUBE"
     "D3D11_MAP_FLAG_DO_NOT_WAIT"
-    "class ScopedComputeState"
-    "CSGetShaderResources"
-    "CSGetUnorderedAccessViews"
-    "CSGetSamplers"
+    "ScopedComputeState restore("
     "Dispatch(1, 1, 1)"
     "CopyResource"
     "onDFLightAmbientBind"
@@ -51,6 +58,70 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL foundation regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "class EnvironmentUpdateCoverage"
+    "environmentCubeDirection"
+    "kEnvironmentCubeFaceCount = 6"
+    "kEnvironmentMaximumMipCount = 10")
+  string(FIND "${providerModel}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL provider-model regression: model is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "class EnvironmentProvider"
+    "EnvironmentProviderState"
+    "beginUpdate"
+    "markSubresourceComplete"
+    "publishUpdate"
+    "abortUpdate"
+    "publishedEnvironment"
+    "publishedGeneration")
+  string(FIND "${environmentProviderHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL provider regression: header is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "D3D11_RESOURCE_MISC_TEXTURECUBE"
+    "D3D11_BIND_SHADER_RESOURCE |"
+    "D3D11_BIND_UNORDERED_ACCESS"
+    "D3D11_SRV_DIMENSION_TEXTURECUBE"
+    "D3D11_UAV_DIMENSION_TEXTURE2DARRAY"
+    "ResourceSet candidate"
+    "frontChain_ = 1 - frontChain_"
+    "coverage_.complete")
+  string(FIND "${environmentProviderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL provider regression: source is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "ComputeStateFootprint"
+    "CSGetShaderResources"
+    "CSGetUnorderedAccessViews"
+    "CSGetSamplers"
+    "CSGetConstantBuffers"
+    "CSSetShaderResources"
+    "CSSetUnorderedAccessViews"
+    "CSSetSamplers"
+    "CSSetConstantBuffers"
+    "restore() noexcept")
+  string(FIND
+    "${computeStateScopeHeader}${computeStateScopeSource}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL compute-state regression: scope is missing '${required}'")
   endif()
 endforeach()
 

@@ -1,5 +1,6 @@
 #include "Features/ibl/IblRuntime.h"
 
+#include "Features/ibl/IblComputeStateScope.h"
 #include "resources.h"
 #include "support/Logger.h"
 
@@ -466,73 +467,6 @@ namespace community_shaders::ibl
             return SceneProbeReadResult::ready;
         }
 
-        class ScopedComputeState final
-        {
-        public:
-            explicit ScopedComputeState(ID3D11DeviceContext* context) noexcept :
-                context_(context)
-            {
-                if (!context_) {
-                    return;
-                }
-                classInstanceCount_ = static_cast<UINT>(classInstances_.size());
-                context_->CSGetShader(
-                    &shader_,
-                    classInstances_.data(),
-                    &classInstanceCount_);
-                context_->CSGetShaderResources(0, 1, &shaderResource_);
-                context_->CSGetUnorderedAccessViews(0, 1, &unorderedAccess_);
-                context_->CSGetSamplers(0, 1, &sampler_);
-            }
-
-            ~ScopedComputeState()
-            {
-                if (!context_) {
-                    return;
-                }
-                context_->CSSetShader(
-                    shader_,
-                    classInstances_.data(),
-                    classInstanceCount_);
-                context_->CSSetShaderResources(0, 1, &shaderResource_);
-                context_->CSSetUnorderedAccessViews(
-                    0,
-                    1,
-                    &unorderedAccess_,
-                    nullptr);
-                context_->CSSetSamplers(0, 1, &sampler_);
-                if (sampler_) {
-                    sampler_->Release();
-                }
-                if (unorderedAccess_) {
-                    unorderedAccess_->Release();
-                }
-                if (shaderResource_) {
-                    shaderResource_->Release();
-                }
-                for (UINT index = 0; index < classInstanceCount_; ++index) {
-                    if (classInstances_[index]) {
-                        classInstances_[index]->Release();
-                    }
-                }
-                if (shader_) {
-                    shader_->Release();
-                }
-            }
-
-            ScopedComputeState(const ScopedComputeState&) = delete;
-            ScopedComputeState& operator=(const ScopedComputeState&) = delete;
-
-        private:
-            ID3D11DeviceContext* context_{};
-            ID3D11ComputeShader* shader_{};
-            std::array<ID3D11ClassInstance*, D3D11_SHADER_MAX_INTERFACES>
-                classInstances_{};
-            UINT classInstanceCount_{};
-            ID3D11ShaderResourceView* shaderResource_{};
-            ID3D11UnorderedAccessView* unorderedAccess_{};
-            ID3D11SamplerState* sampler_{};
-        };
     }
 
     Runtime& Runtime::get() noexcept
@@ -560,8 +494,12 @@ namespace community_shaders::ibl
             return;
         }
         resourcesReady_.store(true, std::memory_order_release);
+        const auto environment = environmentProvider_.snapshot();
         logging::info(
-            "IBL projection foundation initialized in observe-only mode; native lighting remains unchanged.");
+            "IBL projection foundation initialized in observe-only mode; transactional environment provider state={}, extent={}, mips={}, and native lighting remains unchanged.",
+            static_cast<unsigned>(environment.state),
+            environment.extent,
+            environment.mipCount);
     }
 
     void Runtime::beginWorldCaptureProbeSession() noexcept
@@ -1228,8 +1166,15 @@ namespace community_shaders::ibl
                 return false;
             }
         }
-        return reflectionFreeCaptureResources_.initialize(device_.Get()) &&
-            createSceneRadianceProbeResources();
+        if (!reflectionFreeCaptureResources_.initialize(device_.Get()) ||
+            !createSceneRadianceProbeResources()) {
+            return false;
+        }
+        if (!environmentProvider_.initialize(device_.Get(), 128)) {
+            logging::warn(
+                "IBL transactional environment provider could not allocate its R11G11B10_FLOAT cube chains; capture diagnostics remain available and visual integration remains fail-closed.");
+        }
+        return true;
     }
 
     bool Runtime::createSceneRadianceProbeResources() noexcept
@@ -1640,7 +1585,19 @@ namespace community_shaders::ibl
             return;
         }
 
-        ScopedComputeState restore(context_.Get());
+        ScopedComputeState restore(
+            context_.Get(),
+            {
+                .firstShaderResource = 0,
+                .shaderResourceCount = 1,
+                .firstUnorderedAccess = 0,
+                .unorderedAccessCount = 1,
+                .firstSampler = 0,
+                .samplerCount = 1,
+            });
+        if (!restore.captured()) {
+            return;
+        }
         auto* source = nativeCubemapSrv_.Get();
         auto* destination = projectionUav_.Get();
         auto* sampler = linearSampler_.Get();
@@ -1815,6 +1772,7 @@ namespace community_shaders::ibl
         for (auto& slot : sceneRadianceReadbackSlots_) {
             slot = {};
         }
+        environmentProvider_.reset();
         reflectionFreeCaptureResources_.reset();
         projectionUav_.Reset();
         projectionTexture_.Reset();
