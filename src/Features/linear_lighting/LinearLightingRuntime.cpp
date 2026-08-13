@@ -1998,6 +1998,7 @@ namespace community_shaders::linear_lighting
             std::bit_cast<std::uint32_t>(settings_.ambientGamma),
             std::memory_order_release);
         enabled_.store(settings_.enabled, std::memory_order_release);
+        render::setDFPrePassLinearLightingEnabled(settings_.enabled);
         publishDFTiledPointLightSettings(settings_);
         render::publishDFLightProducerSettings(settings_);
         publishFrameData();
@@ -2016,6 +2017,8 @@ namespace community_shaders::linear_lighting
         complexEnvironmentEnabled_.store(
             complexParallaxSettings_.environmentResponseEnabled,
             std::memory_order_release);
+        render::setDFPrePassComplexEnvironmentEnabled(
+            complexParallaxSettings_.environmentResponseEnabled);
         publishFrameData();
     }
 

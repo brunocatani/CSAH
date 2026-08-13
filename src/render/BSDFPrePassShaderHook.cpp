@@ -56,6 +56,14 @@ namespace community_shaders::render
         std::atomic_uint64_t validationFailures{};
         std::atomic_uint32_t lastDescriptor{};
 
+        constexpr std::uint32_t kLinearLightingConsumer = 1u << 0;
+        constexpr std::uint32_t kComplexEnvironmentConsumer = 1u << 1;
+        constexpr std::uint32_t kIblConsumer = 1u << 2;
+        constexpr std::uint32_t kAllDescriptorConsumers =
+            kLinearLightingConsumer | kComplexEnvironmentConsumer |
+            kIblConsumer;
+        std::atomic_uint32_t descriptorConsumerMask{};
+
         thread_local DFPrePassDescriptorScope activeScope{};
 
         class DescriptorScope final
@@ -163,6 +171,21 @@ namespace community_shaders::render
             return *cell == replacement;
         }
 
+        void setDescriptorConsumer(
+            std::uint32_t consumer,
+            bool enabled) noexcept
+        {
+            if (enabled) {
+                descriptorConsumerMask.fetch_or(
+                    consumer,
+                    std::memory_order_release);
+            } else {
+                descriptorConsumerMask.fetch_and(
+                    ~consumer,
+                    std::memory_order_release);
+            }
+        }
+
         void __fastcall hookSetup(
             void* receiver,
             void* pass,
@@ -173,17 +196,28 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
-            std::uint32_t descriptor{};
-            if (pass && readable(
-                    static_cast<const std::byte*>(pass) +
-                        kDescriptorOffset,
-                    sizeof(descriptor))) {
-                std::memcpy(
-                    &descriptor,
-                    static_cast<const std::byte*>(pass) +
-                        kDescriptorOffset,
-                    sizeof(descriptor));
+
+            if ((descriptorConsumerMask.load(std::memory_order_acquire) &
+                    kAllDescriptorConsumers) != kAllDescriptorConsumers ||
+                !pass) {
+                original(
+                    receiver,
+                    pass,
+                    compiledProgram,
+                    techniqueState);
+                return;
             }
+
+            // Ghidra verification of Fallout4VR.exe 1.2.72 at 0x142878F80
+            // confirms that the original immediately performs the same
+            // unchecked 32-bit read from its mandatory second argument.
+            // A per-draw VirtualQuery adds no safety and is prohibitively
+            // expensive in this renderer hot path.
+            std::uint32_t descriptor{};
+            std::memcpy(
+                &descriptor,
+                static_cast<const std::byte*>(pass) + kDescriptorOffset,
+                sizeof(descriptor));
             setupCalls.fetch_add(1, std::memory_order_relaxed);
             lastDescriptor.store(descriptor, std::memory_order_relaxed);
             const DescriptorScope scope(descriptor);
@@ -257,6 +291,21 @@ namespace community_shaders::render
             }
         }
         return owned;
+    }
+
+    void setDFPrePassLinearLightingEnabled(bool enabled) noexcept
+    {
+        setDescriptorConsumer(kLinearLightingConsumer, enabled);
+    }
+
+    void setDFPrePassComplexEnvironmentEnabled(bool enabled) noexcept
+    {
+        setDescriptorConsumer(kComplexEnvironmentConsumer, enabled);
+    }
+
+    void setDFPrePassIblEnabled(bool enabled) noexcept
+    {
+        setDescriptorConsumer(kIblConsumer, enabled);
     }
 
     DFPrePassDescriptorScope activeDFPrePassDescriptorScope() noexcept

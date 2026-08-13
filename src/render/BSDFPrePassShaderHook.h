@@ -26,6 +26,13 @@ namespace community_shaders::render
     [[nodiscard]] bool validateBSDFPrePassShaderHook(
         const char* trigger) noexcept;
 
+    // Descriptor capture is consumed only by the complete Linear Lighting +
+    // IBL + Complex Environment chain. Publish each independent runtime
+    // setting so disabled configurations take the direct original-call path.
+    void setDFPrePassLinearLightingEnabled(bool enabled) noexcept;
+    void setDFPrePassComplexEnvironmentEnabled(bool enabled) noexcept;
+    void setDFPrePassIblEnabled(bool enabled) noexcept;
+
     // Render-thread hot-path read. The scope is active only while the
     // verified engine transaction calls PSSetShader; no engine pointer is
     // retained.

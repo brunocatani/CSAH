@@ -2,6 +2,7 @@
 
 #include "resources.h"
 #include "render/BSLightingGeometryHook.h"
+#include "render/BSDFPrePassShaderHook.h"
 #include "support/Logger.h"
 
 #include <Windows.h>
@@ -428,6 +429,7 @@ namespace community_shaders::ibl
         const auto previous = enabled_.exchange(
             enabled,
             std::memory_order_acq_rel);
+        render::setDFPrePassIblEnabled(enabled);
         if (!previous && enabled) {
             beginWorldCaptureProbeSession();
         }
