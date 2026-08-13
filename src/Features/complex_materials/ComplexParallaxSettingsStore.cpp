@@ -108,7 +108,7 @@ namespace community_shaders::complex_materials
         if (path.empty() || !std::filesystem::is_regular_file(path, error) ||
             error) {
             logging::info(
-                "Complex Materials settings file is absent; using environment-response and parallax-enabled defaults.");
+                "Complex Materials settings file is absent; using fail-closed environment response and parallax-enabled defaults.");
             return result;
         }
 

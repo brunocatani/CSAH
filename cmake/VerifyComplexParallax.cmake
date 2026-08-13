@@ -62,7 +62,10 @@ endfunction()
 
 if(CMAKE_SCRIPT_MODE_FILE)
   foreach(required IN ITEMS
-      "return 1.0 - dot(height, weights);"
+      "weightedHeight / max(activeWeight, 1.0e-5)"
+      "if ((Weight) > 0.0)"
+      "const float distanceDetail = sqrt(saturate(fade));"
+      "previousDepth = sampledDepth;"
       "dot(cb12[0].xyz, input.currentPosition.xyz)"
       "input.tangent.x,"
       "input.bitangent.x,"

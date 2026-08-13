@@ -148,6 +148,13 @@ endforeach()
 
 foreach(required IN ITEMS
     "FULL LINEAR LIGHTING ARMED"
+    "id=\"featuresPage\""
+    "id=\"responsePage\""
+    "id=\"pageFeaturesButton\""
+    "id=\"pageResponseButton\""
+    "function setPage(page)"
+    "ALL SWITCHES · IMMEDIATE SAVE"
+    "FO4VRCommunityShaders_Config\\FO4VRCommunityShaders.ini"
     "Image Based Lighting"
     "id=\"iblSwitch\""
     "Diffuse IBL"

@@ -28,6 +28,8 @@ namespace
 
 int main()
 {
+    expect(!Settings{}.environmentResponseEnabled,
+        "metal response must fail closed when its INI key is absent");
     expect(landscapeParallaxSlot(273u) == 0u &&
             landscapeParallaxSlot(274u) == 1u &&
             landscapeParallaxSlot(275u) == 2u,
@@ -77,6 +79,15 @@ int main()
         "FO4VR TBN rows were used without the required transpose");
     expect(near(depthFromLandscapeHeight(0.75f), 0.25f),
         "landscape elevation alpha was not inverted into ray depth");
+    expect(near(adaptiveParallaxStepCount(12.0f, 20.0f, 1.0f, 1.0f),
+               20.0f),
+        "near-field parallax did not preserve its full step budget");
+    expect(adaptiveParallaxStepCount(12.0f, 20.0f, 1.0f, 0.25f) <
+            20.0f,
+        "fading parallax did not reduce its march budget");
+    expect(near(adaptiveParallaxStepCount(12.0f, 20.0f, 1.0f, 0.0f),
+               4.0f),
+        "fully faded parallax did not converge to the bounded minimum");
 
     if (failures) {
         return 1;

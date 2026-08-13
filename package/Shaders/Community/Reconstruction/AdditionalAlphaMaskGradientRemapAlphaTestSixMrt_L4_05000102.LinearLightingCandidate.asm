@@ -197,7 +197,11 @@ dp3 r0.z, v3.xyzx, v3.xyzx
 rsq r0.z, r0.z
 mul r2.xzw, r0.zzzz, v3.xxyz
 sample_indexable(texture2d)(float,float,float,float) r3.xyz, r0.xyxx, t2.zxyw, s2
-if_nz cb11[0].x
+ine r0.z, cb11[0].x, l(0)
+lt r4.xy, l(0.015686, 0.015686, 0.000000, 0.000000), r3.zxzz
+and r0.z, r0.z, r4.x
+and r0.z, r4.y, r0.z
+if_nz r0.z
   sample_l_indexable(texture2d)(float,float,float,float) r4.xyzw, r0.xyxx, t2.xyzw, s2, l(15.000000)
   add r5.xyz, -r4.yzzy, r4.xxyx
   lt r5.xyz, |r5.xyzx|, l(0.015686, 0.015686, 0.015686, 0.000000)
@@ -212,8 +216,6 @@ if_nz cb11[0].x
   not r0.z, r0.z
   or r0.z, r0.w, r0.z
   and r0.z, r0.z, r5.w
-  lt r0.w, l(0.015686), r3.z
-  and r0.z, r0.w, r0.z
   mov_sat r3.x, r3.x
   mad r4.x, -r3.x, l(0.500000), l(1.000000)
   add r0.w, -r3.x, l(1.000000)
@@ -301,4 +303,4 @@ mov o0.w, cb2[0].z
 mul r4.w, cb2[0].w, l(0.010000)
 mov o3.xyzw, r4.xywz
 ret
-// Approximately 151 instruction slots used
+// Approximately 153 instruction slots used

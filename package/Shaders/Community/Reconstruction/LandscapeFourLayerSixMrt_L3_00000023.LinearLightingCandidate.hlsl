@@ -153,22 +153,22 @@ float BlendedParallaxDepth(
     float4 weights,
     LandscapeLayerIndices indices)
 {
-    const float4 height = float4(
-        TexSpecularLayers.SampleGrad(
-            Samp2, float3(uv, float(indices.specular0)),
-            gradientX, gradientY).a,
-        TexSpecularLayers.SampleGrad(
-            Samp2, float3(uv, float(indices.specular1)),
-            gradientX, gradientY).a,
-        TexSpecularLayers.SampleGrad(
-            Samp2, float3(uv, float(indices.specular2)),
-            gradientX, gradientY).a,
-        TexSpecularLayers.SampleGrad(
-            Samp2, float3(uv, float(indices.specular3)),
-            gradientX, gradientY).a);
+    float weightedHeight = 0.0;
+    float activeWeight = 0.0;
+#define ACCUMULATE_ARRAY_PARALLAX_HEIGHT(Weight, Slice) \
+    [branch] if ((Weight) > 0.0) { \
+        weightedHeight += (Weight) * TexSpecularLayers.SampleGrad( \
+            Samp2, float3(uv, float(Slice)), gradientX, gradientY).a; \
+        activeWeight += (Weight); \
+    }
+    ACCUMULATE_ARRAY_PARALLAX_HEIGHT(weights.x, indices.specular0);
+    ACCUMULATE_ARRAY_PARALLAX_HEIGHT(weights.y, indices.specular1);
+    ACCUMULATE_ARRAY_PARALLAX_HEIGHT(weights.z, indices.specular2);
+    ACCUMULATE_ARRAY_PARALLAX_HEIGHT(weights.w, indices.specular3);
+#undef ACCUMULATE_ARRAY_PARALLAX_HEIGHT
     // The test assets store elevation in specular alpha. The ray advances
     // through depth, so invert elevation exactly once at this boundary.
-    return 1.0 - dot(height, weights);
+    return 1.0 - (weightedHeight / max(activeWeight, 1.0e-5));
 }
 #else
 float BlendedParallaxDepth(
@@ -177,12 +177,20 @@ float BlendedParallaxDepth(
     float2 gradientY,
     float4 weights)
 {
-    const float4 height = float4(
-        TexSpecular0.SampleGrad(Samp8, uv, gradientX, gradientY).a,
-        TexSpecular1.SampleGrad(Samp9, uv, gradientX, gradientY).a,
-        TexSpecular2.SampleGrad(Samp10, uv, gradientX, gradientY).a,
-        TexSpecular3.SampleGrad(Samp11, uv, gradientX, gradientY).a);
-    return 1.0 - dot(height, weights);
+    float weightedHeight = 0.0;
+    float activeWeight = 0.0;
+#define ACCUMULATE_PARALLAX_HEIGHT(Weight, Texture, Sampler) \
+    [branch] if ((Weight) > 0.0) { \
+        weightedHeight += (Weight) * Texture.SampleGrad( \
+            Sampler, uv, gradientX, gradientY).a; \
+        activeWeight += (Weight); \
+    }
+    ACCUMULATE_PARALLAX_HEIGHT(weights.x, TexSpecular0, Samp8);
+    ACCUMULATE_PARALLAX_HEIGHT(weights.y, TexSpecular1, Samp9);
+    ACCUMULATE_PARALLAX_HEIGHT(weights.z, TexSpecular2, Samp10);
+    ACCUMULATE_PARALLAX_HEIGHT(weights.w, TexSpecular3, Samp11);
+#undef ACCUMULATE_PARALLAX_HEIGHT
+    return 1.0 - (weightedHeight / max(activeWeight, 1.0e-5));
 }
 #endif
 
@@ -241,10 +249,18 @@ float2 ApplyComplexParallax(
 
     const float viewZ = max(abs(tangentView.z), parallaxGrazingClamp);
     const float grazing = 1.0 - saturate(viewZ);
-    const float stepCount = round(lerp(
+    const float fullDetailStepCount = lerp(
         max(parallaxMinimumSteps, 1.0),
         max(parallaxMaximumSteps, parallaxMinimumSteps),
-        grazing));
+        grazing);
+    // Match Community Shaders' distance-adaptive POM budget: preserve the
+    // configured step count at full displacement, then converge toward four
+    // steps as the already-visible parallax displacement fades away.
+    const float distanceDetail = sqrt(saturate(fade));
+    const float stepCount = round(lerp(
+        4.0,
+        fullDetailStepCount,
+        distanceDetail));
     const float layerStep = 1.0 / stepCount;
     const float2 rayStep =
         (tangentView.xy / viewZ) * (parallaxDepth * fade / stepCount);
@@ -259,9 +275,15 @@ float2 ApplyComplexParallax(
     float sampledDepth = BlendedParallaxDepth(
         currentUv, gradientX, gradientY, weights);
 #endif
+    float2 previousUv = currentUv;
+    float previousLayer = currentLayer;
+    float previousDepth = sampledDepth;
     [loop]
     for (uint step = 0u; step < 32u &&
          float(step) < stepCount && currentLayer < sampledDepth; ++step) {
+        previousUv = currentUv;
+        previousLayer = currentLayer;
+        previousDepth = sampledDepth;
         currentUv -= rayStep;
         currentLayer += layerStep;
 #if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
@@ -272,16 +294,6 @@ float2 ApplyComplexParallax(
             currentUv, gradientX, gradientY, weights);
 #endif
     }
-
-    const float2 previousUv = currentUv + rayStep;
-    const float previousLayer = currentLayer - layerStep;
-#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
-    const float previousDepth = BlendedParallaxDepth(
-        previousUv, gradientX, gradientY, weights, indices);
-#else
-    const float previousDepth = BlendedParallaxDepth(
-        previousUv, gradientX, gradientY, weights);
-#endif
     const float after = sampledDepth - currentLayer;
     const float before = previousDepth - previousLayer;
     const float crossingSpan = after - before;

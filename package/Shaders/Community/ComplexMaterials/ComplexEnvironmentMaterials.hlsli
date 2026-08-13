@@ -32,7 +32,9 @@ ComplexEnvironmentMaterial DecodeComplexEnvironmentMaterial(
     result.diffuseScale = 1.0;
 
     [branch]
-    if (enableComplexEnvironmentMaterial != 0u)
+    if (enableComplexEnvironmentMaterial != 0u &&
+        materialSample.y > kComplexMaskEpsilon &&
+        materialSample.z > kComplexMaskEpsilon)
     {
         float4 terminalMip = maskTexture.SampleLevel(maskSampler, uv, 15.0);
         bool grayscale =
@@ -45,8 +47,7 @@ ComplexEnvironmentMaterial DecodeComplexEnvironmentMaterial(
             terminalMip.w < 1.0 - kComplexMaskEpsilon;
         bool complexMaterial =
             terminalMip.w < 1.0 - kComplexMaskEpsilon &&
-            (!grayscale || solidBlackHeight) &&
-            materialSample.y > kComplexMaskEpsilon;
+            (!grayscale || solidBlackHeight);
         if (complexMaterial)
         {
             result.active = 1.0;

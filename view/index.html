@@ -61,16 +61,16 @@
     header {
       position: absolute;
       inset: 0 0 auto 0;
-      height: 126px;
+      height: 112px;
       display: grid;
-      grid-template-columns: 1fr 230px 230px 230px 230px;
+      grid-template-columns: 1fr 430px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
       background: rgba(9,18,22,.94);
     }
 
     .identity {
-      padding: 24px 30px 18px;
+      padding: 19px 30px 14px;
       border-right: 1px solid var(--line);
     }
 
@@ -84,7 +84,7 @@
     h1 {
       margin: 9px 0 0;
       color: #edf1eb;
-      font: 400 42px/.95 Georgia, serif;
+      font: 400 37px/.95 Georgia, serif;
       letter-spacing: -.8px;
     }
 
@@ -97,17 +97,33 @@
       text-transform: uppercase;
     }
 
+    .page-nav {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 20px 24px;
+    }
+
+    .page-nav button {
+      min-height: 64px;
+      font-size: 13px;
+    }
+
     .master {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 14px;
       min-width: 0;
-      padding: 16px 22px;
+      min-height: 116px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 4px 13px 4px 4px;
       background: linear-gradient(115deg, rgba(230,173,85,.06), transparent 52%);
     }
 
-    .master + .master { border-left: 1px solid var(--line); }
+    .master:hover, .master:focus-within { border-color: var(--amber-soft); }
 
     .master-copy { min-width: 0; }
 
@@ -161,10 +177,26 @@
 
     main {
       position: absolute;
-      inset: 126px 0 50px;
-      display: grid;
+      inset: 112px 0 58px;
+      min-height: 0;
+    }
+
+    .page {
+      position: absolute;
+      inset: 0;
+      display: none;
       grid-template-columns: 1fr 390px;
       min-height: 0;
+    }
+
+    .page.active {
+      display: grid;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
     }
 
     .controls {
@@ -374,7 +406,7 @@
     footer {
       position: absolute;
       inset: auto 0 0 0;
-      height: 50px;
+      height: 58px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -387,6 +419,18 @@
     }
 
     footer strong { color: var(--amber-soft); }
+
+    .config-path {
+      overflow-wrap: anywhere;
+      color: var(--cyan);
+      font: 12px/1.55 Consolas, monospace;
+    }
+
+    .page-note {
+      margin: 0;
+      color: var(--muted);
+      font: 12px/1.55 Consolas, monospace;
+    }
   </style>
 </head>
 <body>
@@ -397,70 +441,101 @@
         <h1>Community Shaders</h1>
         <small>Linear-lighting laboratory · Fallout 4 VR</small>
       </div>
-      <div class="master">
-        <div class="master-copy">
-          <strong>Linear Lighting</strong>
-          <span id="masterState">VANILLA PASS-THROUGH</span>
-        </div>
-        <div id="masterSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
-      </div>
-      <div class="master">
-        <div class="master-copy">
-          <strong>Image Based Lighting</strong>
-          <span id="iblState">VANILLA ENVIRONMENT</span>
-        </div>
-        <div id="iblSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
-      </div>
-      <div class="master">
-        <div class="master-copy">
-          <strong>Diffuse IBL</strong>
-          <span id="iblDiffuseState">WAITING FOR ENVIRONMENT</span>
-        </div>
-        <div id="iblDiffuseSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
-      </div>
-      <div class="master">
-        <div class="master-copy">
-          <strong>Landscape Parallax</strong>
-          <span id="parallaxState">WAITING FOR SHADERS</span>
-        </div>
-        <div id="parallaxSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
-      </div>
-      <div class="master">
-        <div class="master-copy">
-          <strong>Complex Metal Response</strong>
-          <span id="complexEnvironmentState">WAITING FOR IBL</span>
-        </div>
-        <div id="complexEnvironmentSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
-      </div>
+      <nav class="page-nav" aria-label="Panel pages">
+        <button id="pageFeaturesButton" type="button" class="active">01 · Features</button>
+        <button id="pageResponseButton" type="button">02 · Response</button>
+      </nav>
     </header>
 
     <main>
-      <section class="controls">
-        <div class="section-heading">
-          <h2>Verified response curve</h2>
-          <span>LIVE b5 / b8 CONSTANTS</span>
-        </div>
-        <div id="controlGrid" class="control-grid"></div>
+      <section id="featuresPage" class="page active" aria-label="Feature toggles">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Feature isolation</h2>
+            <span>ALL SWITCHES · IMMEDIATE SAVE</span>
+          </div>
+          <div class="feature-grid">
+            <div class="master">
+              <div class="master-copy">
+                <strong>Linear Lighting</strong>
+                <span id="masterState">VANILLA PASS-THROUGH</span>
+              </div>
+              <div id="masterSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Image Based Lighting</strong>
+                <span id="iblState">VANILLA ENVIRONMENT</span>
+              </div>
+              <div id="iblSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Diffuse IBL</strong>
+                <span id="iblDiffuseState">WAITING FOR ENVIRONMENT</span>
+              </div>
+              <div id="iblDiffuseSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Landscape Parallax</strong>
+                <span id="parallaxState">WAITING FOR SHADERS</span>
+              </div>
+              <div id="parallaxSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Complex Metal Response</strong>
+                <span id="complexEnvironmentState">WAITING FOR IBL</span>
+              </div>
+              <div id="complexEnvironmentSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Developer Overlay</strong>
+                <span>bounded, leased, automatic start</span>
+              </div>
+              <button id="diagnosticsButton" type="button">Overlay on</button>
+            </div>
+          </div>
+        </section>
+
+        <aside>
+          <div class="plate">
+            <h3>Current coverage</h3>
+            <div id="coverageName" class="coverage-name">Waiting for runtime</div>
+            <div id="coverageNote" class="coverage-note">No compatibility claim is made until the live byte, shader signature, and geometry gates all pass.</div>
+          </div>
+
+          <div class="plate">
+            <h3>Runtime interlocks</h3>
+            <div id="statusGrid" class="status-grid"></div>
+          </div>
+        </aside>
       </section>
 
-      <aside>
-        <div class="plate">
-          <h3>Current coverage</h3>
-          <div id="coverageName" class="coverage-name">Waiting for runtime</div>
-          <div id="coverageNote" class="coverage-note">No compatibility claim is made until the live byte, shader signature, and geometry gates all pass.</div>
-        </div>
-
-        <div class="plate">
-          <h3>Runtime interlocks</h3>
-          <div id="statusGrid" class="status-grid"></div>
-          <div class="diagnostic-row">
-            <span>ROCK developer overlay<br>bounded, leased, automatic start</span>
-            <button id="diagnosticsButton" type="button">Overlay on</button>
+      <section id="responsePage" class="page" aria-label="Response sliders">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Verified response curve</h2>
+            <span>LIVE b5 / b8 CONSTANTS</span>
           </div>
-        </div>
+          <div id="controlGrid" class="control-grid"></div>
+        </section>
 
-        <button id="resetButton" class="reset" type="button">Restore upstream defaults</button>
-      </aside>
+        <aside>
+          <div class="plate">
+            <h3>Persistent configuration</h3>
+            <p class="page-note">Every switch and slider saves directly to:</p>
+            <p class="config-path">My Games\Fallout4VR\FO4VRCommunityShaders_Config\FO4VRCommunityShaders.ini</p>
+          </div>
+          <div class="plate">
+            <h3>Response controls</h3>
+            <p class="page-note">Sliders remain separate from feature isolation so no control can be obscured. Changes are staged to the render boundary and persisted immediately.</p>
+          </div>
+          <button id="resetButton" class="reset" type="button">Restore upstream defaults</button>
+        </aside>
+      </section>
     </main>
 
     <footer>
@@ -482,7 +557,7 @@
       { key: "diffuseIblLevel", source: "ibl", label: "IBL ambient level", hint: "Scales environment-derived diffuse ambient after vanilla brightness matching.", min: 0, max: 2, step: .01 }
     ];
 
-    const state = { model: null, timers: new Map() };
+    const state = { model: null, page: "features", timers: new Map() };
 
     function bridge(action) {
       if (typeof window.communityShadersAction !== "function") {
@@ -523,6 +598,15 @@
 
     function metric(label, value, className) {
       return `<div class="status"><span>${label}</span><b class="${className || ""}">${value}</b></div>`;
+    }
+
+    function setPage(page) {
+      state.page = page === "response" ? "response" : "features";
+      const featuresActive = state.page === "features";
+      document.getElementById("featuresPage").classList.toggle("active", featuresActive);
+      document.getElementById("responsePage").classList.toggle("active", !featuresActive);
+      document.getElementById("pageFeaturesButton").classList.toggle("active", featuresActive);
+      document.getElementById("pageResponseButton").classList.toggle("active", !featuresActive);
     }
 
     function render() {
@@ -680,6 +764,8 @@
     }
 
     createControls();
+    document.getElementById("pageFeaturesButton").addEventListener("click", () => setPage("features"));
+    document.getElementById("pageResponseButton").addEventListener("click", () => setPage("response"));
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
@@ -715,6 +801,7 @@
       }
     };
 
+    setPage("features");
     render();
   </script>
 </body>

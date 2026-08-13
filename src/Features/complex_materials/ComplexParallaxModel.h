@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cmath>
 
 namespace community_shaders::complex_materials
 {
@@ -55,5 +56,21 @@ namespace community_shaders::complex_materials
     [[nodiscard]] inline float depthFromLandscapeHeight(float height) noexcept
     {
         return 1.0f - std::clamp(height, 0.0f, 1.0f);
+    }
+
+    [[nodiscard]] inline float adaptiveParallaxStepCount(
+        float minimumSteps,
+        float maximumSteps,
+        float grazing,
+        float fade) noexcept
+    {
+        const auto fullDetail = std::lerp(
+            std::max(minimumSteps, 1.0f),
+            std::max(maximumSteps, minimumSteps),
+            std::clamp(grazing, 0.0f, 1.0f));
+        return std::round(std::lerp(
+            4.0f,
+            fullDetail,
+            std::sqrt(std::clamp(fade, 0.0f, 1.0f))));
     }
 }

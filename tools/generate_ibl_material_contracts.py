@@ -142,7 +142,6 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     source_text = source.read_text(encoding="utf-8")
     for required in (
         "VanillaEnvironment : register(t8)",
-        "MaterialData : register(t3)",
         "DFLightAlbedo : register(t29)",
         "PublishedEnvironment : register(t30)",
         "PublishedValidity : register(t31)",
@@ -152,6 +151,8 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "saturate(validity * IblWeight)",
         "lerp(vanilla.xyz, published, weight)",
         "ComplexMaterialWeight",
+        "input.EncodedMaterialTag",
+        "[branch]",
         "retainedDiffuse / max(1.0 - metalness, 1.0 / 255.0)",
     ):
         if required not in source_text:
@@ -184,7 +185,6 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "dcl_constantbuffer CB5[1], immediateIndexed",
         "dcl_sampler s3, mode_default",
         "dcl_sampler s8, mode_default",
-        "dcl_resource_texture2d (float,float,float,float) t3",
         "dcl_resource_texturecubearray (float,float,float,float) t8",
         "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
@@ -303,10 +303,26 @@ def replace_instruction_operands(
     return result
 
 
+def replace_scalar_operand_with_temp_component(
+    instruction: list[int],
+    operand: Operand,
+    register: int,
+    component: int,
+) -> list[int]:
+    if component < 0 or component > 3:
+        raise ContractError("temporary component is invalid")
+    result = replace_operand_with_temp(instruction, operand, register)
+    if ((result[0] >> 2) & 0x3) != 2:
+        raise ContractError("template material tag is no longer scalar-selected")
+    result[0] = (result[0] & ~(0x3 << 4)) | (component << 4)
+    return result
+
+
 def remap_template_instruction(
     instruction: list[int],
     coordinate: list[int],
     lod: list[int],
+    material_tag_register: int,
     material_coordinate: list[int],
     first_scratch: int,
     template_temp_count: int,
@@ -331,9 +347,40 @@ def remap_template_instruction(
             if operand.immediate_indices == (0,):
                 replacements[operand.start] = coordinate
             elif operand.immediate_indices == (1,):
-                replacements[operand.start] = lod
-            elif operand.immediate_indices == (2,):
-                replacements[operand.start] = material_coordinate
+                token = instruction[operand.start]
+                selection_mode = (token >> 2) & 0x3
+                if selection_mode == 2:
+                    component = (token >> 4) & 0x3
+                    if component == 0:
+                        replacements[operand.start] = lod
+                    elif component == 1:
+                        replacements[operand.start] = (
+                            replace_scalar_operand_with_temp_component(
+                                instruction,
+                                operand,
+                                material_tag_register,
+                                0,
+                            )
+                        )
+                    else:
+                        raise ContractError(
+                            "IBL material template scalar input packing changed"
+                        )
+                elif selection_mode == 1:
+                    swizzle = (token >> 4) & 0xFF
+                    used_components = {
+                        (swizzle >> (component * 2)) & 0x3
+                        for component in range(4)
+                    }
+                    if not used_components.issubset({2, 3}):
+                        raise ContractError(
+                            "IBL material template UV input packing changed"
+                        )
+                    replacements[operand.start] = material_coordinate
+                else:
+                    raise ContractError(
+                        "IBL material template input selection changed"
+                    )
             else:
                 raise ContractError(
                     "IBL material template uses an unexpected input"
@@ -349,6 +396,35 @@ def remap_template_instruction(
                 output_scratch,
             )
     return replace_instruction_operands(instruction, replacements)
+
+
+def temp_scalar_operand(register: int, component: int) -> list[int]:
+    if register < 0 or component < 0 or component > 3:
+        raise ContractError("temporary scalar operand is invalid")
+    return [0x0010000A | (component << 4), register]
+
+
+def temp_mask_operand(register: int, mask: int) -> list[int]:
+    if register < 0 or mask <= 0 or mask > 0xF:
+        raise ContractError("temporary mask operand is invalid")
+    return [0x00100002 | (mask << 4), register]
+
+
+def move_temp_component(
+    destination_register: int,
+    destination_component: int,
+    source_register: int,
+    source_component: int,
+) -> list[int]:
+    instruction = [
+        MOV_OPCODE,
+        *temp_mask_operand(
+            destination_register, 1 << destination_component
+        ),
+        *temp_scalar_operand(source_register, source_component),
+    ]
+    instruction[0] |= len(instruction) << 24
+    return instruction
 
 
 def final_material_move(destination: list[int], source_register: int) -> list[int]:
@@ -476,13 +552,59 @@ def patch_shader(
         raise ContractError(
             "DFComposite must contain one verified pre-environment t3 sample_l"
         )
-    material_coordinate = material_samples[0][2][1]
+    material_start, material_end, material_operands = material_samples[0]
+    material_destination = material_operands[0]
+    material_coordinate = material_operands[1]
+    material_resource = material_operands[2]
+    if (
+        len(material_destination.immediate_indices) != 1
+        or material_destination.immediate_indices[0] < 0
+    ):
+        raise ContractError("DFComposite material destination is not a temporary")
+    material_destination_words = words[
+        material_destination.start : material_destination.end
+    ]
+    material_destination_mask = (material_destination_words[0] >> 4) & 0xF
+    if material_destination_mask == 0:
+        raise ContractError("DFComposite material destination has no write mask")
+    material_resource_words = words[
+        material_resource.start : material_resource.end
+    ]
+    material_resource_swizzle = (material_resource_words[0] >> 4) & 0xFF
+    material_tag_components = [
+        component
+        for component in range(4)
+        if (material_destination_mask & (1 << component)) != 0
+        and ((material_resource_swizzle >> (component * 2)) & 0x3) == 3
+    ]
+    if len(material_tag_components) > 1:
+        raise ContractError("DFComposite material sample maps target3.w repeatedly")
+    material_tag_component = (
+        material_tag_components[0] if material_tag_components else None
+    )
+    material_spare_component = None
+    if material_tag_component is None:
+        material_spare_component = next(
+            (
+                component
+                for component in range(4)
+                if (material_destination_mask & (1 << component)) == 0
+            ),
+            None,
+        )
+        if material_spare_component is None:
+            raise ContractError(
+                "DFComposite material sample cannot expose target3.w without "
+                "changing a live component"
+            )
     material_coordinate_words = words[
         material_coordinate.start : material_coordinate.end
     ]
 
     first_scratch = original_temp_count
     output_scratch = original_temp_count + template_temp_count
+    material_tag_scratch = output_scratch + 1
+    material_restore_scratch = material_tag_scratch + 1
     replacement: list[int] = []
     for instruction in transform:
         replacement.extend(
@@ -490,6 +612,7 @@ def patch_shader(
                 instruction,
                 coordinate_words,
                 lod_words,
+                material_tag_scratch,
                 material_coordinate_words,
                 first_scratch,
                 template_temp_count,
@@ -504,13 +627,54 @@ def patch_shader(
     for declaration in declarations:
         prefix.extend(declaration)
     updated_temp_declaration = words[temp_declaration[0] : temp_declaration[1]]
-    updated_temp_declaration[1] = (
-        original_temp_count + template_temp_count + 1
-    )
+    updated_temp_declaration[1] = original_temp_count + template_temp_count + 3
 
     rewritten_body: list[int] = []
     for start, end in body:
-        if start == sample_start and end == sample_end:
+        if start == material_start and end == material_end:
+            material_sample = list(words[start:end])
+            sampled_component = material_tag_component
+            if material_spare_component is not None:
+                rewritten_body.extend(
+                    move_temp_component(
+                        material_restore_scratch,
+                        0,
+                        int(material_destination.immediate_indices[0]),
+                        material_spare_component,
+                    )
+                )
+                relative_destination = material_destination.start - start
+                material_sample[relative_destination] = (
+                    material_sample[relative_destination] & ~(0xF << 4)
+                ) | (
+                    (material_destination_mask |
+                     (1 << material_spare_component)) << 4
+                )
+                relative_resource = material_resource.start - start
+                swizzle_shift = 4 + (material_spare_component * 2)
+                material_sample[relative_resource] = (
+                    material_sample[relative_resource] & ~(0x3 << swizzle_shift)
+                ) | (0x3 << swizzle_shift)
+                sampled_component = material_spare_component
+            rewritten_body.extend(material_sample)
+            rewritten_body.extend(
+                move_temp_component(
+                    material_tag_scratch,
+                    0,
+                    int(material_destination.immediate_indices[0]),
+                    int(sampled_component),
+                )
+            )
+            if material_spare_component is not None:
+                rewritten_body.extend(
+                    move_temp_component(
+                        int(material_destination.immediate_indices[0]),
+                        material_spare_component,
+                        material_restore_scratch,
+                        0,
+                    )
+                )
+        elif start == sample_start and end == sample_end:
             rewritten_body.extend(replacement)
         else:
             rewritten_body.extend(words[start:end])
@@ -617,6 +781,41 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t31 exactly once")
     if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t29 exactly once")
+    if len(re.findall(r"\bt3(?:\b|\.)", candidate_text)) != len(
+        re.findall(r"\bt3(?:\b|\.)", original_text)
+    ):
+        raise ContractError(f"{name} added a redundant material-data sample")
+    if candidate_text.count("if_nz") <= original_text.count("if_nz"):
+        raise ContractError(f"{name} did not branch around sparse metal work")
+    metal_block_start = re.search(
+        r"^\s*sample_l_indexable\(texturecube\).*\bt30(?:\b|\.)",
+        candidate_text,
+        re.MULTILINE,
+    )
+    metal_block_end = re.search(
+        r"^\s*sample_l_indexable\(texture2d\).*\bt29(?:\b|\.)",
+        candidate_text,
+        re.MULTILINE,
+    )
+    if (
+        metal_block_start is None
+        or metal_block_end is None
+        or metal_block_start.start() >= metal_block_end.start()
+    ):
+        raise ContractError(f"{name} lost its ordered complex-material block")
+    metal_block = candidate_text[
+        metal_block_start.start() : metal_block_end.end()
+    ]
+    if not re.search(
+        r"add\s+r\d+\.[xyzw]+,\s+-r\d+\.[xyzw]+,\s+l\(1\.000000\)",
+        metal_block,
+    ):
+        raise ContractError(f"{name} lost the encoded-tag subtraction")
+    if not re.search(
+        r"sample_l_indexable\(texture2d\).*r\d+\.[xyzw]{2,4},\s+t29",
+        metal_block,
+    ):
+        raise ContractError(f"{name} lost the retained-albedo screen coordinate")
     if re.search(r"^\s*dcl_uav", candidate_text, re.MULTILINE):
         raise ContractError(f"{name} unexpectedly declares a UAV")
 
@@ -777,7 +976,8 @@ def main() -> int:
             verify_resource_contract(root, originals)
         print(
             "IBL material contracts verified: 41 exact DFComposite identities; "
-            "vanilla t8/s8 fallback plus validity-weighted t30/t31/b5 consumption."
+            "vanilla t8/s8 fallback, reused t3 material data, and sparse "
+            "validity-weighted t29/t30/t31/b5 consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)
