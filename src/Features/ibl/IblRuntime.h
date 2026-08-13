@@ -129,6 +129,18 @@ namespace community_shaders::ibl
             ID3D11DeviceContext* context,
             ID3D11PixelShader* original) noexcept;
 
+        // Single atomic gate for hook-level fast paths. Disabled IBL must not
+        // probe shader registries or enter capture bookkeeping.
+        [[nodiscard]] bool featureEnabled() const noexcept;
+
+        // Allocation-free draw-boundary validity check. A previously bound
+        // replacement must be retired immediately when its feature or
+        // published provider becomes unavailable; waiting for the engine to
+        // bind another pixel shader leaves the expensive replacement path
+        // active across later draws.
+        [[nodiscard]] bool materialBindingActive(
+            MaterialShaderBinding binding) const noexcept;
+
         // enabled=true binds the published t30/t31 pair with weight one.
         // enabled=false binds null provider views and the immutable zero
         // weight constants used by the reflection-free duplicate draw.

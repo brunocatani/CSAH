@@ -148,6 +148,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "EnvironmentSampler : register(s8)",
         "MaterialSampler : register(s3)",
         "IblMaterialConstants : register(b5)",
+        "if (IblWeight > 1.0 / 255.0)",
         "saturate(validity * IblWeight)",
         "lerp(vanilla.xyz, published, weight)",
         "ComplexMaterialWeight",
@@ -976,8 +977,8 @@ def main() -> int:
             verify_resource_contract(root, originals)
         print(
             "IBL material contracts verified: 41 exact DFComposite identities; "
-            "vanilla t8/s8 fallback, reused t3 material data, and sparse "
-            "validity-weighted t29/t30/t31/b5 consumption."
+            "vanilla t8/s8 fallback and weight-gated, validity-aware "
+            "t29/t30/t31/b5 consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)

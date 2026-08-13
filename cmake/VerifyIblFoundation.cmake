@@ -88,6 +88,59 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "materialBindingActive"
+    "diagnosticMayBeRequested"
+    "productionMayBeRequested")
+  string(FIND "${runtimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL hot-path regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "retireDisabledFeatureBindings"
+    "activeDrawInterceptionRequired"
+    "replacementFeaturesEnabled"
+    "featureEnabled"
+    "if (!replacementFeaturesActive && !iblFeatureActive &&"
+    "if (!activeDrawInterceptionRequired())"
+    "if (!activeIblMaterialBinding && contractPlusOne == 0)")
+  string(FIND "${hookSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL hot-path regression: D3D hook is missing '${required}'")
+  endif()
+endforeach()
+
+string(FIND "${hookSource}"
+  "auto reflectionFree = runtime.beginReflectionFreeCapture(" captureFirst)
+string(FIND "${hookSource}"
+  "auto disabled = runtime.scopeMaterialBindings(" disabledSecond)
+if(captureFirst EQUAL -1 OR disabledSecond EQUAL -1 OR
+   NOT captureFirst LESS disabledSecond)
+  message(FATAL_ERROR
+    "IBL hot-path regression: disabled material transaction runs before capture demand is known")
+endif()
+
+string(FIND "${runtimeSource}"
+  "ScopedReflectionFreeCapture Runtime::beginReflectionFreeCapture(" captureFunction)
+if(captureFunction EQUAL -1)
+  message(FATAL_ERROR
+    "IBL hot-path regression: reflection-free capture function is missing")
+endif()
+string(SUBSTRING "${runtimeSource}" ${captureFunction} -1 captureFunctionSource)
+string(FIND "${captureFunctionSource}"
+  "if (!diagnosticMayBeRequested && !productionMayBeRequested)" earlyDemandGate)
+string(FIND "${captureFunctionSource}"
+  "context->OMGetRenderTargets(1, &outputViewRaw, nullptr)" outputInspection)
+if(earlyDemandGate EQUAL -1 OR outputInspection EQUAL -1 OR
+   NOT earlyDemandGate LESS outputInspection)
+  message(FATAL_ERROR
+    "IBL hot-path regression: output inspection runs before the cheap capture-demand gate")
+endif()
+
+foreach(required IN ITEMS
     "selectMaterialPixelShader"
     "scopeMaterialBindings"
     "publishedEnvironment()"
@@ -547,8 +600,8 @@ foreach(required IN ITEMS
     "#include \"Features/ibl/IblRuntime.h\""
     "ibl::Runtime::get().onDeviceCreated"
     "ibl::Runtime::get().onPixelShaderCreated"
-    "ibl::Runtime::get().captureProbeBindingForShader"
-    ".selectMaterialPixelShader(context, shader)"
+    "iblRuntime.captureProbeBindingForShader"
+    "iblRuntime.selectMaterialPixelShader("
     "activeIblMaterialBinding"
     "issueDrawWithIblMaterial"
     "scopeMaterialBindings("

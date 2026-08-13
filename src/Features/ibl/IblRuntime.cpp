@@ -757,13 +757,32 @@ namespace community_shaders::ibl
         return selection;
     }
 
+    bool Runtime::featureEnabled() const noexcept
+    {
+        return enabled_.load(std::memory_order_acquire);
+    }
+
+    bool Runtime::materialBindingActive(
+        MaterialShaderBinding binding) const noexcept
+    {
+        return binding && enabled_.load(std::memory_order_acquire) &&
+            !materialConsumptionFailed_ &&
+            resourcesReady_.load(std::memory_order_acquire) &&
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ ==
+                requestedCaptureProbeSessionId_.load(
+                    std::memory_order_acquire) &&
+            materialAlbedo_ && environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity();
+    }
+
     ScopedMaterialBindings Runtime::scopeMaterialBindings(
         ID3D11DeviceContext* context,
         MaterialShaderBinding binding,
         bool enabled) noexcept
     {
         if (!binding || !context || context != context_.Get() ||
-            (enabled && !enabled_.load(std::memory_order_acquire)) ||
+            (enabled && !materialBindingActive(binding)) ||
             materialConsumptionFailed_ ||
             !resourcesReady_.load(std::memory_order_acquire)) {
             return {};
@@ -825,7 +844,8 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+        if (!enabled_.load(std::memory_order_acquire) || !context ||
+            context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
             !activateWorldCaptureProbeSession()) {
@@ -986,6 +1006,17 @@ namespace community_shaders::ibl
             return {};
         }
         const auto worldCaptureReady = synchronizeWorldCaptureSession();
+        const auto featureEnabled = enabled_.load(std::memory_order_acquire);
+        const auto now = GetTickCount64();
+        const auto diagnosticMayBeRequested = worldCaptureReady &&
+            featureEnabled && !captureProbeSessionComplete_;
+        const auto productionMayBeRequested = worldCaptureReady &&
+            featureEnabled && !environmentUpdater_.snapshot().pending &&
+            now >= nextEnvironmentCaptureTickMilliseconds_.load(
+                       std::memory_order_acquire);
+        if (!diagnosticMayBeRequested && !productionMayBeRequested) {
+            return {};
+        }
 
         ID3D11RenderTargetView* outputViewRaw{};
         context->OMGetRenderTargets(1, &outputViewRaw, nullptr);
@@ -1008,20 +1039,16 @@ namespace community_shaders::ibl
             [&outputDescription](const auto& slot) {
                 return slot.format == outputDescription.Format;
             });
-        const auto diagnosticRequested = worldCaptureReady &&
+        const auto diagnosticRequested = diagnosticMayBeRequested &&
             !captureProbeSessionComplete_ &&
             readback != sceneRadianceReadbackSlots_.end() &&
             !readback->reflectionFreeCaptureAttempted &&
             !readback->rollingReady && !readback->pending &&
             !readback->completed &&
             readback->rollingReflectionFreeTexture;
-        const auto now = GetTickCount64();
-        const auto productionRequested = worldCaptureReady &&
-            enabled_.load(std::memory_order_acquire) &&
+        const auto productionRequested = productionMayBeRequested &&
             outputDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
-            !environmentUpdater_.snapshot().pending &&
-            now >= nextEnvironmentCaptureTickMilliseconds_.load(
-                       std::memory_order_acquire);
+            !environmentUpdater_.snapshot().pending;
         if (!diagnosticRequested && !productionRequested) {
             return {};
         }
@@ -1206,7 +1233,8 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+        if (!enabled_.load(std::memory_order_acquire) || !context ||
+            context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
             !activateWorldCaptureProbeSession()) {
@@ -1335,7 +1363,8 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!context || context != context_.Get() || contractPlusOne == 0 ||
+        if (!enabled_.load(std::memory_order_acquire) || !context ||
+            context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
             !activateWorldCaptureProbeSession()) {

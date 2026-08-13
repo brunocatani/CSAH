@@ -25,16 +25,20 @@ float4 PSMain(PixelInput input) : SV_Target0
         EnvironmentSampler,
         input.DirectionAndArray,
         input.Lod);
-    float3 published = PublishedEnvironment.SampleLevel(
-        EnvironmentSampler,
-        input.DirectionAndArray.xyz,
-        input.Lod);
-    float validity = PublishedValidity.SampleLevel(
-        EnvironmentSampler,
-        input.DirectionAndArray.xyz,
-        input.Lod);
-    float weight = saturate(validity * IblWeight);
-    vanilla.xyz = lerp(vanilla.xyz, published, weight);
+    [branch]
+    if (IblWeight > 1.0 / 255.0)
+    {
+        float3 published = PublishedEnvironment.SampleLevel(
+            EnvironmentSampler,
+            input.DirectionAndArray.xyz,
+            input.Lod);
+        float validity = PublishedValidity.SampleLevel(
+            EnvironmentSampler,
+            input.DirectionAndArray.xyz,
+            input.Lod);
+        float weight = saturate(validity * IblWeight);
+        vanilla.xyz = lerp(vanilla.xyz, published, weight);
+    }
 
     float ordinaryMaterialTag = step(0.5, input.EncodedMaterialTag);
     float metalness = saturate(

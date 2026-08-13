@@ -182,6 +182,7 @@ namespace community_shaders::render
         thread_local std::uint64_t activeQualificationSessionId{};
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
+        thread_local ID3D11PixelShader* activeReplacementOriginal{};
         thread_local ibl::Runtime::MaterialShaderBinding
             activeIblMaterialBinding{};
         thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
@@ -956,6 +957,50 @@ namespace community_shaders::render
                     activeReplacementBinding);
         }
 
+        void retireDisabledFeatureBindings(
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (activeReplacementBinding.family !=
+                    linear_lighting::ReplacementShaderFamily::none &&
+                !linear_lighting::Runtime::get()
+                     .replacementFeaturesEnabled()) {
+                if (originalPSSetShader && activeReplacementOriginal) {
+                    originalPSSetShader(
+                        context,
+                        activeReplacementOriginal,
+                        nullptr,
+                        0);
+                }
+                activeReplacementBinding = {};
+                activeReplacementOriginal = nullptr;
+            }
+            auto& iblRuntime = ibl::Runtime::get();
+            if (!iblRuntime.featureEnabled()) {
+                activeIblCaptureProbePass = {};
+            }
+            if (activeIblMaterialBinding &&
+                !iblRuntime.materialBindingActive(
+                    activeIblMaterialBinding)) {
+                if (originalPSSetShader) {
+                    originalPSSetShader(
+                        context,
+                        activeIblMaterialBinding.original,
+                        nullptr,
+                        0);
+                }
+                activeIblMaterialBinding = {};
+            }
+        }
+
+        [[nodiscard]] bool activeDrawInterceptionRequired() noexcept
+        {
+            return activeReplacementBinding.family !=
+                    linear_lighting::ReplacementShaderFamily::none ||
+                activeIblMaterialBinding ||
+                activeIblCaptureProbePass.lastEnvironmentContractPlusOne != 0 ||
+                qualificationSessionActive.load(std::memory_order_acquire);
+        }
+
         void recordActiveIblCaptureProbe(
             ID3D11DeviceContext* context) noexcept
         {
@@ -1001,20 +1046,25 @@ namespace community_shaders::render
             const auto contractPlusOne =
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne;
 
+            if (!activeIblMaterialBinding && contractPlusOne == 0) {
+                draw();
+                return;
+            }
+
             if (activeIblMaterialBinding) {
-                auto disabled = runtime.scopeMaterialBindings(
+                auto reflectionFree = runtime.beginReflectionFreeCapture(
                     context,
-                    activeIblMaterialBinding,
-                    false);
-                if (disabled.active()) {
-                    auto reflectionFree = runtime.beginReflectionFreeCapture(
+                    contractPlusOne);
+                if (reflectionFree.active()) {
+                    auto disabled = runtime.scopeMaterialBindings(
                         context,
-                        contractPlusOne);
-                    if (reflectionFree.active()) {
+                        activeIblMaterialBinding,
+                        false);
+                    if (disabled.active()) {
                         draw();
+                        const auto materialRestored = disabled.restore();
                         const auto reflectionRestored =
                             reflectionFree.restore();
-                        const auto materialRestored = disabled.restore();
                         runtime.onMaterialBindingsComplete(
                             activeIblMaterialBinding,
                             false,
@@ -1024,11 +1074,11 @@ namespace community_shaders::render
                             contractPlusOne,
                             reflectionRestored && materialRestored);
                     } else {
-                        const auto materialRestored = disabled.restore();
-                        runtime.onMaterialBindingsComplete(
-                            activeIblMaterialBinding,
-                            false,
-                            materialRestored);
+                        (void)reflectionFree.restore();
+                        runtime.onReflectionFreeCaptureDrawComplete(
+                            context,
+                            contractPlusOne,
+                            false);
                     }
                 }
             } else {
@@ -1181,6 +1231,7 @@ namespace community_shaders::render
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
+                activeReplacementOriginal = nullptr;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1189,6 +1240,7 @@ namespace community_shaders::render
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
+                activeReplacementOriginal = nullptr;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1197,27 +1249,51 @@ namespace community_shaders::render
 
             const RecursionGuard recursionGuard(insidePSSetShaderHook);
             activatePendingQualificationSession();
-            const auto nextIblCaptureProbeBinding =
-                ibl::Runtime::get().captureProbeBindingForShader(shader);
-            completeIblCaptureProbePass(
-                context,
-                nextIblCaptureProbeBinding);
-            activeIblCaptureProbePass = ibl::advanceCaptureProbePass(
-                activeIblCaptureProbePass,
-                nextIblCaptureProbeBinding);
+            auto& replacementRuntime = linear_lighting::Runtime::get();
+            auto& iblRuntime = ibl::Runtime::get();
+            const auto qualificationActive =
+                qualificationSessionActive.load(std::memory_order_acquire);
+            const auto replacementFeaturesActive =
+                replacementRuntime.replacementFeaturesEnabled();
+            const auto iblFeatureActive = iblRuntime.featureEnabled();
+            if (!replacementFeaturesActive && !iblFeatureActive &&
+                !qualificationActive) {
+                activeReplacementBinding = {};
+                activeReplacementOriginal = nullptr;
+                activeIblMaterialBinding = {};
+                activeIblCaptureProbePass = {};
+                original(context, shader, classInstances, classInstanceCount);
+                return;
+            }
+
+            const auto nextIblCaptureProbeBinding = iblFeatureActive ?
+                iblRuntime.captureProbeBindingForShader(shader) :
+                ibl::CaptureProbeShaderBinding{};
+            if (iblFeatureActive) {
+                completeIblCaptureProbePass(
+                    context,
+                    nextIblCaptureProbeBinding);
+                activeIblCaptureProbePass = ibl::advanceCaptureProbePass(
+                    activeIblCaptureProbePass,
+                    nextIblCaptureProbeBinding);
+            } else {
+                activeIblCaptureProbePass = {};
+            }
             const auto selection =
-                linear_lighting::Runtime::get().selectPixelShader(
-                context,
-                shader);
+                (replacementFeaturesActive || qualificationActive) ?
+                replacementRuntime.selectPixelShader(context, shader) :
+                linear_lighting::PixelShaderSelection{ shader, {} };
             auto iblSelection = ibl::Runtime::MaterialPixelShaderSelection{
                 selection.shader,
                 {},
             };
-            if (classInstanceCount == 0 && selection.shader == shader &&
+            if (iblFeatureActive && classInstanceCount == 0 &&
+                selection.shader == shader &&
                 selection.binding.family ==
                     linear_lighting::ReplacementShaderFamily::none) {
-                iblSelection = ibl::Runtime::get()
-                    .selectMaterialPixelShader(context, shader);
+                iblSelection = iblRuntime.selectMaterialPixelShader(
+                    context,
+                    shader);
             }
             if (selection.binding.family ==
                 linear_lighting::ReplacementShaderFamily::dFLightAmbient) {
@@ -1232,6 +1308,9 @@ namespace community_shaders::render
                 selection.shader->Release();
             }
             activeReplacementBinding = selection.binding;
+            activeReplacementOriginal = selection.binding.family !=
+                    linear_lighting::ReplacementShaderFamily::none ?
+                shader : nullptr;
             activeIblMaterialBinding = iblSelection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
@@ -1254,6 +1333,17 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            retireDisabledFeatureBindings(context);
+            if (!activeDrawInterceptionRequired()) {
+                if (originalDrawIndexed) {
+                    originalDrawIndexed(
+                        context,
+                        indexCount,
+                        startIndexLocation,
+                        baseVertexLocation);
+                }
+                return;
+            }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
             recordActiveIblCaptureProbe(context);
@@ -1279,6 +1369,13 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            retireDisabledFeatureBindings(context);
+            if (!activeDrawInterceptionRequired()) {
+                if (originalDraw) {
+                    originalDraw(context, vertexCount, startVertexLocation);
+                }
+                return;
+            }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
             recordActiveIblCaptureProbe(context);
@@ -1301,6 +1398,19 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            retireDisabledFeatureBindings(context);
+            if (!activeDrawInterceptionRequired()) {
+                if (originalDrawIndexedInstanced) {
+                    originalDrawIndexedInstanced(
+                        context,
+                        indexCountPerInstance,
+                        instanceCount,
+                        startIndexLocation,
+                        baseVertexLocation,
+                        startInstanceLocation);
+                }
+                return;
+            }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
             recordActiveIblCaptureProbe(context);
@@ -1330,6 +1440,18 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            retireDisabledFeatureBindings(context);
+            if (!activeDrawInterceptionRequired()) {
+                if (originalDrawInstanced) {
+                    originalDrawInstanced(
+                        context,
+                        vertexCountPerInstance,
+                        instanceCount,
+                        startVertexLocation,
+                        startInstanceLocation);
+                }
+                return;
+            }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
             recordActiveIblCaptureProbe(context);

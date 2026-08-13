@@ -234,6 +234,11 @@ namespace community_shaders::linear_lighting
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
 
+        // Cheap draw-boundary guard used to retire a replacement that was
+        // already bound when every feature capable of selecting it became
+        // disabled.
+        [[nodiscard]] bool replacementFeaturesEnabled() noexcept;
+
         // Captures only the constant-buffer slots owned by the selected
         // replacement family, installs the private buffers for one draw, and
         // restores the exact captured state at scope exit.

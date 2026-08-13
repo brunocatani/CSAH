@@ -1665,6 +1665,15 @@ namespace community_shaders::linear_lighting
         return { requested, {}, false };
     }
 
+    bool Runtime::replacementFeaturesEnabled() noexcept
+    {
+        applyQueuedSettingsForRenderBoundary();
+        return enabled_.load(std::memory_order_acquire) ||
+            (complexParallaxEnabled_.load(std::memory_order_acquire) &&
+                complexParallaxResourcesReady_.load(
+                    std::memory_order_acquire));
+    }
+
     ScopedReplacementPixelConstants Runtime::scopeReplacementPixelConstants(
         ID3D11DeviceContext* context,
         ReplacementShaderBinding binding) noexcept
