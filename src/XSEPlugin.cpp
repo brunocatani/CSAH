@@ -7,6 +7,7 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "diagnostics/LinearLightingQualification.h"
+#include "render/BSDFPrePassShaderHook.h"
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
@@ -69,6 +70,8 @@ namespace
             community_shaders::ui::onGameDataReady();
             (void)community_shaders::render::
                 validateBSLightingGeometryHook("GameDataReady");
+            (void)community_shaders::render::
+                validateBSDFPrePassShaderHook("GameDataReady");
             (void)community_shaders::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
             const auto linearLighting =
@@ -229,6 +232,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         if (!community_shaders::render::installBSLightingGeometryHook()) {
             community_shaders::logging::warn(
                 "Verified BSDF lighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
+        }
+        if (!community_shaders::render::installBSDFPrePassShaderHook()) {
+            community_shaders::logging::warn(
+                "Verified BSDFPrePass descriptor hook was not installed; complex environment materials remain fail-closed.");
         }
 
         const auto* messaging = F4SE::GetMessagingInterface();

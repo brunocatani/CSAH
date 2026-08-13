@@ -124,6 +124,18 @@ cbuffer PipboyScreenGlobals : register(b0)
 
 #include "../LinearLighting/LinearLighting.hlsli"
 
+#ifndef LINEAR_LIGHTING_COMPLEX_ENVIRONMENT
+#define LINEAR_LIGHTING_COMPLEX_ENVIRONMENT 0
+#endif
+
+#if LINEAR_LIGHTING_COMPLEX_ENVIRONMENT
+#if LINEAR_LIGHTING_HAIR || LINEAR_LIGHTING_FACE_DETAIL || \
+    LINEAR_LIGHTING_SKIN_TINT || LINEAR_LIGHTING_PIPBOY_SCREEN
+#error Complex environment response requires the ordinary opaque material tag.
+#endif
+#include "../ComplexMaterials/ComplexEnvironmentMaterials.hlsli"
+#endif
+
 cbuffer PerGeometry : register(b12)
 {
     float4 cb12[71];
@@ -467,7 +479,18 @@ PSOutput PSMain(PSInput input)
     float3 hairDirection = normalize(
         (TexHairDirection.Sample(SampHairDirection, uv).xyz * 2.0) - 1.0);
 #else
-    float2 specularSample = TexSpecular.Sample(SampSpecular, uv).xy;
+    float4 specularMaterialSample =
+        TexSpecular.Sample(SampSpecular, uv);
+    float2 specularSample = specularMaterialSample.xy;
+#if LINEAR_LIGHTING_COMPLEX_ENVIRONMENT
+    ComplexEnvironmentMaterial complexEnvironmentMaterial =
+        DecodeComplexEnvironmentMaterial(
+            TexSpecular,
+            SampSpecular,
+            uv,
+            specularMaterialSample);
+    output.target0.xyz *= complexEnvironmentMaterial.diffuseScale;
+#endif
 #endif
 #if LINEAR_LIGHTING_LANDSCAPE_LOD
     float2 landscapeLodNormalXY =
@@ -630,7 +653,11 @@ PSOutput PSMain(PSInput input)
 #elif LINEAR_LIGHTING_PIPBOY_SCREEN
     output.target3.w = 0.015686;
 #else
+#if LINEAR_LIGHTING_COMPLEX_ENVIRONMENT
+    output.target3.w = complexEnvironmentMaterial.encodedTag;
+#else
     output.target3.w = 1.0;
+#endif
 #endif
 #if LINEAR_LIGHTING_PIPBOY_SCREEN
 #if LINEAR_LIGHTING_TEXTURED_EMISSION

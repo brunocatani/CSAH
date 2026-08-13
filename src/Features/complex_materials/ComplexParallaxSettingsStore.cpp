@@ -108,10 +108,14 @@ namespace community_shaders::complex_materials
         if (path.empty() || !std::filesystem::is_regular_file(path, error) ||
             error) {
             logging::info(
-                "Complex Materials settings file is absent; using parallax-enabled defaults.");
+                "Complex Materials settings file is absent; using environment-response and parallax-enabled defaults.");
             return result;
         }
 
+        result.environmentResponseEnabled = readBool(
+            path,
+            L"bEnableEnvironmentResponse",
+            defaults.environmentResponseEnabled);
         result.parallaxEnabled = readBool(
             path, L"bEnableParallax", defaults.parallaxEnabled);
         result.parallaxQuality = readInt(
@@ -126,8 +130,9 @@ namespace community_shaders::complex_materials
             path, L"fParallaxFadeEnd", defaults.fadeEnd);
         result = sanitize(result);
         logging::info(
-            "Complex Materials settings loaded from '{}'; parallax enabled={}, quality={}.",
+            "Complex Materials settings loaded from '{}'; environment response enabled={}, parallax enabled={}, quality={}.",
             path.string(),
+            result.environmentResponseEnabled,
             result.parallaxEnabled,
             result.parallaxQuality);
         return result;
@@ -145,8 +150,12 @@ namespace community_shaders::complex_materials
         const auto safe = sanitize(settings);
         bool success = writeValue(
             path,
+            L"bEnableEnvironmentResponse",
+            safe.environmentResponseEnabled ? L"1" : L"0");
+        success = writeValue(
+            path,
             L"bEnableParallax",
-            safe.parallaxEnabled ? L"1" : L"0");
+            safe.parallaxEnabled ? L"1" : L"0") && success;
         success = writeValue(
                       path,
                       L"iParallaxQuality",

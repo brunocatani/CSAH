@@ -1,4 +1,5 @@
 #include "Features/complex_materials/ComplexMaterialProducerModel.h"
+#include "Features/complex_materials/ComplexEnvironmentMaterialModel.h"
 
 #include <array>
 #include <cstddef>
@@ -126,6 +127,48 @@ int main()
         require(
             matchComplexMaterialProducer(nullptr, 0).contractPlusOne == 0,
             "null producer bytecode did not fail closed");
+
+        std::size_t complexEnvironmentContracts{};
+        for (const auto contractPlusOne :
+             kComplexEnvironmentProducerByLinearContract) {
+            if (contractPlusOne == 0) {
+                continue;
+            }
+            ++complexEnvironmentContracts;
+            require(
+                contractPlusOne <= kComplexMaterialProducerContracts.size(),
+                "complex environment map references an invalid producer");
+            require(
+                kComplexMaterialProducerContracts[contractPlusOne - 1].
+                    familyMask &
+                    producerFamilyMask(
+                        ComplexMaterialProducerFamily::kEnvironmentMap),
+                "complex environment map references a non-ENVMAP producer");
+        }
+        require(
+            complexEnvironmentContracts ==
+                kComplexEnvironmentShaderContractCount,
+            "complex environment shader census changed");
+        require(
+            !isComplexEnvironmentMask({ 0.5F, 0.5F, 0.5F, 0.5F }, true),
+            "grayscale legacy mask was treated as complex");
+        require(
+            isComplexEnvironmentMask({ 0.0F, 0.0F, 0.0F, 0.5F }, true),
+            "solid-black complex height marker was rejected");
+        require(
+            isComplexEnvironmentMask({ 0.2F, 0.6F, 0.8F, 0.5F }, true),
+            "coloured complex marker was rejected");
+        require(
+            !isComplexEnvironmentMask({ 0.2F, 0.6F, 0.8F, 1.0F }, true),
+            "unmarked environment mask was treated as complex");
+        require(
+            decodeMetalnessTag(encodeMetalnessTag(0.0F)) == 0.0F &&
+                decodeMetalnessTag(encodeMetalnessTag(1.0F)) == 1.0F,
+            "metalness tag endpoints did not round-trip");
+        require(
+            retainedDiffuseScale(1.0F) == kMinimumRetainedDiffuse &&
+                retainedDiffuseScale(0.0F) == 1.0F,
+            "diffuse energy retention endpoints changed");
         std::array<std::uint8_t, 20> nonDxbc{};
         require(
             matchComplexMaterialProducer(

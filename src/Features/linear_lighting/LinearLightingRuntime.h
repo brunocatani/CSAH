@@ -49,6 +49,8 @@ namespace community_shaders::linear_lighting
         ReplacementPixelConstants_None = 0,
         ReplacementPixelConstants_Frame = 1u << 0,
         ReplacementPixelConstants_Geometry = 1u << 1,
+        ReplacementPixelConstants_ComplexEnvironment = 1u << 2,
+        ReplacementPixelConstants_ComplexEnvironmentEnabled = 1u << 3,
     };
 
     struct ReplacementShaderBinding
@@ -83,6 +85,7 @@ namespace community_shaders::linear_lighting
             ID3D11DeviceContext* context,
             ID3D11Buffer* frameBuffer,
             ID3D11Buffer* geometryBuffer,
+            ID3D11Buffer* complexEnvironmentBuffer,
             std::uint8_t constantFlags,
             std::atomic_uint64_t* restoreCounter) noexcept;
 
@@ -90,6 +93,8 @@ namespace community_shaders::linear_lighting
         std::uint8_t constantFlags_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousFrameBuffer_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousGeometryBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer>
+            previousComplexEnvironmentBuffer_;
         std::atomic_uint64_t* restoreCounter_{};
     };
 
@@ -100,6 +105,10 @@ namespace community_shaders::linear_lighting
         bool complexParallaxResourcesReady{};
         std::int32_t complexParallaxQuality{};
         std::uint64_t complexParallaxReplacementBinds{};
+        bool complexEnvironmentEnabled{};
+        bool complexEnvironmentConsumerReady{};
+        std::uint64_t complexEnvironmentReplacementBinds{};
+        std::uint64_t complexEnvironmentDescriptorRejects{};
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
         std::uint32_t verifiedShaderContracts{};
@@ -337,6 +346,10 @@ namespace community_shaders::linear_lighting
         Microsoft::WRL::ComPtr<ID3D11PixelShader> currentlyRequestedShader_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> frameBuffer_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> geometryBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer>
+            complexEnvironmentDisabledBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer>
+            complexEnvironmentEnabledBuffer_;
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
                        kMaximumTrackedOriginalShadersPerContract>,
             kShaderContractCount>
@@ -406,6 +419,8 @@ namespace community_shaders::linear_lighting
         CreatePixelShaderFunction createPixelShader_{};
         std::atomic_bool enabled_{};
         std::atomic_bool complexParallaxEnabled_{};
+        std::atomic_bool complexEnvironmentEnabled_{ true };
+        std::atomic_bool complexEnvironmentConsumerReady_{};
         std::atomic_bool complexParallaxResourcesReady_{};
         std::atomic_int32_t complexParallaxQuality_{ 1 };
         std::atomic_bool gpuResourcesReady_{};
@@ -437,6 +452,8 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t complexParallaxReplacementBinds_{};
+        std::atomic_uint64_t complexEnvironmentReplacementBinds_{};
+        std::atomic_uint64_t complexEnvironmentDescriptorRejects_{};
         std::atomic_uint64_t skyReplacementBinds_{};
         std::atomic_uint64_t distantTreeReplacementBinds_{};
         std::atomic_uint64_t particleReplacementBinds_{};

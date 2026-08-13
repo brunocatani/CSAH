@@ -9,6 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from generate_complex_environment_contracts import build_inventory
+
 
 EXPECTED_FRAME_FIELDS = [
     ("enableLinearLighting", 0),
@@ -1004,6 +1006,10 @@ def verify(root: Path) -> None:
     parity_source = root / "tests" / "LinearLightingShaderParityTests.cpp"
     generator = root / "tools" / "generate_linear_lighting_runtime_contracts.py"
     manifest_path, contracts = load_contracts(root)
+    complex_environment_contracts, _ = build_inventory(root)
+    complex_environment_names = {
+        contract.name for contract in complex_environment_contracts
+    }
 
     required_files = [
         manifest_path,
@@ -1194,9 +1200,7 @@ def verify(root: Path) -> None:
             compiled = temp / f"candidate-{index}.dxbc"
             candidate_assembly_path = temp / f"candidate-{index}.asm"
             vanilla_assembly_path = temp / f"vanilla-{index}.asm"
-            run_fxc(
-                fxc,
-                [
+            compile_arguments = [
                     "/T",
                     "ps_5_0",
                     "/E",
@@ -1206,9 +1210,16 @@ def verify(root: Path) -> None:
                     str(compiled),
                     "/Fc",
                     str(candidate_assembly_path),
-                    str(source),
-                ],
-            )
+                ]
+            if label in complex_environment_names:
+                compile_arguments.extend(
+                    [
+                        "/D",
+                        "LINEAR_LIGHTING_COMPLEX_ENVIRONMENT=1",
+                    ]
+                )
+            compile_arguments.append(str(source))
+            run_fxc(fxc, compile_arguments)
             run_fxc(
                 fxc,
                 ["/dumpbin", "/Fc", str(vanilla_assembly_path), str(vanilla)],
@@ -1409,10 +1420,20 @@ def verify(root: Path) -> None:
             candidate_buffers = dict(candidate["constant_buffers"])
             frame_registers = candidate_buffers.pop(5, None)
             geometry_registers = candidate_buffers.pop(8, None)
+            complex_environment_registers = candidate_buffers.pop(11, None)
             if frame_registers not in (5, 6):
                 fail(f"{label} has an invalid LinearLightingFrame binding")
             if geometry_registers != 1:
                 fail(f"{label} has an invalid LinearLightingGeometry binding")
+            expected_complex_environment_registers = (
+                1 if label in complex_environment_names else None
+            )
+            if complex_environment_registers != (
+                expected_complex_environment_registers
+            ):
+                fail(
+                    f"{label} has an invalid complex environment draw binding"
+                )
             if candidate_buffers != original["constant_buffers"]:
                 fail(
                     f"{label} replacement constant buffers differ from vanilla: "

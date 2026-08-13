@@ -9,6 +9,7 @@ namespace community_shaders::complex_materials
 {
     struct Settings
     {
+        bool environmentResponseEnabled{ true };
         bool parallaxEnabled{ true };
         std::int32_t parallaxQuality{ 1 };
         float parallaxDepth{ 0.035f };

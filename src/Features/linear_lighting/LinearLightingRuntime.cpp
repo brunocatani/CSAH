@@ -1,10 +1,14 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 
 #include "Features/complex_materials/ComplexParallaxModel.h"
+#include "Features/complex_materials/ComplexEnvironmentMaterialModel.h"
+#include "Features/complex_materials/ComplexMaterialProducerModel.h"
+#include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 
 #include "render/BSLightingGeometryHook.h"
+#include "render/BSDFPrePassShaderHook.h"
 #include "resources.h"
 #include "support/Logger.h"
 
@@ -244,6 +248,7 @@ namespace community_shaders::linear_lighting
         ID3D11DeviceContext* context,
         ID3D11Buffer* frameBuffer,
         ID3D11Buffer* geometryBuffer,
+        ID3D11Buffer* complexEnvironmentBuffer,
         std::uint8_t constantFlags,
         std::atomic_uint64_t* restoreCounter) noexcept :
         context_(context),
@@ -262,6 +267,20 @@ namespace community_shaders::linear_lighting
             previousGeometryBuffer_.Attach(previousGeometryBuffer);
             context_->PSSetConstantBuffers(8, 1, &geometryBuffer);
         }
+        if ((constantFlags_ &
+                ReplacementPixelConstants_ComplexEnvironment) != 0) {
+            ID3D11Buffer* previousComplexEnvironmentBuffer{};
+            context_->PSGetConstantBuffers(
+                11,
+                1,
+                &previousComplexEnvironmentBuffer);
+            previousComplexEnvironmentBuffer_.Attach(
+                previousComplexEnvironmentBuffer);
+            context_->PSSetConstantBuffers(
+                11,
+                1,
+                &complexEnvironmentBuffer);
+        }
     }
 
     ScopedReplacementPixelConstants::~ScopedReplacementPixelConstants() noexcept
@@ -277,6 +296,15 @@ namespace community_shaders::linear_lighting
         if ((constantFlags_ & ReplacementPixelConstants_Geometry) != 0) {
             auto* previousGeometryBuffer = previousGeometryBuffer_.Get();
             context_->PSSetConstantBuffers(8, 1, &previousGeometryBuffer);
+        }
+        if ((constantFlags_ &
+                ReplacementPixelConstants_ComplexEnvironment) != 0) {
+            auto* previousComplexEnvironmentBuffer =
+                previousComplexEnvironmentBuffer_.Get();
+            context_->PSSetConstantBuffers(
+                11,
+                1,
+                &previousComplexEnvironmentBuffer);
         }
         restoreCounter_->fetch_add(1, std::memory_order_relaxed);
     }
@@ -666,6 +694,39 @@ namespace community_shaders::linear_lighting
             return false;
         }
 
+        D3D11_BUFFER_DESC complexEnvironmentDescription{};
+        complexEnvironmentDescription.ByteWidth = 16;
+        complexEnvironmentDescription.Usage = D3D11_USAGE_IMMUTABLE;
+        complexEnvironmentDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        constexpr std::array<std::uint32_t, 4>
+            complexEnvironmentDisabled{};
+        constexpr std::array<std::uint32_t, 4>
+            complexEnvironmentEnabled{ 1u, 0u, 0u, 0u };
+        const D3D11_SUBRESOURCE_DATA complexEnvironmentDisabledData{
+            complexEnvironmentDisabled.data(), 0, 0
+        };
+        const D3D11_SUBRESOURCE_DATA complexEnvironmentEnabledData{
+            complexEnvironmentEnabled.data(), 0, 0
+        };
+        Microsoft::WRL::ComPtr<ID3D11Buffer>
+            complexEnvironmentDisabledBuffer;
+        Microsoft::WRL::ComPtr<ID3D11Buffer>
+            complexEnvironmentEnabledBuffer;
+        if (FAILED(device->CreateBuffer(
+                &complexEnvironmentDescription,
+                &complexEnvironmentDisabledData,
+                complexEnvironmentDisabledBuffer.GetAddressOf())) ||
+            FAILED(device->CreateBuffer(
+                &complexEnvironmentDescription,
+                &complexEnvironmentEnabledData,
+                complexEnvironmentEnabledBuffer.GetAddressOf())) ||
+            !complexEnvironmentDisabledBuffer ||
+            !complexEnvironmentEnabledBuffer) {
+            logging::error(
+                "Complex Environment immutable b11 enable/disable buffers could not be created.");
+            return false;
+        }
+
         settings_ = safeSettings;
         replacementShaders_ = std::move(replacements);
         complexParallaxReplacementShaders_ =
@@ -679,6 +740,10 @@ namespace community_shaders::linear_lighting
         effectReplacementShaders_ = std::move(effectReplacements);
         frameBuffer_ = std::move(frameBuffer);
         geometryBuffer_ = std::move(geometryBuffer);
+        complexEnvironmentDisabledBuffer_ =
+            std::move(complexEnvironmentDisabledBuffer);
+        complexEnvironmentEnabledBuffer_ =
+            std::move(complexEnvironmentEnabledBuffer);
         publishedLightProducerRevision_ = producerState.revision;
         enabled_.store(settings_.enabled, std::memory_order_release);
         complexParallaxResourcesReady_.store(
@@ -686,6 +751,9 @@ namespace community_shaders::linear_lighting
             std::memory_order_release);
         complexParallaxEnabled_.store(
             complexParallaxSettings_.parallaxEnabled,
+            std::memory_order_release);
+        complexEnvironmentEnabled_.store(
+            complexParallaxSettings_.environmentResponseEnabled,
             std::memory_order_release);
         complexParallaxQuality_.store(
             complexParallaxSettings_.parallaxQuality,
@@ -1345,13 +1413,23 @@ namespace community_shaders::linear_lighting
         const auto complexParallaxActive =
             complexParallaxEnabled_.load(std::memory_order_acquire) &&
             complexParallaxResourcesReady_.load(std::memory_order_acquire);
-        if (!requested || (!linearLightingEnabled && !complexParallaxActive) ||
+        const auto complexEnvironmentRequested =
+            complexEnvironmentEnabled_.load(std::memory_order_acquire);
+        const auto complexEnvironmentMayRun =
+            linearLightingEnabled && complexEnvironmentRequested;
+        if (!complexEnvironmentMayRun) {
+            complexEnvironmentConsumerReady_.store(
+                false,
+                std::memory_order_release);
+        }
+        if (!requested ||
+            (!linearLightingEnabled && !complexParallaxActive) ||
             !gpuResourcesReady_.load(std::memory_order_acquire)) {
             inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
             return { requested, {} };
         }
 
-        const auto binding = decodeShaderBinding(
+        auto binding = decodeShaderBinding(
             shaderBindingLookup_.find(requested));
         if (binding.family == ReplacementShaderFamily::material) {
             if (binding.contractPlusOne == 0 ||
@@ -1367,7 +1445,51 @@ namespace community_shaders::linear_lighting
                 complex_materials::landscapeParallaxSlot(contractIndex);
             const auto useComplexParallax = complexParallaxActive &&
                 parallaxSlot < complexParallaxReplacementShaders_.size();
-            if (!linearLightingEnabled && !useComplexParallax) {
+            const auto complexEnvironmentProducer =
+                complex_materials::
+                    kComplexEnvironmentProducerByLinearContract[
+                        contractIndex];
+            const auto complexEnvironmentCandidate =
+                complexEnvironmentProducer != 0;
+            const auto contractComplexEnvironmentRequested =
+                complexEnvironmentCandidate &&
+                complexEnvironmentMayRun;
+            const auto complexEnvironmentConsumerReady =
+                contractComplexEnvironmentRequested &&
+                ibl::Runtime::get().complexMaterialConsumptionReady();
+            complexEnvironmentConsumerReady_.store(
+                complexEnvironmentConsumerReady,
+                std::memory_order_release);
+
+            auto useComplexEnvironment = false;
+            if (complexEnvironmentCandidate) {
+                binding.constantFlags = static_cast<std::uint8_t>(
+                    binding.constantFlags |
+                    ReplacementPixelConstants_ComplexEnvironment);
+                const auto descriptorScope =
+                    render::activeDFPrePassDescriptorScope();
+                const auto* alias = descriptorScope.active ?
+                    complex_materials::findComplexMaterialProducerAlias(
+                        descriptorScope.descriptor) :
+                    nullptr;
+                useComplexEnvironment =
+                    complexEnvironmentConsumerReady && alias &&
+                    alias->family == complex_materials::
+                        ComplexMaterialProducerFamily::kEnvironmentMap &&
+                    alias->contractPlusOne == complexEnvironmentProducer;
+                if (useComplexEnvironment) {
+                    binding.constantFlags = static_cast<std::uint8_t>(
+                        binding.constantFlags |
+                        ReplacementPixelConstants_ComplexEnvironmentEnabled);
+                } else if (complexEnvironmentConsumerReady) {
+                    complexEnvironmentDescriptorRejects_.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                }
+            }
+
+            if (!linearLightingEnabled && !useComplexParallax &&
+                !useComplexEnvironment) {
                 inactiveShaderSelections_.fetch_add(
                     1, std::memory_order_relaxed);
                 return { requested, {} };
@@ -1397,6 +1519,11 @@ namespace community_shaders::linear_lighting
             replacementBinds_.fetch_add(1, std::memory_order_relaxed);
             if (useComplexParallax) {
                 complexParallaxReplacementBinds_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            if (useComplexEnvironment) {
+                complexEnvironmentReplacementBinds_.fetch_add(
                     1,
                     std::memory_order_relaxed);
             }
@@ -1545,11 +1672,23 @@ namespace community_shaders::linear_lighting
         const auto frameAndGeometry = static_cast<std::uint8_t>(
             ReplacementPixelConstants_Frame |
             ReplacementPixelConstants_Geometry);
+        const auto complexEnvironmentFlags = static_cast<std::uint8_t>(
+            ReplacementPixelConstants_ComplexEnvironment |
+            ReplacementPixelConstants_ComplexEnvironmentEnabled);
+        const auto materialFlags = static_cast<std::uint8_t>(
+            binding.constantFlags & ~complexEnvironmentFlags);
+        const auto ownsComplexEnvironment =
+            (binding.constantFlags &
+                ReplacementPixelConstants_ComplexEnvironment) != 0;
+        const auto enablesComplexEnvironment =
+            (binding.constantFlags &
+                ReplacementPixelConstants_ComplexEnvironmentEnabled) != 0;
         const auto validMaterial =
             binding.family == ReplacementShaderFamily::material &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= replacementShaders_.size() &&
-            binding.constantFlags == frameAndGeometry;
+            materialFlags == frameAndGeometry &&
+            (!enablesComplexEnvironment || ownsComplexEnvironment);
         const auto validSky =
             binding.family == ReplacementShaderFamily::sky &&
             binding.contractPlusOne > 0 &&
@@ -1583,7 +1722,10 @@ namespace community_shaders::linear_lighting
                 !validParticle && !validWater && !validVLSComposite &&
                 !validEffect) ||
             !frameBuffer_ ||
-            (validMaterial && !geometryBuffer_)) {
+            (validMaterial && !geometryBuffer_) ||
+            (ownsComplexEnvironment &&
+                (!complexEnvironmentDisabledBuffer_ ||
+                    !complexEnvironmentEnabledBuffer_))) {
             return ScopedReplacementPixelConstants{};
         }
 
@@ -1593,6 +1735,11 @@ namespace community_shaders::linear_lighting
             context,
             frameBuffer_.Get(),
             validMaterial ? geometryBuffer_.Get() : nullptr,
+            ownsComplexEnvironment ?
+                (enablesComplexEnvironment ?
+                        complexEnvironmentEnabledBuffer_.Get() :
+                        complexEnvironmentDisabledBuffer_.Get()) :
+                nullptr,
             binding.constantFlags,
             &replacementConstantRestores_);
     }
@@ -1857,6 +2004,9 @@ namespace community_shaders::linear_lighting
         complexParallaxQuality_.store(
             complexParallaxSettings_.parallaxQuality,
             std::memory_order_release);
+        complexEnvironmentEnabled_.store(
+            complexParallaxSettings_.environmentResponseEnabled,
+            std::memory_order_release);
         publishFrameData();
     }
 
@@ -1899,6 +2049,18 @@ namespace community_shaders::linear_lighting
                 complexParallaxQuality_.load(std::memory_order_acquire),
             .complexParallaxReplacementBinds =
                 complexParallaxReplacementBinds_.load(
+                    std::memory_order_relaxed),
+            .complexEnvironmentEnabled =
+                complexEnvironmentEnabled_.load(
+                    std::memory_order_acquire),
+            .complexEnvironmentConsumerReady =
+                complexEnvironmentConsumerReady_.load(
+                    std::memory_order_acquire),
+            .complexEnvironmentReplacementBinds =
+                complexEnvironmentReplacementBinds_.load(
+                    std::memory_order_relaxed),
+            .complexEnvironmentDescriptorRejects =
+                complexEnvironmentDescriptorRejects_.load(
                     std::memory_order_relaxed),
             .gpuResourcesReady = gpuResourcesReady_.load(std::memory_order_acquire),
             .geometryProviderReady =

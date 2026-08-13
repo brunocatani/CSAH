@@ -425,6 +425,13 @@
         </div>
         <div id="parallaxSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
       </div>
+      <div class="master">
+        <div class="master-copy">
+          <strong>Complex Metal Response</strong>
+          <span id="complexEnvironmentState">WAITING FOR IBL</span>
+        </div>
+        <div id="complexEnvironmentSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+      </div>
     </header>
 
     <main>
@@ -564,6 +571,16 @@
           `STEREO POM Q${Number(complexMaterials.parallaxQuality || 0) + 1}` :
           "SHADER INTERLOCK CLOSED");
 
+      const complexEnvironmentEnabled = !!complexMaterials.environmentResponseEnabled;
+      const complexEnvironmentSwitch = document.getElementById("complexEnvironmentSwitch");
+      complexEnvironmentSwitch.classList.toggle("on", complexEnvironmentEnabled);
+      complexEnvironmentSwitch.setAttribute("aria-checked", String(complexEnvironmentEnabled));
+      document.getElementById("complexEnvironmentState").textContent =
+        !complexEnvironmentEnabled ? "VANILLA ENVIRONMENT MASK" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (complexMaterials.environmentConsumerReady ?
+            "METAL RESPONSE ARMED" : "WAITING FOR IBL CONSUMER"));
+
       for (const control of controls) {
         const input = document.getElementById(control.key);
         const output = document.getElementById(`${control.key}Value`);
@@ -602,6 +619,7 @@
         metric("Diffuse transforms", String(ibl.diffuseAmbientPrepared || 0), ibl.diffuseAmbientPrepared ? "good" : "wait"),
         metric("Parallax shaders", complexMaterials.parallaxResourcesReady ? "3 / 3 READY" : "CLOSED", complexMaterials.parallaxResourcesReady ? "good" : "bad"),
         metric("Parallax binds", String(complexMaterials.parallaxReplacementBinds || 0), complexMaterials.parallaxReplacementBinds ? "good" : "wait"),
+        metric("Complex material binds", String(complexMaterials.environmentReplacementBinds || 0), complexMaterials.environmentReplacementBinds ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -651,6 +669,16 @@
       render();
     }
 
+    function toggleComplexEnvironmentEnabled() {
+      const complexMaterials = (state.model || {}).complexMaterials || {};
+      const environmentResponseEnabled = !complexMaterials.environmentResponseEnabled;
+      bridge({ type: "complexEnvironmentEnabled", value: environmentResponseEnabled });
+      if (state.model) {
+        state.model.complexMaterials = { ...complexMaterials, environmentResponseEnabled };
+      }
+      render();
+    }
+
     createControls();
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
@@ -667,6 +695,10 @@
     document.getElementById("parallaxSwitch").addEventListener("click", toggleParallaxEnabled);
     document.getElementById("parallaxSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleParallaxEnabled();
+    });
+    document.getElementById("complexEnvironmentSwitch").addEventListener("click", toggleComplexEnvironmentEnabled);
+    document.getElementById("complexEnvironmentSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleComplexEnvironmentEnabled();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

@@ -93,6 +93,9 @@ foreach(required IN ITEMS
     "publishedEnvironment()"
     "publishedValidity()"
     "materialConsumptionFailed_"
+    "complexMaterialConsumptionReady"
+    "materialAlbedo_"
+    "publishedEnvironmentSessionId_ == requestedSession"
     "createMaterialResources"
     "materialDisabledConstants_"
     "materialEnabledConstants_")
@@ -170,6 +173,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "kAlbedoSlot = 29"
     "kRadianceSlot = 30"
     "kValiditySlot = 31"
     "kConstantSlot = 5"

@@ -40,6 +40,7 @@ namespace community_shaders::ibl
 
     ScopedMaterialBindings::ScopedMaterialBindings(
         ID3D11DeviceContext* context,
+        ID3D11ShaderResourceView* albedo,
         ID3D11ShaderResourceView* radiance,
         ID3D11ShaderResourceView* validity,
         ID3D11Buffer* constants) noexcept
@@ -55,6 +56,7 @@ namespace community_shaders::ibl
         ComPtr<ID3D11Device> device;
         context->GetDevice(&device);
         if (!device || !sameDevice(device.Get(), constants) ||
+            (albedo && !sameDevice(device.Get(), albedo)) ||
             (radiance && !sameDevice(device.Get(), radiance)) ||
             (validity && !sameDevice(device.Get(), validity))) {
             rejection_ = MaterialBindingRejection::deviceMismatch;
@@ -62,9 +64,9 @@ namespace community_shaders::ibl
         }
 
         context_ = context;
-        std::array<ID3D11ShaderResourceView*, 2> previousResources{};
+        std::array<ID3D11ShaderResourceView*, 3> previousResources{};
         context_->PSGetShaderResources(
-            kRadianceSlot,
+            kAlbedoSlot,
             static_cast<UINT>(previousResources.size()),
             previousResources.data());
         for (std::size_t index = 0; index < previousResources.size(); ++index) {
@@ -78,19 +80,20 @@ namespace community_shaders::ibl
         previousConstants_.Attach(previousConstants);
         captured_ = true;
 
-        std::array<ID3D11ShaderResourceView*, 2> resources{
+        std::array<ID3D11ShaderResourceView*, 3> resources{
+            albedo,
             radiance,
             validity,
         };
         context_->PSSetShaderResources(
-            kRadianceSlot,
+            kAlbedoSlot,
             static_cast<UINT>(resources.size()),
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
 
-        std::array<ID3D11ShaderResourceView*, 2> appliedResources{};
+        std::array<ID3D11ShaderResourceView*, 3> appliedResources{};
         context_->PSGetShaderResources(
-            kRadianceSlot,
+            kAlbedoSlot,
             static_cast<UINT>(appliedResources.size()),
             appliedResources.data());
         ID3D11Buffer* appliedConstants{};
@@ -98,8 +101,9 @@ namespace community_shaders::ibl
             kConstantSlot,
             1,
             &appliedConstants);
-        const auto applied = appliedResources[0] == radiance &&
-            appliedResources[1] == validity && appliedConstants == constants;
+        const auto applied = appliedResources[0] == albedo &&
+            appliedResources[1] == radiance &&
+            appliedResources[2] == validity && appliedConstants == constants;
         for (auto* resource : appliedResources) {
             if (resource) {
                 resource->Release();
@@ -174,20 +178,21 @@ namespace community_shaders::ibl
         if (!context_ || !captured_) {
             return false;
         }
-        std::array<ID3D11ShaderResourceView*, 2> resources{
+        std::array<ID3D11ShaderResourceView*, 3> resources{
             previousResources_[0].Get(),
             previousResources_[1].Get(),
+            previousResources_[2].Get(),
         };
         auto* constants = previousConstants_.Get();
         context_->PSSetShaderResources(
-            kRadianceSlot,
+            kAlbedoSlot,
             static_cast<UINT>(resources.size()),
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
 
-        std::array<ID3D11ShaderResourceView*, 2> restoredResources{};
+        std::array<ID3D11ShaderResourceView*, 3> restoredResources{};
         context_->PSGetShaderResources(
-            kRadianceSlot,
+            kAlbedoSlot,
             static_cast<UINT>(restoredResources.size()),
             restoredResources.data());
         ID3D11Buffer* restoredConstants{};
@@ -198,6 +203,7 @@ namespace community_shaders::ibl
         const auto restored =
             restoredResources[0] == resources[0] &&
             restoredResources[1] == resources[1] &&
+            restoredResources[2] == resources[2] &&
             restoredConstants == constants;
         for (auto* resource : restoredResources) {
             if (resource) {

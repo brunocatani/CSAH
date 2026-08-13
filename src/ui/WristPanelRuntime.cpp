@@ -676,6 +676,14 @@ namespace community_shaders::ui
                             runtime.complexParallaxResourcesReady },
                         { "parallaxReplacementBinds",
                             runtime.complexParallaxReplacementBinds },
+                        { "environmentResponseEnabled",
+                            complexSettings.environmentResponseEnabled },
+                        { "environmentConsumerReady",
+                            runtime.complexEnvironmentConsumerReady },
+                        { "environmentReplacementBinds",
+                            runtime.complexEnvironmentReplacementBinds },
+                        { "environmentDescriptorRejects",
+                            runtime.complexEnvironmentDescriptorRejects },
                     } },
                 { "coverage",
                     {
@@ -1338,6 +1346,31 @@ namespace community_shaders::ui
                         "Complex Parallax wrist action accepted; enabled={}, quality={}, settings save={}.",
                         nextComplex.parallaxEnabled,
                         nextComplex.parallaxQuality,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "complexEnvironmentEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    complex_materials::Settings nextComplex{};
+                    {
+                        std::scoped_lock lock(settingsMutex);
+                        nextComplex = uiComplexParallaxSettings;
+                        nextComplex.environmentResponseEnabled =
+                            action["value"].get<bool>();
+                        nextComplex =
+                            complex_materials::sanitize(nextComplex);
+                        uiComplexParallaxSettings = nextComplex;
+                    }
+                    linear_lighting::Runtime::get().
+                        queueComplexParallaxSettings(nextComplex);
+                    const auto saved =
+                        complex_materials::saveSettings(nextComplex);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Complex Environment wrist action accepted; enabled={}, settings save={}.",
+                        nextComplex.environmentResponseEnabled,
                         saved);
                     schedulePush();
                     return;

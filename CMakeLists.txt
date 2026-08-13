@@ -80,6 +80,8 @@ include("${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake")
 fo4vr_cs_verify_fo4vr_loader("${SOURCE_DIR}/XSEPlugin.cpp")
 set(RENDERER_HOOK_SOURCE
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp")
+set(DFPREPASS_HOOK_SOURCE
+  "${SOURCE_DIR}/render/BSDFPrePassShaderHook.cpp")
 include("${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake")
 set(WRIST_PANEL_SOURCE "${SOURCE_DIR}/ui/WristPanelRuntime.cpp")
 set(WRIST_PANEL_POSE_SOURCE "${SOURCE_DIR}/ui/WristPanelPose.h")
@@ -238,6 +240,16 @@ set(COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR
   "${ROOT_DIR}/tools/generate_complex_material_producer_contracts.py")
 set(COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS
   "${SOURCE_DIR}/Features/complex_materials/GeneratedComplexMaterialProducerContracts.inl")
+set(COMPLEX_ENVIRONMENT_MODEL
+  "${SOURCE_DIR}/Features/complex_materials/ComplexEnvironmentMaterialModel.h")
+set(COMPLEX_ENVIRONMENT_GENERATOR
+  "${ROOT_DIR}/tools/generate_complex_environment_contracts.py")
+set(COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/complex_materials/GeneratedComplexEnvironmentContracts.inl")
+set(COMPLEX_ENVIRONMENT_HLSL
+  "${ROOT_DIR}/package/Shaders/Community/ComplexMaterials/ComplexEnvironmentMaterials.hlsli")
+set_source_files_properties(
+  "${COMPLEX_ENVIRONMENT_HLSL}" PROPERTIES HEADER_FILE_ONLY TRUE)
 set(COMPLEX_PARALLAX_HLSL_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/Reconstruction/LandscapeFourLayerSixMrt_L3_00000023.LinearLightingCandidate.hlsl")
 set(COMPLEX_PARALLAX_SETTINGS_HEADER
@@ -293,6 +305,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${SOURCE_DIR}/XSEPlugin.cpp"
   "${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake"
   "${RENDERER_HOOK_SOURCE}"
+  "${DFPREPASS_HOOK_SOURCE}"
+  "${ROOT_DIR}/cmake/VerifyBSDFPrePassHook.cmake"
   "${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
   "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake"
   "${WRIST_PANEL_SOURCE}"
@@ -329,6 +343,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+  "${COMPLEX_ENVIRONMENT_MODEL}"
+  "${COMPLEX_ENVIRONMENT_GENERATOR}"
+  "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}"
+  "${COMPLEX_ENVIRONMENT_HLSL}"
   "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
   "${COMPLEX_PARALLAX_MODEL_HEADER}"
   "${COMPLEX_PARALLAX_SETTINGS_STORE_SOURCE}"
@@ -423,6 +441,13 @@ add_custom_target(VerifyFo4VrRendererHook ALL
   COMMENT "Verifying FO4VR renderer hook identity contract"
   VERBATIM)
 
+add_custom_target(VerifyBSDFPrePassHook ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDFPREPASS_HOOK_SOURCE=${DFPREPASS_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/VerifyBSDFPrePassHook.cmake"
+  COMMENT "Verifying FO4VR BSDFPrePass descriptor hook contract"
+  VERBATIM)
+
 add_custom_target(VerifyWristPanel ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
@@ -511,6 +536,15 @@ add_custom_target(VerifyComplexMaterialProducerContracts ALL
     --output "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying exact FO4VR complex-material producer contracts"
+  VERBATIM)
+
+add_custom_target(VerifyComplexEnvironmentContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${COMPLEX_ENVIRONMENT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying descriptor-gated complex environment contracts"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingConstantScope ALL
@@ -861,6 +895,10 @@ add_library(${PROJECT_NAME} SHARED
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+  "${COMPLEX_ENVIRONMENT_MODEL}"
+  "${COMPLEX_ENVIRONMENT_GENERATOR}"
+  "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}"
+  "${COMPLEX_ENVIRONMENT_HLSL}"
   "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
   "${COMPLEX_PARALLAX_MODEL_HEADER}"
   "${COMPLEX_PARALLAX_SETTINGS_STORE_SOURCE}"
@@ -887,6 +925,8 @@ add_library(${PROJECT_NAME} SHARED
   "${SETTINGS_PATH_HEADER}"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
+  "${DFPREPASS_HOOK_SOURCE}"
+  "${SOURCE_DIR}/render/BSDFPrePassShaderHook.h"
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
   "${SOURCE_DIR}/support/Logger.h"
@@ -905,11 +945,13 @@ add_dependencies(${PROJECT_NAME}
   VerifyComplexParallax
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
+  VerifyBSDFPrePassHook
   VerifyD3D11Hooks
   VerifyIblFoundation
   VerifyIblCaptureProbeContracts
   VerifyIblMaterialContracts
   VerifyComplexMaterialProducerContracts
+  VerifyComplexEnvironmentContracts
   VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
@@ -1086,7 +1128,9 @@ if(BUILD_FO4VR_CS_TESTS)
   add_executable(FO4VRCommunityShadersComplexMaterialProducerModelTests
     "${ROOT_DIR}/tests/ComplexMaterialProducerModelTests.cpp"
     "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
-    "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}")
+    "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+    "${COMPLEX_ENVIRONMENT_MODEL}"
+    "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}")
   target_compile_features(
     FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE cxx_std_23)
   target_include_directories(
@@ -1163,6 +1207,13 @@ if(BUILD_FO4VR_CS_TESTS)
       "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+      --check)
+
+  add_test(NAME FO4VRCommunityShaders.ComplexEnvironmentContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${COMPLEX_ENVIRONMENT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}"
       --check)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource

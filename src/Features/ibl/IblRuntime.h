@@ -183,6 +183,12 @@ namespace community_shaders::ibl
         // never waits for the GPU, and does not alter material lighting.
         void onDFLightAmbientBind(ID3D11DeviceContext* context) noexcept;
 
+        // Render-thread-only readiness gate for DFPrepass complex-material
+        // encoding. Producer writes are allowed only when the exact
+        // DFComposite consumer has a retained DFLight albedo source and a
+        // published environment pair, so no tagged draw can lose energy.
+        [[nodiscard]] bool complexMaterialConsumptionReady() const noexcept;
+
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
@@ -270,6 +276,7 @@ namespace community_shaders::ibl
             materialReplacementShaders_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialDisabledConstants_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialEnabledConstants_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> materialAlbedo_;
         std::array<SceneRadianceReadbackSlot, 2>
             sceneRadianceReadbackSlots_{};
         mutable std::mutex captureShaderMutex_;

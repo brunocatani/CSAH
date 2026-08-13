@@ -41,9 +41,12 @@ MAD_OPCODE = 0x32
 MOV_OPCODE = 0x36
 IBL_CONSTANT_SLOT = 5
 VANILLA_ENVIRONMENT_SLOT = 8
+MATERIAL_DATA_SLOT = 3
+DFLIGHT_ALBEDO_SLOT = 29
 PUBLISHED_ENVIRONMENT_SLOT = 30
 PUBLISHED_VALIDITY_SLOT = 31
 ENVIRONMENT_SAMPLER_SLOT = 8
+MATERIAL_SAMPLER_SLOT = 3
 FIRST_RESOURCE_ID = 1054
 
 CONTRACT_PATTERN = re.compile(
@@ -139,12 +142,17 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     source_text = source.read_text(encoding="utf-8")
     for required in (
         "VanillaEnvironment : register(t8)",
+        "MaterialData : register(t3)",
+        "DFLightAlbedo : register(t29)",
         "PublishedEnvironment : register(t30)",
         "PublishedValidity : register(t31)",
         "EnvironmentSampler : register(s8)",
+        "MaterialSampler : register(s3)",
         "IblMaterialConstants : register(b5)",
         "saturate(validity * IblWeight)",
         "lerp(vanilla.xyz, published, weight)",
+        "ComplexMaterialWeight",
+        "retainedDiffuse / max(1.0 - metalness, 1.0 / 255.0)",
     ):
         if required not in source_text:
             raise ContractError(
@@ -174,12 +182,13 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     text = assembly.read_text(encoding="utf-8")
     for required in (
         "dcl_constantbuffer CB5[1], immediateIndexed",
+        "dcl_sampler s3, mode_default",
         "dcl_sampler s8, mode_default",
+        "dcl_resource_texture2d (float,float,float,float) t3",
         "dcl_resource_texturecubearray (float,float,float,float) t8",
+        "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
         "dcl_resource_texturecube (float,float,float,float) t31",
-        "dcl_temps 2",
-        "mul_sat r0.x, r0.x, cb5[0].x",
     ):
         if required not in text:
             raise ContractError(
@@ -215,7 +224,7 @@ def declaration_for_slot(
 
 def template_contract(
     template: bytes,
-) -> tuple[list[list[int]], list[list[int]]]:
+) -> tuple[list[list[int]], list[list[int]], int]:
     _, _, _, words = shader_words(template)
     declarations = [
         declaration_for_slot(
@@ -223,6 +232,12 @@ def template_contract(
             OPCODE_DCL_CONSTANT_BUFFER,
             OPERAND_CONSTANT_BUFFER,
             IBL_CONSTANT_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
+            DFLIGHT_ALBEDO_SLOT,
         ),
         declaration_for_slot(
             words,
@@ -237,25 +252,28 @@ def template_contract(
             PUBLISHED_VALIDITY_SLOT,
         ),
     ]
-    _, _, body = shader_declarations_and_body(words)
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    template_temp_count = words[temp_declaration[0] + 1]
+    if template_temp_count == 0 or template_temp_count > 16:
+        raise ContractError("IBL material template temporary count changed")
     body_words = [words[start:end] for start, end in body]
     opcodes = [instruction[0] & 0x7FF for instruction in body_words]
-    expected = [
-        SAMPLE_L_OPCODE,
-        MUL_OPCODE,
-        SAMPLE_L_OPCODE,
-        SAMPLE_L_OPCODE,
-        ADD_OPCODE,
-        MAD_OPCODE,
-        MOV_OPCODE,
-        OPCODE_RET,
-    ]
-    if opcodes != expected:
+    if len(opcodes) < 10 or opcodes[-1] != OPCODE_RET:
         raise ContractError(
             "IBL material template instruction sequence changed: "
             + ", ".join(f"{opcode:#x}" for opcode in opcodes)
         )
-    return declarations, body_words[:6]
+    output_writes = [
+        operand
+        for instruction in body_words[:-1]
+        for operand in executable_operands(instruction, 0, len(instruction))
+        if operand.operand_type == OPERAND_OUTPUT
+    ]
+    if not output_writes or any(
+        operand.immediate_indices != (0,) for operand in output_writes
+    ):
+        raise ContractError("IBL material template output contract changed")
+    return declarations, body_words[:-1], template_temp_count
 
 
 def replace_instruction_operands(
@@ -289,33 +307,33 @@ def remap_template_instruction(
     instruction: list[int],
     coordinate: list[int],
     lod: list[int],
+    material_coordinate: list[int],
     first_scratch: int,
-    second_scratch: int,
+    template_temp_count: int,
+    output_scratch: int,
 ) -> list[int]:
     replacements: dict[int, list[int]] = {}
     for operand in executable_operands(instruction, 0, len(instruction)):
         if operand.operand_type == OPERAND_TEMP:
-            if operand.immediate_indices == (0,):
-                replacements[operand.start] = replace_operand_with_temp(
-                    instruction,
-                    operand,
-                    first_scratch,
-                )
-            elif operand.immediate_indices == (1,):
-                replacements[operand.start] = replace_operand_with_temp(
-                    instruction,
-                    operand,
-                    second_scratch,
-                )
-            else:
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] >= template_temp_count
+            ):
                 raise ContractError(
                     "IBL material template uses an unexpected temporary"
                 )
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                first_scratch + int(operand.immediate_indices[0]),
+            )
         elif operand.operand_type == OPERAND_INPUT:
             if operand.immediate_indices == (0,):
                 replacements[operand.start] = coordinate
             elif operand.immediate_indices == (1,):
                 replacements[operand.start] = lod
+            elif operand.immediate_indices == (2,):
+                replacements[operand.start] = material_coordinate
             else:
                 raise ContractError(
                     "IBL material template uses an unexpected input"
@@ -328,7 +346,7 @@ def remap_template_instruction(
             replacements[operand.start] = replace_operand_with_temp(
                 instruction,
                 operand,
-                second_scratch,
+                output_scratch,
             )
     return replace_instruction_operands(instruction, replacements)
 
@@ -355,6 +373,7 @@ def patch_shader(
     original: bytes,
     declarations: list[list[int]],
     transform: list[list[int]],
+    template_temp_count: int,
 ) -> bytes:
     version, chunks, shader_index, words = shader_words(original)
     temp_declaration, _, body = shader_declarations_and_body(words)
@@ -380,10 +399,11 @@ def patch_shader(
     if IBL_CONSTANT_SLOT in occupied_buffers:
         raise ContractError("DFComposite unexpectedly owns b5")
     if {
+        DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
     } & occupied_resources:
-        raise ContractError("DFComposite unexpectedly owns t30 or t31")
+        raise ContractError("DFComposite unexpectedly owns t29, t30, or t31")
 
     environment_samples: list[tuple[int, int, list[Operand]]] = []
     for start, end in body:
@@ -434,8 +454,35 @@ def patch_shader(
             "DFComposite t8 sample no longer maps RGB into a verified destination shape"
         )
 
+    material_samples: list[tuple[int, int, list[Operand]]] = []
+    for start, end in body:
+        if start >= sample_start or (words[start] & 0x7FF) != SAMPLE_L_OPCODE:
+            continue
+        operands = executable_operands(words, start, end)
+        if len(operands) != 5:
+            continue
+        candidate_destination, candidate_coordinate, candidate_resource, candidate_sampler, _ = operands
+        if (
+            candidate_resource.operand_type == OPERAND_RESOURCE
+            and candidate_resource.immediate_indices == (MATERIAL_DATA_SLOT,)
+            and candidate_sampler.operand_type == OPERAND_SAMPLER
+            and candidate_sampler.immediate_indices == (MATERIAL_SAMPLER_SLOT,)
+            and candidate_destination.operand_type == OPERAND_TEMP
+            and candidate_coordinate.operand_type == OPERAND_TEMP
+            and len(candidate_coordinate.immediate_indices) == 1
+        ):
+            material_samples.append((start, end, operands))
+    if len(material_samples) != 1:
+        raise ContractError(
+            "DFComposite must contain one verified pre-environment t3 sample_l"
+        )
+    material_coordinate = material_samples[0][2][1]
+    material_coordinate_words = words[
+        material_coordinate.start : material_coordinate.end
+    ]
+
     first_scratch = original_temp_count
-    second_scratch = original_temp_count + 1
+    output_scratch = original_temp_count + template_temp_count
     replacement: list[int] = []
     for instruction in transform:
         replacement.extend(
@@ -443,19 +490,23 @@ def patch_shader(
                 instruction,
                 coordinate_words,
                 lod_words,
+                material_coordinate_words,
                 first_scratch,
-                second_scratch,
+                template_temp_count,
+                output_scratch,
             )
         )
     replacement.extend(
-        final_material_move(destination_words, second_scratch)
+        final_material_move(destination_words, output_scratch)
     )
 
     prefix = words[: temp_declaration[0]]
     for declaration in declarations:
         prefix.extend(declaration)
     updated_temp_declaration = words[temp_declaration[0] : temp_declaration[1]]
-    updated_temp_declaration[1] = original_temp_count + 2
+    updated_temp_declaration[1] = (
+        original_temp_count + template_temp_count + 1
+    )
 
     rewritten_body: list[int] = []
     for start, end in body:
@@ -536,9 +587,11 @@ def validate_candidate(
     original_textures = set(original_declarations.textures)
     candidate_textures = set(candidate_declarations.textures)
     if candidate_textures - {
+        DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
     } != original_textures or not {
+        DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
     }.issubset(candidate_textures):
@@ -552,6 +605,7 @@ def validate_candidate(
     ):
         raise ContractError(f"{name} changed vanilla declarations")
     for declaration in (
+        "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
         "dcl_resource_texturecube (float,float,float,float) t31",
     ):
@@ -561,6 +615,8 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t30 exactly once")
     if len(re.findall(r"\bt31(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t31 exactly once")
+    if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t29 exactly once")
     if re.search(r"^\s*dcl_uav", candidate_text, re.MULTILINE):
         raise ContractError(f"{name} unexpectedly declares a UAV")
 
@@ -644,7 +700,11 @@ def main() -> int:
         ) as directory:
             temporary = Path(directory)
             template = compile_template(root, fxc, temporary)
-            declarations, transform = template_contract(template)
+            (
+                declarations,
+                transform,
+                template_temp_count,
+            ) = template_contract(template)
             candidates: list[bytes] = []
             for index, original in enumerate(originals):
                 name = contract_name(index, original.checksum)
@@ -652,6 +712,7 @@ def main() -> int:
                     original.data,
                     declarations,
                     transform,
+                    template_temp_count,
                 )
                 validate_candidate(
                     fxc,

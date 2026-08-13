@@ -774,7 +774,8 @@ namespace community_shaders::ibl
             environmentProvider_.publishedEnvironment() : nullptr;
         auto* validity = enabled ?
             environmentProvider_.publishedValidity() : nullptr;
-        if (!constants || (enabled && (!radiance || !validity))) {
+        auto* albedo = enabled ? materialAlbedo_.Get() : nullptr;
+        if (!constants || (enabled && (!albedo || !radiance || !validity))) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
             materialConsumptionFailed_ = true;
             return {};
@@ -782,6 +783,7 @@ namespace community_shaders::ibl
 
         ScopedMaterialBindings scope(
             context,
+            albedo,
             radiance,
             validity,
             constants);
@@ -1416,7 +1418,7 @@ namespace community_shaders::ibl
         description.Usage = D3D11_USAGE_IMMUTABLE;
         description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         constexpr std::array<float, 4> disabled{};
-        constexpr std::array<float, 4> enabled{ 1.0F, 0.0F, 0.0F, 0.0F };
+        constexpr std::array<float, 4> enabled{ 1.0F, 1.0F, 0.0F, 0.0F };
         D3D11_SUBRESOURCE_DATA disabledData{};
         disabledData.pSysMem = disabled.data();
         D3D11_SUBRESOURCE_DATA enabledData{};
@@ -1728,6 +1730,19 @@ namespace community_shaders::ibl
             !resourcesReady_.load(std::memory_order_acquire)) {
             return;
         }
+
+        ID3D11ShaderResourceView* albedoRaw{};
+        context->PSGetShaderResources(0, 1, &albedoRaw);
+        ComPtr<ID3D11ShaderResourceView> albedo;
+        albedo.Attach(albedoRaw);
+        if (albedo) {
+            D3D11_SHADER_RESOURCE_VIEW_DESC description{};
+            albedo->GetDesc(&description);
+            if (description.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D) {
+                materialAlbedo_ = std::move(albedo);
+            }
+        }
+
         const auto now = GetTickCount64();
         if (now < nextCadenceTickMilliseconds_) {
             return;
@@ -1836,6 +1851,20 @@ namespace community_shaders::ibl
                     geometry.latestDiffuseMaximumCoefficientDelta);
             }
         }
+    }
+
+    bool Runtime::complexMaterialConsumptionReady() const noexcept
+    {
+        const auto requestedSession =
+            requestedCaptureProbeSessionId_.load(
+                std::memory_order_acquire);
+        return enabled_.load(std::memory_order_acquire) &&
+            resourcesReady_.load(std::memory_order_acquire) &&
+            !materialConsumptionFailed_ && materialAlbedo_ &&
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ == requestedSession &&
+            environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity();
     }
 
     void Runtime::publishUsable(
@@ -2005,6 +2034,7 @@ namespace community_shaders::ibl
         }
         materialDisabledConstants_.Reset();
         materialEnabledConstants_.Reset();
+        materialAlbedo_.Reset();
         context_.Reset();
         device_.Reset();
         nextCadenceTickMilliseconds_ = 0;
