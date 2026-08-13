@@ -22,6 +22,7 @@ namespace
 {
     using Microsoft::WRL::ComPtr;
     using community_shaders::ibl::DiffuseSH;
+    using community_shaders::ibl::Float3;
 
     struct Float4
     {
@@ -255,6 +256,217 @@ namespace
         }
     }
 
+    [[nodiscard]] Float3 evaluateRadiance(
+        const DiffuseSH& coefficients,
+        const Float3& direction)
+    {
+        const auto basis =
+            community_shaders::ibl::evaluateFirstOrderSHBasis(direction);
+        std::array<float, 3> result{};
+        for (std::size_t channel = 0; channel < result.size(); ++channel) {
+            for (std::size_t coefficient = 0; coefficient < basis.size();
+                 ++coefficient) {
+                result[channel] += static_cast<float>(
+                    coefficients.rgb[channel][coefficient] *
+                    basis[coefficient]);
+            }
+        }
+        return { result[0], result[1], result[2] };
+    }
+
+    void verifyValidityAwareFit()
+    {
+        const DiffuseSH expected{
+            .rgb = {
+                std::array{ 1.25f, 0.08f, -0.05f, 0.12f },
+                std::array{ 1.75f, -0.06f, 0.09f, -0.04f },
+                std::array{ 2.25f, 0.04f, 0.03f, 0.08f },
+            },
+        };
+        community_shaders::ibl::DiffuseSHFit fit{};
+        constexpr std::uint32_t kExtent = 12;
+        for (std::uint32_t face = 0;
+             face < community_shaders::ibl::kEnvironmentCubeFaceCount;
+             ++face) {
+            for (std::uint32_t y = 0; y < kExtent; ++y) {
+                for (std::uint32_t x = 0; x < kExtent; ++x) {
+                    const auto horizontal =
+                        ((static_cast<float>(x) + 0.5f) / kExtent) * 2.0f -
+                        1.0f;
+                    const auto vertical =
+                        ((static_cast<float>(y) + 0.5f) / kExtent) * 2.0f -
+                        1.0f;
+                    const auto direction =
+                        community_shaders::ibl::environmentCubeDirection(
+                            static_cast<
+                                community_shaders::ibl::EnvironmentCubeFace>(
+                                face),
+                            horizontal,
+                            vertical);
+                    const auto validity = face == static_cast<std::uint32_t>(
+                                                        community_shaders::ibl::
+                                                            EnvironmentCubeFace::
+                                                                positiveZ) ?
+                        0.0f :
+                        1.0f;
+                    community_shaders::ibl::accumulateDiffuseSHFit(
+                        fit,
+                        direction,
+                        evaluateRadiance(expected, direction),
+                        validity,
+                        community_shaders::ibl::cubeTexelSolidAngleWeight(
+                            horizontal,
+                            vertical));
+                }
+            }
+        }
+
+        const auto coverage =
+            community_shaders::ibl::diffuseSHFitCoverage(fit);
+        require(
+            coverage > 0.80f && coverage < 0.90f,
+            "partial-cubemap SH fit reported incorrect coverage");
+        DiffuseSH solved{};
+        require(
+            community_shaders::ibl::solveDiffuseSHFit(fit, solved),
+            "partial-cubemap SH fit was singular");
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            for (std::size_t coefficient = 0; coefficient < 4;
+                 ++coefficient) {
+                requireNear(
+                    solved.rgb[channel][coefficient],
+                    expected.rgb[channel][coefficient],
+                    2.0e-4f,
+                    "partial-cubemap coefficient");
+            }
+        }
+
+        community_shaders::ibl::DiffuseSHFit singular{};
+        community_shaders::ibl::accumulateDiffuseSHFit(
+            singular,
+            { 1.0f, 0.0f, 0.0f },
+            { 1.0f, 1.0f, 1.0f },
+            1.0f,
+            1.0);
+        require(
+            !community_shaders::ibl::solveDiffuseSHFit(singular, solved),
+            "directionally singular SH fit was accepted");
+    }
+
+    void verifyAmbientTransform(const DiffuseSH& constantProjection)
+    {
+        const auto irradiance =
+            community_shaders::ibl::evaluateDiffuseIrradiance(
+                constantProjection,
+                { 0.0f, 1.0f, 0.0f });
+        requireNear(irradiance.x, 0.25f, 2.0e-4f, "constant irradiance red");
+        requireNear(
+            irradiance.y,
+            0.5f,
+            2.0e-4f,
+            "constant irradiance green");
+        requireNear(
+            irradiance.z,
+            0.75f,
+            2.0e-4f,
+            "constant irradiance blue");
+
+        std::array<float, 16> vanilla{};
+        vanilla[12] = 0.5f;
+        vanilla[13] = 0.5f;
+        vanilla[14] = 0.5f;
+        vanilla[15] = 1.0f;
+        std::array<float, 16> transform{};
+        require(
+            community_shaders::ibl::buildDirectionalAmbientTransform(
+                constantProjection,
+                vanilla,
+                1.0f,
+                1.0f,
+                transform),
+            "constant diffuse ambient transform was rejected");
+        for (std::size_t index = 0; index < 12; ++index) {
+            requireNear(
+                transform[index],
+                0.0f,
+                2.0e-4f,
+                "constant diffuse directional row");
+        }
+        const auto luminance = transform[12] * 0.2126f +
+            transform[13] * 0.7152f + transform[14] * 0.0722f;
+        requireNear(luminance, 0.5f, 2.0e-4f, "matched ambient luminance");
+        requireNear(transform[15], 1.0f, 0.0f, "ambient homogeneous scale");
+
+        vanilla[0] = 0.2f;
+        vanilla[4] = -0.1f;
+        vanilla[8] = 0.15f;
+        require(
+            community_shaders::ibl::buildDirectionalAmbientTransform(
+                constantProjection,
+                vanilla,
+                2.0f,
+                1.0f,
+                transform),
+            "directional vanilla brightness match was rejected");
+        Float3 vanillaAverage{};
+        constexpr std::array<Float3, 6> directions{
+            Float3{ -1.0f, 0.0f, 0.0f },
+            Float3{ 1.0f, 0.0f, 0.0f },
+            Float3{ 0.0f, -1.0f, 0.0f },
+            Float3{ 0.0f, 1.0f, 0.0f },
+            Float3{ 0.0f, 0.0f, -1.0f },
+            Float3{ 0.0f, 0.0f, 1.0f },
+        };
+        for (const auto& direction : directions) {
+            vanillaAverage.x += std::pow(
+                                    std::max(
+                                        0.0f,
+                                        vanilla[0] * direction.x +
+                                            vanilla[4] * direction.y +
+                                            vanilla[8] * direction.z +
+                                            vanilla[12]),
+                                    2.0f) /
+                directions.size();
+            vanillaAverage.y += vanilla[13] * vanilla[13] /
+                directions.size();
+            vanillaAverage.z += vanilla[14] * vanilla[14] /
+                directions.size();
+        }
+        const auto expectedLuminance = vanillaAverage.x * 0.2126f +
+            vanillaAverage.y * 0.7152f + vanillaAverage.z * 0.0722f;
+        const auto transformedLuminance =
+            transform[12] * transform[12] * 0.2126f +
+            transform[13] * transform[13] * 0.7152f +
+            transform[14] * transform[14] * 0.0722f;
+        requireNear(
+            transformedLuminance,
+            expectedLuminance,
+            3.0e-4f,
+            "directional vanilla average luminance");
+
+        auto directional = constantProjection;
+        directional.rgb[0][3] = 0.35f;
+        require(
+            community_shaders::ibl::buildDirectionalAmbientTransform(
+                directional,
+                vanilla,
+                1.0f,
+                1.0f,
+                transform),
+            "directional diffuse ambient transform was rejected");
+        require(
+            transform[0] < -1.0e-3f,
+            "world X directional term was not preserved");
+        require(
+            !community_shaders::ibl::buildDirectionalAmbientTransform(
+                directional,
+                vanilla,
+                0.0f,
+                1.0f,
+                transform),
+            "zero shader gamma was accepted");
+    }
+
     void run(const std::filesystem::path& root)
     {
         const auto bytecode = readFile(
@@ -304,6 +516,8 @@ namespace
                     "L1 channel " + std::to_string(channel));
             }
         }
+        verifyValidityAwareFit();
+        verifyAmbientTransform(projected);
 
         auto invalid = projected;
         invalid.rgb[1][2] = std::numeric_limits<float>::quiet_NaN();

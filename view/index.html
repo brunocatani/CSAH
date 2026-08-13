@@ -63,7 +63,7 @@
       inset: 0 0 auto 0;
       height: 126px;
       display: grid;
-      grid-template-columns: 1fr 330px 330px;
+      grid-template-columns: 1fr 300px 300px 300px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
       background: rgba(9,18,22,.94);
@@ -411,6 +411,13 @@
         </div>
         <div id="iblSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
       </div>
+      <div class="master">
+        <div class="master-copy">
+          <strong>Diffuse IBL</strong>
+          <span id="iblDiffuseState">WAITING FOR ENVIRONMENT</span>
+        </div>
+        <div id="iblDiffuseSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+      </div>
     </header>
 
     <main>
@@ -457,7 +464,8 @@
       { key: "emitColorGamma", label: "Emission gamma", hint: "Linearizes authored emissive colour.", min: 1, max: 3, step: .01 },
       { key: "vanillaDiffuseColorMultiplier", label: "Diffuse level", hint: "Preserves calibrated vanilla diffuse energy.", min: 0, max: 3, step: .01 },
       { key: "emitColorMultiplier", label: "Emission level", hint: "Scales geometry emission before output.", min: 0, max: 3, step: .01 },
-      { key: "glowmapMultiplier", label: "Glow level", hint: "Scales textured emissive energy.", min: 0, max: 3, step: .01 }
+      { key: "glowmapMultiplier", label: "Glow level", hint: "Scales textured emissive energy.", min: 0, max: 3, step: .01 },
+      { key: "diffuseIblLevel", source: "ibl", label: "IBL ambient level", hint: "Scales environment-derived diffuse ambient after vanilla brightness matching.", min: 0, max: 2, step: .01 }
     ];
 
     const state = { model: null, timers: new Map() };
@@ -487,7 +495,9 @@
           output.textContent = Number(input.value).toFixed(2);
           clearTimeout(state.timers.get(control.key));
           state.timers.set(control.key, setTimeout(() => {
-            bridge({ type: "set", key: control.key, value: Number(input.value) });
+            bridge(control.source === "ibl"
+              ? { type: "iblDiffuseLevel", value: Number(input.value) }
+              : { type: "set", key: control.key, value: Number(input.value) });
           }, 180));
         });
       }
@@ -525,10 +535,20 @@
         (ibl.resourcesReady ? "DYNAMIC ENVIRONMENT ARMED" : "WAITING FOR PROVIDER") :
         "VANILLA ENVIRONMENT";
 
+      const diffuseEnabled = !!ibl.diffuseEnabled;
+      const diffuseSwitch = document.getElementById("iblDiffuseSwitch");
+      diffuseSwitch.classList.toggle("on", diffuseEnabled);
+      diffuseSwitch.setAttribute("aria-checked", String(diffuseEnabled));
+      document.getElementById("iblDiffuseState").textContent = !iblEnabled ?
+        "MASTER DISABLED" :
+        (!diffuseEnabled ? "VANILLA AMBIENT" :
+          (ibl.diffuseSHUsable ? "DYNAMIC AMBIENT ARMED" : "WAITING FOR SH FIT"));
+
       for (const control of controls) {
         const input = document.getElementById(control.key);
         const output = document.getElementById(`${control.key}Value`);
-        const value = Number(settings[control.key]);
+        const value = Number(control.source === "ibl" ?
+          ibl.diffuseLevel : settings[control.key]);
         if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
         output.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
       }
@@ -557,6 +577,8 @@
         metric("Particle binds", String(runtime.particleReplacementBinds || 0), runtime.particleReplacementBinds ? "good" : "wait"),
         metric("VLS composite binds", String(runtime.vlsCompositeReplacementBinds || 0), runtime.vlsCompositeReplacementBinds ? "good" : "wait"),
         metric("Effect binds", String(runtime.effectReplacementBinds || 0), runtime.effectReplacementBinds ? "good" : "wait"),
+        metric("Diffuse IBL fit", ibl.diffuseSHUsable ? "READY" : "WAIT", ibl.diffuseSHUsable ? "good" : "wait"),
+        metric("Diffuse coverage", `${(Number(ibl.diffuseSHCoverage || 0) * 100).toFixed(1)}%`, ibl.diffuseSHUsable ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -586,6 +608,16 @@
       render();
     }
 
+    function toggleIblDiffuseEnabled() {
+      const ibl = (state.model || {}).ibl || {};
+      const diffuseEnabled = !ibl.diffuseEnabled;
+      bridge({ type: "iblDiffuseEnabled", value: diffuseEnabled });
+      if (state.model) {
+        state.model.ibl = { ...ibl, diffuseEnabled };
+      }
+      render();
+    }
+
     createControls();
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
@@ -594,6 +626,10 @@
     document.getElementById("iblSwitch").addEventListener("click", toggleIblEnabled);
     document.getElementById("iblSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleIblEnabled();
+    });
+    document.getElementById("iblDiffuseSwitch").addEventListener("click", toggleIblDiffuseEnabled);
+    document.getElementById("iblDiffuseSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleIblDiffuseEnabled();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

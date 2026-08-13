@@ -294,6 +294,10 @@ namespace
             summary.nonBlackSamples > 0,
             "projected cube contained no stereo radiance");
         require(
+            summary.diffuseSHCoverage > 0.0f &&
+                community_shaders::ibl::validDiffuseSH(summary.diffuseSH),
+            "validated environment did not produce a bounded diffuse SH fit");
+        require(
             summary.peak > 0.49f && summary.peak < 0.51f,
             "stereo merge no longer averages both synthetic eyes");
         require(
@@ -358,6 +362,11 @@ namespace
             accumulated.faceAverageLuminance[4] > 0.01F &&
                 accumulated.faceAverageLuminance[5] > 0.01F,
             "temporal history did not retain both opposite cube faces");
+        require(
+            accumulated.diffuseSHState ==
+                    community_shaders::ibl::DiffuseSHState::usable &&
+                accumulated.diffuseSHCoverage > summary.diffuseSHCoverage,
+            "temporal coverage did not produce a usable diffuse SH fit");
         require(
             provider.snapshot().publishedGeneration == 2,
             "history-backed pair was not atomically published");

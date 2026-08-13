@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/ibl/IblEnvironmentProvider.h"
+#include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblProviderModel.h"
 
 #include <d3d11.h>
@@ -37,6 +38,9 @@ namespace community_shaders::ibl
         std::uint32_t nonBlackSamples{};
         std::uint32_t coveredSamples{};
         std::uint32_t sampleCount{};
+        float diffuseSHCoverage{};
+        DiffuseSHState diffuseSHState{ DiffuseSHState::invalid };
+        DiffuseSH diffuseSH{};
     };
 
     // Render-thread-only transactional updater. It captures one shared

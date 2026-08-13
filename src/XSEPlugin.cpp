@@ -212,8 +212,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         const auto iblSettings = community_shaders::ibl::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
-        community_shaders::ibl::Runtime::get().setEnabled(
-            iblSettings.enabled);
+        community_shaders::ibl::Runtime::get().applySettings(iblSettings);
         community_shaders::ui::setInitialSettings(settings);
 
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
@@ -235,9 +234,11 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, and replacements remain fail-closed until their verified render providers are ready.",
             settings.enabled,
-            iblSettings.enabled);
+            iblSettings.enabled,
+            iblSettings.diffuseEnabled,
+            iblSettings.diffuseLevel);
         return true;
     } catch (const std::exception& error) {
         reportPluginBoundaryFailure("F4SEPlugin_Load", error.what());

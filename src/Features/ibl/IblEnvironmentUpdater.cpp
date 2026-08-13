@@ -586,6 +586,7 @@ namespace community_shaders::ibl
         float peak{};
         std::uint32_t nonBlack{};
         std::uint32_t covered{};
+        DiffuseSHFit diffuseFit{};
         bool validGeneration = true;
         const auto faceSampleCount = resources_.extent * resources_.extent;
         for (UINT face = 0; face < kEnvironmentCubeFaceCount; ++face) {
@@ -667,6 +668,25 @@ namespace community_shaders::ibl
                     if (validity > kCoveredThreshold) {
                         ++covered;
                     }
+                    const auto horizontal =
+                        ((static_cast<float>(x) + 0.5f) /
+                            static_cast<float>(resources_.extent)) *
+                            2.0f -
+                        1.0f;
+                    const auto vertical =
+                        ((static_cast<float>(y) + 0.5f) /
+                            static_cast<float>(resources_.extent)) *
+                            2.0f -
+                        1.0f;
+                    accumulateDiffuseSHFit(
+                        diffuseFit,
+                        environmentCubeDirection(
+                            static_cast<EnvironmentCubeFace>(face),
+                            horizontal,
+                            vertical),
+                        { sample.red, sample.green, sample.blue },
+                        validity,
+                        cubeTexelSolidAngleWeight(horizontal, vertical));
                 }
             }
             context->Unmap(resources_.stagingValidity.Get(), subresource);
@@ -698,6 +718,13 @@ namespace community_shaders::ibl
         summary_.nonBlackSamples = nonBlack;
         summary_.coveredSamples = covered;
         summary_.sampleCount = totalSamples;
+        summary_.diffuseSHCoverage = diffuseSHFitCoverage(diffuseFit);
+        summary_.diffuseSH = {};
+        summary_.diffuseSHState = solveDiffuseSHFit(
+                                      diffuseFit,
+                                      summary_.diffuseSH) ?
+            classifyDiffuseSH(summary_.diffuseSH) :
+            DiffuseSHState::invalid;
         summary_.pending = false;
         ++summary_.completedReadbacks;
         ++summary_.publishedUpdates;

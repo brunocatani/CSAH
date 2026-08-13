@@ -618,7 +618,9 @@ namespace community_shaders::ui
                 (static_cast<std::uint64_t>(iblRuntime.enabled) << 53) ^
                 (static_cast<std::uint64_t>(
                      iblRuntime.resourcesReady)
-                    << 54);
+                    << 54) ^
+                (static_cast<std::uint64_t>(iblRuntime.diffuseEnabled) << 55) ^
+                (iblRuntime.diffuseFitsPublished << 56);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -640,6 +642,15 @@ namespace community_shaders::ui
                 { "ibl",
                     {
                         { "enabled", iblRuntime.enabled },
+                        { "diffuseEnabled", iblRuntime.diffuseEnabled },
+                        { "diffuseLevel", iblRuntime.diffuseLevel },
+                        { "diffuseSHUsable", iblRuntime.diffuseSHUsable },
+                        { "diffuseSHCoverage",
+                            iblRuntime.diffuseSHCoverage },
+                        { "diffuseFitsPublished",
+                            iblRuntime.diffuseFitsPublished },
+                        { "diffuseFitsRejected",
+                            iblRuntime.diffuseFitsRejected },
                         { "resourcesReady", iblRuntime.resourcesReady },
                         { "materialReplacementBinds",
                             iblRuntime.materialReplacementBinds },
@@ -1226,15 +1237,61 @@ namespace community_shaders::ui
                 }
                 if (type == "iblEnabled" && action.contains("value") &&
                     action["value"].is_boolean()) {
+                    const auto current = ibl::Runtime::get().snapshot();
                     const ibl::Settings nextIbl{
-                        action["value"].get<bool>()
+                        .enabled = action["value"].get<bool>(),
+                        .diffuseEnabled = current.diffuseEnabled,
+                        .diffuseLevel = current.diffuseLevel,
                     };
-                    ibl::Runtime::get().setEnabled(nextIbl.enabled);
+                    ibl::Runtime::get().applySettings(nextIbl);
                     const auto saved = ibl::saveSettings(nextIbl);
                     uiRevision.fetch_add(1, std::memory_order_release);
                     logging::info(
                         "Image Based Lighting wrist action accepted; enabled={}, settings save={}.",
                         nextIbl.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "iblDiffuseEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    const auto current = ibl::Runtime::get().snapshot();
+                    const ibl::Settings nextIbl{
+                        .enabled = current.enabled,
+                        .diffuseEnabled = action["value"].get<bool>(),
+                        .diffuseLevel = current.diffuseLevel,
+                    };
+                    ibl::Runtime::get().applySettings(nextIbl);
+                    const auto saved = ibl::saveSettings(nextIbl);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Diffuse Image Based Lighting wrist action accepted; enabled={}, level={}, settings save={}.",
+                        nextIbl.diffuseEnabled,
+                        nextIbl.diffuseLevel,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "iblDiffuseLevel" &&
+                    action.contains("value") &&
+                    action["value"].is_number()) {
+                    const auto current = ibl::Runtime::get().snapshot();
+                    const auto requested = action["value"].get<float>();
+                    if (!std::isfinite(requested)) {
+                        return;
+                    }
+                    const auto nextIbl = ibl::sanitize({
+                        .enabled = current.enabled,
+                        .diffuseEnabled = current.diffuseEnabled,
+                        .diffuseLevel = requested,
+                    });
+                    ibl::Runtime::get().applySettings(nextIbl);
+                    const auto saved = ibl::saveSettings(nextIbl);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Diffuse Image Based Lighting level wrist action accepted; level={}, settings save={}.",
+                        nextIbl.diffuseLevel,
                         saved);
                     schedulePush();
                     return;
@@ -1249,7 +1306,7 @@ namespace community_shaders::ui
                 if (type == "reset") {
                     next = {};
                     const ibl::Settings nextIbl{};
-                    ibl::Runtime::get().setEnabled(nextIbl.enabled);
+                    ibl::Runtime::get().applySettings(nextIbl);
                     (void)ibl::saveSettings(nextIbl);
                     changed = true;
                 } else if (type == "enabled" && action.contains("value") &&

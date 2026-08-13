@@ -26,6 +26,7 @@ foreach(variable IN ITEMS
     IBL_ENVIRONMENT_FILTER_SHADER_SOURCE
     IBL_ENVIRONMENT_FILTER_SHADER_ASSET
     D3D11_HOOK_SOURCE
+    GEOMETRY_HOOK_SOURCE
     WRIST_PANEL_SOURCE
     WRIST_PANEL_VIEW_SOURCE
     PLUGIN_SOURCE
@@ -59,21 +60,19 @@ file(READ "${IBL_PROJECTION_SHADER_SOURCE}" shaderSource)
 file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
 file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}" filterShaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
+file(READ "${GEOMETRY_HOOK_SOURCE}" geometryHookSource)
 file(READ "${WRIST_PANEL_SOURCE}" wristPanelSource)
 file(READ "${WRIST_PANEL_VIEW_SOURCE}" wristPanelViewSource)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
 foreach(required IN ITEMS
-    "kNativeCubemapSrvRva = 0x0623C3C0"
-    "GetModuleHandleW(nullptr)"
-    "D3D11_RESOURCE_MISC_TEXTURECUBE"
-    "D3D11_SRV_DIMENSION_TEXTURECUBE"
     "D3D11_MAP_FLAG_DO_NOT_WAIT"
-    "ScopedComputeState restore("
-    "Dispatch(1, 1, 1)"
     "CopyResource"
     "onDFLightAmbientBind"
+    "environmentUpdater_.consumeUpdate"
+    "update.diffuseSHCoverage"
+    "publishUsable(update.diffuseSH"
     "classifyCaptureProbeShader"
     "PSGetShaderResources"
     "PSGetConstantBuffers(12, 1"
@@ -105,7 +104,10 @@ endforeach()
 
 foreach(required IN ITEMS
     "std::atomic_bool enabled_{ true }"
+    "std::atomic_bool diffuseEnabled_{ true }"
     "void Runtime::setEnabled(bool enabled) noexcept"
+    "void Runtime::applySettings(const Settings& settings) noexcept"
+    "tryGetDiffuseAmbient"
     "!enabled_.load(std::memory_order_acquire)"
     "publishedEnvironmentSessionId_"
     "kEnvironmentCaptureCadenceMilliseconds = 1000"
@@ -121,6 +123,8 @@ endforeach()
 foreach(required IN ITEMS
     "kSection = L\"ImageBasedLighting\""
     "kEnabledKey = L\"bEnabled\""
+    "kDiffuseEnabledKey = L\"bDiffuseEnabled\""
+    "kDiffuseLevelKey = L\"fDiffuseLevel\""
     "GetPrivateProfileStringW"
     "WritePrivateProfileStringW"
     "parseBoolean"
@@ -136,7 +140,9 @@ endforeach()
 
 foreach(required IN ITEMS
     "type == \"iblEnabled\""
-    "ibl::Runtime::get().setEnabled"
+    "type == \"iblDiffuseEnabled\""
+    "type == \"iblDiffuseLevel\""
+    "ibl::Runtime::get().applySettings"
     "ibl::saveSettings"
     "\"ibl\"")
   string(FIND "${wristPanelSource}" "${required}" found)
@@ -148,8 +154,12 @@ endforeach()
 
 foreach(required IN ITEMS
     "id=\"iblSwitch\""
+    "id=\"iblDiffuseSwitch\""
     "Image Based Lighting"
+    "Diffuse IBL"
     "type: \"iblEnabled\""
+    "type: \"iblDiffuseEnabled\""
+    "type: \"iblDiffuseLevel\""
     "toggleIblEnabled")
   string(FIND "${wristPanelViewSource}" "${required}" found)
   if(found EQUAL -1)
@@ -458,7 +468,11 @@ foreach(required IN ITEMS
     "validDiffuseSH"
     "classifyDiffuseSH"
     "DiffuseSHState"
-    "std::array<std::array<float, 4>, 3>")
+    "std::array<std::array<float, 4>, 3>"
+    "accumulateDiffuseSHFit"
+    "solveDiffuseSHFit"
+    "evaluateDiffuseIrradiance"
+    "buildDirectionalAmbientTransform")
   string(FIND "${projectionModel}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -479,12 +493,25 @@ endforeach()
 foreach(required IN ITEMS
     "publishedUsable_"
     "publishUnavailable"
-    "blackReadbacks_"
-    "ambient integration remains fail-closed")
+    "diffuseFitsPublished_"
+    "kMinimumDiffuseSHCoverage")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "IBL usability-gate regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "#include \"Features/ibl/IblRuntime.h\""
+    "ibl::Runtime::get().tryGetDiffuseAmbient"
+    "ibl::buildDirectionalAmbientTransform"
+    "kVanillaDFLightGamma"
+    "producerOwnershipReady.load(std::memory_order_acquire)")
+  string(FIND "${geometryHookSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL diffuse-hook regression: geometry hook is missing '${required}'")
   endif()
 endforeach()
 
@@ -546,13 +573,6 @@ string(FIND "${runtimeHeader}" "image-neutral" foundImageNeutralContract)
 if(foundImageNeutralContract EQUAL -1)
   message(FATAL_ERROR
     "IBL foundation regression: header no longer documents image-neutral ownership")
-endif()
-
-string(FIND "${resourceSource}"
-  "IDR_IBL_DIFFUSE_PROJECTION_CS RCDATA" foundResource)
-if(foundResource EQUAL -1)
-  message(FATAL_ERROR
-    "IBL foundation regression: compute shader is not embedded")
 endif()
 
 string(FIND "${resourceSource}"

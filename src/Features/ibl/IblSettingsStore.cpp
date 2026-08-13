@@ -6,6 +6,9 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <cmath>
+#include <cwchar>
 #include <cwctype>
 #include <iterator>
 #include <string>
@@ -17,6 +20,8 @@ namespace community_shaders::ibl
     {
         constexpr auto kSection = L"ImageBasedLighting";
         constexpr auto kEnabledKey = L"bEnabled";
+        constexpr auto kDiffuseEnabledKey = L"bDiffuseEnabled";
+        constexpr auto kDiffuseLevelKey = L"fDiffuseLevel";
 
         [[nodiscard]] std::wstring normalized(
             std::wstring_view text)
@@ -38,6 +43,64 @@ namespace community_shaders::ibl
                 result.begin(),
                 [](wchar_t value) { return std::towlower(value); });
             return result;
+        }
+
+
+        [[nodiscard]] bool readBoolean(
+            const std::filesystem::path& path,
+            const wchar_t* key,
+            bool fallback) noexcept
+        {
+            wchar_t value[64]{};
+            const auto count = GetPrivateProfileStringW(
+                kSection,
+                key,
+                L"",
+                value,
+                static_cast<DWORD>(std::size(value)),
+                path.c_str());
+            if (count == 0) {
+                return fallback;
+            }
+            return parseBoolean(std::wstring_view(value, count)).value_or(
+                fallback);
+        }
+
+        [[nodiscard]] float readFloat(
+            const std::filesystem::path& path,
+            const wchar_t* key,
+            float fallback) noexcept
+        {
+            wchar_t value[64]{};
+            const auto count = GetPrivateProfileStringW(
+                kSection,
+                key,
+                L"",
+                value,
+                static_cast<DWORD>(std::size(value)),
+                path.c_str());
+            if (count == 0) {
+                return fallback;
+            }
+            wchar_t* end{};
+            errno = 0;
+            const auto parsed = std::wcstof(value, &end);
+            return errno != ERANGE && end != value && *end == L'\0' &&
+                    std::isfinite(parsed) ?
+                parsed :
+                fallback;
+        }
+
+        [[nodiscard]] bool writeValue(
+            const std::filesystem::path& path,
+            const wchar_t* key,
+            const wchar_t* value) noexcept
+        {
+            return WritePrivateProfileStringW(
+                       kSection,
+                       key,
+                       value,
+                       path.c_str()) != FALSE;
         }
     }
 
@@ -67,20 +130,17 @@ namespace community_shaders::ibl
             return defaults;
         }
 
-        wchar_t value[64]{};
-        const auto count = GetPrivateProfileStringW(
-            kSection,
-            kEnabledKey,
-            L"",
-            value,
-            static_cast<DWORD>(std::size(value)),
-            path.c_str());
-        if (count == 0) {
-            return defaults;
-        }
-        const auto parsed = parseBoolean(
-            std::wstring_view(value, static_cast<std::size_t>(count)));
-        return { .enabled = parsed.value_or(defaults.enabled) };
+        return sanitize({
+            .enabled = readBoolean(path, kEnabledKey, defaults.enabled),
+            .diffuseEnabled = readBoolean(
+                path,
+                kDiffuseEnabledKey,
+                defaults.diffuseEnabled),
+            .diffuseLevel = readFloat(
+                path,
+                kDiffuseLevelKey,
+                defaults.diffuseLevel),
+        });
     }
 
     Settings loadSettings() noexcept
@@ -88,9 +148,11 @@ namespace community_shaders::ibl
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Image Based Lighting settings loaded from '{}'; enabled={}.",
+            "Image Based Lighting settings loaded from '{}'; enabled={}, diffuse enabled={}, diffuse level={}.",
             path.string(),
-            result.enabled);
+            result.enabled,
+            result.diffuseEnabled,
+            result.diffuseLevel);
         return result;
     }
 
@@ -103,10 +165,24 @@ namespace community_shaders::ibl
                 path.string());
             return false;
         }
-        return WritePrivateProfileStringW(
-                   kSection,
-                   kEnabledKey,
-                   settings.enabled ? L"1" : L"0",
-                   path.c_str()) != FALSE;
+        const auto safe = sanitize(settings);
+        wchar_t diffuseLevel[64]{};
+        _snwprintf_s(
+            diffuseLevel,
+            std::size(diffuseLevel),
+            _TRUNCATE,
+            L"%.9g",
+            static_cast<double>(safe.diffuseLevel));
+        auto success = writeValue(
+            path,
+            kEnabledKey,
+            safe.enabled ? L"1" : L"0");
+        success = writeValue(
+                      path,
+                      kDiffuseEnabledKey,
+                      safe.diffuseEnabled ? L"1" : L"0") &&
+            success;
+        success = writeValue(path, kDiffuseLevelKey, diffuseLevel) && success;
+        return success;
     }
 }

@@ -14,7 +14,7 @@ namespace community_shaders::ibl
         const std::filesystem::path& path) noexcept;
     [[nodiscard]] Settings loadSettings() noexcept;
 
-    // Updates only the ImageBasedLighting-owned key and preserves every
+    // Updates only ImageBasedLighting-owned keys and preserves every
     // unrelated INI section and value.
     [[nodiscard]] bool saveSettings(const Settings& settings) noexcept;
 }

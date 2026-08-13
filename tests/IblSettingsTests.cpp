@@ -1,6 +1,7 @@
 #include "Features/ibl/IblSettingsStore.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -63,14 +64,35 @@ int main()
 
     TemporaryIni ini;
     require(loadSettings(ini.path()).enabled, "missing file default");
-    ini.write("[ImageBasedLighting]\nbEnabled=0\n");
-    require(!loadSettings(ini.path()).enabled, "disabled owned key");
+    ini.write(
+        "[ImageBasedLighting]\n"
+        "bEnabled=0\n"
+        "bDiffuseEnabled=0\n"
+        "fDiffuseLevel=1.35\n");
+    const auto configured = loadSettings(ini.path());
+    require(!configured.enabled, "disabled owned key");
+    require(!configured.diffuseEnabled, "disabled diffuse key");
+    require(
+        std::abs(configured.diffuseLevel - 1.35f) < 1.0e-6f,
+        "diffuse level key");
     ini.write("[ImageBasedLighting]\nbEnabled=on\n");
     require(loadSettings(ini.path()).enabled, "enabled owned key");
     ini.write("[ImageBasedLighting]\nbEnabled=broken\n");
     require(loadSettings(ini.path()).enabled, "malformed value default");
     ini.write("[LinearLighting]\nbEnabled=0\n");
-    require(loadSettings(ini.path()).enabled, "independent section");
+    const auto independent = loadSettings(ini.path());
+    require(independent.enabled, "independent section");
+    require(independent.diffuseEnabled, "diffuse default");
+    require(
+        std::abs(independent.diffuseLevel - 1.0f) < 1.0e-6f,
+        "diffuse level default");
+
+    ini.write(
+        "[ImageBasedLighting]\n"
+        "fDiffuseLevel=99\n");
+    require(
+        loadSettings(ini.path()).diffuseLevel == 2.0f,
+        "diffuse level upper clamp");
 
     std::cout << "IBL settings tests passed.\n";
     return EXIT_SUCCESS;

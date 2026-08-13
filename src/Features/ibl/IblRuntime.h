@@ -23,15 +23,14 @@ namespace community_shaders::ibl
     struct RuntimeSnapshot
     {
         bool enabled{};
+        bool diffuseEnabled{};
         bool resourcesReady{};
-        bool nativeCubemapReady{};
         bool diffuseSHUsable{};
+        float diffuseLevel{ 1.0f };
+        float diffuseSHCoverage{};
         std::uint64_t cadenceTicks{};
-        std::uint64_t projectionDispatches{};
-        std::uint64_t completedReadbacks{};
-        std::uint64_t blackReadbacks{};
-        std::uint64_t usableReadbacks{};
-        std::uint64_t invalidReadbacks{};
+        std::uint64_t diffuseFitsPublished{};
+        std::uint64_t diffuseFitsRejected{};
         std::uint64_t matchingCaptureShaders{};
         std::uint64_t completedCaptureProbes{};
         std::uint64_t sceneRadianceProbeCaptures{};
@@ -78,6 +77,16 @@ namespace community_shaders::ibl
         // exact vanilla DFComposite selection path. Re-enabling requests a
         // fresh world capture before material consumption can resume.
         void setEnabled(bool enabled) noexcept;
+        void setDiffuseEnabled(bool enabled) noexcept;
+        void setDiffuseLevel(float level) noexcept;
+        void applySettings(const Settings& settings) noexcept;
+
+        // Allocation-free DFLight hot-path read. Publication is seqlocked,
+        // and diffuse feedback is suppressed on frames reserved for a new
+        // reflection-free environment capture.
+        [[nodiscard]] bool tryGetDiffuseAmbient(
+            DiffuseSH& coefficients,
+            float& level) const noexcept;
 
         // Render-thread only. The device/context are retained for the process
         // lifetime; no engine pointer is retained by this subsystem.
@@ -167,13 +176,6 @@ namespace community_shaders::ibl
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
-        struct ReadbackSlot
-        {
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-            bool pending{};
-            std::uint64_t generation{};
-        };
-
         // The local FXP contains 183 DFComposite PS records. Keep bounded
         // headroom even if the engine creates a distinct object per alias.
         static constexpr std::size_t kCaptureShaderSlotCount = 256;
@@ -228,10 +230,7 @@ namespace community_shaders::ibl
         [[nodiscard]] bool createMaterialResources(
             CreatePixelShaderFunction createPixelShader) noexcept;
         [[nodiscard]] bool createSceneRadianceProbeResources() noexcept;
-        [[nodiscard]] bool refreshNativeCubemap() noexcept;
-        void consumeCompletedReadbacks() noexcept;
         void consumeSceneRadianceProbeReadbacks() noexcept;
-        void dispatchProjection() noexcept;
         void publishUsable(
             const DiffuseSH& coefficients,
             std::uint64_t generation,
@@ -246,11 +245,6 @@ namespace community_shaders::ibl
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
-        Microsoft::WRL::ComPtr<ID3D11ComputeShader> projectionShader_;
-        Microsoft::WRL::ComPtr<ID3D11SamplerState> linearSampler_;
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> projectionTexture_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> projectionUav_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nativeCubemapSrv_;
         EnvironmentProvider environmentProvider_;
         EnvironmentUpdater environmentUpdater_;
         ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
@@ -260,7 +254,6 @@ namespace community_shaders::ibl
             materialReplacementShaders_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialDisabledConstants_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialEnabledConstants_;
-        std::array<ReadbackSlot, 3> readbackRing_{};
         std::array<SceneRadianceReadbackSlot, 2>
             sceneRadianceReadbackSlots_{};
         mutable std::mutex captureShaderMutex_;
@@ -274,21 +267,13 @@ namespace community_shaders::ibl
         std::uint64_t activeCaptureProbeEarliestTickMilliseconds_{};
         std::uint64_t pendingEnvironmentUpdateSessionId_{};
         std::uint64_t publishedEnvironmentSessionId_{};
-        std::uint64_t nextEnvironmentCaptureTickMilliseconds_{};
+        std::atomic_uint64_t nextEnvironmentCaptureTickMilliseconds_{};
         std::uint64_t lastLoggedEnvironmentUpdateGeneration_{};
         bool captureProbeSessionComplete_{ true };
         bool reflectionFreeCaptureDiagnosticReserved_{};
         bool reflectionFreeCaptureProductionReserved_{};
-        std::uint64_t nextGeneration_{ 1 };
-        std::uint64_t lastProcessedGeneration_{};
         std::uint64_t nextCadenceTickMilliseconds_{};
-        std::uint32_t consecutiveBlackReadbacks_{};
-        bool loggedSourceReady_{};
-        bool loggedFirstReadback_{};
-        bool loggedFirstUsableReadback_{};
-        bool loggedBlackStreak_{};
-        bool loggedSourceUnavailable_{};
-        bool loggedReadbackFailure_{};
+        bool loggedFirstUsableDiffuseFit_{};
         bool loggedReflectionFreeCaptureFailure_{};
         bool loggedEnvironmentUpdateFailure_{};
         bool loggedFirstMaterialBind_{};
@@ -297,13 +282,13 @@ namespace community_shaders::ibl
 
         std::atomic_bool resourcesReady_{};
         std::atomic_bool enabled_{ true };
-        std::atomic_bool nativeCubemapReady_{};
+        std::atomic_bool diffuseEnabled_{ true };
+        std::atomic_uint32_t diffuseLevelBits_{
+            std::bit_cast<std::uint32_t>(1.0f) };
+        std::atomic_uint32_t diffuseSHCoverageBits_{};
         std::atomic_uint64_t cadenceTicks_{};
-        std::atomic_uint64_t projectionDispatches_{};
-        std::atomic_uint64_t completedReadbacks_{};
-        std::atomic_uint64_t blackReadbacks_{};
-        std::atomic_uint64_t usableReadbacks_{};
-        std::atomic_uint64_t invalidReadbacks_{};
+        std::atomic_uint64_t diffuseFitsPublished_{};
+        std::atomic_uint64_t diffuseFitsRejected_{};
         std::atomic_uint64_t matchingCaptureShaders_{};
         std::atomic_uint64_t completedCaptureProbes_{};
         std::atomic_uint64_t sceneRadianceProbeCaptures_{};

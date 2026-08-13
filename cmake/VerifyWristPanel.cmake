@@ -95,7 +95,9 @@ endforeach()
 
 foreach(required IN ITEMS
     "type == \"iblEnabled\""
-    "ibl::Runtime::get().setEnabled"
+    "type == \"iblDiffuseEnabled\""
+    "type == \"iblDiffuseLevel\""
+    "ibl::Runtime::get().applySettings"
     "ibl::saveSettings"
     "iblRuntime.resourcesReady")
   string(FIND "${source}" "${required}" found)
@@ -148,8 +150,13 @@ foreach(required IN ITEMS
     "FULL LINEAR LIGHTING ARMED"
     "Image Based Lighting"
     "id=\"iblSwitch\""
+    "Diffuse IBL"
+    "id=\"iblDiffuseSwitch\""
     "toggleIblEnabled"
+    "toggleIblDiffuseEnabled"
     "type: \"iblEnabled\""
+    "type: \"iblDiffuseEnabled\""
+    "type: \"iblDiffuseLevel\""
     "const qualification = model.qualification || {}"
     "Runtime qualification:"
     "metric(\"Qualification\""

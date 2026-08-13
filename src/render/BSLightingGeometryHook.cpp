@@ -1,5 +1,6 @@
 #include "render/BSLightingGeometryHook.h"
 
+#include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFLightProducerModel.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
@@ -205,6 +206,8 @@ namespace community_shaders::render
         thread_local std::uint32_t activeDFLightDescriptor{};
         alignas(16) thread_local linear_lighting::DirectionalAmbientTransform
             scaledAmbientTransform{};
+        alignas(16) thread_local linear_lighting::DirectionalAmbientTransform
+            sourceAmbientTransform{};
 
         class DFLightDescriptorScope
         {
@@ -559,40 +562,85 @@ namespace community_shaders::render
                 directionalPowPassThrough);
         }
 
+        // Raw Fallout4VR.exe 1.2.72 disassembly at 0x142922AB5 and
+        // 0x142922ABF calls these accessors before 0x142922CB8..0x142922E1A
+        // composes their world-space transform with the active view matrix.
+        // Replacing the unrotated source here therefore preserves the
+        // engine-owned per-eye composition instead of baking either eye into
+        // the shared diffuse environment.
         [[nodiscard]] const float* prepareAmbientTransform(
             const float* source) noexcept
         {
             ambientTransformCalls.fetch_add(1, std::memory_order_relaxed);
-            const auto active = source &&
+            const auto ambientDescriptor = source &&
                 producerOwnershipReady.load(std::memory_order_acquire) &&
-                desiredProducerEnabled.load(std::memory_order_acquire) &&
                 linear_lighting::classifyDFLightProducer(
                     activeDFLightDescriptor) ==
-                    linear_lighting::DFLightProducerKind::ambient &&
-                linear_lighting::Runtime::get().dFLightAmbientDescriptorReady(
-                    activeDFLightDescriptor);
-            if (!active) {
+                    linear_lighting::DFLightProducerKind::ambient;
+            if (!ambientDescriptor) {
                 ambientTransformPassThrough.fetch_add(
                     1, std::memory_order_relaxed);
                 return source;
             }
 
-            const auto scale = std::bit_cast<float>(
-                desiredAmbientInputScaleBits.load(std::memory_order_relaxed));
-            if (!std::isfinite(scale) || scale < 0.0f) {
-                invalidPowResults.fetch_add(1, std::memory_order_relaxed);
+            const auto linearActive =
+                desiredProducerEnabled.load(std::memory_order_acquire) &&
+                linear_lighting::Runtime::get().dFLightAmbientDescriptorReady(
+                    activeDFLightDescriptor);
+            ibl::DiffuseSH diffuseSH{};
+            float diffuseLevel{};
+            const auto diffuseActive = ibl::Runtime::get().tryGetDiffuseAmbient(
+                diffuseSH,
+                diffuseLevel);
+            if (!linearActive && !diffuseActive) {
                 ambientTransformPassThrough.fetch_add(
                     1, std::memory_order_relaxed);
                 return source;
             }
 
             std::memcpy(
-                scaledAmbientTransform.data(),
+                sourceAmbientTransform.data(),
                 source,
-                sizeof(scaledAmbientTransform));
-            linear_lighting::scaleDirectionalAmbientTransform(
-                scaledAmbientTransform,
-                scale);
+                sizeof(sourceAmbientTransform));
+            if (diffuseActive) {
+                const auto shaderGamma = linearActive ?
+                    std::bit_cast<float>(desiredAmbientGammaBits.load(
+                        std::memory_order_relaxed)) :
+                    linear_lighting::kVanillaDFLightGamma;
+                if (!ibl::buildDirectionalAmbientTransform(
+                        diffuseSH,
+                        sourceAmbientTransform,
+                        shaderGamma,
+                        diffuseLevel,
+                        scaledAmbientTransform)) {
+                    if (!linearActive) {
+                        invalidPowResults.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+                        ambientTransformPassThrough.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+                        return source;
+                    }
+                    scaledAmbientTransform = sourceAmbientTransform;
+                }
+            } else {
+                scaledAmbientTransform = sourceAmbientTransform;
+            }
+            if (linearActive) {
+                const auto scale = std::bit_cast<float>(
+                    desiredAmbientInputScaleBits.load(
+                        std::memory_order_relaxed));
+                if (!std::isfinite(scale) || scale < 0.0f) {
+                    invalidPowResults.fetch_add(1, std::memory_order_relaxed);
+                    ambientTransformPassThrough.fetch_add(
+                        1, std::memory_order_relaxed);
+                    return source;
+                }
+                linear_lighting::scaleDirectionalAmbientTransform(
+                    scaledAmbientTransform,
+                    scale);
+            }
             ambientTransformPrepared.fetch_add(1, std::memory_order_release);
             return scaledAmbientTransform.data();
         }
