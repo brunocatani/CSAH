@@ -63,7 +63,7 @@
       inset: 0 0 auto 0;
       height: 126px;
       display: grid;
-      grid-template-columns: 1fr 300px 300px 300px;
+      grid-template-columns: 1fr 230px 230px 230px 230px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
       background: rgba(9,18,22,.94);
@@ -418,6 +418,13 @@
         </div>
         <div id="iblDiffuseSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
       </div>
+      <div class="master">
+        <div class="master-copy">
+          <strong>Landscape Parallax</strong>
+          <span id="parallaxState">WAITING FOR SHADERS</span>
+        </div>
+        <div id="parallaxSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+      </div>
     </header>
 
     <main>
@@ -520,6 +527,7 @@
       const coverage = model.coverage || {};
       const qualification = model.qualification || {};
       const ibl = model.ibl || {};
+      const complexMaterials = model.complexMaterials || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
@@ -545,6 +553,16 @@
           (Number(ibl.diffuseAmbientPrepared || 0) > 0 ?
             "DYNAMIC AMBIENT ACTIVE" :
             (ibl.diffuseSHUsable ? "DYNAMIC AMBIENT ARMED" : "WAITING FOR SH FIT")));
+
+      const parallaxEnabled = !!complexMaterials.parallaxEnabled;
+      const parallaxSwitch = document.getElementById("parallaxSwitch");
+      parallaxSwitch.classList.toggle("on", parallaxEnabled);
+      parallaxSwitch.setAttribute("aria-checked", String(parallaxEnabled));
+      document.getElementById("parallaxState").textContent = !parallaxEnabled ?
+        "VANILLA LANDSCAPE" :
+        (complexMaterials.parallaxResourcesReady ?
+          `STEREO POM Q${Number(complexMaterials.parallaxQuality || 0) + 1}` :
+          "SHADER INTERLOCK CLOSED");
 
       for (const control of controls) {
         const input = document.getElementById(control.key);
@@ -582,6 +600,8 @@
         metric("Diffuse IBL fit", ibl.diffuseSHUsable ? "READY" : "WAIT", ibl.diffuseSHUsable ? "good" : "wait"),
         metric("Diffuse coverage", `${(Number(ibl.diffuseSHCoverage || 0) * 100).toFixed(1)}%`, ibl.diffuseSHUsable ? "good" : "wait"),
         metric("Diffuse transforms", String(ibl.diffuseAmbientPrepared || 0), ibl.diffuseAmbientPrepared ? "good" : "wait"),
+        metric("Parallax shaders", complexMaterials.parallaxResourcesReady ? "3 / 3 READY" : "CLOSED", complexMaterials.parallaxResourcesReady ? "good" : "bad"),
+        metric("Parallax binds", String(complexMaterials.parallaxReplacementBinds || 0), complexMaterials.parallaxReplacementBinds ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -621,6 +641,16 @@
       render();
     }
 
+    function toggleParallaxEnabled() {
+      const complexMaterials = (state.model || {}).complexMaterials || {};
+      const parallaxEnabled = !complexMaterials.parallaxEnabled;
+      bridge({ type: "parallaxEnabled", value: parallaxEnabled });
+      if (state.model) {
+        state.model.complexMaterials = { ...complexMaterials, parallaxEnabled };
+      }
+      render();
+    }
+
     createControls();
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
@@ -633,6 +663,10 @@
     document.getElementById("iblDiffuseSwitch").addEventListener("click", toggleIblDiffuseEnabled);
     document.getElementById("iblDiffuseSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleIblDiffuseEnabled();
+    });
+    document.getElementById("parallaxSwitch").addEventListener("click", toggleParallaxEnabled);
+    document.getElementById("parallaxSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleParallaxEnabled();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

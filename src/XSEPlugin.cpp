@@ -2,6 +2,7 @@
 
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
+#include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
@@ -210,10 +211,16 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         const auto settings =
             community_shaders::linear_lighting::loadSettings();
         const auto iblSettings = community_shaders::ibl::loadSettings();
+        const auto complexMaterialSettings =
+            community_shaders::complex_materials::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
+        community_shaders::linear_lighting::Runtime::get().
+            applyComplexParallaxSettings(complexMaterialSettings);
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);
         community_shaders::ui::setInitialSettings(settings);
+        community_shaders::ui::setInitialComplexParallaxSettings(
+            complexMaterialSettings);
 
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
             community_shaders::logging::warn(
@@ -234,11 +241,13 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
             settings.enabled,
             iblSettings.enabled,
             iblSettings.diffuseEnabled,
-            iblSettings.diffuseLevel);
+            iblSettings.diffuseLevel,
+            complexMaterialSettings.parallaxEnabled,
+            complexMaterialSettings.parallaxQuality);
         return true;
     } catch (const std::exception& error) {
         reportPluginBoundaryFailure("F4SEPlugin_Load", error.what());

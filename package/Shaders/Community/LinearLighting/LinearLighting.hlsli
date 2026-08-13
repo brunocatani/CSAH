@@ -41,6 +41,21 @@ cbuffer LinearLightingFrame : register(b5)
     // ABI-compatible bit pattern of the exponent currently used by the
     // verified native Effect light/property producer.
     uint linearLightingPad0;
+
+#if LINEAR_LIGHTING_COMPLEX_PARALLAX
+    // Appended ABI region used only by the three exact landscape
+    // complex-parallax replacements. Existing Linear Lighting bytecode keeps
+    // consuming the original seven b5 registers unchanged.
+    uint enableComplexParallax;
+    float parallaxDepth;
+    float parallaxMinimumSteps;
+    float parallaxMaximumSteps;
+
+    float parallaxGrazingClamp;
+    float parallaxFadeStart;
+    float parallaxFadeEnd;
+    float parallaxPad0;
+#endif
 };
 
 cbuffer LinearLightingGeometry : register(b8)

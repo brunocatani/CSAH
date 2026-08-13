@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Features/complex_materials/ComplexParallaxSettings.h"
 #include "Features/linear_lighting/LinearLightingContractMask.h"
 #include "Features/linear_lighting/FixedShaderBindingLookup.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
@@ -95,6 +96,10 @@ namespace community_shaders::linear_lighting
     struct RuntimeSnapshot
     {
         bool enabled{};
+        bool complexParallaxEnabled{};
+        bool complexParallaxResourcesReady{};
+        std::int32_t complexParallaxQuality{};
+        std::uint64_t complexParallaxReplacementBinds{};
         bool gpuResourcesReady{};
         bool geometryProviderReady{};
         std::uint32_t verifiedShaderContracts{};
@@ -186,6 +191,7 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kVLSCompositeShaderContractCount = 1;
         static constexpr std::size_t kEffectShaderContractCount = 631;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
+        static constexpr std::size_t kComplexParallaxShaderContractCount = 3;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t
             kMaximumTrackedOriginalShadersPerContract = 8;
@@ -246,12 +252,16 @@ namespace community_shaders::linear_lighting
         // boundary consumes the latest revision before selecting a shader or
         // touching the immediate context.
         void queueSettings(const Settings& settings) noexcept;
+        void queueComplexParallaxSettings(
+            const complex_materials::Settings& settings) noexcept;
 
         void setGeometryProviderReady(bool ready) noexcept;
 
         // Must be called on the render thread. Prisma commands are queued and
         // applied at that boundary rather than mutating GPU state in callbacks.
         void applySettings(const Settings& settings) noexcept;
+        void applyComplexParallaxSettings(
+            const complex_materials::Settings& settings) noexcept;
 
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
@@ -291,11 +301,15 @@ namespace community_shaders::linear_lighting
             ID3D11PixelShader**);
 
         Settings settings_{};
+        complex_materials::Settings complexParallaxSettings_{};
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContractCount>
             replacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kComplexParallaxShaderContractCount>
+            complexParallaxReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kSkyShaderContractCount>
             skyReplacementShaders_{};
@@ -391,6 +405,9 @@ namespace community_shaders::linear_lighting
             shaderBindingLookup_{};
         CreatePixelShaderFunction createPixelShader_{};
         std::atomic_bool enabled_{};
+        std::atomic_bool complexParallaxEnabled_{};
+        std::atomic_bool complexParallaxResourcesReady_{};
+        std::atomic_int32_t complexParallaxQuality_{ 1 };
         std::atomic_bool gpuResourcesReady_{};
         std::atomic_bool geometryProviderReady_{};
         AtomicContractMask matchingShaderContractMask_{};
@@ -419,6 +436,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t inactiveShaderSelections_{};
         std::atomic_uint64_t unmatchedShaderSelections_{};
         std::atomic_uint64_t replacementBinds_{};
+        std::atomic_uint64_t complexParallaxReplacementBinds_{};
         std::atomic_uint64_t skyReplacementBinds_{};
         std::atomic_uint64_t distantTreeReplacementBinds_{};
         std::atomic_uint64_t particleReplacementBinds_{};
@@ -468,5 +486,8 @@ namespace community_shaders::linear_lighting
         Settings queuedSettings_{};
         std::atomic_uint64_t queuedSettingsRevision_{};
         std::atomic_uint64_t appliedSettingsRevision_{};
+        complex_materials::Settings queuedComplexParallaxSettings_{};
+        std::atomic_uint64_t queuedComplexParallaxSettingsRevision_{};
+        std::atomic_uint64_t appliedComplexParallaxSettingsRevision_{};
     };
 }

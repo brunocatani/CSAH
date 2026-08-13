@@ -238,6 +238,20 @@ set(COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR
   "${ROOT_DIR}/tools/generate_complex_material_producer_contracts.py")
 set(COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS
   "${SOURCE_DIR}/Features/complex_materials/GeneratedComplexMaterialProducerContracts.inl")
+set(COMPLEX_PARALLAX_HLSL_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/Reconstruction/LandscapeFourLayerSixMrt_L3_00000023.LinearLightingCandidate.hlsl")
+set(COMPLEX_PARALLAX_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/complex_materials/ComplexParallaxSettings.h")
+set(COMPLEX_PARALLAX_MODEL_HEADER
+  "${SOURCE_DIR}/Features/complex_materials/ComplexParallaxModel.h")
+set(COMPLEX_PARALLAX_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/complex_materials/ComplexParallaxSettingsStore.cpp")
+set(COMPLEX_PARALLAX_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/complex_materials/ComplexParallaxSettingsStore.h")
+set(COMPLEX_PARALLAX_TEST_SOURCE
+  "${ROOT_DIR}/tests/ComplexParallaxModelTests.cpp")
+set(COMPLEX_PARALLAX_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifyComplexParallax.cmake")
 set(IBL_MATERIAL_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/IBL/IblMaterialBlendTemplate.hlsl")
 set_source_files_properties(
@@ -315,6 +329,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+  "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
+  "${COMPLEX_PARALLAX_MODEL_HEADER}"
+  "${COMPLEX_PARALLAX_SETTINGS_STORE_SOURCE}"
+  "${COMPLEX_PARALLAX_SETTINGS_STORE_HEADER}"
   "${IBL_MATERIAL_SHADER_SOURCE}"
   ${IBL_MATERIAL_SHADER_ASSETS}
   ${IBL_MATERIAL_VERIFIED_ASSETS}
@@ -691,9 +709,111 @@ add_subdirectory(
   "CommonLibF4"
   EXCLUDE_FROM_ALL)
 
+find_program(FO4VR_CS_FXC_EXECUTABLE
+  NAMES fxc.exe fxc
+  HINTS
+    "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
+  REQUIRED)
+set(COMPLEX_PARALLAX_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/ComplexParallax")
+set(COMPLEX_PARALLAX_BASE_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeBase.dxbc")
+set(COMPLEX_PARALLAX_BASE_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeBase.h")
+set(COMPLEX_PARALLAX_LOD_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeLod.dxbc")
+set(COMPLEX_PARALLAX_LOD_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeLod.h")
+set(COMPLEX_PARALLAX_INSTANCED_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeInstancedLod.dxbc")
+set(COMPLEX_PARALLAX_INSTANCED_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeInstancedLod.h")
+
+add_custom_command(
+  OUTPUT "${COMPLEX_PARALLAX_BASE_BINARY}" "${COMPLEX_PARALLAX_BASE_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    "/Fo${COMPLEX_PARALLAX_BASE_BINARY}"
+    "/Fh${COMPLEX_PARALLAX_BASE_HEADER}"
+    /Vnfo4vr_cs_complex_parallax_landscape_base
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling combined base landscape complex parallax"
+  VERBATIM)
+
+add_custom_command(
+  OUTPUT "${COMPLEX_PARALLAX_LOD_BINARY}" "${COMPLEX_PARALLAX_LOD_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
+    "/Fo${COMPLEX_PARALLAX_LOD_BINARY}"
+    "/Fh${COMPLEX_PARALLAX_LOD_HEADER}"
+    /Vnfo4vr_cs_complex_parallax_landscape_lod
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling combined LOD landscape complex parallax"
+  VERBATIM)
+
+add_custom_command(
+  OUTPUT
+    "${COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "${COMPLEX_PARALLAX_INSTANCED_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
+    /DLINEAR_LIGHTING_INSTANCED_LANDSCAPE=1
+    "/Fo${COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "/Fh${COMPLEX_PARALLAX_INSTANCED_HEADER}"
+    /Vnfo4vr_cs_complex_parallax_landscape_instanced_lod
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling combined instanced LOD landscape complex parallax"
+  VERBATIM)
+
+add_custom_target(ComplexParallaxShaders
+  DEPENDS
+    "${COMPLEX_PARALLAX_BASE_BINARY}"
+    "${COMPLEX_PARALLAX_BASE_HEADER}"
+    "${COMPLEX_PARALLAX_LOD_BINARY}"
+    "${COMPLEX_PARALLAX_LOD_HEADER}"
+    "${COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "${COMPLEX_PARALLAX_INSTANCED_HEADER}")
+
+add_custom_target(VerifyComplexParallax ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DFXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+    "-DHLSL_SOURCE=${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "-DLINEAR_LIGHTING_INCLUDE=${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+    "-DRUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
+    "-DWRIST_SOURCE=${WRIST_PANEL_SOURCE}"
+    "-DBASE_BINARY=${COMPLEX_PARALLAX_BASE_BINARY}"
+    "-DLOD_BINARY=${COMPLEX_PARALLAX_LOD_BINARY}"
+    "-DINSTANCED_BINARY=${COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    -P "${COMPLEX_PARALLAX_VERIFY_SCRIPT}"
+  DEPENDS ComplexParallaxShaders
+  COMMENT "Verifying combined stereo landscape complex parallax"
+  VERBATIM)
+
 add_library(FO4VRCommunityShadersCore STATIC
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettings.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettings.h"
+  "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
+  "${COMPLEX_PARALLAX_MODEL_HEADER}"
 )
 target_compile_features(FO4VRCommunityShadersCore PUBLIC cxx_std_23)
 target_include_directories(FO4VRCommunityShadersCore PUBLIC "${SOURCE_DIR}")
@@ -741,6 +861,10 @@ add_library(${PROJECT_NAME} SHARED
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+  "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
+  "${COMPLEX_PARALLAX_MODEL_HEADER}"
+  "${COMPLEX_PARALLAX_SETTINGS_STORE_SOURCE}"
+  "${COMPLEX_PARALLAX_SETTINGS_STORE_HEADER}"
   "${IBL_MATERIAL_SHADER_SOURCE}"
   ${IBL_MATERIAL_SHADER_ASSETS}
   ${IBL_MATERIAL_VERIFIED_ASSETS}
@@ -777,6 +901,8 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/ui/WristProviderRetry.h"
 )
 add_dependencies(${PROJECT_NAME}
+  ComplexParallaxShaders
+  VerifyComplexParallax
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyD3D11Hooks
@@ -807,6 +933,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyWristPanel)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
+target_include_directories(${PROJECT_NAME} PRIVATE
+  "${COMPLEX_PARALLAX_GENERATED_DIR}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   UNICODE
   _UNICODE
@@ -973,6 +1101,20 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerGenerator
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_generate_complex_material_producer_contracts.py")
+
+  add_executable(FO4VRCommunityShadersComplexParallaxModelTests
+    "${COMPLEX_PARALLAX_TEST_SOURCE}"
+    "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
+    "${COMPLEX_PARALLAX_MODEL_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.ComplexParallaxModel
+    COMMAND FO4VRCommunityShadersComplexParallaxModelTests)
 
   add_test(NAME FO4VRCommunityShaders.LoaderSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command

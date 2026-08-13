@@ -88,7 +88,8 @@ namespace community_shaders::linear_lighting
         bool runtimeEnabled,
         bool isDirectionalLightLinear,
         float directionalLightRuntimeMultiplier,
-        float lightProducerGamma) noexcept
+        float lightProducerGamma,
+        const complex_materials::Settings& complexMaterialSettings) noexcept
     {
         const auto safe = sanitize(settings);
         FrameData data{};
@@ -125,6 +126,8 @@ namespace community_shaders::linear_lighting
         data.otherEffectMultiplier = safe.otherEffectMultiplier;
         data.lightProducerGammaBits = std::bit_cast<std::uint32_t>(
             sanitizeGamma(lightProducerGamma, 2.2f));
+        data.complexParallax =
+            complex_materials::makeFrameData(complexMaterialSettings);
         return data;
     }
 }

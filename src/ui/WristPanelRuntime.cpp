@@ -3,6 +3,7 @@
 #include "PrismaUI_F4_API.h"
 #include "PrismaUI_F4VR_API.h"
 #include "ROCKProviderApi.h"
+#include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
@@ -190,6 +191,7 @@ namespace community_shaders::ui
         FrameData latestFrame{};
         std::mutex settingsMutex;
         linear_lighting::Settings uiSettings{};
+        complex_materials::Settings uiComplexParallaxSettings{};
         std::atomic_uint64_t uiRevision{ 1 };
 
         std::atomic_uint64_t spatialSequence{ 1 };
@@ -626,9 +628,11 @@ namespace community_shaders::ui
         [[nodiscard]] std::string buildModelJson()
         {
             linear_lighting::Settings settings{};
+            complex_materials::Settings complexSettings{};
             {
                 std::scoped_lock lock(settingsMutex);
                 settings = uiSettings;
+                complexSettings = uiComplexParallaxSettings;
             }
             const auto runtime = linear_lighting::Runtime::get().snapshot();
             const auto iblRuntime = ibl::Runtime::get().snapshot();
@@ -660,6 +664,18 @@ namespace community_shaders::ui
                             iblRuntime.materialReplacementBinds },
                         { "materialBindingFailures",
                             iblRuntime.materialBindingFailures },
+                    } },
+                { "complexMaterials",
+                    {
+                        { "parallaxEnabled",
+                            complexSettings.parallaxEnabled },
+                        { "parallaxQuality",
+                            complexSettings.parallaxQuality },
+                        { "parallaxDepth", complexSettings.parallaxDepth },
+                        { "parallaxResourcesReady",
+                            runtime.complexParallaxResourcesReady },
+                        { "parallaxReplacementBinds",
+                            runtime.complexParallaxReplacementBinds },
                     } },
                 { "coverage",
                     {
@@ -1300,6 +1316,32 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "parallaxEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    complex_materials::Settings nextComplex{};
+                    {
+                        std::scoped_lock lock(settingsMutex);
+                        nextComplex = uiComplexParallaxSettings;
+                        nextComplex.parallaxEnabled =
+                            action["value"].get<bool>();
+                        nextComplex =
+                            complex_materials::sanitize(nextComplex);
+                        uiComplexParallaxSettings = nextComplex;
+                    }
+                    linear_lighting::Runtime::get().
+                        queueComplexParallaxSettings(nextComplex);
+                    const auto saved =
+                        complex_materials::saveSettings(nextComplex);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Complex Parallax wrist action accepted; enabled={}, quality={}, settings save={}.",
+                        nextComplex.parallaxEnabled,
+                        nextComplex.parallaxQuality,
+                        saved);
+                    schedulePush();
+                    return;
+                }
 
                 linear_lighting::Settings next{};
                 {
@@ -1312,6 +1354,14 @@ namespace community_shaders::ui
                     const ibl::Settings nextIbl{};
                     ibl::Runtime::get().applySettings(nextIbl);
                     (void)ibl::saveSettings(nextIbl);
+                    const complex_materials::Settings nextComplex{};
+                    {
+                        std::scoped_lock lock(settingsMutex);
+                        uiComplexParallaxSettings = nextComplex;
+                    }
+                    linear_lighting::Runtime::get().
+                        queueComplexParallaxSettings(nextComplex);
+                    (void)complex_materials::saveSettings(nextComplex);
                     changed = true;
                 } else if (type == "enabled" && action.contains("value") &&
                            action["value"].is_boolean()) {
@@ -1905,6 +1955,14 @@ namespace community_shaders::ui
     {
         std::scoped_lock lock(settingsMutex);
         uiSettings = linear_lighting::sanitize(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialComplexParallaxSettings(
+        const complex_materials::Settings& settings) noexcept
+    {
+        std::scoped_lock lock(settingsMutex);
+        uiComplexParallaxSettings = complex_materials::sanitize(settings);
         uiRevision.fetch_add(1, std::memory_order_release);
     }
 

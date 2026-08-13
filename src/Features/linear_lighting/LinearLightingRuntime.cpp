@@ -1,5 +1,6 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 
+#include "Features/complex_materials/ComplexParallaxModel.h"
 #include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 
@@ -13,6 +14,10 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+
+#include "ComplexParallaxLandscapeBase.h"
+#include "ComplexParallaxLandscapeInstancedLod.h"
+#include "ComplexParallaxLandscapeLod.h"
 
 namespace community_shaders::linear_lighting
 {
@@ -108,10 +113,60 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
 
+        constexpr std::array<std::byte, 16> kLandscapeBaseChecksum{
+            std::byte{ 0x60 }, std::byte{ 0x48 }, std::byte{ 0x32 },
+            std::byte{ 0x66 }, std::byte{ 0x00 }, std::byte{ 0xE5 },
+            std::byte{ 0xA2 }, std::byte{ 0x6D }, std::byte{ 0xDB },
+            std::byte{ 0xFA }, std::byte{ 0x65 }, std::byte{ 0x16 },
+            std::byte{ 0x6D }, std::byte{ 0x0C }, std::byte{ 0x08 },
+            std::byte{ 0x54 },
+        };
+        constexpr std::array<std::byte, 16> kLandscapeLodChecksum{
+            std::byte{ 0x95 }, std::byte{ 0xB7 }, std::byte{ 0x4A },
+            std::byte{ 0xBA }, std::byte{ 0x9C }, std::byte{ 0x1B },
+            std::byte{ 0xEC }, std::byte{ 0xD8 }, std::byte{ 0xF7 },
+            std::byte{ 0x2E }, std::byte{ 0xA6 }, std::byte{ 0xAD },
+            std::byte{ 0xEF }, std::byte{ 0x4C }, std::byte{ 0xD4 },
+            std::byte{ 0x33 },
+        };
+        constexpr std::array<std::byte, 16> kLandscapeInstancedLodChecksum{
+            std::byte{ 0x61 }, std::byte{ 0xCC }, std::byte{ 0x59 },
+            std::byte{ 0xEB }, std::byte{ 0x16 }, std::byte{ 0x52 },
+            std::byte{ 0x8E }, std::byte{ 0xA2 }, std::byte{ 0x9E },
+            std::byte{ 0xE6 }, std::byte{ 0x14 }, std::byte{ 0x9F },
+            std::byte{ 0xC7 }, std::byte{ 0x8D }, std::byte{ 0xD0 },
+            std::byte{ 0x46 },
+        };
+
+        static_assert(kShaderContracts[273].original.size == 5632u);
+        static_assert(kShaderContracts[273].original.checksum ==
+                      kLandscapeBaseChecksum);
+        static_assert(kShaderContracts[274].original.size == 7020u);
+        static_assert(kShaderContracts[274].original.checksum ==
+                      kLandscapeLodChecksum);
+        static_assert(kShaderContracts[275].original.size == 7204u);
+        static_assert(kShaderContracts[275].original.checksum ==
+                      kLandscapeInstancedLodChecksum);
+
         struct EmbeddedShader
         {
             const void* data{};
             std::size_t size{};
+        };
+
+        constexpr std::array<EmbeddedShader, 3> kComplexParallaxShaders{
+            EmbeddedShader{
+                fo4vr_cs_complex_parallax_landscape_base,
+                sizeof(fo4vr_cs_complex_parallax_landscape_base),
+            },
+            EmbeddedShader{
+                fo4vr_cs_complex_parallax_landscape_lod,
+                sizeof(fo4vr_cs_complex_parallax_landscape_lod),
+            },
+            EmbeddedShader{
+                fo4vr_cs_complex_parallax_landscape_instanced_lod,
+                sizeof(fo4vr_cs_complex_parallax_landscape_instanced_lod),
+            },
         };
 
         [[nodiscard]] EmbeddedShader loadEmbeddedShader(int resourceId) noexcept
@@ -269,7 +324,7 @@ namespace community_shaders::linear_lighting
 
             gpuResourcesReady_.store(true, std::memory_order_release);
             logging::info(
-                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, waterContracts={}, vlsCompositeContracts={}, effectContracts={}); active shader replacement remains {}.",
+                "Linear Lighting GPU resources ready (materialContracts={}, skyContracts={}, distantTreeContracts={}, particleContracts={}, waterContracts={}, vlsCompositeContracts={}, effectContracts={}, complexParallaxReady={}); active shader replacement remains {}.",
                 kShaderContracts.size(),
                 kSkyShaderContracts.size(),
                 kDistantTreeShaderContractCount,
@@ -277,6 +332,8 @@ namespace community_shaders::linear_lighting
                 kWaterShaderContracts.size(),
                 kVLSCompositeShaderContractCount,
                 kEffectShaderContracts.size(),
+                complexParallaxResourcesReady_.load(
+                    std::memory_order_relaxed),
                 enabled_.load(std::memory_order_relaxed) ? "enabled" : "disabled");
         } catch (const std::exception& error) {
             logging::error(
@@ -336,6 +393,43 @@ namespace community_shaders::linear_lighting
                     contract.name,
                     static_cast<std::uint32_t>(result));
                 return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kComplexParallaxShaders.size()>
+            complexParallaxReplacements{};
+        auto complexParallaxReady = true;
+        for (std::size_t index = 0;
+             index < kComplexParallaxShaders.size();
+             ++index) {
+            const auto& embedded = kComplexParallaxShaders[index];
+            if (!embedded.data || embedded.size < 20 ||
+                std::memcmp(embedded.data, "DXBC", 4) != 0) {
+                logging::error(
+                    "Complex Parallax generated replacement {} is missing or invalid; parallax remains fail-closed.",
+                    index);
+                complexParallaxReady = false;
+                break;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                complexParallaxReplacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Complex Parallax replacement {} CreatePixelShader failed (HRESULT 0x{:08X}); parallax remains fail-closed.",
+                    index,
+                    static_cast<std::uint32_t>(result));
+                complexParallaxReady = false;
+                break;
+            }
+        }
+        if (!complexParallaxReady) {
+            for (auto& replacement : complexParallaxReplacements) {
+                replacement.Reset();
             }
         }
 
@@ -540,7 +634,8 @@ namespace community_shaders::linear_lighting
             true,
             false,
             1.0f,
-            producerState.gamma);
+            producerState.gamma,
+            complexParallaxSettings_);
         const GeometryData geometryData{};
         const D3D11_SUBRESOURCE_DATA frameInitial{ &frameData, 0, 0 };
         const D3D11_SUBRESOURCE_DATA geometryInitial{ &geometryData, 0, 0 };
@@ -573,6 +668,8 @@ namespace community_shaders::linear_lighting
 
         settings_ = safeSettings;
         replacementShaders_ = std::move(replacements);
+        complexParallaxReplacementShaders_ =
+            std::move(complexParallaxReplacements);
         skyReplacementShaders_ = std::move(skyReplacements);
         distantTreeReplacementShaders_ =
             std::move(distantTreeReplacements);
@@ -584,6 +681,15 @@ namespace community_shaders::linear_lighting
         geometryBuffer_ = std::move(geometryBuffer);
         publishedLightProducerRevision_ = producerState.revision;
         enabled_.store(settings_.enabled, std::memory_order_release);
+        complexParallaxResourcesReady_.store(
+            complexParallaxReady,
+            std::memory_order_release);
+        complexParallaxEnabled_.store(
+            complexParallaxSettings_.parallaxEnabled,
+            std::memory_order_release);
+        complexParallaxQuality_.store(
+            complexParallaxSettings_.parallaxQuality,
+            std::memory_order_release);
         frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -1234,8 +1340,12 @@ namespace community_shaders::linear_lighting
         }
         applyQueuedSettingsForRenderBoundary();
 
-        if (!requested ||
-            !enabled_.load(std::memory_order_acquire) ||
+        const auto linearLightingEnabled =
+            enabled_.load(std::memory_order_acquire);
+        const auto complexParallaxActive =
+            complexParallaxEnabled_.load(std::memory_order_acquire) &&
+            complexParallaxResourcesReady_.load(std::memory_order_acquire);
+        if (!requested || (!linearLightingEnabled && !complexParallaxActive) ||
             !gpuResourcesReady_.load(std::memory_order_acquire)) {
             inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
             return { requested, {} };
@@ -1244,20 +1354,34 @@ namespace community_shaders::linear_lighting
         const auto binding = decodeShaderBinding(
             shaderBindingLookup_.find(requested));
         if (binding.family == ReplacementShaderFamily::material) {
-            if (!geometryProviderReady_.load(std::memory_order_acquire)) {
-                inactiveShaderSelections_.fetch_add(
-                    1, std::memory_order_relaxed);
-                return { requested, {} };
-            }
-
             if (binding.contractPlusOne == 0 ||
                 binding.contractPlusOne > replacementShaders_.size()) {
                 inactiveShaderSelections_.fetch_add(
                     1, std::memory_order_relaxed);
                 return { requested, {} };
             }
-            auto* replacement =
-                replacementShaders_[binding.contractPlusOne - 1].Get();
+
+            const auto contractIndex =
+                static_cast<std::size_t>(binding.contractPlusOne - 1);
+            const auto parallaxSlot =
+                complex_materials::landscapeParallaxSlot(contractIndex);
+            const auto useComplexParallax = complexParallaxActive &&
+                parallaxSlot < complexParallaxReplacementShaders_.size();
+            if (!linearLightingEnabled && !useComplexParallax) {
+                inactiveShaderSelections_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { requested, {} };
+            }
+            if (linearLightingEnabled &&
+                !geometryProviderReady_.load(std::memory_order_acquire)) {
+                inactiveShaderSelections_.fetch_add(
+                    1, std::memory_order_relaxed);
+                return { requested, {} };
+            }
+
+            auto* replacement = useComplexParallax ?
+                complexParallaxReplacementShaders_[parallaxSlot].Get() :
+                replacementShaders_[contractIndex].Get();
             if (!replacement) {
                 inactiveShaderSelections_.fetch_add(
                     1, std::memory_order_relaxed);
@@ -1271,7 +1395,17 @@ namespace community_shaders::linear_lighting
                 std::memory_order_release,
                 std::memory_order_relaxed);
             replacementBinds_.fetch_add(1, std::memory_order_relaxed);
+            if (useComplexParallax) {
+                complexParallaxReplacementBinds_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
             return { replacement, binding, false };
+        }
+
+        if (!linearLightingEnabled) {
+            inactiveShaderSelections_.fetch_add(1, std::memory_order_relaxed);
+            return { requested, {} };
         }
 
         if (binding.family == ReplacementShaderFamily::sky) {
@@ -1471,8 +1605,18 @@ namespace community_shaders::linear_lighting
         if (binding.family == ReplacementShaderFamily::material &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= replacementShaders_.size()) {
-            expectedShader =
-                replacementShaders_[binding.contractPlusOne - 1].Get();
+            const auto contractIndex =
+                static_cast<std::size_t>(binding.contractPlusOne - 1);
+            const auto parallaxSlot =
+                complex_materials::landscapeParallaxSlot(contractIndex);
+            const auto useComplexParallax =
+                complexParallaxEnabled_.load(std::memory_order_acquire) &&
+                complexParallaxResourcesReady_.load(
+                    std::memory_order_acquire) &&
+                parallaxSlot < complexParallaxReplacementShaders_.size();
+            expectedShader = useComplexParallax ?
+                complexParallaxReplacementShaders_[parallaxSlot].Get() :
+                replacementShaders_[contractIndex].Get();
         } else if (binding.family == ReplacementShaderFamily::sky &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= skyReplacementShaders_.size()) {
@@ -1585,23 +1729,55 @@ namespace community_shaders::linear_lighting
         queuedSettingsRevision_.fetch_add(1, std::memory_order_release);
     }
 
+    void Runtime::queueComplexParallaxSettings(
+        const complex_materials::Settings& settings) noexcept
+    {
+        {
+            std::scoped_lock lock(queuedSettingsMutex_);
+            queuedComplexParallaxSettings_ =
+                complex_materials::sanitize(settings);
+        }
+        queuedComplexParallaxSettingsRevision_.fetch_add(
+            1,
+            std::memory_order_release);
+    }
+
     void Runtime::applyQueuedSettingsForRenderBoundary() noexcept
     {
-        const auto revision =
+        const auto linearRevision =
             queuedSettingsRevision_.load(std::memory_order_acquire);
-        if (revision ==
-            appliedSettingsRevision_.load(std::memory_order_acquire)) {
+        const auto complexRevision =
+            queuedComplexParallaxSettingsRevision_.load(
+                std::memory_order_acquire);
+        const auto applyLinear = linearRevision !=
+            appliedSettingsRevision_.load(std::memory_order_acquire);
+        const auto applyComplex = complexRevision !=
+            appliedComplexParallaxSettingsRevision_.load(
+                std::memory_order_acquire);
+        if (!applyLinear && !applyComplex) {
             return;
         }
 
-        Settings next{};
+        Settings nextLinear{};
+        complex_materials::Settings nextComplex{};
         {
             std::scoped_lock lock(queuedSettingsMutex_);
-            next = queuedSettings_;
+            nextLinear = queuedSettings_;
+            nextComplex = queuedComplexParallaxSettings_;
         }
 
-        applySettings(next);
-        appliedSettingsRevision_.store(revision, std::memory_order_release);
+        if (applyLinear) {
+            applySettings(nextLinear);
+            appliedSettingsRevision_.store(
+                linearRevision,
+                std::memory_order_release);
+        }
+        if (applyComplex) {
+            applyComplexParallaxSettings(nextComplex);
+            appliedComplexParallaxSettingsRevision_.store(
+                complexRevision,
+                std::memory_order_release);
+        }
     }
 
     bool Runtime::updateGeometryEmissive(float emissiveMultiplier) noexcept
@@ -1671,6 +1847,19 @@ namespace community_shaders::linear_lighting
         publishFrameData();
     }
 
+    void Runtime::applyComplexParallaxSettings(
+        const complex_materials::Settings& settings) noexcept
+    {
+        complexParallaxSettings_ = complex_materials::sanitize(settings);
+        complexParallaxEnabled_.store(
+            complexParallaxSettings_.parallaxEnabled,
+            std::memory_order_release);
+        complexParallaxQuality_.store(
+            complexParallaxSettings_.parallaxQuality,
+            std::memory_order_release);
+        publishFrameData();
+    }
+
     void Runtime::synchronizeLightProducerFrameState() noexcept
     {
         const auto producerState = dFTiledPointLightProducerFrameState();
@@ -1690,7 +1879,8 @@ namespace community_shaders::linear_lighting
             true,
             false,
             1.0f,
-            producerState.gamma);
+            producerState.gamma,
+            complexParallaxSettings_);
         context_->UpdateSubresource(frameBuffer_.Get(), 0, nullptr, &data, 0, 0);
         publishedLightProducerRevision_ = producerState.revision;
         frameDataUploads_.fetch_add(1, std::memory_order_relaxed);
@@ -1700,6 +1890,16 @@ namespace community_shaders::linear_lighting
     {
         return {
             .enabled = enabled_.load(std::memory_order_acquire),
+            .complexParallaxEnabled =
+                complexParallaxEnabled_.load(std::memory_order_acquire),
+            .complexParallaxResourcesReady =
+                complexParallaxResourcesReady_.load(
+                    std::memory_order_acquire),
+            .complexParallaxQuality =
+                complexParallaxQuality_.load(std::memory_order_acquire),
+            .complexParallaxReplacementBinds =
+                complexParallaxReplacementBinds_.load(
+                    std::memory_order_relaxed),
             .gpuResourcesReady = gpuResourcesReady_.load(std::memory_order_acquire),
             .geometryProviderReady =
                 geometryProviderReady_.load(std::memory_order_acquire),

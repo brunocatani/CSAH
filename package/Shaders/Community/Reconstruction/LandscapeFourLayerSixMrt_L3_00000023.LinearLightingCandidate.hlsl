@@ -10,6 +10,10 @@
 #define LINEAR_LIGHTING_INSTANCED_LANDSCAPE 0
 #endif
 
+#ifndef LINEAR_LIGHTING_COMPLEX_PARALLAX
+#define LINEAR_LIGHTING_COMPLEX_PARALLAX 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
     float4 cb2[9];
@@ -134,6 +138,160 @@ struct PSOutput
     float2 target5 : SV_Target5;
 };
 
+#if LINEAR_LIGHTING_COMPLEX_PARALLAX
+float4 NormalizeLandscapeWeights(float4 weights)
+{
+    const float4 positive = max(weights, 0.0);
+    return positive / max(dot(positive, 1.0), 1.0e-5);
+}
+
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+float BlendedParallaxDepth(
+    float2 uv,
+    float2 gradientX,
+    float2 gradientY,
+    float4 weights,
+    LandscapeLayerIndices indices)
+{
+    const float4 height = float4(
+        TexSpecularLayers.SampleGrad(
+            Samp2, float3(uv, float(indices.specular0)),
+            gradientX, gradientY).a,
+        TexSpecularLayers.SampleGrad(
+            Samp2, float3(uv, float(indices.specular1)),
+            gradientX, gradientY).a,
+        TexSpecularLayers.SampleGrad(
+            Samp2, float3(uv, float(indices.specular2)),
+            gradientX, gradientY).a,
+        TexSpecularLayers.SampleGrad(
+            Samp2, float3(uv, float(indices.specular3)),
+            gradientX, gradientY).a);
+    // The test assets store elevation in specular alpha. The ray advances
+    // through depth, so invert elevation exactly once at this boundary.
+    return 1.0 - dot(height, weights);
+}
+#else
+float BlendedParallaxDepth(
+    float2 uv,
+    float2 gradientX,
+    float2 gradientY,
+    float4 weights)
+{
+    const float4 height = float4(
+        TexSpecular0.SampleGrad(Samp8, uv, gradientX, gradientY).a,
+        TexSpecular1.SampleGrad(Samp9, uv, gradientX, gradientY).a,
+        TexSpecular2.SampleGrad(Samp10, uv, gradientX, gradientY).a,
+        TexSpecular3.SampleGrad(Samp11, uv, gradientX, gradientY).a);
+    return 1.0 - dot(height, weights);
+}
+#endif
+
+float2 ApplyComplexParallax(
+    PSInput input,
+    float2 uv,
+    float2 gradientX,
+    float2 gradientY
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+    , LandscapeLayerIndices indices
+#endif
+    )
+{
+    if (enableComplexParallax == 0u || parallaxDepth <= 0.0) {
+        return uv;
+    }
+
+    const float distanceFromEye = length(input.currentPosition.xyz);
+    float fade = 1.0 - saturate(
+        (distanceFromEye - parallaxFadeStart) /
+        max(parallaxFadeEnd - parallaxFadeStart, 1.0));
+#if LINEAR_LIGHTING_LAND_LOD_BLEND
+    fade *= 1.0 - saturate(input.landscapeLodCoordinatesAndBlend.z);
+#endif
+    if (fade <= 0.0) {
+        return uv;
+    }
+
+    // currentPosition is eye-relative for the active EYEINDEX. Rotate that
+    // per-eye ray into the same view basis used by the emitted TBN rows.
+    const float3 eyeRelativeViewPosition = float3(
+        dot(cb12[0].xyz, input.currentPosition.xyz),
+        dot(cb12[1].xyz, input.currentPosition.xyz),
+        dot(cb12[2].xyz, input.currentPosition.xyz));
+    const float3 viewDirection = normalize(-eyeRelativeViewPosition);
+
+    // TEXCOORD0/1/2 are tangent-to-view rows. Their orthonormal inverse is
+    // the transpose, assembled as columns here.
+    const float3 tangentAxis = normalize(float3(
+        input.tangent.x,
+        input.bitangent.x,
+        input.normal.x));
+    const float3 bitangentAxis = normalize(float3(
+        input.tangent.y,
+        input.bitangent.y,
+        input.normal.y));
+    const float3 normalAxis = normalize(float3(
+        input.tangent.z,
+        input.bitangent.z,
+        input.normal.z));
+    float3 tangentView = float3(
+        dot(viewDirection, tangentAxis),
+        dot(viewDirection, bitangentAxis),
+        dot(viewDirection, normalAxis));
+    tangentView.z = input.isFrontFace ? tangentView.z : -tangentView.z;
+
+    const float viewZ = max(abs(tangentView.z), parallaxGrazingClamp);
+    const float grazing = 1.0 - saturate(viewZ);
+    const float stepCount = round(lerp(
+        max(parallaxMinimumSteps, 1.0),
+        max(parallaxMaximumSteps, parallaxMinimumSteps),
+        grazing));
+    const float layerStep = 1.0 / stepCount;
+    const float2 rayStep =
+        (tangentView.xy / viewZ) * (parallaxDepth * fade / stepCount);
+    const float4 weights = NormalizeLandscapeWeights(input.layerWeights);
+
+    float2 currentUv = uv;
+    float currentLayer = 0.0;
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+    float sampledDepth = BlendedParallaxDepth(
+        currentUv, gradientX, gradientY, weights, indices);
+#else
+    float sampledDepth = BlendedParallaxDepth(
+        currentUv, gradientX, gradientY, weights);
+#endif
+    [loop]
+    for (uint step = 0u; step < 32u &&
+         float(step) < stepCount && currentLayer < sampledDepth; ++step) {
+        currentUv -= rayStep;
+        currentLayer += layerStep;
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+        sampledDepth = BlendedParallaxDepth(
+            currentUv, gradientX, gradientY, weights, indices);
+#else
+        sampledDepth = BlendedParallaxDepth(
+            currentUv, gradientX, gradientY, weights);
+#endif
+    }
+
+    const float2 previousUv = currentUv + rayStep;
+    const float previousLayer = currentLayer - layerStep;
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+    const float previousDepth = BlendedParallaxDepth(
+        previousUv, gradientX, gradientY, weights, indices);
+#else
+    const float previousDepth = BlendedParallaxDepth(
+        previousUv, gradientX, gradientY, weights);
+#endif
+    const float after = sampledDepth - currentLayer;
+    const float before = previousDepth - previousLayer;
+    const float crossingSpan = after - before;
+    const float interpolation = saturate(
+        after / ((abs(crossingSpan) > 1.0e-5) ?
+            crossingSpan : -1.0e-5));
+    return lerp(currentUv, previousUv, interpolation);
+}
+#endif
+
 void AccumulateLandscapeLayer(
     float weight,
     float3 sampledDiffuse,
@@ -161,55 +319,84 @@ void AccumulateLandscapeLayer(
 PSOutput PSMain(PSInput input)
 {
     PSOutput output;
-    const float2 uv = float2(
+    const float2 baseUv = float2(
         input.currentPosition.w,
         input.previousPosition.w);
+
+#if LINEAR_LIGHTING_COMPLEX_PARALLAX
+    const float2 gradientX = ddx(baseUv);
+    const float2 gradientY = ddy(baseUv);
+#endif
+
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+    const LandscapeLayerIndices layerIndices =
+        LandscapeIndices[input.landscapeRecordIndex];
+#endif
+
+#if LINEAR_LIGHTING_COMPLEX_PARALLAX
+#if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
+    const float2 uv = ApplyComplexParallax(
+        input, baseUv, gradientX, gradientY, layerIndices);
+#else
+    const float2 uv = ApplyComplexParallax(
+        input, baseUv, gradientX, gradientY);
+#endif
+#define LANDSCAPE_SAMPLE_2D(Texture, Sampler, Uv) \
+    Texture.SampleGrad(Sampler, Uv, gradientX, gradientY)
+#define LANDSCAPE_SAMPLE_ARRAY(Texture, Sampler, Uv) \
+    Texture.SampleGrad(Sampler, Uv, gradientX, gradientY)
+#else
+    const float2 uv = baseUv;
+#define LANDSCAPE_SAMPLE_2D(Texture, Sampler, Uv) Texture.Sample(Sampler, Uv)
+#define LANDSCAPE_SAMPLE_ARRAY(Texture, Sampler, Uv) Texture.Sample(Sampler, Uv)
+#endif
 
     float3 diffuse = 0.0;
     float3 detailNormal = 0.0;
     float2 specular = 0.0;
 
 #if LINEAR_LIGHTING_INSTANCED_LANDSCAPE
-    const LandscapeLayerIndices layerIndices =
-        LandscapeIndices[input.landscapeRecordIndex];
-    const float3 diffuse0 = TexDiffuseLayers.Sample(
-        Samp0, float3(uv, float(layerIndices.diffuse0))).xyz;
-    const float3 diffuse1 = TexDiffuseLayers.Sample(
-        Samp0, float3(uv, float(layerIndices.diffuse1))).xyz;
-    const float3 diffuse2 = TexDiffuseLayers.Sample(
-        Samp0, float3(uv, float(layerIndices.diffuse2))).xyz;
-    const float3 diffuse3 = TexDiffuseLayers.Sample(
-        Samp0, float3(uv, float(layerIndices.diffuse3))).xyz;
-    const float2 normal0 = TexNormalLayers.Sample(
-        Samp1, float3(uv, float(layerIndices.normal0))).xy;
-    const float2 normal1 = TexNormalLayers.Sample(
-        Samp1, float3(uv, float(layerIndices.normal1))).xy;
-    const float2 normal2 = TexNormalLayers.Sample(
-        Samp1, float3(uv, float(layerIndices.normal2))).xy;
-    const float2 normal3 = TexNormalLayers.Sample(
-        Samp1, float3(uv, float(layerIndices.normal3))).xy;
-    const float2 specular0 = TexSpecularLayers.Sample(
-        Samp2, float3(uv, float(layerIndices.specular0))).xy;
-    const float2 specular1 = TexSpecularLayers.Sample(
-        Samp2, float3(uv, float(layerIndices.specular1))).xy;
-    const float2 specular2 = TexSpecularLayers.Sample(
-        Samp2, float3(uv, float(layerIndices.specular2))).xy;
-    const float2 specular3 = TexSpecularLayers.Sample(
-        Samp2, float3(uv, float(layerIndices.specular3))).xy;
+    const float3 diffuse0 = LANDSCAPE_SAMPLE_ARRAY(
+        TexDiffuseLayers, Samp0, float3(uv, float(layerIndices.diffuse0))).xyz;
+    const float3 diffuse1 = LANDSCAPE_SAMPLE_ARRAY(
+        TexDiffuseLayers, Samp0, float3(uv, float(layerIndices.diffuse1))).xyz;
+    const float3 diffuse2 = LANDSCAPE_SAMPLE_ARRAY(
+        TexDiffuseLayers, Samp0, float3(uv, float(layerIndices.diffuse2))).xyz;
+    const float3 diffuse3 = LANDSCAPE_SAMPLE_ARRAY(
+        TexDiffuseLayers, Samp0, float3(uv, float(layerIndices.diffuse3))).xyz;
+    const float2 normal0 = LANDSCAPE_SAMPLE_ARRAY(
+        TexNormalLayers, Samp1, float3(uv, float(layerIndices.normal0))).xy;
+    const float2 normal1 = LANDSCAPE_SAMPLE_ARRAY(
+        TexNormalLayers, Samp1, float3(uv, float(layerIndices.normal1))).xy;
+    const float2 normal2 = LANDSCAPE_SAMPLE_ARRAY(
+        TexNormalLayers, Samp1, float3(uv, float(layerIndices.normal2))).xy;
+    const float2 normal3 = LANDSCAPE_SAMPLE_ARRAY(
+        TexNormalLayers, Samp1, float3(uv, float(layerIndices.normal3))).xy;
+    const float2 specular0 = LANDSCAPE_SAMPLE_ARRAY(
+        TexSpecularLayers, Samp2, float3(uv, float(layerIndices.specular0))).xy;
+    const float2 specular1 = LANDSCAPE_SAMPLE_ARRAY(
+        TexSpecularLayers, Samp2, float3(uv, float(layerIndices.specular1))).xy;
+    const float2 specular2 = LANDSCAPE_SAMPLE_ARRAY(
+        TexSpecularLayers, Samp2, float3(uv, float(layerIndices.specular2))).xy;
+    const float2 specular3 = LANDSCAPE_SAMPLE_ARRAY(
+        TexSpecularLayers, Samp2, float3(uv, float(layerIndices.specular3))).xy;
 #else
-    const float3 diffuse0 = TexDiffuse0.Sample(Samp0, uv).xyz;
-    const float3 diffuse1 = TexDiffuse1.Sample(Samp1, uv).xyz;
-    const float3 diffuse2 = TexDiffuse2.Sample(Samp2, uv).xyz;
-    const float3 diffuse3 = TexDiffuse3.Sample(Samp3, uv).xyz;
-    const float2 normal0 = TexNormal0.Sample(Samp4, uv).xy;
-    const float2 normal1 = TexNormal1.Sample(Samp5, uv).xy;
-    const float2 normal2 = TexNormal2.Sample(Samp6, uv).xy;
-    const float2 normal3 = TexNormal3.Sample(Samp7, uv).xy;
-    const float2 specular0 = TexSpecular0.Sample(Samp8, uv).xy;
-    const float2 specular1 = TexSpecular1.Sample(Samp9, uv).xy;
-    const float2 specular2 = TexSpecular2.Sample(Samp10, uv).xy;
-    const float2 specular3 = TexSpecular3.Sample(Samp11, uv).xy;
+    const float3 diffuse0 = LANDSCAPE_SAMPLE_2D(TexDiffuse0, Samp0, uv).xyz;
+    const float3 diffuse1 = LANDSCAPE_SAMPLE_2D(TexDiffuse1, Samp1, uv).xyz;
+    const float3 diffuse2 = LANDSCAPE_SAMPLE_2D(TexDiffuse2, Samp2, uv).xyz;
+    const float3 diffuse3 = LANDSCAPE_SAMPLE_2D(TexDiffuse3, Samp3, uv).xyz;
+    const float2 normal0 = LANDSCAPE_SAMPLE_2D(TexNormal0, Samp4, uv).xy;
+    const float2 normal1 = LANDSCAPE_SAMPLE_2D(TexNormal1, Samp5, uv).xy;
+    const float2 normal2 = LANDSCAPE_SAMPLE_2D(TexNormal2, Samp6, uv).xy;
+    const float2 normal3 = LANDSCAPE_SAMPLE_2D(TexNormal3, Samp7, uv).xy;
+    const float2 specular0 = LANDSCAPE_SAMPLE_2D(TexSpecular0, Samp8, uv).xy;
+    const float2 specular1 = LANDSCAPE_SAMPLE_2D(TexSpecular1, Samp9, uv).xy;
+    const float2 specular2 = LANDSCAPE_SAMPLE_2D(TexSpecular2, Samp10, uv).xy;
+    const float2 specular3 = LANDSCAPE_SAMPLE_2D(TexSpecular3, Samp11, uv).xy;
 #endif
+
+#undef LANDSCAPE_SAMPLE_2D
+#undef LANDSCAPE_SAMPLE_ARRAY
 
     AccumulateLandscapeLayer(
         input.layerWeights.x,

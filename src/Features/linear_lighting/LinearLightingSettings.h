@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Features/complex_materials/ComplexParallaxSettings.h"
+
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -69,6 +71,7 @@ namespace community_shaders::linear_lighting
         float otherEffectMultiplier{ 1.0f };
         std::uint32_t lightProducerGammaBits{
             std::bit_cast<std::uint32_t>(2.2f) };
+        complex_materials::FrameData complexParallax{};
     };
 
     struct alignas(16) GeometryData
@@ -77,7 +80,7 @@ namespace community_shaders::linear_lighting
         float padding[3]{};
     };
 
-    static_assert(sizeof(FrameData) == 112);
+    static_assert(sizeof(FrameData) == 144);
     static_assert(alignof(FrameData) == 16);
     static_assert(sizeof(GeometryData) == 16);
     static_assert(alignof(GeometryData) == 16);
@@ -87,6 +90,7 @@ namespace community_shaders::linear_lighting
     static_assert(offsetof(FrameData, vanillaDiffuseColorMultiplier) == 60);
     static_assert(offsetof(FrameData, otherEffectMultiplier) == 104);
     static_assert(offsetof(FrameData, lightProducerGammaBits) == 108);
+    static_assert(offsetof(FrameData, complexParallax) == 112);
 
     [[nodiscard]] Settings sanitize(const Settings& settings) noexcept;
 
@@ -95,5 +99,6 @@ namespace community_shaders::linear_lighting
         bool runtimeEnabled,
         bool isDirectionalLightLinear,
         float directionalLightRuntimeMultiplier,
-        float lightProducerGamma = 2.2f) noexcept;
+        float lightProducerGamma = 2.2f,
+        const complex_materials::Settings& complexMaterialSettings = {}) noexcept;
 }
