@@ -376,10 +376,14 @@ namespace
         vanilla[13] = 0.5f;
         vanilla[14] = 0.5f;
         vanilla[15] = 1.0f;
+        constexpr std::array<float,
+            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            fullConfidence{ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
         std::array<float, 16> transform{};
         require(
             community_shaders::ibl::buildDirectionalAmbientTransform(
                 constantProjection,
+                fullConfidence,
                 vanilla,
                 1.0f,
                 1.0f,
@@ -403,6 +407,7 @@ namespace
         require(
             community_shaders::ibl::buildDirectionalAmbientTransform(
                 constantProjection,
+                fullConfidence,
                 vanilla,
                 2.0f,
                 1.0f,
@@ -449,6 +454,7 @@ namespace
         require(
             community_shaders::ibl::buildDirectionalAmbientTransform(
                 directional,
+                fullConfidence,
                 vanilla,
                 1.0f,
                 1.0f,
@@ -460,11 +466,72 @@ namespace
         require(
             !community_shaders::ibl::buildDirectionalAmbientTransform(
                 directional,
+                fullConfidence,
                 vanilla,
                 0.0f,
                 1.0f,
                 transform),
             "zero shader gamma was accepted");
+
+        constexpr std::array<float,
+            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            noConfidence{};
+        require(
+            !community_shaders::ibl::buildDirectionalAmbientTransform(
+                directional,
+                noConfidence,
+                vanilla,
+                1.0f,
+                1.0f,
+                transform),
+            "zero directional confidence replaced vanilla ambient");
+
+        constexpr std::array<float,
+            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            positiveXConfidence{ 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        require(
+            community_shaders::ibl::buildDirectionalAmbientTransform(
+                directional,
+                positiveXConfidence,
+                vanilla,
+                1.0f,
+                1.0f,
+                transform),
+            "single-face diffuse fallback was rejected");
+        const auto evaluateTransform = [](
+                                           const std::array<float, 16>& value,
+                                           const Float3& direction) {
+            return Float3{
+                value[0] * direction.x + value[4] * direction.y +
+                    value[8] * direction.z + value[12],
+                value[1] * direction.x + value[5] * direction.y +
+                    value[9] * direction.z + value[13],
+                value[2] * direction.x + value[6] * direction.y +
+                    value[10] * direction.z + value[14],
+            };
+        };
+        const auto positiveX = evaluateTransform(
+            transform,
+            { 1.0f, 0.0f, 0.0f });
+        const auto vanillaPositiveX = evaluateTransform(
+            vanilla,
+            { 1.0f, 0.0f, 0.0f });
+        const auto negativeX = evaluateTransform(
+            transform,
+            { -1.0f, 0.0f, 0.0f });
+        const auto vanillaNegativeX = evaluateTransform(
+            vanilla,
+            { -1.0f, 0.0f, 0.0f });
+        require(
+            std::abs(positiveX.x - vanillaPositiveX.x) > 1.0e-3f,
+            "supported +X direction did not receive diffuse IBL");
+        const auto supportedDelta = std::abs(
+            positiveX.x - vanillaPositiveX.x);
+        const auto unsupportedDelta = std::abs(
+            negativeX.x - vanillaNegativeX.x);
+        require(
+            unsupportedDelta < supportedDelta * 0.55f,
+            "first-order fallback fit favored an unsupported direction");
     }
 
     void run(const std::filesystem::path& root)

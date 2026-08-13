@@ -583,6 +583,8 @@ namespace community_shaders::ibl
         double blue{};
         double validityTotal{};
         std::array<double, kEnvironmentCubeFaceCount> faceLuminance{};
+        std::array<double, kEnvironmentCubeFaceCount> faceValidity{};
+        std::array<double, kEnvironmentCubeFaceCount> faceSolidAngle{};
         float peak{};
         std::uint32_t nonBlack{};
         std::uint32_t covered{};
@@ -678,6 +680,11 @@ namespace community_shaders::ibl
                             static_cast<float>(resources_.extent)) *
                             2.0f -
                         1.0f;
+                    const auto solidAngleWeight =
+                        cubeTexelSolidAngleWeight(horizontal, vertical);
+                    faceValidity[face] +=
+                        static_cast<double>(validity) * solidAngleWeight;
+                    faceSolidAngle[face] += solidAngleWeight;
                     accumulateDiffuseSHFit(
                         diffuseFit,
                         environmentCubeDirection(
@@ -686,7 +693,7 @@ namespace community_shaders::ibl
                             vertical),
                         { sample.red, sample.green, sample.blue },
                         validity,
-                        cubeTexelSolidAngleWeight(horizontal, vertical));
+                        solidAngleWeight);
                 }
             }
             context->Unmap(resources_.stagingValidity.Get(), subresource);
@@ -711,6 +718,10 @@ namespace community_shaders::ibl
         for (std::uint32_t face = 0; face < kEnvironmentCubeFaceCount; ++face) {
             summary_.faceAverageLuminance[face] = static_cast<float>(
                 faceLuminance[face] / static_cast<double>(faceSampleCount));
+            summary_.faceAverageValidity[face] = faceSolidAngle[face] > 0.0 ?
+                static_cast<float>(
+                    faceValidity[face] / faceSolidAngle[face]) :
+                0.0f;
         }
         summary_.peak = peak;
         summary_.averageValidity = static_cast<float>(

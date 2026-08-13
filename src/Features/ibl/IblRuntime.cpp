@@ -1,6 +1,7 @@
 #include "Features/ibl/IblRuntime.h"
 
 #include "resources.h"
+#include "render/BSLightingGeometryHook.h"
 #include "support/Logger.h"
 
 #include <Windows.h>
@@ -56,7 +57,6 @@ namespace community_shaders::ibl
         constexpr std::uint64_t kRuntimePollCadenceMilliseconds = 250;
         constexpr std::uint64_t kEnvironmentCaptureCadenceMilliseconds = 1000;
         constexpr std::uint64_t kWorldCaptureProbeSettleMilliseconds = 5000;
-        constexpr float kMinimumDiffuseSHCoverage = 0.65f;
         constexpr UINT kCaptureShaderResourceCount = 16;
         // Exact DFComposite DXBC samples t5/t6 in the final lighting path and
         // repeatedly samples t10 in the complex path. Live world evidence
@@ -455,8 +455,7 @@ namespace community_shaders::ibl
     }
 
     bool Runtime::tryGetDiffuseAmbient(
-        DiffuseSH& coefficients,
-        float& level) const noexcept
+        DiffuseAmbientSample& sample) const noexcept
     {
         if (!enabled_.load(std::memory_order_acquire) ||
             !diffuseEnabled_.load(std::memory_order_acquire) ||
@@ -483,7 +482,17 @@ namespace community_shaders::ibl
                             std::memory_order_relaxed));
                 }
             }
+            std::array<float, kEnvironmentCubeFaceCount> faceConfidence{};
+            for (std::size_t face = 0; face < faceConfidence.size(); ++face) {
+                faceConfidence[face] = std::bit_cast<float>(
+                    publishedFaceConfidenceBits_[face].load(
+                        std::memory_order_relaxed));
+            }
+            const auto coverage = std::bit_cast<float>(
+                diffuseSHCoverageBits_.load(std::memory_order_relaxed));
             const auto usable = publishedUsable_.load(
+                std::memory_order_relaxed);
+            const auto generation = publishedGeneration_.load(
                 std::memory_order_relaxed);
             const auto after = publishedSequence_.load(
                 std::memory_order_acquire);
@@ -493,11 +502,22 @@ namespace community_shaders::ibl
             const auto candidateLevel = std::bit_cast<float>(
                 diffuseLevelBits_.load(std::memory_order_acquire));
             if (!usable || !validDiffuseSH(candidate) ||
+                !std::isfinite(coverage) || coverage < 0.0f ||
+                !std::ranges::all_of(
+                    faceConfidence,
+                    [](float value) {
+                        return std::isfinite(value) && value >= 0.0f;
+                    }) ||
                 !std::isfinite(candidateLevel) || candidateLevel < 0.0f) {
                 return false;
             }
-            coefficients = candidate;
-            level = candidateLevel;
+            sample = {
+                .coefficients = candidate,
+                .cubeFaceConfidence = faceConfidence,
+                .coverage = coverage,
+                .level = candidateLevel,
+                .generation = generation,
+            };
             return true;
         }
         return false;
@@ -1723,29 +1743,40 @@ namespace community_shaders::ibl
             publishedEnvironmentSessionId_ =
                 pendingEnvironmentUpdateSessionId_;
             pendingEnvironmentUpdateSessionId_ = 0;
-            diffuseSHCoverageBits_.store(
-                std::bit_cast<std::uint32_t>(update.diffuseSHCoverage),
-                std::memory_order_release);
             const auto usableDiffuse =
-                update.diffuseSHState == DiffuseSHState::usable &&
-                update.diffuseSHCoverage >= kMinimumDiffuseSHCoverage;
+                update.diffuseSHState == DiffuseSHState::usable;
             if (usableDiffuse) {
-                publishUsable(update.diffuseSH, update.generation, now);
+                publishUsable(
+                    update.diffuseSH,
+                    update.faceAverageValidity,
+                    update.diffuseSHCoverage,
+                    update.generation,
+                    now);
                 diffuseFitsPublished_.fetch_add(
                     1,
                     std::memory_order_relaxed);
                 if (!loggedFirstUsableDiffuseFit_) {
                     loggedFirstUsableDiffuseFit_ = true;
                     logging::info(
-                        "IBL first validity-aware diffuse SH published from the dynamic environment: generation={}, solid-angle coverage={}, L0 RGB=({}, {}, {}).",
+                        "IBL first validity-aware diffuse SH published with directional vanilla fallback: generation={}, solid-angle coverage={}, face confidence=[{},{},{},{},{},{}], L0 RGB=({}, {}, {}).",
                         update.generation,
                         update.diffuseSHCoverage,
+                        update.faceAverageValidity[0],
+                        update.faceAverageValidity[1],
+                        update.faceAverageValidity[2],
+                        update.faceAverageValidity[3],
+                        update.faceAverageValidity[4],
+                        update.faceAverageValidity[5],
                         update.diffuseSH.rgb[0][0],
                         update.diffuseSH.rgb[1][0],
                         update.diffuseSH.rgb[2][0]);
                 }
             } else {
-                publishUnavailable(update.generation, now);
+                publishUnavailable(
+                    update.faceAverageValidity,
+                    update.diffuseSHCoverage,
+                    update.generation,
+                    now);
                 diffuseFitsRejected_.fetch_add(
                     1,
                     std::memory_order_relaxed);
@@ -1756,7 +1787,7 @@ namespace community_shaders::ibl
                 lastLoggedEnvironmentUpdateGeneration_ =
                     update.generation;
                 logging::info(
-                    "IBL stereo environment generation {} atomically published for world session {} as a radiance/validity pair: history={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceLuminance=[{},{},{},{},{},{}]; enabled consumers may now sample it with per-direction vanilla fallback.",
+                    "IBL stereo environment generation {} atomically published for world session {} as a radiance/validity pair: history={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled consumers may now sample it with per-direction vanilla fallback.",
                     update.generation,
                     publishedEnvironmentSessionId_,
                     update.historyUsed,
@@ -1771,6 +1802,12 @@ namespace community_shaders::ibl
                     update.sampleCount,
                     update.diffuseSHCoverage,
                     static_cast<unsigned>(update.diffuseSHState),
+                    update.faceAverageValidity[0],
+                    update.faceAverageValidity[1],
+                    update.faceAverageValidity[2],
+                    update.faceAverageValidity[3],
+                    update.faceAverageValidity[4],
+                    update.faceAverageValidity[5],
                     update.faceAverageLuminance[0],
                     update.faceAverageLuminance[1],
                     update.faceAverageLuminance[2],
@@ -1787,10 +1824,25 @@ namespace community_shaders::ibl
                     "IBL stereo environment validation failed; the private generation was aborted and the previous validated pair remains published.");
             }
         }
+        if (!loggedFirstDiffuseApplication_) {
+            const auto geometry = render::geometryHookSnapshot();
+            if (geometry.diffuseAmbientPrepared >
+                diffuseApplicationBaseline_) {
+                loggedFirstDiffuseApplication_ = true;
+                logging::info(
+                    "Diffuse IBL first ambient transform applied outside the capture-feedback window: generation={}, solid-angle coverage={}, maximum coefficient delta={}.",
+                    geometry.latestDiffuseGeneration,
+                    geometry.latestDiffuseCoverage,
+                    geometry.latestDiffuseMaximumCoefficientDelta);
+            }
+        }
     }
 
     void Runtime::publishUsable(
         const DiffuseSH& coefficients,
+        const std::array<float, kEnvironmentCubeFaceCount>&
+            cubeFaceConfidence,
+        float coverage,
         std::uint64_t generation,
         std::uint64_t tickMilliseconds) noexcept
     {
@@ -1803,6 +1855,14 @@ namespace community_shaders::ibl
                     std::memory_order_relaxed);
             }
         }
+        for (std::size_t face = 0; face < cubeFaceConfidence.size(); ++face) {
+            publishedFaceConfidenceBits_[face].store(
+                std::bit_cast<std::uint32_t>(cubeFaceConfidence[face]),
+                std::memory_order_relaxed);
+        }
+        diffuseSHCoverageBits_.store(
+            std::bit_cast<std::uint32_t>(coverage),
+            std::memory_order_relaxed);
         publishedGeneration_.store(generation, std::memory_order_relaxed);
         publishedTickMilliseconds_.store(
             tickMilliseconds,
@@ -1812,10 +1872,21 @@ namespace community_shaders::ibl
     }
 
     void Runtime::publishUnavailable(
+        const std::array<float, kEnvironmentCubeFaceCount>&
+            cubeFaceConfidence,
+        float coverage,
         std::uint64_t generation,
         std::uint64_t tickMilliseconds) noexcept
     {
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
+        for (std::size_t face = 0; face < cubeFaceConfidence.size(); ++face) {
+            publishedFaceConfidenceBits_[face].store(
+                std::bit_cast<std::uint32_t>(cubeFaceConfidence[face]),
+                std::memory_order_relaxed);
+        }
+        diffuseSHCoverageBits_.store(
+            std::bit_cast<std::uint32_t>(coverage),
+            std::memory_order_relaxed);
         publishedGeneration_.store(generation, std::memory_order_relaxed);
         publishedTickMilliseconds_.store(
             tickMilliseconds,
@@ -1872,6 +1943,12 @@ namespace community_shaders::ibl
                             std::memory_order_relaxed));
                 }
             }
+            std::array<float, kEnvironmentCubeFaceCount> faceConfidence{};
+            for (std::size_t face = 0; face < faceConfidence.size(); ++face) {
+                faceConfidence[face] = std::bit_cast<float>(
+                    publishedFaceConfidenceBits_[face].load(
+                        std::memory_order_relaxed));
+            }
             const auto usable = publishedUsable_.load(
                 std::memory_order_relaxed);
             const auto generation = publishedGeneration_.load(
@@ -1885,6 +1962,7 @@ namespace community_shaders::ibl
                 result.latestSampleGeneration = generation;
                 result.latestSampleTickMilliseconds = tickMilliseconds;
                 result.latestDiffuseSH = coefficients;
+                result.latestDiffuseFaceConfidence = faceConfidence;
                 break;
             }
         }
@@ -1931,6 +2009,9 @@ namespace community_shaders::ibl
         device_.Reset();
         nextCadenceTickMilliseconds_ = 0;
         loggedFirstUsableDiffuseFit_ = false;
+        loggedFirstDiffuseApplication_ = false;
+        diffuseApplicationBaseline_ =
+            render::geometryHookSnapshot().diffuseAmbientPrepared;
         cadenceTicks_.store(0, std::memory_order_relaxed);
         diffuseFitsPublished_.store(0, std::memory_order_relaxed);
         diffuseFitsRejected_.store(0, std::memory_order_relaxed);

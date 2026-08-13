@@ -20,6 +20,15 @@
 
 namespace community_shaders::ibl
 {
+    struct DiffuseAmbientSample
+    {
+        DiffuseSH coefficients{};
+        std::array<float, kEnvironmentCubeFaceCount> cubeFaceConfidence{};
+        float coverage{};
+        float level{ 1.0f };
+        std::uint64_t generation{};
+    };
+
     struct RuntimeSnapshot
     {
         bool enabled{};
@@ -41,6 +50,8 @@ namespace community_shaders::ibl
         std::uint64_t latestSampleGeneration{};
         std::uint64_t latestSampleTickMilliseconds{};
         DiffuseSH latestDiffuseSH{};
+        std::array<float, kEnvironmentCubeFaceCount>
+            latestDiffuseFaceConfidence{};
     };
 
     class Runtime
@@ -85,8 +96,7 @@ namespace community_shaders::ibl
         // and diffuse feedback is suppressed on frames reserved for a new
         // reflection-free environment capture.
         [[nodiscard]] bool tryGetDiffuseAmbient(
-            DiffuseSH& coefficients,
-            float& level) const noexcept;
+            DiffuseAmbientSample& sample) const noexcept;
 
         // Render-thread only. The device/context are retained for the process
         // lifetime; no engine pointer is retained by this subsystem.
@@ -233,9 +243,15 @@ namespace community_shaders::ibl
         void consumeSceneRadianceProbeReadbacks() noexcept;
         void publishUsable(
             const DiffuseSH& coefficients,
+            const std::array<float, kEnvironmentCubeFaceCount>&
+                cubeFaceConfidence,
+            float coverage,
             std::uint64_t generation,
             std::uint64_t tickMilliseconds) noexcept;
         void publishUnavailable(
+            const std::array<float, kEnvironmentCubeFaceCount>&
+                cubeFaceConfidence,
+            float coverage,
             std::uint64_t generation,
             std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
@@ -274,6 +290,8 @@ namespace community_shaders::ibl
         bool reflectionFreeCaptureProductionReserved_{};
         std::uint64_t nextCadenceTickMilliseconds_{};
         bool loggedFirstUsableDiffuseFit_{};
+        bool loggedFirstDiffuseApplication_{};
+        std::uint64_t diffuseApplicationBaseline_{};
         bool loggedReflectionFreeCaptureFailure_{};
         bool loggedEnvironmentUpdateFailure_{};
         bool loggedFirstMaterialBind_{};
@@ -302,5 +320,7 @@ namespace community_shaders::ibl
         std::atomic_uint64_t publishedGeneration_{};
         std::atomic_uint64_t publishedTickMilliseconds_{};
         std::array<std::atomic_uint32_t, 12> publishedCoefficientBits_{};
+        std::array<std::atomic_uint32_t, kEnvironmentCubeFaceCount>
+            publishedFaceConfidenceBits_{};
     };
 }

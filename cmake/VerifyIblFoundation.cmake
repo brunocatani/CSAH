@@ -72,7 +72,8 @@ foreach(required IN ITEMS
     "onDFLightAmbientBind"
     "environmentUpdater_.consumeUpdate"
     "update.diffuseSHCoverage"
-    "publishUsable(update.diffuseSH"
+    "update.faceAverageValidity"
+    "publishUsable("
     "classifyCaptureProbeShader"
     "PSGetShaderResources"
     "PSGetConstantBuffers(12, 1"
@@ -494,7 +495,8 @@ foreach(required IN ITEMS
     "publishedUsable_"
     "publishUnavailable"
     "diffuseFitsPublished_"
-    "kMinimumDiffuseSHCoverage")
+    "update.diffuseSHState == DiffuseSHState::usable"
+    "publishedFaceConfidenceBits_")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -502,10 +504,18 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+string(FIND "${runtimeSource}" "kMinimumDiffuseSHCoverage" obsoleteCoverageGate)
+if(NOT obsoleteCoverageGate EQUAL -1)
+  message(FATAL_ERROR
+    "IBL usability-gate regression: obsolete global coverage threshold returned")
+endif()
+
 foreach(required IN ITEMS
     "#include \"Features/ibl/IblRuntime.h\""
     "ibl::Runtime::get().tryGetDiffuseAmbient"
     "ibl::buildDirectionalAmbientTransform"
+    "diffuseSample.cubeFaceConfidence"
+    "diffuseAmbientPrepared"
     "kVanillaDFLightGamma"
     "producerOwnershipReady.load(std::memory_order_acquire)")
   string(FIND "${geometryHookSource}" "${required}" found)

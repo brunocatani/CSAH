@@ -542,7 +542,9 @@
       document.getElementById("iblDiffuseState").textContent = !iblEnabled ?
         "MASTER DISABLED" :
         (!diffuseEnabled ? "VANILLA AMBIENT" :
-          (ibl.diffuseSHUsable ? "DYNAMIC AMBIENT ARMED" : "WAITING FOR SH FIT"));
+          (Number(ibl.diffuseAmbientPrepared || 0) > 0 ?
+            "DYNAMIC AMBIENT ACTIVE" :
+            (ibl.diffuseSHUsable ? "DYNAMIC AMBIENT ARMED" : "WAITING FOR SH FIT")));
 
       for (const control of controls) {
         const input = document.getElementById(control.key);
@@ -579,6 +581,7 @@
         metric("Effect binds", String(runtime.effectReplacementBinds || 0), runtime.effectReplacementBinds ? "good" : "wait"),
         metric("Diffuse IBL fit", ibl.diffuseSHUsable ? "READY" : "WAIT", ibl.diffuseSHUsable ? "good" : "wait"),
         metric("Diffuse coverage", `${(Number(ibl.diffuseSHCoverage || 0) * 100).toFixed(1)}%`, ibl.diffuseSHUsable ? "good" : "wait"),
+        metric("Diffuse transforms", String(ibl.diffuseAmbientPrepared || 0), ibl.diffuseAmbientPrepared ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")

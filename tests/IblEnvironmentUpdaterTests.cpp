@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -297,6 +298,14 @@ namespace
             summary.diffuseSHCoverage > 0.0f &&
                 community_shaders::ibl::validDiffuseSH(summary.diffuseSH),
             "validated environment did not produce a bounded diffuse SH fit");
+        const auto meanFaceValidity = std::accumulate(
+            summary.faceAverageValidity.begin(),
+            summary.faceAverageValidity.end(),
+            0.0f) /
+            summary.faceAverageValidity.size();
+        require(
+            std::abs(meanFaceValidity - summary.diffuseSHCoverage) < 1.0e-3f,
+            "face fallback confidence disagreed with SH solid-angle coverage");
         require(
             summary.peak > 0.49f && summary.peak < 0.51f,
             "stereo merge no longer averages both synthetic eyes");

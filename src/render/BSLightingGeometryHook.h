@@ -33,6 +33,10 @@ namespace community_shaders::render
         std::uint64_t otherDescriptors{};
         std::uint64_t ambientTransformCalls{};
         std::uint64_t ambientTransformPrepared{};
+        std::uint64_t diffuseAmbientPrepared{};
+        std::uint64_t latestDiffuseGeneration{};
+        float latestDiffuseCoverage{};
+        float latestDiffuseMaximumCoefficientDelta{};
         std::uint64_t ambientTransformPassThrough{};
         std::uint64_t directionalPowCalls{};
         std::uint64_t directionalPowModified{};

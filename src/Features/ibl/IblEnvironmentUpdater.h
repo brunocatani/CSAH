@@ -33,6 +33,7 @@ namespace community_shaders::ibl
         std::uint64_t generation{};
         Float3 average{};
         std::array<float, kEnvironmentCubeFaceCount> faceAverageLuminance{};
+        std::array<float, kEnvironmentCubeFaceCount> faceAverageValidity{};
         float peak{};
         float averageValidity{};
         std::uint32_t nonBlackSamples{};

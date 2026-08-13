@@ -194,6 +194,10 @@ namespace community_shaders::render
         std::atomic_uint64_t otherDescriptors{};
         std::atomic_uint64_t ambientTransformCalls{};
         std::atomic_uint64_t ambientTransformPrepared{};
+        std::atomic_uint64_t diffuseAmbientPrepared{};
+        std::atomic_uint64_t latestDiffuseGeneration{};
+        std::atomic_uint32_t latestDiffuseCoverageBits{};
+        std::atomic_uint32_t latestDiffuseMaximumCoefficientDeltaBits{};
         std::atomic_uint64_t ambientTransformPassThrough{};
         std::atomic_uint64_t directionalPowCalls{};
         std::atomic_uint64_t directionalPowModified{};
@@ -587,11 +591,9 @@ namespace community_shaders::render
                 desiredProducerEnabled.load(std::memory_order_acquire) &&
                 linear_lighting::Runtime::get().dFLightAmbientDescriptorReady(
                     activeDFLightDescriptor);
-            ibl::DiffuseSH diffuseSH{};
-            float diffuseLevel{};
+            ibl::DiffuseAmbientSample diffuseSample{};
             const auto diffuseActive = ibl::Runtime::get().tryGetDiffuseAmbient(
-                diffuseSH,
-                diffuseLevel);
+                diffuseSample);
             if (!linearActive && !diffuseActive) {
                 ambientTransformPassThrough.fetch_add(
                     1, std::memory_order_relaxed);
@@ -602,16 +604,19 @@ namespace community_shaders::render
                 sourceAmbientTransform.data(),
                 source,
                 sizeof(sourceAmbientTransform));
+            bool diffusePrepared{};
+            float diffuseMaximumCoefficientDelta{};
             if (diffuseActive) {
                 const auto shaderGamma = linearActive ?
                     std::bit_cast<float>(desiredAmbientGammaBits.load(
                         std::memory_order_relaxed)) :
                     linear_lighting::kVanillaDFLightGamma;
                 if (!ibl::buildDirectionalAmbientTransform(
-                        diffuseSH,
+                        diffuseSample.coefficients,
+                        diffuseSample.cubeFaceConfidence,
                         sourceAmbientTransform,
                         shaderGamma,
-                        diffuseLevel,
+                        diffuseSample.level,
                         scaledAmbientTransform)) {
                     if (!linearActive) {
                         invalidPowResults.fetch_add(
@@ -623,6 +628,17 @@ namespace community_shaders::render
                         return source;
                     }
                     scaledAmbientTransform = sourceAmbientTransform;
+                } else {
+                    diffusePrepared = true;
+                    for (std::size_t index = 0;
+                         index < scaledAmbientTransform.size();
+                         ++index) {
+                        diffuseMaximumCoefficientDelta = std::max(
+                            diffuseMaximumCoefficientDelta,
+                            std::abs(
+                                scaledAmbientTransform[index] -
+                                sourceAmbientTransform[index]));
+                    }
                 }
             } else {
                 scaledAmbientTransform = sourceAmbientTransform;
@@ -640,6 +656,19 @@ namespace community_shaders::render
                 linear_lighting::scaleDirectionalAmbientTransform(
                     scaledAmbientTransform,
                     scale);
+            }
+            if (diffusePrepared) {
+                latestDiffuseGeneration.store(
+                    diffuseSample.generation,
+                    std::memory_order_relaxed);
+                latestDiffuseCoverageBits.store(
+                    std::bit_cast<std::uint32_t>(diffuseSample.coverage),
+                    std::memory_order_relaxed);
+                latestDiffuseMaximumCoefficientDeltaBits.store(
+                    std::bit_cast<std::uint32_t>(
+                        diffuseMaximumCoefficientDelta),
+                    std::memory_order_relaxed);
+                diffuseAmbientPrepared.fetch_add(1, std::memory_order_relaxed);
             }
             ambientTransformPrepared.fetch_add(1, std::memory_order_release);
             return scaledAmbientTransform.data();
@@ -1295,6 +1324,15 @@ namespace community_shaders::render
                 ambientTransformCalls.load(std::memory_order_acquire),
             .ambientTransformPrepared =
                 ambientTransformPrepared.load(std::memory_order_relaxed),
+            .diffuseAmbientPrepared =
+                diffuseAmbientPrepared.load(std::memory_order_relaxed),
+            .latestDiffuseGeneration =
+                latestDiffuseGeneration.load(std::memory_order_relaxed),
+            .latestDiffuseCoverage = std::bit_cast<float>(
+                latestDiffuseCoverageBits.load(std::memory_order_relaxed)),
+            .latestDiffuseMaximumCoefficientDelta = std::bit_cast<float>(
+                latestDiffuseMaximumCoefficientDeltaBits.load(
+                    std::memory_order_relaxed)),
             .ambientTransformPassThrough =
                 ambientTransformPassThrough.load(std::memory_order_relaxed),
             .directionalPowCalls =

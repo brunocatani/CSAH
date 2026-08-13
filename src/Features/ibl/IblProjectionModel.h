@@ -216,6 +216,8 @@ namespace community_shaders::ibl
 
     [[nodiscard]] inline bool buildDirectionalAmbientTransform(
         const DiffuseSH& coefficients,
+        const std::array<float, kEnvironmentCubeFaceCount>&
+            cubeFaceConfidence,
         const std::array<float, 16>& vanillaTransform,
         float shaderGamma,
         float level,
@@ -236,20 +238,37 @@ namespace community_shaders::ibl
             Float3{ 0.0f, 0.0f, -1.0f },
             Float3{ 0.0f, 0.0f, 1.0f },
         };
-        std::array<Float3, directions.size()> directional{};
+        constexpr std::array<EnvironmentCubeFace, directions.size()>
+            directionFaces{
+                EnvironmentCubeFace::negativeX,
+                EnvironmentCubeFace::positiveX,
+                EnvironmentCubeFace::negativeY,
+                EnvironmentCubeFace::positiveY,
+                EnvironmentCubeFace::negativeZ,
+                EnvironmentCubeFace::positiveZ,
+            };
+        std::array<Float3, directions.size()> iblDirectional{};
+        std::array<Float3, directions.size()> vanillaEncoded{};
+        std::array<Float3, directions.size()> vanillaLinear{};
+        std::array<float, directions.size()> confidence{};
         Float3 iblAverage{};
+        Float3 vanillaAverage{};
+        float confidenceTotal{};
         for (std::size_t index = 0; index < directions.size(); ++index) {
-            directional[index] = evaluateDiffuseIrradiance(
+            const auto face = static_cast<std::size_t>(directionFaces[index]);
+            if (!std::isfinite(cubeFaceConfidence[face])) {
+                return false;
+            }
+            confidence[index] = std::clamp(
+                cubeFaceConfidence[face],
+                0.0f,
+                1.0f);
+            confidenceTotal += confidence[index];
+            iblDirectional[index] = evaluateDiffuseIrradiance(
                 coefficients,
                 directions[index]);
-            iblAverage.x += directional[index].x / directions.size();
-            iblAverage.y += directional[index].y / directions.size();
-            iblAverage.z += directional[index].z / directions.size();
-        }
-
-        Float3 vanillaAverage{};
-        for (const auto& direction : directions) {
-            const Float3 encoded{
+            const auto& direction = directions[index];
+            vanillaEncoded[index] = {
                 vanillaTransform[0] * direction.x +
                     vanillaTransform[4] * direction.y +
                     vanillaTransform[8] * direction.z +
@@ -263,16 +282,34 @@ namespace community_shaders::ibl
                     vanillaTransform[10] * direction.z +
                     vanillaTransform[14],
             };
-            vanillaAverage.x +=
-                std::pow(std::max(0.0f, encoded.x), shaderGamma) /
-                directions.size();
-            vanillaAverage.y +=
-                std::pow(std::max(0.0f, encoded.y), shaderGamma) /
-                directions.size();
-            vanillaAverage.z +=
-                std::pow(std::max(0.0f, encoded.z), shaderGamma) /
-                directions.size();
+            vanillaLinear[index] = {
+                std::pow(
+                    std::max(0.0f, vanillaEncoded[index].x),
+                    shaderGamma),
+                std::pow(
+                    std::max(0.0f, vanillaEncoded[index].y),
+                    shaderGamma),
+                std::pow(
+                    std::max(0.0f, vanillaEncoded[index].z),
+                    shaderGamma),
+            };
+            iblAverage.x += iblDirectional[index].x * confidence[index];
+            iblAverage.y += iblDirectional[index].y * confidence[index];
+            iblAverage.z += iblDirectional[index].z * confidence[index];
+            vanillaAverage.x += vanillaLinear[index].x * confidence[index];
+            vanillaAverage.y += vanillaLinear[index].y * confidence[index];
+            vanillaAverage.z += vanillaLinear[index].z * confidence[index];
         }
+        if (!(confidenceTotal > 1.0e-4f)) {
+            return false;
+        }
+        const auto inverseConfidence = 1.0f / confidenceTotal;
+        iblAverage.x *= inverseConfidence;
+        iblAverage.y *= inverseConfidence;
+        iblAverage.z *= inverseConfidence;
+        vanillaAverage.x *= inverseConfidence;
+        vanillaAverage.y *= inverseConfidence;
+        vanillaAverage.z *= inverseConfidence;
         constexpr Float3 kLuminance{ 0.2126f, 0.7152f, 0.0722f };
         const auto iblLuminance = iblAverage.x * kLuminance.x +
             iblAverage.y * kLuminance.y + iblAverage.z * kLuminance.z;
@@ -288,15 +325,42 @@ namespace community_shaders::ibl
             0.25f,
             4.0f) * level;
         const auto inverseGamma = 1.0f / shaderGamma;
-        for (auto& sample : directional) {
-            sample.x = std::pow(
-                std::max(0.0f, sample.x * brightnessMatch), inverseGamma);
-            sample.y = std::pow(
-                std::max(0.0f, sample.y * brightnessMatch), inverseGamma);
-            sample.z = std::pow(
-                std::max(0.0f, sample.z * brightnessMatch), inverseGamma);
+        std::array<Float3, directions.size()> directional{};
+        for (std::size_t index = 0; index < directional.size(); ++index) {
+            const Float3 iblEncoded{
+                std::pow(
+                    std::max(
+                        0.0f,
+                        iblDirectional[index].x * brightnessMatch),
+                    inverseGamma),
+                std::pow(
+                    std::max(
+                        0.0f,
+                        iblDirectional[index].y * brightnessMatch),
+                    inverseGamma),
+                std::pow(
+                    std::max(
+                        0.0f,
+                        iblDirectional[index].z * brightnessMatch),
+                    inverseGamma),
+            };
+            directional[index] = {
+                vanillaEncoded[index].x +
+                    (iblEncoded.x - vanillaEncoded[index].x) *
+                        confidence[index],
+                vanillaEncoded[index].y +
+                    (iblEncoded.y - vanillaEncoded[index].y) *
+                        confidence[index],
+                vanillaEncoded[index].z +
+                    (iblEncoded.z - vanillaEncoded[index].z) *
+                        confidence[index],
+            };
         }
 
+        // DFLight exposes one affine first-order ambient transform rather than
+        // a per-normal texture lookup. Reconstruct the least-squares transform
+        // from six confidence-blended cardinal targets: unsupported targets
+        // enter as vanilla, while supported targets enter as matched IBL.
         result = {};
         const auto writeAxis = [&result, &directional](
                                    std::size_t destination,
