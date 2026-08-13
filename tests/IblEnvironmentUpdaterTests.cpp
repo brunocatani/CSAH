@@ -1,5 +1,6 @@
 #include "Features/ibl/IblEnvironmentProvider.h"
 #include "Features/ibl/IblEnvironmentUpdater.h"
+#include "Features/ibl/IblSceneRadianceProbeModel.h"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -36,6 +37,11 @@ namespace
         float z{};
         float w{};
     };
+
+    constexpr std::uint32_t kR11Half = 15U << 6;
+    constexpr std::uint32_t kHalfRed = kR11Half;
+    constexpr std::uint32_t kHalfGreen = kR11Half << 11;
+    constexpr std::uint32_t kHalfBlue = (15U << 5) << 22;
 
     [[noreturn]] void fail(const std::string& message)
     {
@@ -104,16 +110,17 @@ namespace
     }
 
     [[nodiscard]] ComPtr<ID3D11ShaderResourceView> createPackedRadiance(
-        ID3D11Device& device)
+        ID3D11Device& device,
+        std::uint32_t leftPixel,
+        std::uint32_t rightPixel)
     {
         constexpr UINT width = 32;
         constexpr UINT height = 16;
-        constexpr std::uint32_t redOne = 15U << 6;
-        constexpr std::uint32_t blueOne = (15U << 5) << 22;
         std::array<std::uint32_t, width * height> pixels{};
         for (UINT y = 0; y < height; ++y) {
             for (UINT x = 0; x < width; ++x) {
-                pixels[y * width + x] = x < width / 2 ? redOne : blueOne;
+                pixels[y * width + x] =
+                    x < width / 2 ? leftPixel : rightPixel;
             }
         }
 
@@ -206,6 +213,78 @@ namespace
         return buffer;
     }
 
+    [[nodiscard]] community_shaders::ibl::Float3 readPublishedFaceCenter(
+        ID3D11Device& device,
+        ID3D11DeviceContext& context,
+        ID3D11ShaderResourceView* environment,
+        UINT face)
+    {
+        require(environment != nullptr, "published environment is null");
+        ComPtr<ID3D11Resource> resource;
+        environment->GetResource(&resource);
+        ComPtr<ID3D11Texture2D> texture;
+        require(
+            resource && SUCCEEDED(resource.As(&texture)) && texture,
+            "published environment is not a texture2D");
+        D3D11_TEXTURE2D_DESC sourceDescription{};
+        texture->GetDesc(&sourceDescription);
+        require(
+            face < sourceDescription.ArraySize &&
+                sourceDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT,
+            "published environment layout changed");
+
+        D3D11_TEXTURE2D_DESC stagingDescription{};
+        stagingDescription.Width = 1;
+        stagingDescription.Height = 1;
+        stagingDescription.MipLevels = 1;
+        stagingDescription.ArraySize = 1;
+        stagingDescription.Format = sourceDescription.Format;
+        stagingDescription.SampleDesc.Count = 1;
+        stagingDescription.Usage = D3D11_USAGE_STAGING;
+        stagingDescription.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;
+        requireSucceeded(
+            device.CreateTexture2D(
+                &stagingDescription,
+                nullptr,
+                &staging),
+            "CreateTexture2D(face center staging)");
+        const auto center = sourceDescription.Width / 2;
+        const D3D11_BOX sourceBox{
+            center,
+            center,
+            0,
+            center + 1,
+            center + 1,
+            1,
+        };
+        context.CopySubresourceRegion(
+            staging.Get(),
+            0,
+            0,
+            0,
+            0,
+            texture.Get(),
+            D3D11CalcSubresource(0, face, sourceDescription.MipLevels),
+            &sourceBox);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        requireSucceeded(
+            context.Map(
+                staging.Get(),
+                0,
+                D3D11_MAP_READ,
+                0,
+                &mapped),
+            "Map(face center staging)");
+        require(mapped.pData != nullptr, "face center staging map is null");
+        std::uint32_t packed{};
+        std::memcpy(&packed, mapped.pData, sizeof(packed));
+        context.Unmap(staging.Get(), 0);
+        const auto decoded =
+            community_shaders::ibl::decodeR11G11B10Float(packed);
+        return { decoded.red, decoded.green, decoded.blue };
+    }
+
     void run(const std::filesystem::path& root)
     {
         const auto bytecode = readFile(
@@ -239,7 +318,10 @@ namespace
                 16),
             "updater initialization failed");
 
-        const auto radiance = createPackedRadiance(*d3d.device.Get());
+        const auto radiance = createPackedRadiance(
+            *d3d.device.Get(),
+            kHalfRed,
+            kHalfBlue);
         const auto depth = createPackedDepth(*d3d.device.Get());
         const auto constants = createSceneConstants(*d3d.device.Get());
         require(
@@ -379,6 +461,65 @@ namespace
         require(
             provider.snapshot().publishedGeneration == 2,
             "history-backed pair was not atomically published");
+
+        const auto greenRadiance = createPackedRadiance(
+            *d3d.device.Get(),
+            kHalfGreen,
+            kHalfGreen);
+        require(
+            updater.dispatchUpdate(
+                d3d.context.Get(),
+                provider,
+                greenRadiance.Get(),
+                depth.Get(),
+                constants.Get(),
+                true),
+            "visible-direction stabilization update dispatch failed");
+        d3d.context->Flush();
+        const auto thirdDeadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        do {
+            result = updater.consumeUpdate(d3d.context.Get(), provider);
+            if (result == EnvironmentUpdateConsumeResult::pending) {
+                require(
+                    std::chrono::steady_clock::now() < thirdDeadline,
+                    "timed out waiting for visible-direction stabilization");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        } while (result == EnvironmentUpdateConsumeResult::pending);
+        require(
+            result == EnvironmentUpdateConsumeResult::completed,
+            "visible-direction stabilization did not complete");
+
+        const auto stabilized = updater.snapshot();
+        require(
+            stabilized.dispatches == 3 &&
+                stabilized.publishedUpdates == 3 &&
+                stabilized.completedReadbacks == 3 &&
+                stabilized.failedUpdates == 0,
+            "visible-direction stabilization counters changed");
+        require(
+            stabilized.average.y > 0.01F,
+            "new visible radiance did not enter temporal history");
+        const auto stabilizedPositiveZ = readPublishedFaceCenter(
+            *d3d.device.Get(),
+            *d3d.context.Get(),
+            provider.publishedEnvironment(),
+            4);
+        require(
+            stabilizedPositiveZ.x > 0.32F &&
+                stabilizedPositiveZ.x < 0.47F &&
+                stabilizedPositiveZ.y > 0.12F &&
+                stabilizedPositiveZ.y < 0.3F &&
+                stabilizedPositiveZ.z > 0.32F &&
+                stabilizedPositiveZ.z < 0.47F,
+            "visible direction snapped to the latest capture instead of blending its prior radiance: (" +
+                std::to_string(stabilizedPositiveZ.x) + ", " +
+                std::to_string(stabilizedPositiveZ.y) + ", " +
+                std::to_string(stabilizedPositiveZ.z) + ")");
+        require(
+            provider.snapshot().publishedGeneration == 3,
+            "stabilized radiance/validity pair was not atomically published");
     }
 }
 

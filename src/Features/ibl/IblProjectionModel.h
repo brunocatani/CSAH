@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <ranges>
 
@@ -17,6 +18,31 @@ namespace community_shaders::ibl
         black,
         usable,
     };
+
+    enum class DiffusePublicationAction
+    {
+        publish,
+        retain,
+        clear,
+    };
+
+    [[nodiscard]] constexpr DiffusePublicationAction
+        chooseDiffusePublicationAction(
+            DiffuseSHState candidateState,
+            bool publishedUsable,
+            std::uint64_t publishedSession,
+            std::uint64_t candidateSession) noexcept
+    {
+        if (candidateState == DiffuseSHState::usable &&
+            candidateSession != 0) {
+            return DiffusePublicationAction::publish;
+        }
+        if (candidateState == DiffuseSHState::invalid && publishedUsable &&
+            candidateSession != 0 && publishedSession == candidateSession) {
+            return DiffusePublicationAction::retain;
+        }
+        return DiffusePublicationAction::clear;
+    }
 
     struct DiffuseSH
     {

@@ -109,7 +109,8 @@ namespace community_shaders::ibl
             std::uint32_t targetExtent{};
             std::uint32_t historyAvailable{};
             float historyDecay{};
-            std::array<std::uint32_t, 3> reserved{};
+            float historyBlend{};
+            std::array<std::uint32_t, 2> reserved{};
         };
 
         static_assert(sizeof(UpdateConstants) == 32);

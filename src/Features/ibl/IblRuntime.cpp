@@ -461,9 +461,7 @@ namespace community_shaders::ibl
     {
         if (!enabled_.load(std::memory_order_acquire) ||
             !diffuseEnabled_.load(std::memory_order_acquire) ||
-            !resourcesReady_.load(std::memory_order_acquire) ||
-            GetTickCount64() >= nextEnvironmentCaptureTickMilliseconds_.load(
-                                    std::memory_order_acquire)) {
+            !resourcesReady_.load(std::memory_order_acquire)) {
             return false;
         }
 
@@ -496,6 +494,8 @@ namespace community_shaders::ibl
                 std::memory_order_relaxed);
             const auto generation = publishedGeneration_.load(
                 std::memory_order_relaxed);
+            const auto session = publishedDiffuseSessionId_.load(
+                std::memory_order_relaxed);
             const auto after = publishedSequence_.load(
                 std::memory_order_acquire);
             if (before != after || (after & 1u) != 0) {
@@ -503,7 +503,11 @@ namespace community_shaders::ibl
             }
             const auto candidateLevel = std::bit_cast<float>(
                 diffuseLevelBits_.load(std::memory_order_acquire));
-            if (!usable || !validDiffuseSH(candidate) ||
+            const auto requestedSession =
+                requestedCaptureProbeSessionId_.load(
+                    std::memory_order_acquire);
+            if (!usable || session == 0 || session != requestedSession ||
+                !validDiffuseSH(candidate) ||
                 !std::isfinite(coverage) || coverage < 0.0f ||
                 !std::ranges::all_of(
                     faceConfidence,
@@ -1789,14 +1793,19 @@ namespace community_shaders::ibl
             publishedEnvironmentSessionId_ =
                 pendingEnvironmentUpdateSessionId_;
             pendingEnvironmentUpdateSessionId_ = 0;
-            const auto usableDiffuse =
-                update.diffuseSHState == DiffuseSHState::usable;
-            if (usableDiffuse) {
+            const auto publicationAction = chooseDiffusePublicationAction(
+                update.diffuseSHState,
+                publishedUsable_.load(std::memory_order_relaxed),
+                publishedDiffuseSessionId_.load(
+                    std::memory_order_relaxed),
+                publishedEnvironmentSessionId_);
+            if (publicationAction == DiffusePublicationAction::publish) {
                 publishUsable(
                     update.diffuseSH,
                     update.faceAverageValidity,
                     update.diffuseSHCoverage,
                     update.generation,
+                    publishedEnvironmentSessionId_,
                     now);
                 diffuseFitsPublished_.fetch_add(
                     1,
@@ -1817,12 +1826,19 @@ namespace community_shaders::ibl
                         update.diffuseSH.rgb[1][0],
                         update.diffuseSH.rgb[2][0]);
                 }
-            } else {
+            } else if (
+                publicationAction == DiffusePublicationAction::clear) {
                 publishUnavailable(
                     update.faceAverageValidity,
                     update.diffuseSHCoverage,
                     update.generation,
+                    publishedEnvironmentSessionId_,
                     now);
+                diffuseFitsRejected_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            } else if (
+                publicationAction == DiffusePublicationAction::retain) {
                 diffuseFitsRejected_.fetch_add(
                     1,
                     std::memory_order_relaxed);
@@ -1876,7 +1892,7 @@ namespace community_shaders::ibl
                 diffuseApplicationBaseline_) {
                 loggedFirstDiffuseApplication_ = true;
                 logging::info(
-                    "Diffuse IBL first ambient transform applied outside the capture-feedback window: generation={}, solid-angle coverage={}, maximum coefficient delta={}.",
+                    "Diffuse IBL first continuous ambient transform applied: generation={}, solid-angle coverage={}, maximum coefficient delta={}.",
                     geometry.latestDiffuseGeneration,
                     geometry.latestDiffuseCoverage,
                     geometry.latestDiffuseMaximumCoefficientDelta);
@@ -1904,6 +1920,7 @@ namespace community_shaders::ibl
             cubeFaceConfidence,
         float coverage,
         std::uint64_t generation,
+        std::uint64_t session,
         std::uint64_t tickMilliseconds) noexcept
     {
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
@@ -1924,6 +1941,9 @@ namespace community_shaders::ibl
             std::bit_cast<std::uint32_t>(coverage),
             std::memory_order_relaxed);
         publishedGeneration_.store(generation, std::memory_order_relaxed);
+        publishedDiffuseSessionId_.store(
+            session,
+            std::memory_order_relaxed);
         publishedTickMilliseconds_.store(
             tickMilliseconds,
             std::memory_order_relaxed);
@@ -1936,6 +1956,7 @@ namespace community_shaders::ibl
             cubeFaceConfidence,
         float coverage,
         std::uint64_t generation,
+        std::uint64_t session,
         std::uint64_t tickMilliseconds) noexcept
     {
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
@@ -1948,6 +1969,9 @@ namespace community_shaders::ibl
             std::bit_cast<std::uint32_t>(coverage),
             std::memory_order_relaxed);
         publishedGeneration_.store(generation, std::memory_order_relaxed);
+        publishedDiffuseSessionId_.store(
+            session,
+            std::memory_order_relaxed);
         publishedTickMilliseconds_.store(
             tickMilliseconds,
             std::memory_order_relaxed);
@@ -2013,12 +2037,16 @@ namespace community_shaders::ibl
                 std::memory_order_relaxed);
             const auto generation = publishedGeneration_.load(
                 std::memory_order_relaxed);
+            const auto session = publishedDiffuseSessionId_.load(
+                std::memory_order_relaxed);
             const auto tickMilliseconds = publishedTickMilliseconds_.load(
                 std::memory_order_relaxed);
             const auto after = publishedSequence_.load(
                 std::memory_order_acquire);
             if (before == after && (after & 1u) == 0) {
-                result.diffuseSHUsable = usable;
+                result.diffuseSHUsable = usable && session != 0 &&
+                    session == requestedCaptureProbeSessionId_.load(
+                                   std::memory_order_acquire);
                 result.latestSampleGeneration = generation;
                 result.latestSampleTickMilliseconds = tickMilliseconds;
                 result.latestDiffuseSH = coefficients;
@@ -2105,6 +2133,7 @@ namespace community_shaders::ibl
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);
+        publishedDiffuseSessionId_.store(0, std::memory_order_relaxed);
         publishedTickMilliseconds_.store(0, std::memory_order_relaxed);
         publishedSequence_.fetch_add(1, std::memory_order_release);
     }

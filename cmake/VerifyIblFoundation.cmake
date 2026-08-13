@@ -167,6 +167,9 @@ foreach(required IN ITEMS
     "tryGetDiffuseAmbient"
     "!enabled_.load(std::memory_order_acquire)"
     "publishedEnvironmentSessionId_"
+    "publishedDiffuseSessionId_"
+    "chooseDiffusePublicationAction"
+    "DiffusePublicationAction::retain"
     "kEnvironmentCaptureCadenceMilliseconds = 1000"
     "synchronizeWorldCaptureSession"
     "pendingEnvironmentUpdateSessionId_")
@@ -176,6 +179,33 @@ foreach(required IN ITEMS
       "IBL runtime-control regression: missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${runtimeSource}"
+  "bool Runtime::tryGetDiffuseAmbient(" diffuseReadFunction)
+if(diffuseReadFunction EQUAL -1)
+  message(FATAL_ERROR
+    "IBL diffuse publication regression: hot-path read function is missing")
+endif()
+string(SUBSTRING "${runtimeSource}" ${diffuseReadFunction} -1 diffuseReadTail)
+string(FIND "${diffuseReadTail}"
+  "void Runtime::onDeviceCreated(" diffuseReadEnd)
+if(diffuseReadEnd EQUAL -1)
+  message(FATAL_ERROR
+    "IBL diffuse publication regression: hot-path read boundary changed")
+endif()
+string(SUBSTRING "${diffuseReadTail}" 0 ${diffuseReadEnd} diffuseReadSource)
+string(FIND "${diffuseReadSource}"
+  "nextEnvironmentCaptureTickMilliseconds_" captureDeadlineInDiffuseRead)
+if(NOT captureDeadlineInDiffuseRead EQUAL -1)
+  message(FATAL_ERROR
+    "IBL diffuse publication regression: visible DFLight is disabled for a capture frame")
+endif()
+string(FIND "${diffuseReadSource}"
+  "session != requestedSession" diffuseSessionGate)
+if(diffuseSessionGate EQUAL -1)
+  message(FATAL_ERROR
+    "IBL diffuse publication regression: current-session gate is missing")
+endif()
 
 foreach(required IN ITEMS
     "kSection = L\"ImageBasedLighting\""
@@ -301,7 +331,11 @@ foreach(required IN ITEMS
     "63u + eye * 4u"
     "HistoryAvailable"
     "HistoryDecay"
+    "HistoryBlend"
     "retainedValidity"
+    "historyWeight"
+    "currentWeight"
+    "blendedRadiance"
     "float2(0.5f, -0.5f)"
     "dispatchId.z >= 6u"
     "numthreads(8, 8, 1)")
@@ -552,7 +586,7 @@ foreach(required IN ITEMS
     "publishedUsable_"
     "publishUnavailable"
     "diffuseFitsPublished_"
-    "update.diffuseSHState == DiffuseSHState::usable"
+    "publicationAction == DiffusePublicationAction::publish"
     "publishedFaceConfidenceBits_")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)

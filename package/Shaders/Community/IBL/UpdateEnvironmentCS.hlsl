@@ -1,7 +1,8 @@
 // FO4VR stereo environment update. The shader projects one shared
 // world-space cube into both halves of the exact packed DFComposite
-// radiance/depth pair, then retains bounded validity-weighted history for
-// directions outside the current stereo frusta.
+// radiance/depth pair, then retains bounded validity-weighted history both
+// inside and outside the current stereo frusta. Visible-direction blending
+// prevents once-per-capture radiance steps while preserving scene response.
 
 Texture2D<float3> ReflectionFreeRadiance : register(t0);
 Texture2D<float> SceneDepth : register(t1);
@@ -17,7 +18,8 @@ cbuffer EnvironmentUpdateConstants : register(b11)
     uint TargetExtent;
     uint HistoryAvailable;
     float HistoryDecay;
-    uint3 Reserved;
+    float HistoryBlend;
+    uint2 Reserved;
 };
 
 // The exact FO4VR DFComposite draw binds an 85-float4 buffer at b12. Local
@@ -158,16 +160,23 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     const float previousValidity = HistoryAvailable != 0u ?
         saturate(PreviousValidity.SampleLevel(
             LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
-    const float retainedValidity = previousValidity *
-        saturate(HistoryDecay) * (1.0f - currentValidity);
+    const float retainedValidity = previousValidity * saturate(HistoryDecay);
     const float combinedValidity = saturate(
-        currentValidity + retainedValidity);
+        currentValidity + retainedValidity * (1.0f - currentValidity));
     const float3 previousRadiance = retainedValidity > 0.0f ?
         max(0.0f, PreviousEnvironment.SampleLevel(
             LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+    const float historyBlend = saturate(HistoryBlend);
+    const float historyWeight = retainedValidity *
+        (currentValidity > 0.0f ? historyBlend : 1.0f);
+    const float currentWeight = currentValidity *
+        (historyWeight > 0.0f ? 1.0f - historyBlend : 1.0f);
+    const float totalBlendWeight = currentWeight + historyWeight;
+    const float3 blendedRadiance = totalBlendWeight > 0.0f ?
+        (normalizedRadiance * currentWeight +
+            previousRadiance * historyWeight) / totalBlendWeight : 0.0f;
     const float3 combinedPremultiplied =
-        normalizedRadiance * currentValidity +
-        previousRadiance * retainedValidity;
+        blendedRadiance * combinedValidity;
     // Store premultiplied radiance so cube filtering across validity edges
     // cannot darken or amplify the normalized published result.
     EnvironmentMip[dispatchId] = max(0.0f, combinedPremultiplied);

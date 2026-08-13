@@ -20,6 +20,8 @@ namespace community_shaders::ibl
         constexpr UINT kThreadGroupExtent = 8;
         constexpr float kNonBlackThreshold = 1.0e-5f;
         constexpr float kCoveredThreshold = 1.0e-4f;
+        constexpr float kHistoryDecay = 0.98F;
+        constexpr float kVisibleDirectionHistoryBlend = 0.8F;
 
         [[nodiscard]] bool sameDevice(
             ID3D11DeviceChild* child,
@@ -378,7 +380,8 @@ namespace community_shaders::ibl
             sourceDescription.Height,
             resources_.extent,
             usePublishedHistory ? 1U : 0U,
-            0.98F,
+            kHistoryDecay,
+            kVisibleDirectionHistoryBlend,
             {},
         };
         context->UpdateSubresource(

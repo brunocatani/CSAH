@@ -21,7 +21,9 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
+    using community_shaders::ibl::DiffusePublicationAction;
     using community_shaders::ibl::DiffuseSH;
+    using community_shaders::ibl::DiffuseSHState;
     using community_shaders::ibl::Float3;
 
     struct Float4
@@ -534,6 +536,47 @@ namespace
             "first-order fallback fit favored an unsupported direction");
     }
 
+    void verifyDiffusePublicationPolicy()
+    {
+        using community_shaders::ibl::chooseDiffusePublicationAction;
+
+        require(
+            chooseDiffusePublicationAction(
+                DiffuseSHState::usable,
+                false,
+                0,
+                7) == DiffusePublicationAction::publish,
+            "usable current-session fit was not published");
+        require(
+            chooseDiffusePublicationAction(
+                DiffuseSHState::usable,
+                false,
+                0,
+                0) == DiffusePublicationAction::clear,
+            "sessionless fit was published");
+        require(
+            chooseDiffusePublicationAction(
+                DiffuseSHState::invalid,
+                true,
+                7,
+                7) == DiffusePublicationAction::retain,
+            "transient same-session invalid fit discarded good diffuse IBL");
+        require(
+            chooseDiffusePublicationAction(
+                DiffuseSHState::invalid,
+                true,
+                6,
+                7) == DiffusePublicationAction::clear,
+            "stale-session diffuse fit survived a world transition");
+        require(
+            chooseDiffusePublicationAction(
+                DiffuseSHState::black,
+                true,
+                7,
+                7) == DiffusePublicationAction::clear,
+            "valid black environment retained stale diffuse radiance");
+    }
+
     void run(const std::filesystem::path& root)
     {
         const auto bytecode = readFile(
@@ -585,6 +628,7 @@ namespace
         }
         verifyValidityAwareFit();
         verifyAmbientTransform(projected);
+        verifyDiffusePublicationPolicy();
 
         auto invalid = projected;
         invalid.rgb[1][2] = std::numeric_limits<float>::quiet_NaN();

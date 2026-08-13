@@ -92,9 +92,9 @@ namespace community_shaders::ibl
         void setDiffuseLevel(float level) noexcept;
         void applySettings(const Settings& settings) noexcept;
 
-        // Allocation-free DFLight hot-path read. Publication is seqlocked,
-        // and diffuse feedback is suppressed on frames reserved for a new
-        // reflection-free environment capture.
+        // Allocation-free DFLight hot-path read. Publication is seqlocked and
+        // valid only for the current world capture session. Environment
+        // refreshes never disable diffuse IBL in the visible scene.
         [[nodiscard]] bool tryGetDiffuseAmbient(
             DiffuseAmbientSample& sample) const noexcept;
 
@@ -265,12 +265,14 @@ namespace community_shaders::ibl
                 cubeFaceConfidence,
             float coverage,
             std::uint64_t generation,
+            std::uint64_t session,
             std::uint64_t tickMilliseconds) noexcept;
         void publishUnavailable(
             const std::array<float, kEnvironmentCubeFaceCount>&
                 cubeFaceConfidence,
             float coverage,
             std::uint64_t generation,
+            std::uint64_t session,
             std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
         [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
@@ -337,6 +339,7 @@ namespace community_shaders::ibl
         std::atomic_uint64_t publishedSequence_{};
         std::atomic_bool publishedUsable_{};
         std::atomic_uint64_t publishedGeneration_{};
+        std::atomic_uint64_t publishedDiffuseSessionId_{};
         std::atomic_uint64_t publishedTickMilliseconds_{};
         std::array<std::atomic_uint32_t, 12> publishedCoefficientBits_{};
         std::array<std::atomic_uint32_t, kEnvironmentCubeFaceCount>
