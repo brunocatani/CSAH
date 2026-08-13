@@ -232,6 +232,12 @@ set(IBL_MATERIAL_DXBC_TRANSFORM
   "${ROOT_DIR}/tools/dxbc_transform.py")
 set(IBL_MATERIAL_GENERATED_CONTRACTS
   "${SOURCE_DIR}/Features/ibl/GeneratedIblMaterialContracts.inl")
+set(COMPLEX_MATERIAL_PRODUCER_MODEL
+  "${SOURCE_DIR}/Features/complex_materials/ComplexMaterialProducerModel.h")
+set(COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR
+  "${ROOT_DIR}/tools/generate_complex_material_producer_contracts.py")
+set(COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/complex_materials/GeneratedComplexMaterialProducerContracts.inl")
 set(IBL_MATERIAL_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/IBL/IblMaterialBlendTemplate.hlsl")
 set_source_files_properties(
@@ -306,6 +312,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
+  "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
+  "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
   "${IBL_MATERIAL_SHADER_SOURCE}"
   ${IBL_MATERIAL_SHADER_ASSETS}
   ${IBL_MATERIAL_VERIFIED_ASSETS}
@@ -475,6 +484,15 @@ add_custom_target(VerifyIblMaterialContracts ALL
     --output "${IBL_MATERIAL_GENERATED_CONTRACTS}"
     --check
   COMMENT "Verifying exact DFComposite IBL material contracts"
+  VERBATIM)
+
+add_custom_target(VerifyComplexMaterialProducerContracts ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --output "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
+    --check
+  COMMENT "Verifying exact FO4VR complex-material producer contracts"
   VERBATIM)
 
 add_custom_target(VerifyLinearLightingConstantScope ALL
@@ -720,6 +738,9 @@ add_library(${PROJECT_NAME} SHARED
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
+  "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
+  "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
   "${IBL_MATERIAL_SHADER_SOURCE}"
   ${IBL_MATERIAL_SHADER_ASSETS}
   ${IBL_MATERIAL_VERIFIED_ASSETS}
@@ -762,6 +783,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyIblFoundation
   VerifyIblCaptureProbeContracts
   VerifyIblMaterialContracts
+  VerifyComplexMaterialProducerContracts
   VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
@@ -933,6 +955,25 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.FixedShaderBindingLookup
     COMMAND FO4VRCommunityShadersFixedShaderBindingLookupTests)
 
+  add_executable(FO4VRCommunityShadersComplexMaterialProducerModelTests
+    "${ROOT_DIR}/tests/ComplexMaterialProducerModelTests.cpp"
+    "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
+    "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}")
+  target_compile_features(
+    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerModel
+    COMMAND FO4VRCommunityShadersComplexMaterialProducerModelTests)
+
+  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerGenerator
+    COMMAND "${Python3_EXECUTABLE}"
+      "${ROOT_DIR}/tests/test_generate_complex_material_producer_contracts.py")
+
   add_test(NAME FO4VRCommunityShaders.LoaderSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLOADER_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake'")
@@ -973,6 +1014,13 @@ if(BUILD_FO4VR_CS_TESTS)
       "${IBL_MATERIAL_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+      --check)
+
+  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerContracts
+    COMMAND "${Python3_EXECUTABLE}"
+      "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
+      --root "${ROOT_DIR}"
+      --output "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
       --check)
 
   add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource
