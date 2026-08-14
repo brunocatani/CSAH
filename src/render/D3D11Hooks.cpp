@@ -1143,13 +1143,39 @@ namespace community_shaders::render
             preserveActiveIblCaptureProbeDraw(context);
         }
 
-        [[nodiscard]] contact_shadows::ScopedConstants
-        scopeActiveContactShadowConstants(
-            ID3D11DeviceContext* context) noexcept
+        template <class Draw>
+        void issueDrawWithContactShadows(
+            ID3D11DeviceContext* context,
+            Draw&& draw) noexcept
         {
-            return contact_shadows::Runtime::get().scopeConstants(
+            if (!activeContactShadowBinding) {
+                draw();
+                return;
+            }
+            auto& runtime = contact_shadows::Runtime::get();
+            const auto bindings = runtime.scopeDraw(
                 context,
                 activeContactShadowBinding);
+            if (bindings.active()) {
+                draw();
+                return;
+            }
+
+            runtime.recordDrawFallback();
+            if (!originalPSSetShader) {
+                return;
+            }
+            originalPSSetShader(
+                context,
+                activeContactShadowBinding.original,
+                nullptr,
+                0);
+            draw();
+            originalPSSetShader(
+                context,
+                activeContactShadowBinding.replacement,
+                nullptr,
+                0);
         }
 
         [[nodiscard]] void** findMainModuleImport(
@@ -1393,8 +1419,6 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto contactShadowConstants =
-                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
@@ -1403,12 +1427,14 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexed) {
-                issueDrawWithIblMaterial(context, [&]() noexcept {
-                    originalDrawIndexed(
-                        context,
-                        indexCount,
-                        startIndexLocation,
-                        baseVertexLocation);
+                issueDrawWithContactShadows(context, [&]() noexcept {
+                    issueDrawWithIblMaterial(context, [&]() noexcept {
+                        originalDrawIndexed(
+                            context,
+                            indexCount,
+                            startIndexLocation,
+                            baseVertexLocation);
+                    });
                 });
             }
         }
@@ -1427,16 +1453,16 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto contactShadowConstants =
-                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
                 recordQualificationDraw(context);
             }
             if (originalDraw) {
-                issueDrawWithIblMaterial(context, [&]() noexcept {
-                    originalDraw(context, vertexCount, startVertexLocation);
+                issueDrawWithContactShadows(context, [&]() noexcept {
+                    issueDrawWithIblMaterial(context, [&]() noexcept {
+                        originalDraw(context, vertexCount, startVertexLocation);
+                    });
                 });
             }
         }
@@ -1464,8 +1490,6 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto contactShadowConstants =
-                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
@@ -1474,14 +1498,16 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexedInstanced) {
-                issueDrawWithIblMaterial(context, [&]() noexcept {
-                    originalDrawIndexedInstanced(
-                        context,
-                        indexCountPerInstance,
-                        instanceCount,
-                        startIndexLocation,
-                        baseVertexLocation,
-                        startInstanceLocation);
+                issueDrawWithContactShadows(context, [&]() noexcept {
+                    issueDrawWithIblMaterial(context, [&]() noexcept {
+                        originalDrawIndexedInstanced(
+                            context,
+                            indexCountPerInstance,
+                            instanceCount,
+                            startIndexLocation,
+                            baseVertexLocation,
+                            startInstanceLocation);
+                    });
                 });
             }
         }
@@ -1507,8 +1533,6 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
-            const auto contactShadowConstants =
-                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
@@ -1517,13 +1541,15 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawInstanced) {
-                issueDrawWithIblMaterial(context, [&]() noexcept {
-                    originalDrawInstanced(
-                        context,
-                        vertexCountPerInstance,
-                        instanceCount,
-                        startVertexLocation,
-                        startInstanceLocation);
+                issueDrawWithContactShadows(context, [&]() noexcept {
+                    issueDrawWithIblMaterial(context, [&]() noexcept {
+                        originalDrawInstanced(
+                            context,
+                            vertexCountPerInstance,
+                            instanceCount,
+                            startVertexLocation,
+                            startInstanceLocation);
+                    });
                 });
             }
         }

@@ -1,4 +1,4 @@
-#include "Features/ibl/IblComputeStateScope.h"
+#include "render/ComputeStateScope.h"
 #include "Features/ibl/IblEnvironmentProvider.h"
 #include "Features/ibl/IblProviderModel.h"
 
@@ -17,12 +17,12 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::ComputeStateFootprint;
+    using community_shaders::render::ComputeStateFootprint;
     using community_shaders::ibl::EnvironmentCubeFace;
     using community_shaders::ibl::EnvironmentProvider;
     using community_shaders::ibl::EnvironmentProviderState;
     using community_shaders::ibl::EnvironmentUpdateCoverage;
-    using community_shaders::ibl::ScopedComputeState;
+    using community_shaders::render::ScopedComputeState;
 
     [[noreturn]] void fail(const std::string& message)
     {

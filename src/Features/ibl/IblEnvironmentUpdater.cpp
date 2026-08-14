@@ -1,6 +1,6 @@
 #include "Features/ibl/IblEnvironmentUpdater.h"
 
-#include "Features/ibl/IblComputeStateScope.h"
+#include "render/ComputeStateScope.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
 
 #include <algorithm>
@@ -343,7 +343,7 @@ namespace community_shaders::ibl
             return false;
         }
 
-        ScopedComputeState restore(
+        render::ScopedComputeState restore(
             context,
             {
                 .firstShaderResource = 0,

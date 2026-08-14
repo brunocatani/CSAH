@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -39,9 +40,11 @@ namespace
 int main(int argumentCount, char** arguments)
 {
     try {
-        require(argumentCount == 2, "expected generated shader argument");
+        require(argumentCount == 3, "expected generated pixel and compute shaders");
         const auto path = std::filesystem::path(arguments[1]);
         const auto bytes = readBytes(path);
+        const auto computePath = std::filesystem::path(arguments[2]);
+        const auto computeBytes = readBytes(computePath);
         require(
             bytes.size() >= 20 && bytes[0] == 'D' && bytes[1] == 'X' &&
                 bytes[2] == 'B' && bytes[3] == 'C',
@@ -63,7 +66,6 @@ int main(int argumentCount, char** arguments)
         require(
             shaderDescription.OutputParameters == 2,
             "directional DFLight must retain both render-target outputs");
-
         ComPtr<ID3DBlob> disassembly;
         require(
             SUCCEEDED(D3DDisassemble(
@@ -79,15 +81,19 @@ int main(int argumentCount, char** arguments)
             disassembly->GetBufferSize());
         require(
             assembly.contains(
-                "dcl_constantbuffer CB13[3], immediateIndexed"),
+                "dcl_constantbuffer CB13[1], immediateIndexed"),
             "Contact Shadows settings buffer must remain at b13");
         require(
             assembly.contains(
-                "dcl_resource_texture2d (float,float,float,float) t3"),
-            "Contact Shadows depth input must retain native t3");
+                "dcl_resource_texture2d (float,float,float,float) t46"),
+            "Contact Shadows mask input must remain at t46");
         require(
-            assembly.contains("mul r1.xyz, r1.xyzx, r20.x") &&
-                assembly.contains("mul r0.xyz, r0.xyzx, r20.x"),
+            std::regex_search(
+                assembly,
+                std::regex(R"(mul r1\.xyz, r1\.xyzx, r[0-9]+\.[xyzw])")) &&
+                std::regex_search(
+                    assembly,
+                    std::regex(R"(mul r0\.xyz, r0\.xyzx, r[0-9]+\.[xyzw])")),
             "visibility must modulate both directional DFLight outputs");
         std::istringstream lines(assembly);
         std::string line;
@@ -131,9 +137,48 @@ int main(int argumentCount, char** arguments)
                     &shader)) &&
                 shader,
             "WARP rejected generated Contact Shadows DFLight shader");
+        require(
+            computeBytes.size() >= 20 && computeBytes[0] == 'D' &&
+                computeBytes[1] == 'X' && computeBytes[2] == 'B' &&
+                computeBytes[3] == 'C',
+            "generated Contact Shadows mask shader is not DXBC");
+        ComPtr<ID3D11ShaderReflection> computeReflection;
+        require(
+            SUCCEEDED(D3DReflect(
+                computeBytes.data(),
+                computeBytes.size(),
+                __uuidof(ID3D11ShaderReflection),
+                reinterpret_cast<void**>(
+                    computeReflection.GetAddressOf()))) &&
+                computeReflection,
+            "D3DReflect rejected Contact Shadows mask compute shader");
+        D3D11_SHADER_DESC computeDescription{};
+        require(
+            SUCCEEDED(computeReflection->GetDesc(&computeDescription)) &&
+                computeDescription.Version != 0,
+            "could not inspect Contact Shadows mask compute shader");
+        UINT threadWidth{};
+        UINT threadHeight{};
+        UINT threadDepth{};
+        computeReflection->GetThreadGroupSize(
+            &threadWidth,
+            &threadHeight,
+            &threadDepth);
+        require(
+            threadWidth == 8 && threadHeight == 8 && threadDepth == 1,
+            "Contact Shadows mask compute group must remain 8x8x1");
+        ComPtr<ID3D11ComputeShader> computeShader;
+        require(
+            SUCCEEDED(device->CreateComputeShader(
+                computeBytes.data(),
+                computeBytes.size(),
+                nullptr,
+                &computeShader)) &&
+                computeShader,
+            "WARP rejected generated Contact Shadows mask compute shader");
 
         std::cout
-            << "FO4VR Contact Shadows DFLight bytecode accepted by disassembly, reflection, and WARP.\n";
+            << "FO4VR Contact Shadows mask and DFLight bytecode accepted by reflection, disassembly, and WARP.\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

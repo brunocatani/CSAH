@@ -628,7 +628,7 @@ namespace community_shaders::ui
                 (static_cast<std::uint64_t>(iblRuntime.diffuseEnabled) << 55) ^
                 (iblRuntime.diffuseFitsPublished << 56) ^
                 (contactRuntime.replacementBinds << 57) ^
-                (contactRuntime.constantScopes << 58) ^
+                (contactRuntime.maskDispatches << 58) ^
                 (static_cast<std::uint64_t>(contactRuntime.settings.enabled)
                     << 59);
         }
@@ -712,6 +712,8 @@ namespace community_shaders::ui
                             contactRuntime.matchingShaders },
                         { "replacementBinds",
                             contactRuntime.replacementBinds },
+                        { "maskDispatches", contactRuntime.maskDispatches },
+                        { "drawFallbacks", contactRuntime.drawFallbacks },
                         { "failures", contactRuntime.failures },
                     } },
                 { "coverage",

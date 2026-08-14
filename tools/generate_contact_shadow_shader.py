@@ -9,9 +9,11 @@ from pathlib import Path
 import census_linear_lighting_fxp as census
 from dxbc_transform import (
     OPCODE_DCL_CONSTANT_BUFFER,
+    OPCODE_DCL_RESOURCE,
     OPCODE_RET,
     OPERAND_CONSTANT_BUFFER,
     OPERAND_OUTPUT,
+    OPERAND_RESOURCE,
     OPERAND_TEMP,
     DxbcChunk,
     TransformError as ContractError,
@@ -28,6 +30,7 @@ from dxbc_transform import (
 EXPECTED_IDENTITY = (26152, "12280787d2a5110c820f433751c84648")
 EXPECTED_ALIAS_KEYS = {0x01200202, 0x01200282, 0x11200202}
 CONTACT_CONSTANT_SLOT = 13
+CONTACT_MASK_SLOT = 46
 MUL_OPCODE = 0x38
 DIV_OPCODE = 0x0E
 
@@ -40,6 +43,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--fxc", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--header", type=Path, required=True)
+    parser.add_argument("--compute-binary", type=Path, required=True)
+    parser.add_argument("--compute-header", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -107,11 +112,9 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB13[3], immediateIndexed",
-        "dcl_resource_texture2d (float,float,float,float) t3",
-        "dcl_sampler s0, mode_default",
+        "dcl_constantbuffer CB13[1], immediateIndexed",
+        "dcl_resource_texture2d (float,float,float,float) t46",
         "dcl_input_ps_siv linear noperspective v0.xy, position",
-        "dcl_input_ps constant v1.x",
     ):
         if required not in text:
             raise ContractError(
@@ -144,22 +147,34 @@ def replace_instruction_operands(
     return result
 
 
-def template_contract(template: bytes) -> tuple[list[int], list[list[int]], int]:
+def template_contract(
+    template: bytes,
+) -> tuple[list[list[int]], list[list[int]], int]:
     _, _, _, words = shader_words(template)
-    declaration: list[int] | None = None
+    constant_declaration: list[int] | None = None
+    resource_declaration: list[int] | None = None
     for start, end in instructions(words):
-        if (words[start] & 0x7FF) != OPCODE_DCL_CONSTANT_BUFFER:
-            continue
+        opcode = words[start] & 0x7FF
         operands = executable_operands(words, start, end)
         if (
-            operands
+            opcode == OPCODE_DCL_CONSTANT_BUFFER
+            and operands
             and operands[0].operand_type == OPERAND_CONSTANT_BUFFER
             and operands[0].immediate_indices
             and operands[0].immediate_indices[0] == CONTACT_CONSTANT_SLOT
         ):
-            declaration = words[start:end]
-    if declaration is None:
+            constant_declaration = words[start:end]
+        if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (CONTACT_MASK_SLOT,)
+        ):
+            resource_declaration = words[start:end]
+    if constant_declaration is None:
         raise ContractError("contact-shadow template no longer declares b13")
+    if resource_declaration is None:
+        raise ContractError("contact-shadow template no longer declares t46")
 
     temp_declaration, _, body = shader_declarations_and_body(words)
     temp_count = words[temp_declaration[0] + 1]
@@ -170,7 +185,7 @@ def template_contract(template: bytes) -> tuple[list[int], list[list[int]], int]
         raise ContractError(
             "contact-shadow template contains an early return that would exit DFLight"
         )
-    return declaration, transform[:-1], temp_count
+    return [resource_declaration, constant_declaration], transform[:-1], temp_count
 
 
 def remap_transform_instruction(
@@ -254,7 +269,17 @@ def patch_shader(original: bytes, template: bytes) -> bytes:
         raise ContractError(
             f"directional DFLight temporary count changed: {original_temps}"
         )
-    declaration, transform, template_temps = template_contract(template)
+    declarations, transform, template_temps = template_contract(template)
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) != OPCODE_DCL_RESOURCE:
+            continue
+        operands = executable_operands(words, start, end)
+        if (
+            operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (CONTACT_MASK_SLOT,)
+        ):
+            raise ContractError("directional DFLight unexpectedly owns t46")
     first_scratch = original_temps
     visibility_scratch = first_scratch + template_temps
 
@@ -272,7 +297,8 @@ def patch_shader(original: bytes, template: bytes) -> bytes:
         )
 
     prefix = words[: temp_declaration[0]]
-    prefix.extend(declaration)
+    for declaration in declarations:
+        prefix.extend(declaration)
     updated_temps = words[temp_declaration[0] : temp_declaration[1]]
     updated_temps[1] = visibility_scratch + 1
     rewritten: list[int] = []
@@ -294,11 +320,58 @@ def patch_shader(original: bytes, template: bytes) -> bytes:
     return build_dxbc(version, patched_chunks)
 
 
-def write_header(path: Path, data: bytes) -> None:
+def compile_compute_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "ContactShadows"
+        / "ContactShadowMaskCS.hlsl"
+    )
+    output = temporary / "ContactShadowMaskCS.dxbc"
+    assembly = temporary / "ContactShadowMaskCS.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "cs_5_0",
+            "/E",
+            "CSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "contact-shadow mask compute compilation",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_uav_typed_texture2d (unorm,unorm,unorm,unorm) u0",
+        "dcl_constantbuffer CB2[46], dynamicIndexed",
+        "dcl_constantbuffer CB8[1], immediateIndexed",
+        "dcl_constantbuffer CB12[48], dynamicIndexed",
+        "dcl_constantbuffer CB13[3], immediateIndexed",
+        "dcl_thread_group 8, 8, 1",
+    ):
+        if required not in text:
+            raise ContractError(
+                "contact-shadow mask compute assembly changed: " + required
+            )
+    return output.read_bytes()
+
+
+def write_header(path: Path, data: bytes, symbol: str) -> None:
     rows = [
         "#pragma once",
         "",
-        "inline constexpr unsigned char fo4vr_cs_contact_shadows_dflight[] = {",
+        f"inline constexpr unsigned char {symbol}[] = {{",
     ]
     for offset in range(0, len(data), 16):
         values = ", ".join(f"0x{value:02x}" for value in data[offset:offset + 16])
@@ -312,10 +385,13 @@ def main() -> int:
     root = args.root.resolve()
     args.binary.parent.mkdir(parents=True, exist_ok=True)
     args.header.parent.mkdir(parents=True, exist_ok=True)
+    args.compute_binary.parent.mkdir(parents=True, exist_ok=True)
+    args.compute_header.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fo4vr-contact-shadows-") as folder:
         temporary = Path(folder)
         original = original_shader(root)
         template = compile_template(root, args.fxc.resolve(), temporary)
+        compute = compile_compute_shader(root, args.fxc.resolve(), temporary)
         candidate = patch_shader(original, template)
         candidate_path = temporary / "ContactShadowsDFLight.dxbc"
         assembly_path = temporary / "ContactShadowsDFLight.asm.txt"
@@ -333,7 +409,8 @@ def main() -> int:
         )
         assembly = assembly_path.read_text(encoding="utf-8")
         for required in (
-            "dcl_constantbuffer CB13[3], immediateIndexed",
+            "dcl_constantbuffer CB13[1], immediateIndexed",
+            "dcl_resource_texture2d (float,float,float,float) t46",
             "dcl_output o0.xyzw",
             "dcl_output o1.xyzw",
         ):
@@ -346,7 +423,17 @@ def main() -> int:
                 "contact-shadow candidate contains an injected early return"
             )
         args.binary.write_bytes(candidate)
-        write_header(args.header, candidate)
+        write_header(
+            args.header,
+            candidate,
+            "fo4vr_cs_contact_shadows_dflight",
+        )
+        args.compute_binary.write_bytes(compute)
+        write_header(
+            args.compute_header,
+            compute,
+            "fo4vr_cs_contact_shadow_mask",
+        )
     return 0
 
 

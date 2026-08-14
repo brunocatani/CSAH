@@ -1,6 +1,6 @@
-#include "Features/ibl/IblComputeStateScope.h"
+#include "render/ComputeStateScope.h"
 
-namespace community_shaders::ibl
+namespace community_shaders::render
 {
     namespace
     {

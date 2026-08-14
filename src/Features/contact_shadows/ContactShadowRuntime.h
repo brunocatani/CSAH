@@ -19,8 +19,11 @@ namespace community_shaders::contact_shadows
         std::uint32_t matchingShaders{};
         std::uint32_t trackedShaders{};
         std::uint64_t replacementBinds{};
-        std::uint64_t constantScopes{};
-        std::uint64_t constantRestores{};
+        std::uint64_t maskDispatches{};
+        std::uint64_t maskRebuilds{};
+        std::uint64_t drawScopes{};
+        std::uint64_t drawRestores{};
+        std::uint64_t drawFallbacks{};
         std::uint64_t failures{};
     };
 
@@ -41,27 +44,29 @@ namespace community_shaders::contact_shadows
         ShaderBinding binding{};
     };
 
-    class ScopedConstants final
+    class ScopedDrawBindings final
     {
     public:
-        ScopedConstants() noexcept = default;
-        ~ScopedConstants() noexcept;
-        ScopedConstants(const ScopedConstants&) = delete;
-        ScopedConstants(ScopedConstants&&) = delete;
-        ScopedConstants& operator=(const ScopedConstants&) = delete;
-        ScopedConstants& operator=(ScopedConstants&&) = delete;
+        ScopedDrawBindings() noexcept = default;
+        ~ScopedDrawBindings() noexcept;
+        ScopedDrawBindings(const ScopedDrawBindings&) = delete;
+        ScopedDrawBindings(ScopedDrawBindings&&) = delete;
+        ScopedDrawBindings& operator=(const ScopedDrawBindings&) = delete;
+        ScopedDrawBindings& operator=(ScopedDrawBindings&&) = delete;
 
         [[nodiscard]] bool active() const noexcept { return context_ != nullptr; }
 
     private:
         friend class Runtime;
-        ScopedConstants(
+        ScopedDrawBindings(
             ID3D11DeviceContext* context,
             ID3D11Buffer* constants,
+            ID3D11ShaderResourceView* mask,
             std::atomic_uint64_t* restoreCounter) noexcept;
 
         ID3D11DeviceContext* context_{};
-        Microsoft::WRL::ComPtr<ID3D11Buffer> previous_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> previousConstants_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> previousMask_;
         std::atomic_uint64_t* restoreCounter_{};
     };
 
@@ -82,9 +87,10 @@ namespace community_shaders::contact_shadows
             ID3D11PixelShader* shader) noexcept;
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11PixelShader* requested) noexcept;
-        [[nodiscard]] ScopedConstants scopeConstants(
+        [[nodiscard]] ScopedDrawBindings scopeDraw(
             ID3D11DeviceContext* context,
             ShaderBinding binding) noexcept;
+        void recordDrawFallback() noexcept;
         [[nodiscard]] bool featureEnabled() const noexcept;
         void applySettings(const Settings& settings) noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
@@ -92,12 +98,21 @@ namespace community_shaders::contact_shadows
     private:
         Runtime() = default;
         void uploadSettings(ID3D11DeviceContext* context) noexcept;
+        [[nodiscard]] bool ensureMaskResources(
+            ID3D11ShaderResourceView* depth) noexcept;
+        [[nodiscard]] bool dispatchMask(ID3D11DeviceContext* context) noexcept;
 
         static constexpr std::size_t kMaximumTrackedShaders = 8;
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> replacement_;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> maskTexture_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> maskView_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> maskOutput_;
+        UINT maskWidth_{};
+        UINT maskHeight_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumTrackedShaders> originals_{};
         std::atomic_bool enabled_{ true };
@@ -113,8 +128,11 @@ namespace community_shaders::contact_shadows
         std::atomic_uint32_t matchingShaders_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_uint64_t replacementBinds_{};
-        std::atomic_uint64_t constantScopes_{};
-        std::atomic_uint64_t constantRestores_{};
+        std::atomic_uint64_t maskDispatches_{};
+        std::atomic_uint64_t maskRebuilds_{};
+        std::atomic_uint64_t drawScopes_{};
+        std::atomic_uint64_t drawRestores_{};
+        std::atomic_uint64_t drawFallbacks_{};
         std::atomic_uint64_t failures_{};
     };
 }

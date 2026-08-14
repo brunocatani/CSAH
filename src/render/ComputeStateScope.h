@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace community_shaders::ibl
+namespace community_shaders::render
 {
     struct ComputeStateFootprint
     {
