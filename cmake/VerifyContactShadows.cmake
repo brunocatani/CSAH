@@ -88,6 +88,8 @@ foreach(required IN ITEMS
     "sampleEyeUv >= 1.0f"
     "(sampleDepth <= 0.01f) != (centerDepth <= 0.01f)"
     "ReconstructViewDepth"
+    "const float viewDepth = abs(surface.z)"
+    "1.0f - smoothstep(0.0f, fadeDistance, viewDepth)"
     "StableRayStride"
     "sampleBudget *= lerp(1.0f, ContactParams1.z, outer)"
     "const float sampleWeight = saturate(sampleBudget - (float)index)"
@@ -130,6 +132,7 @@ foreach(pair IN ITEMS
 endforeach()
 
 foreach(forbidden IN ITEMS
+    "length(surface)"
     "sampleCount = max((uint)scaled"
     "clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale")
   string(FIND "${maskShaderSource}" "${forbidden}" found)

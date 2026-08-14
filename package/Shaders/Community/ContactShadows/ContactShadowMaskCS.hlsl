@@ -147,8 +147,15 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     // Native DFLight evaluates N.L against -DFLight[eye + 1].xyz. Marching
     // along the same toward-light vector is required to find blockers.
     const float3 towardLight = -normalize(DFLight[eye + 1u].xyz);
-    const float distanceScale = saturate(
-        1.0f - length(surface) / max(ContactParams2.x, 1.0f));
+    // Fade by forward view depth, matching the mature VR Contact Shadows
+    // contract. Euclidean length creates a literal eye-centred sphere whose
+    // shadow budget slides over world geometry as the headset moves. The
+    // smooth Hermite response also has zero slope at both endpoints, avoiding
+    // a visible contour where the bounded raymarch reaches its far limit.
+    const float viewDepth = abs(surface.z);
+    const float fadeDistance = max(ContactParams2.x, 1.0f);
+    const float distanceScale =
+        1.0f - smoothstep(0.0f, fadeDistance, viewDepth);
     const uint sampleCount = (uint)round(clamp(
         ContactParams0.w,
         2.0f,
