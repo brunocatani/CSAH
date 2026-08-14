@@ -305,7 +305,9 @@ namespace community_shaders::diagnostics
                 .geometryProviderReady =
                     capture.runtime.geometryProviderReady,
                 .shaderDetoursOwned =
+                    capture.hooks.createVertexShaderDetourEnabled &&
                     capture.hooks.createPixelShaderDetourEnabled &&
+                    capture.hooks.vertexShaderBindDetourEnabled &&
                     capture.hooks.pixelShaderBindDetourEnabled,
                 .drawDetoursOwned =
                     capture.hooks.qualificationDrawDetoursOwned,
@@ -484,6 +486,16 @@ namespace community_shaders::diagnostics
                                 capture.runtime.matchingShadersCreated },
                             { "trackedOriginalShaders",
                                 capture.runtime.trackedOriginalShaders },
+                            { "matchingGrassVertexShaderIdentityMask",
+                                capture.runtime
+                                    .matchingGrassVertexShaderIdentityMask },
+                            { "matchingGrassVertexShadersCreated",
+                                capture.runtime
+                                    .matchingGrassVertexShadersCreated },
+                            { "trackedGrassVertexShaders",
+                                capture.runtime.trackedGrassVertexShaders },
+                            { "grassVertexClassSelections",
+                                capture.runtime.grassVertexClassSelections },
                             { "verifiedSkyShaderContracts",
                                 capture.runtime.verifiedSkyShaderContracts },
                             { "matchingSkyShaderContractMask",

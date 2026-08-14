@@ -93,6 +93,19 @@ def signature_contract(assembly: str) -> str:
     )
 
 
+def cloud_signature_contract(assembly: str) -> str:
+    """Remove only the private cloud MRT row from an fxc signature table."""
+    return "\n".join(
+        line
+        for line in signature_contract(assembly).splitlines()
+        if not (
+            len(line.split()) >= 5
+            and line.split()[1:3] == ["SV_Target", "3"]
+            and line.split()[4] == "3"
+        )
+    )
+
+
 def compile_candidates(
     root: Path,
     manifest: list[dict[str, object]],
@@ -110,6 +123,9 @@ def compile_candidates(
         "LinearLightingSky(baseColor.xyz)",
         "LinearLightingSkyProducerColor(input.color.xyz)",
         "color *= skyParameters.y;",
+        "#if SKY_TECHNIQUE >= 4 && SKY_TECHNIQUE <= 6",
+        "float4 cloudOcclusion : SV_Target3;",
+        "output.cloudOcclusion = output.color.w;",
         "output.motion = ComputeMotionVector(input);",
     ):
         if required not in source_text:
@@ -117,6 +133,7 @@ def compile_candidates(
     for forbidden in (
         "LinearLightingSky(input.color.xyz)",
         "LinearLightingSky(skyParameters.yyy)",
+        "#if SKY_TECHNIQUE >= 5 && SKY_TECHNIQUE <= 7",
     ):
         if forbidden in source_text:
             raise ContractError(f"Sky HLSL contains forbidden color-domain path: {forbidden}")
@@ -179,9 +196,19 @@ def compile_candidates(
 
         candidate_assembly = candidate_assembly_path.read_text(encoding="utf-8")
         original_assembly = original_assembly_path.read_text(encoding="utf-8")
-        if signature_contract(candidate_assembly) != signature_contract(
-            original_assembly
-        ):
+        candidate_signature = signature_contract(candidate_assembly)
+        original_signature = signature_contract(original_assembly)
+        if descriptor in (4, 5, 6):
+            cloud_signature = candidate_signature
+            candidate_signature = cloud_signature_contract(candidate_assembly)
+            if not any(
+                len(line.split()) >= 5
+                and line.split()[1:3] == ["SV_Target", "3"]
+                and line.split()[4] == "3"
+                for line in cloud_signature.splitlines()
+            ):
+                raise ContractError(f"{name} is missing the private cloud MRT3 output")
+        if candidate_signature != original_signature:
             raise ContractError(f"{name} changed the exact FO4VR shader signature")
 
         candidate_declarations = census.parse_declarations(candidate_assembly)

@@ -30,10 +30,12 @@ file(READ "${WRIST_PANEL_VIEW_SOURCE}" wristView)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 
 foreach(required IN ITEMS
-    "12280787d2a5110c820f433751c84648"
     "kConstantSlot = 13"
     "kMaskSlot = 46"
-    "matchesOriginal"
+    "matchingContractIndex"
+    "fo4vr_cs_contact_shadow_dflight_contracts"
+    "kMaximumShaderContracts = 32"
+    "kMaximumTrackedShaders = 128"
     "resourcesReady_.store(false"
     "resourcesReady_.store(true"
     "PSGetConstantBuffers("
@@ -44,8 +46,10 @@ foreach(required IN ITEMS
     "ScopedComputeState restore"
     "recordDrawFallback"
     "selectPixelShader"
+    "tracksOriginal"
+    "for (auto& replacement : replacements_)"
     "for (auto& original : originals_)"
-    "original.Reset()")
+    "original.shader.Reset()")
   string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -154,9 +158,13 @@ endforeach()
 foreach(required IN ITEMS
     "EXPECTED_IDENTITY = (26152, \"12280787d2a5110c820f433751c84648\")"
     "EXPECTED_ALIAS_KEYS = {0x01200202, 0x01200282, 0x11200202}"
+    "EXPECTED_COMPATIBLE_IDENTITIES = {"
+    "directional_pixel_shaders"
+    "structurally compatible directional DFLight inventory changed"
+    "write_shader_family_header"
     "CONTACT_MASK_SLOT = 46"
     "contact-shadow template contains an early return"
-    "contact-shadow candidate contains an injected early return"
+    "contains an injected early return"
     "contact-shadow mask compute assembly changed"
     "multiply_rgb(1, visibility_scratch)"
     "multiply_rgb(0, visibility_scratch)")
@@ -170,10 +178,15 @@ endforeach()
 foreach(required IN ITEMS
     "contact_shadows::Runtime::get().onDeviceCreated"
     "contact_shadows::Runtime::get().onPixelShaderCreated"
-    "contactShadowRuntime.selectPixelShader(shader)"
-    "!qualificationActive"
+    "contactShadowRuntime.selectPixelShader("
+    "contactShadowRuntime.tracksOriginal(shader)"
+    "firstTrackedContactShaderBindLogged"
+    "wrappedGrassFeatureActive"
+    "contactShadowRuntime.compositorReady("
+    "if (dflightCompositorActive && classInstanceCount == 0)"
     "issueDrawWithContactShadows(context"
-    "runtime.scopeDraw("
+    "activeContactShadowsEnabled"
+    "wrappedRuntime.scopeDraw("
     "activeContactShadowBinding.original")
   string(FIND "${hookSource}" "${required}" found)
   if(found EQUAL -1)
@@ -181,6 +194,38 @@ foreach(required IN ITEMS
       "Contact Shadows D3D ownership regression: missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${hookSource}"
+  "dflightCompositorActive && !qualificationActive" qualificationSuppression)
+if(NOT qualificationSuppression EQUAL -1)
+  message(FATAL_ERROR
+    "Contact Shadows exact compositor must not be suppressed during material qualification")
+endif()
+
+string(FIND "${hookSource}"
+  "void STDMETHODCALLTYPE hookPSSetShader(" psSetShaderStart)
+string(FIND "${hookSource}"
+  "void STDMETHODCALLTYPE hookDrawIndexed(" psSetShaderEnd)
+if(psSetShaderStart EQUAL -1 OR psSetShaderEnd EQUAL -1 OR
+   NOT psSetShaderStart LESS psSetShaderEnd)
+  message(FATAL_ERROR
+    "Contact Shadows PSSetShader ownership boundary is unavailable")
+endif()
+math(EXPR psSetShaderLength "${psSetShaderEnd} - ${psSetShaderStart}")
+string(SUBSTRING "${hookSource}" ${psSetShaderStart}
+  ${psSetShaderLength} psSetShaderSource)
+string(FIND "${psSetShaderSource}"
+  "auto contactShadowSelection =" contactSelectionStart)
+string(FIND "${psSetShaderSource}"
+  "const auto selection =" linearSelectionStart)
+string(FIND "${psSetShaderSource}"
+  "!contactShadowSelection.binding &&" contactPriorityGate)
+if(contactSelectionStart EQUAL -1 OR linearSelectionStart EQUAL -1 OR
+   contactPriorityGate EQUAL -1 OR
+   NOT contactSelectionStart LESS linearSelectionStart)
+  message(FATAL_ERROR
+    "Contact Shadows exact compositor must take priority over generic Linear Lighting selection")
+endif()
 
 string(REGEX MATCHALL
   "issueDrawWithContactShadows\\(context" drawScopes

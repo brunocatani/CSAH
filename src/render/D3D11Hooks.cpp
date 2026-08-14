@@ -1,15 +1,22 @@
 #include "render/D3D11Hooks.h"
 
+#include "Features/basic_wetness/BasicWetnessRuntime.h"
+#include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
+#include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
+#include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "support/Logger.h"
 
 #include <MinHook.h>
 #include <Windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <intrin.h>
 #include <wrl/client.h>
 
 #include <array>
@@ -43,11 +50,37 @@ namespace community_shaders::render
             SIZE_T,
             ID3D11ClassLinkage*,
             ID3D11PixelShader**);
+        using CreateVertexShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11VertexShader**);
         using PSSetShaderFunction = void(STDMETHODCALLTYPE*)(
             ID3D11DeviceContext*,
             ID3D11PixelShader*,
             ID3D11ClassInstance* const*,
             UINT);
+        using VSSetShaderFunction = void(STDMETHODCALLTYPE*)(
+            ID3D11DeviceContext*,
+            ID3D11VertexShader*,
+            ID3D11ClassInstance* const*,
+            UINT);
+        using OMSetRenderTargetsFunction = void(STDMETHODCALLTYPE*)(
+            ID3D11DeviceContext*,
+            UINT,
+            ID3D11RenderTargetView* const*,
+            ID3D11DepthStencilView*);
+        using OMSetRenderTargetsAndUnorderedAccessViewsFunction =
+            void(STDMETHODCALLTYPE*)(
+                ID3D11DeviceContext*,
+                UINT,
+                ID3D11RenderTargetView* const*,
+                ID3D11DepthStencilView*,
+                UINT,
+                UINT,
+                ID3D11UnorderedAccessView* const*,
+                const UINT*);
         using DrawIndexedFunction = void(STDMETHODCALLTYPE*)(
             ID3D11DeviceContext*, UINT, UINT, INT);
         using DrawFunction = void(STDMETHODCALLTYPE*)(
@@ -57,8 +90,13 @@ namespace community_shaders::render
         using DrawInstancedFunction = void(STDMETHODCALLTYPE*)(
             ID3D11DeviceContext*, UINT, UINT, UINT, UINT);
 
+        constexpr std::size_t kCreateVertexShaderVtableIndex = 12;
         constexpr std::size_t kCreatePixelShaderVtableIndex = 15;
         constexpr std::size_t kPSSetShaderVtableIndex = 9;
+        constexpr std::size_t kVSSetShaderVtableIndex = 11;
+        constexpr std::size_t kOMSetRenderTargetsVtableIndex = 33;
+        constexpr std::size_t
+            kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex = 34;
         constexpr std::size_t kDrawIndexedVtableIndex = 12;
         constexpr std::size_t kDrawVtableIndex = 13;
         constexpr std::size_t kDrawIndexedInstancedVtableIndex = 20;
@@ -117,21 +155,34 @@ namespace community_shaders::render
         };
 
         D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
+        CreateVertexShaderFunction originalCreateVertexShader{};
         CreatePixelShaderFunction originalCreatePixelShader{};
+        VSSetShaderFunction originalVSSetShader{};
         PSSetShaderFunction originalPSSetShader{};
+        OMSetRenderTargetsFunction originalOMSetRenderTargets{};
+        OMSetRenderTargetsAndUnorderedAccessViewsFunction
+            originalOMSetRenderTargetsAndUnorderedAccessViews{};
         DrawIndexedFunction originalDrawIndexed{};
         DrawFunction originalDraw{};
         DrawIndexedInstancedFunction originalDrawIndexedInstanced{};
         DrawInstancedFunction originalDrawInstanced{};
         void** deviceCreationImportCell{};
+        void* createVertexShaderTarget{};
         void* createPixelShaderTarget{};
+        void* vertexShaderBindTarget{};
         void* pixelShaderBindTarget{};
+        void* renderTargetBindTarget{};
+        void* renderTargetAndUnorderedAccessBindTarget{};
         void* drawIndexedTarget{};
         void* drawTarget{};
         void* drawIndexedInstancedTarget{};
         void* drawInstancedTarget{};
+        DetourPatchIdentity createVertexShaderPatch{};
         DetourPatchIdentity createPixelShaderPatch{};
+        DetourPatchIdentity vertexShaderBindPatch{};
         DetourPatchIdentity pixelShaderBindPatch{};
+        DetourPatchIdentity renderTargetBindPatch{};
+        DetourPatchIdentity renderTargetAndUnorderedAccessBindPatch{};
         DetourPatchIdentity drawIndexedPatch{};
         DetourPatchIdentity drawPatch{};
         DetourPatchIdentity drawIndexedInstancedPatch{};
@@ -140,8 +191,12 @@ namespace community_shaders::render
         std::atomic_bool deviceCaptured{};
         std::atomic_bool deviceHooksInstalled{};
         std::atomic_bool shaderInterceptionActive{};
+        std::atomic_bool createVertexShaderDetourEnabled{};
         std::atomic_bool createPixelShaderDetourEnabled{};
+        std::atomic_bool vertexShaderBindDetourEnabled{};
         std::atomic_bool pixelShaderBindDetourEnabled{};
+        std::atomic_bool renderTargetBindDetourEnabled{};
+        std::atomic_bool renderTargetAndUnorderedAccessBindDetourEnabled{};
         std::atomic_bool qualificationDrawDetoursInstalled{};
         std::atomic_bool qualificationDrawDetoursOwned{};
         std::atomic_uint64_t shaderHookInstallFailures{};
@@ -150,8 +205,16 @@ namespace community_shaders::render
         std::atomic_uint64_t qualificationDrawHookValidationFailures{};
         std::atomic_uint64_t pixelShaderBindRecursions{};
         std::atomic_uint64_t deviceCreationCalls{};
+        std::atomic_uint64_t vertexShaderCreationCalls{};
         std::atomic_uint64_t pixelShaderCreationCalls{};
+        std::atomic_uint64_t vertexShaderBindCalls{};
         std::atomic_uint64_t pixelShaderBindCalls{};
+        std::atomic_uint64_t renderTargetBindCalls{};
+        std::atomic_uint64_t renderTargetAndUnorderedAccessBindCalls{};
+        std::atomic_bool firstTrackedContactShaderBindLogged{};
+        std::atomic_bool firstTerrainDrawCallerLogged{};
+        std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
+        std::atomic_bool firstDFPrePassDescriptorExpiryLogged{};
         std::atomic_bool qualificationSessionActive{};
         std::atomic_uint64_t qualificationSessionId{};
         std::atomic_uint64_t qualificationActivatedSessionId{};
@@ -183,9 +246,35 @@ namespace community_shaders::render
         thread_local std::uint64_t activeQualificationSessionId{};
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
+        thread_local std::uint32_t activeSurfaceClassCode{};
+        thread_local bool activeGrassVertexShader{};
         thread_local ID3D11PixelShader* activeReplacementOriginal{};
+        thread_local ID3D11DeviceContext* activeReplacementContext{};
+        struct PendingDFPrePassDescriptor
+        {
+            std::uint32_t descriptor{};
+            bool active{};
+        };
+        constexpr std::size_t kMaxDFPrePassTechniqueDepth = 8;
+        struct ActiveDFPrePassTechniques
+        {
+            std::array<std::uint32_t, kMaxDFPrePassTechniqueDepth>
+                descriptors{};
+            std::size_t depth{};
+        };
+        thread_local ActiveDFPrePassTechniques activeDFPrePassTechniques{};
+        thread_local PendingDFPrePassDescriptor pendingDFPrePassDescriptor{};
+        std::atomic_bool firstDFPrePassTechniqueOverflowLogged{};
+        std::atomic_bool firstDFPrePassTechniqueMismatchLogged{};
+        std::atomic_bool firstGrassVertexDrawRebindLogged{};
         thread_local contact_shadows::ShaderBinding
             activeContactShadowBinding{};
+        thread_local bool activeContactShadowsEnabled{};
+        thread_local bool activeWrappedGrassEnabled{};
+        thread_local bool activeHairSpecularEnabled{};
+        thread_local bool activeSubsurfaceScatteringEnabled{};
+        thread_local bool activeBasicWetnessEnabled{};
+        thread_local bool activeCloudShadowsEnabled{};
         thread_local ibl::Runtime::MaterialShaderBinding
             activeIblMaterialBinding{};
         thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
@@ -447,33 +536,73 @@ namespace community_shaders::render
         }
 
         void rollbackMethodDetours(
+            bool createVertexShaderCreated,
             bool createPixelShaderCreated,
-            bool pixelShaderBindCreated) noexcept
+            bool vertexShaderBindCreated,
+            bool pixelShaderBindCreated,
+            bool renderTargetBindCreated,
+            bool renderTargetAndUnorderedAccessBindCreated) noexcept
         {
             shaderInterceptionActive.store(false, std::memory_order_release);
+            const auto createVertexDisabled = !createVertexShaderCreated ||
+                disableCreatedDetour(createVertexShaderTarget);
             const auto createDisabled = !createPixelShaderCreated ||
                 disableCreatedDetour(createPixelShaderTarget);
+            const auto vertexBindDisabled = !vertexShaderBindCreated ||
+                disableCreatedDetour(vertexShaderBindTarget);
             const auto bindDisabled = !pixelShaderBindCreated ||
                 disableCreatedDetour(pixelShaderBindTarget);
-            if (!createDisabled || !bindDisabled) {
+            const auto renderTargetDisabled = !renderTargetBindCreated ||
+                disableCreatedDetour(renderTargetBindTarget);
+            const auto renderTargetAndUnorderedAccessDisabled =
+                !renderTargetAndUnorderedAccessBindCreated ||
+                disableCreatedDetour(
+                    renderTargetAndUnorderedAccessBindTarget);
+            if (!createVertexDisabled || !createDisabled ||
+                !vertexBindDisabled || !bindDisabled || !renderTargetDisabled ||
+                !renderTargetAndUnorderedAccessDisabled) {
                 logging::critical(
-                    "D3D11 detour rollback could not prove both hooks disabled; resident hooks remain strict pass-through for process lifetime.");
+                    "D3D11 detour rollback could not prove all hooks disabled; resident hooks remain strict pass-through for process lifetime.");
                 return;
             }
 
+            if (createVertexShaderCreated) {
+                (void)MH_RemoveHook(createVertexShaderTarget);
+            }
             if (createPixelShaderCreated) {
                 (void)MH_RemoveHook(createPixelShaderTarget);
+            }
+            if (vertexShaderBindCreated) {
+                (void)MH_RemoveHook(vertexShaderBindTarget);
             }
             if (pixelShaderBindCreated) {
                 (void)MH_RemoveHook(pixelShaderBindTarget);
             }
+            if (renderTargetBindCreated) {
+                (void)MH_RemoveHook(renderTargetBindTarget);
+            }
+            if (renderTargetAndUnorderedAccessBindCreated) {
+                (void)MH_RemoveHook(renderTargetAndUnorderedAccessBindTarget);
+            }
             (void)MH_Uninitialize();
+            originalCreateVertexShader = nullptr;
             originalCreatePixelShader = nullptr;
+            originalVSSetShader = nullptr;
             originalPSSetShader = nullptr;
+            originalOMSetRenderTargets = nullptr;
+            originalOMSetRenderTargetsAndUnorderedAccessViews = nullptr;
+            createVertexShaderTarget = nullptr;
             createPixelShaderTarget = nullptr;
+            vertexShaderBindTarget = nullptr;
             pixelShaderBindTarget = nullptr;
+            renderTargetBindTarget = nullptr;
+            renderTargetAndUnorderedAccessBindTarget = nullptr;
+            createVertexShaderPatch = {};
             createPixelShaderPatch = {};
+            vertexShaderBindPatch = {};
             pixelShaderBindPatch = {};
+            renderTargetBindPatch = {};
+            renderTargetAndUnorderedAccessBindPatch = {};
         }
 
         void rollbackQualificationDrawDetours(
@@ -565,6 +694,7 @@ namespace community_shaders::render
                     std::memory_order_release);
                 activeQualificationSessionId = requested;
                 activeReplacementBinding = {};
+                activeSurfaceClassCode = 0;
                 activeIblCaptureProbePass = {};
                 qualificationSessionActive.store(
                     true,
@@ -879,7 +1009,8 @@ namespace community_shaders::render
             const auto state = linear_lighting::Runtime::get()
                                    .inspectReplacementPipelineState(
                                        context,
-                                       binding);
+                                       binding,
+                                       activeSurfaceClassCode);
             qualificationLastBindingState.store(state, std::memory_order_relaxed);
             qualificationBindingStateChecks.fetch_add(1, std::memory_order_relaxed);
             if ((state &
@@ -936,7 +1067,8 @@ namespace community_shaders::render
             const auto state = linear_lighting::Runtime::get()
                                    .inspectReplacementPipelineState(
                                        context,
-                                       activeReplacementBinding);
+                                       activeReplacementBinding,
+                                       activeSurfaceClassCode);
             qualificationLastDrawState.store(state, std::memory_order_relaxed);
             qualificationDrawStateChecks.fetch_add(1, std::memory_order_relaxed);
             if (state == linear_lighting::PipelineBinding_All) {
@@ -975,7 +1107,9 @@ namespace community_shaders::render
                         0);
                 }
                 activeReplacementBinding = {};
+                activeSurfaceClassCode = 0;
                 activeReplacementOriginal = nullptr;
+                activeReplacementContext = nullptr;
             }
             auto& iblRuntime = ibl::Runtime::get();
             if (!iblRuntime.featureEnabled()) {
@@ -994,7 +1128,14 @@ namespace community_shaders::render
                 activeIblMaterialBinding = {};
             }
             if (activeContactShadowBinding &&
-                !contact_shadows::Runtime::get().featureEnabled()) {
+                !contact_shadows::Runtime::get().compositorReady(
+                    (wrapped_grass::Runtime::get().requested() ||
+                        hair_specular::Runtime::get().requested() ||
+                        subsurface_scattering::Runtime::get().requested() ||
+                        basic_wetness::Runtime::get().requested() ||
+                        cloud_shadows::Runtime::get().requested()) &&
+                    linear_lighting::Runtime::get()
+                        .linearLightingEnabled())) {
                 if (originalPSSetShader) {
                     originalPSSetShader(
                         context,
@@ -1003,7 +1144,159 @@ namespace community_shaders::render
                         0);
                 }
                 activeContactShadowBinding = {};
+                activeContactShadowsEnabled = false;
+                activeWrappedGrassEnabled = false;
+                activeHairSpecularEnabled = false;
+                activeSubsurfaceScatteringEnabled = false;
+                activeBasicWetnessEnabled = false;
+                activeCloudShadowsEnabled = false;
             }
+        }
+
+        void recordDFPrePassDescriptorConsumed(
+            std::uint32_t descriptor,
+            const char* boundary) noexcept
+        {
+            if (firstDFPrePassDescriptorConsumeLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                return;
+            }
+            logging::info(
+                "DFPrePass descriptor transaction consumed at {} (descriptor=0x{:08X}).",
+                boundary,
+                descriptor);
+        }
+
+        [[nodiscard]] PendingDFPrePassDescriptor
+            activeDFPrePassDescriptor() noexcept
+        {
+            if (activeDFPrePassTechniques.depth == 0) {
+                return {};
+            }
+            return {
+                activeDFPrePassTechniques.descriptors[
+                    activeDFPrePassTechniques.depth - 1],
+                true,
+            };
+        }
+
+        void consumePendingDFPrePassDescriptorAtDraw(
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (!pendingDFPrePassDescriptor.active) {
+                return;
+            }
+
+            const auto descriptor = pendingDFPrePassDescriptor.descriptor;
+            pendingDFPrePassDescriptor = {};
+            if (!shaderInterceptionActive.load(std::memory_order_acquire) ||
+                !originalPSSetShader || !activeReplacementContext ||
+                activeReplacementContext != context ||
+                !activeReplacementOriginal ||
+                activeReplacementBinding.family !=
+                    linear_lighting::ReplacementShaderFamily::material) {
+                if (!firstDFPrePassDescriptorExpiryLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    logging::warn(
+                        "DFPrePass descriptor transaction expired at its draw boundary without a reusable material owner (descriptor=0x{:08X}); the affected draw remains vanilla-classified.",
+                        descriptor);
+                }
+                return;
+            }
+
+            const auto selection = linear_lighting::Runtime::get()
+                                       .selectPixelShaderForDFPrePassDescriptor(
+                                           context,
+                                           activeReplacementOriginal,
+                                           descriptor);
+            auto* selectedShader = selection.shader ?
+                selection.shader : activeReplacementOriginal;
+            originalPSSetShader(context, selectedShader, nullptr, 0);
+            if (selection.retainedForBind && selection.shader) {
+                selection.shader->Release();
+            }
+            activeReplacementBinding = selection.binding;
+            activeSurfaceClassCode = selection.surfaceClassCode;
+            recordDFPrePassDescriptorConsumed(descriptor, "draw reuse");
+        }
+
+        void reconcileGrassVertexClassAtDraw(
+            ID3D11DeviceContext* context) noexcept
+        {
+            constexpr auto grassClassCode = static_cast<std::uint32_t>(
+                surface_classification::SurfaceClassCode::grass);
+            if (!originalPSSetShader || !activeReplacementOriginal ||
+                activeReplacementContext != context ||
+                activeReplacementBinding.family !=
+                    linear_lighting::ReplacementShaderFamily::material) {
+                return;
+            }
+            const auto currentlyGrass =
+                activeSurfaceClassCode == grassClassCode;
+            if (currentlyGrass == activeGrassVertexShader) {
+                return;
+            }
+
+            auto& runtime = linear_lighting::Runtime::get();
+            const auto selection = activeGrassVertexShader ?
+                runtime.selectPixelShaderForGrassVertex(
+                    context,
+                    activeReplacementOriginal) :
+                runtime.selectPixelShader(
+                    context,
+                    activeReplacementOriginal);
+            if (!selection.shader ||
+                selection.binding.family !=
+                    linear_lighting::ReplacementShaderFamily::material) {
+                return;
+            }
+            originalPSSetShader(context, selection.shader, nullptr, 0);
+            if (selection.retainedForBind) {
+                selection.shader->Release();
+            }
+            activeReplacementBinding = selection.binding;
+            activeSurfaceClassCode = selection.surfaceClassCode;
+            if (activeGrassVertexShader &&
+                !firstGrassVertexDrawRebindLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Surface classification reconciled its first exact grass-only vertex shader at the draw boundary.");
+            }
+        }
+
+        void recordFirstTerrainDrawCaller(
+            const void* caller,
+            const char* drawMethod) noexcept
+        {
+            constexpr auto terrainClassCode = static_cast<std::uint32_t>(
+                surface_classification::SurfaceClassCode::terrain);
+            if (activeSurfaceClassCode != terrainClassCode ||
+                firstTerrainDrawCallerLogged.load(std::memory_order_relaxed)) {
+                return;
+            }
+            if (firstTerrainDrawCallerLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                return;
+            }
+
+            const auto moduleBase = reinterpret_cast<std::uintptr_t>(
+                GetModuleHandleW(nullptr));
+            const auto callerAddress = reinterpret_cast<std::uintptr_t>(caller);
+            if (moduleBase == 0 || callerAddress < moduleBase) {
+                logging::warn(
+                    "Terrain Blending observed its first classified draw through {}, but the caller was outside the FO4VR image.",
+                    drawMethod);
+                return;
+            }
+            const auto callerRva = callerAddress - moduleBase;
+            logging::info(
+                "Terrain Blending observed its first classified draw through {} at FO4VR+0x{:X} (class=4).",
+                drawMethod,
+                callerRva);
         }
 
         [[nodiscard]] bool activeDrawInterceptionRequired() noexcept
@@ -1071,11 +1364,15 @@ namespace community_shaders::render
                     context,
                     contractPlusOne);
                 if (reflectionFree.active()) {
-                    auto disabled = runtime.scopeMaterialBindings(
-                        context,
-                        activeIblMaterialBinding,
-                        false);
-                    if (disabled.active()) {
+                auto disabled = runtime.scopeMaterialBindings(
+                    context,
+                    activeIblMaterialBinding,
+                    false);
+                    auto wetnessDisabled =
+                        basic_wetness::Runtime::get().scopeDraw(
+                            context,
+                            false);
+                    if (disabled.active() && wetnessDisabled.active()) {
                         draw();
                         const auto materialRestored = disabled.restore();
                         const auto reflectionRestored =
@@ -1115,7 +1412,14 @@ namespace community_shaders::render
                     context,
                     activeIblMaterialBinding,
                     true);
-                if (enabled.active()) {
+                const auto wetnessActive =
+                    basic_wetness::Runtime::get().requested() &&
+                    linear_lighting::Runtime::get()
+                        .linearLightingEnabled();
+                auto wetness = basic_wetness::Runtime::get().scopeDraw(
+                    context,
+                    wetnessActive);
+                if (enabled.active() && wetness.active()) {
                     draw();
                     const auto restored = enabled.restore();
                     runtime.onMaterialBindingsComplete(
@@ -1123,6 +1427,7 @@ namespace community_shaders::render
                         true,
                         restored);
                 } else if (originalPSSetShader) {
+                    basic_wetness::Runtime::get().recordDrawFallback();
                     originalPSSetShader(
                         context,
                         activeIblMaterialBinding.original,
@@ -1144,6 +1449,16 @@ namespace community_shaders::render
         }
 
         template <class Draw>
+        void issueDrawWithCloudShadows(
+            ID3D11DeviceContext* context,
+            Draw&& draw) noexcept
+        {
+            const auto capture = cloud_shadows::Runtime::get().scopeCapture(
+                context, activeReplacementBinding);
+            draw();
+        }
+
+        template <class Draw>
         void issueDrawWithContactShadows(
             ID3D11DeviceContext* context,
             Draw&& draw) noexcept
@@ -1155,13 +1470,37 @@ namespace community_shaders::render
             auto& runtime = contact_shadows::Runtime::get();
             const auto bindings = runtime.scopeDraw(
                 context,
-                activeContactShadowBinding);
-            if (bindings.active()) {
+                activeContactShadowBinding,
+                activeContactShadowsEnabled,
+                activeCloudShadowsEnabled);
+            auto& wrappedRuntime = wrapped_grass::Runtime::get();
+            const auto wrappedBindings = wrappedRuntime.scopeDraw(
+                context,
+                activeWrappedGrassEnabled);
+            auto& hairRuntime = hair_specular::Runtime::get();
+            const auto hairBindings = hairRuntime.scopeDraw(
+                context,
+                activeHairSpecularEnabled);
+            auto& wetnessRuntime = basic_wetness::Runtime::get();
+            const auto wetnessBindings = wetnessRuntime.scopeDraw(
+                context,
+                activeBasicWetnessEnabled);
+            if (bindings.active() && wrappedBindings.active() &&
+                hairBindings.active() && wetnessBindings.active()) {
                 draw();
+                if (activeSubsurfaceScatteringEnabled) {
+                    (void)subsurface_scattering::Runtime::get()
+                        .executeAfterDirectionalLight(context);
+                }
+                surface_classification::Runtime::get()
+                    .markWorldFrameConsumed();
                 return;
             }
 
             runtime.recordDrawFallback();
+            wrappedRuntime.recordDrawFallback();
+            hairRuntime.recordDrawFallback();
+            wetnessRuntime.recordDrawFallback();
             if (!originalPSSetShader) {
                 return;
             }
@@ -1171,6 +1510,12 @@ namespace community_shaders::render
                 nullptr,
                 0);
             draw();
+            if (activeSubsurfaceScatteringEnabled) {
+                (void)subsurface_scattering::Runtime::get()
+                    .executeAfterDirectionalLight(context);
+            }
+            surface_classification::Runtime::get()
+                .markWorldFrameConsumed();
             originalPSSetShader(
                 context,
                 activeContactShadowBinding.replacement,
@@ -1236,6 +1581,34 @@ namespace community_shaders::render
             return nullptr;
         }
 
+        HRESULT STDMETHODCALLTYPE hookCreateVertexShader(
+            ID3D11Device* device,
+            const void* bytecode,
+            SIZE_T bytecodeLength,
+            ID3D11ClassLinkage* classLinkage,
+            ID3D11VertexShader** shader) noexcept
+        {
+            vertexShaderCreationCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto original = originalCreateVertexShader;
+            if (!original) {
+                return E_UNEXPECTED;
+            }
+            const auto result = original(
+                device,
+                bytecode,
+                bytecodeLength,
+                classLinkage,
+                shader);
+            if (shaderInterceptionActive.load(std::memory_order_acquire) &&
+                SUCCEEDED(result) && shader && *shader) {
+                linear_lighting::Runtime::get().onVertexShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
+            }
+            return result;
+        }
+
         HRESULT STDMETHODCALLTYPE hookCreatePixelShader(
             ID3D11Device* device,
             const void* bytecode,
@@ -1272,6 +1645,116 @@ namespace community_shaders::render
             return result;
         }
 
+        void STDMETHODCALLTYPE hookVSSetShader(
+            ID3D11DeviceContext* context,
+            ID3D11VertexShader* shader,
+            ID3D11ClassInstance* const* classInstances,
+            UINT classInstanceCount) noexcept
+        {
+            vertexShaderBindCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto original = originalVSSetShader;
+            if (!original) {
+                return;
+            }
+            activeGrassVertexShader =
+                shaderInterceptionActive.load(std::memory_order_acquire) &&
+                classInstanceCount == 0 &&
+                linear_lighting::Runtime::get().isGrassVertexShader(shader);
+            original(context, shader, classInstances, classInstanceCount);
+        }
+
+        void STDMETHODCALLTYPE hookOMSetRenderTargets(
+            ID3D11DeviceContext* context,
+            UINT renderTargetCount,
+            ID3D11RenderTargetView* const* renderTargets,
+            ID3D11DepthStencilView* depthStencil) noexcept
+        {
+            renderTargetBindCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto original = originalOMSetRenderTargets;
+            if (!original) {
+                return;
+            }
+
+            auto& surfaceRuntime = surface_classification::Runtime::get();
+            if (shaderInterceptionActive.load(std::memory_order_acquire) &&
+                linear_lighting::Runtime::get().linearLightingEnabled() &&
+                surfaceRuntime.required()) {
+                const auto binding = surfaceRuntime.prepareGBufferBinding(
+                    context,
+                    renderTargetCount,
+                    renderTargets);
+                if (binding) {
+                    original(
+                        context,
+                        binding.renderTargetCount,
+                        binding.renderTargets.data(),
+                        depthStencil);
+                    return;
+                }
+            }
+            original(
+                context,
+                renderTargetCount,
+                renderTargets,
+                depthStencil);
+        }
+
+        void STDMETHODCALLTYPE hookOMSetRenderTargetsAndUnorderedAccessViews(
+            ID3D11DeviceContext* context,
+            UINT renderTargetCount,
+            ID3D11RenderTargetView* const* renderTargets,
+            ID3D11DepthStencilView* depthStencil,
+            UINT unorderedAccessStartSlot,
+            UINT unorderedAccessViewCount,
+            ID3D11UnorderedAccessView* const* unorderedAccessViews,
+            const UINT* initialCounts) noexcept
+        {
+            renderTargetAndUnorderedAccessBindCalls.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            const auto original =
+                originalOMSetRenderTargetsAndUnorderedAccessViews;
+            if (!original) {
+                return;
+            }
+
+            auto& surfaceRuntime = surface_classification::Runtime::get();
+            const auto appendDoesNotOverlapUavs =
+                unorderedAccessViewCount == 0 ||
+                (unorderedAccessViewCount !=
+                        D3D11_KEEP_UNORDERED_ACCESS_VIEWS &&
+                    unorderedAccessStartSlot >= 7);
+            if (shaderInterceptionActive.load(std::memory_order_acquire) &&
+                linear_lighting::Runtime::get().linearLightingEnabled() &&
+                surfaceRuntime.required() && appendDoesNotOverlapUavs) {
+                const auto binding = surfaceRuntime.prepareGBufferBinding(
+                    context,
+                    renderTargetCount,
+                    renderTargets);
+                if (binding) {
+                    original(
+                        context,
+                        binding.renderTargetCount,
+                        binding.renderTargets.data(),
+                        depthStencil,
+                        unorderedAccessStartSlot,
+                        unorderedAccessViewCount,
+                        unorderedAccessViews,
+                        initialCounts);
+                    return;
+                }
+            }
+            original(
+                context,
+                renderTargetCount,
+                renderTargets,
+                depthStencil,
+                unorderedAccessStartSlot,
+                unorderedAccessViewCount,
+                unorderedAccessViews,
+                initialCounts);
+        }
+
         void STDMETHODCALLTYPE hookPSSetShader(
             ID3D11DeviceContext* context,
             ID3D11PixelShader* shader,
@@ -1285,8 +1768,17 @@ namespace community_shaders::render
             }
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
+                activeSurfaceClassCode = 0;
                 activeReplacementOriginal = nullptr;
+                activeReplacementContext = nullptr;
+                pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeContactShadowsEnabled = false;
+                activeWrappedGrassEnabled = false;
+                activeHairSpecularEnabled = false;
+                activeSubsurfaceScatteringEnabled = false;
+                activeBasicWetnessEnabled = false;
+                activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1295,8 +1787,17 @@ namespace community_shaders::render
             if (insidePSSetShaderHook) {
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
+                activeSurfaceClassCode = 0;
                 activeReplacementOriginal = nullptr;
+                activeReplacementContext = nullptr;
+                pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeContactShadowsEnabled = false;
+                activeWrappedGrassEnabled = false;
+                activeHairSpecularEnabled = false;
+                activeSubsurfaceScatteringEnabled = false;
+                activeBasicWetnessEnabled = false;
+                activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1308,6 +1809,12 @@ namespace community_shaders::render
             auto& replacementRuntime = linear_lighting::Runtime::get();
             auto& iblRuntime = ibl::Runtime::get();
             auto& contactShadowRuntime = contact_shadows::Runtime::get();
+            auto& wrappedGrassRuntime = wrapped_grass::Runtime::get();
+            auto& hairSpecularRuntime = hair_specular::Runtime::get();
+            auto& subsurfaceScatteringRuntime =
+                subsurface_scattering::Runtime::get();
+            auto& basicWetnessRuntime = basic_wetness::Runtime::get();
+            auto& cloudShadowRuntime = cloud_shadows::Runtime::get();
             const auto qualificationActive =
                 qualificationSessionActive.load(std::memory_order_acquire);
             const auto replacementFeaturesActive =
@@ -1315,12 +1822,50 @@ namespace community_shaders::render
             const auto iblFeatureActive = iblRuntime.featureEnabled();
             const auto contactShadowFeatureActive =
                 contactShadowRuntime.featureEnabled();
+            const auto wrappedGrassFeatureActive =
+                wrappedGrassRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
+            const auto hairSpecularFeatureActive =
+                hairSpecularRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
+            const auto subsurfaceScatteringFeatureActive =
+                subsurfaceScatteringRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
+            const auto basicWetnessFeatureActive =
+                basicWetnessRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
+            const auto cloudShadowFeatureActive =
+                cloudShadowRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
+            const auto dflightCompositorActive =
+                contactShadowRuntime.compositorReady(
+                    wrappedGrassFeatureActive || hairSpecularFeatureActive ||
+                    subsurfaceScatteringFeatureActive ||
+                    basicWetnessFeatureActive || cloudShadowFeatureActive);
+            if (contactShadowRuntime.tracksOriginal(shader) &&
+                !firstTrackedContactShaderBindLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Contact Shadows observed its first tracked DFLight family bind (classInstances={}, compositorActive={}).",
+                    classInstanceCount,
+                    dflightCompositorActive);
+            }
             if (!replacementFeaturesActive && !iblFeatureActive &&
-                !contactShadowFeatureActive &&
+                !dflightCompositorActive &&
                 !qualificationActive) {
                 activeReplacementBinding = {};
+                activeSurfaceClassCode = 0;
                 activeReplacementOriginal = nullptr;
+                activeReplacementContext = nullptr;
+                pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeContactShadowsEnabled = false;
+                activeWrappedGrassEnabled = false;
+                activeHairSpecularEnabled = false;
+                activeSubsurfaceScatteringEnabled = false;
+                activeBasicWetnessEnabled = false;
+                activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1340,22 +1885,64 @@ namespace community_shaders::render
             } else {
                 activeIblCaptureProbePass = {};
             }
-            const auto selection =
-                (replacementFeaturesActive || qualificationActive) ?
-                replacementRuntime.selectPixelShader(context, shader) :
-                linear_lighting::PixelShaderSelection{ shader, {} };
             auto contactShadowSelection =
-                contact_shadows::PixelShaderSelection{ selection.shader, {} };
-            if (contactShadowFeatureActive && !qualificationActive &&
-                classInstanceCount == 0 &&
-                selection.shader == shader &&
-                selection.binding.family ==
-                    linear_lighting::ReplacementShaderFamily::none) {
+                contact_shadows::PixelShaderSelection{ shader, {} };
+            // The exact directional-light compositor is not one of the
+            // material contracts qualified below. FO4VR may bind it once
+            // while qualification is active and retain that bind for the
+            // world session, so suppressing it here permanently loses every
+            // feature composed through that pass.
+            if (dflightCompositorActive && classInstanceCount == 0) {
                 contactShadowSelection =
-                    contactShadowRuntime.selectPixelShader(shader);
+                    contactShadowRuntime.selectPixelShader(
+                        shader,
+                        wrappedGrassFeatureActive ||
+                            hairSpecularFeatureActive ||
+                            subsurfaceScatteringFeatureActive ||
+                            basicWetnessFeatureActive ||
+                            cloudShadowFeatureActive);
+            }
+            const auto descriptorPending = pendingDFPrePassDescriptor.active;
+            const auto activeDescriptor = activeDFPrePassDescriptor();
+            const auto descriptorAvailable =
+                descriptorPending || activeDescriptor.active;
+            const auto selectedDescriptor = descriptorPending ?
+                pendingDFPrePassDescriptor.descriptor :
+                activeDescriptor.descriptor;
+            const auto selection =
+                !contactShadowSelection.binding &&
+                    (replacementFeaturesActive || qualificationActive) ?
+                (activeGrassVertexShader ?
+                    replacementRuntime.selectPixelShaderForGrassVertex(
+                        context,
+                        shader) :
+                    (descriptorAvailable ?
+                    replacementRuntime
+                        .selectPixelShaderForDFPrePassDescriptor(
+                            context,
+                            shader,
+                            selectedDescriptor) :
+                    replacementRuntime.selectPixelShader(context, shader))) :
+                linear_lighting::PixelShaderSelection{
+                    contactShadowSelection.shader,
+                    {},
+                };
+            if (descriptorPending &&
+                selection.binding.family ==
+                    linear_lighting::ReplacementShaderFamily::material) {
+                pendingDFPrePassDescriptor = {};
+                recordDFPrePassDescriptorConsumed(
+                    selectedDescriptor,
+                    "material bind");
+            } else if (!descriptorPending && activeDescriptor.active &&
+                selection.binding.family ==
+                    linear_lighting::ReplacementShaderFamily::material) {
+                recordDFPrePassDescriptorConsumed(
+                    selectedDescriptor,
+                    "active technique material bind");
             }
             auto iblSelection = ibl::Runtime::MaterialPixelShaderSelection{
-                contactShadowSelection.shader,
+                selection.shader,
                 {},
             };
             if (iblFeatureActive && classInstanceCount == 0 &&
@@ -1380,10 +1967,32 @@ namespace community_shaders::render
                 selection.shader->Release();
             }
             activeReplacementBinding = selection.binding;
+            activeSurfaceClassCode = selection.surfaceClassCode;
             activeReplacementOriginal = selection.binding.family !=
                     linear_lighting::ReplacementShaderFamily::none ?
                 shader : nullptr;
+            activeReplacementContext =
+                activeReplacementOriginal && classInstanceCount == 0 ?
+                context : nullptr;
             activeContactShadowBinding = contactShadowSelection.binding;
+            activeContactShadowsEnabled =
+                contactShadowSelection.binding &&
+                contactShadowFeatureActive;
+            activeWrappedGrassEnabled =
+                contactShadowSelection.binding &&
+                wrappedGrassFeatureActive;
+            activeHairSpecularEnabled =
+                contactShadowSelection.binding &&
+                hairSpecularFeatureActive;
+            activeSubsurfaceScatteringEnabled =
+                contactShadowSelection.binding &&
+                subsurfaceScatteringFeatureActive;
+            activeBasicWetnessEnabled =
+                contactShadowSelection.binding &&
+                basicWetnessFeatureActive;
+            activeCloudShadowsEnabled =
+                contactShadowSelection.binding &&
+                cloudShadowFeatureActive;
             activeIblMaterialBinding = iblSelection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
@@ -1406,7 +2015,11 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            const auto caller = _ReturnAddress();
+            consumePendingDFPrePassDescriptorAtDraw(context);
+            reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            recordFirstTerrainDrawCaller(caller, "DrawIndexed");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawIndexed) {
                     originalDrawIndexed(
@@ -1427,13 +2040,15 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexed) {
-                issueDrawWithContactShadows(context, [&]() noexcept {
-                    issueDrawWithIblMaterial(context, [&]() noexcept {
-                        originalDrawIndexed(
-                            context,
-                            indexCount,
-                            startIndexLocation,
-                            baseVertexLocation);
+                issueDrawWithCloudShadows(context, [&]() noexcept {
+                    issueDrawWithContactShadows(context, [&]() noexcept {
+                        issueDrawWithIblMaterial(context, [&]() noexcept {
+                            originalDrawIndexed(
+                                context,
+                                indexCount,
+                                startIndexLocation,
+                                baseVertexLocation);
+                        });
                     });
                 });
             }
@@ -1444,7 +2059,11 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            const auto caller = _ReturnAddress();
+            consumePendingDFPrePassDescriptorAtDraw(context);
+            reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            recordFirstTerrainDrawCaller(caller, "Draw");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDraw) {
                     originalDraw(context, vertexCount, startVertexLocation);
@@ -1459,9 +2078,12 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDraw) {
-                issueDrawWithContactShadows(context, [&]() noexcept {
-                    issueDrawWithIblMaterial(context, [&]() noexcept {
-                        originalDraw(context, vertexCount, startVertexLocation);
+                issueDrawWithCloudShadows(context, [&]() noexcept {
+                    issueDrawWithContactShadows(context, [&]() noexcept {
+                        issueDrawWithIblMaterial(context, [&]() noexcept {
+                            originalDraw(
+                                context, vertexCount, startVertexLocation);
+                        });
                     });
                 });
             }
@@ -1475,7 +2097,11 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const auto caller = _ReturnAddress();
+            consumePendingDFPrePassDescriptorAtDraw(context);
+            reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            recordFirstTerrainDrawCaller(caller, "DrawIndexedInstanced");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawIndexedInstanced) {
                     originalDrawIndexedInstanced(
@@ -1498,15 +2124,17 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexedInstanced) {
-                issueDrawWithContactShadows(context, [&]() noexcept {
-                    issueDrawWithIblMaterial(context, [&]() noexcept {
-                        originalDrawIndexedInstanced(
-                            context,
-                            indexCountPerInstance,
-                            instanceCount,
-                            startIndexLocation,
-                            baseVertexLocation,
-                            startInstanceLocation);
+                issueDrawWithCloudShadows(context, [&]() noexcept {
+                    issueDrawWithContactShadows(context, [&]() noexcept {
+                        issueDrawWithIblMaterial(context, [&]() noexcept {
+                            originalDrawIndexedInstanced(
+                                context,
+                                indexCountPerInstance,
+                                instanceCount,
+                                startIndexLocation,
+                                baseVertexLocation,
+                                startInstanceLocation);
+                        });
                     });
                 });
             }
@@ -1519,7 +2147,11 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const auto caller = _ReturnAddress();
+            consumePendingDFPrePassDescriptorAtDraw(context);
+            reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            recordFirstTerrainDrawCaller(caller, "DrawInstanced");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawInstanced) {
                     originalDrawInstanced(
@@ -1541,14 +2173,16 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawInstanced) {
-                issueDrawWithContactShadows(context, [&]() noexcept {
-                    issueDrawWithIblMaterial(context, [&]() noexcept {
-                        originalDrawInstanced(
-                            context,
-                            vertexCountPerInstance,
-                            instanceCount,
-                            startVertexLocation,
-                            startInstanceLocation);
+                issueDrawWithCloudShadows(context, [&]() noexcept {
+                    issueDrawWithContactShadows(context, [&]() noexcept {
+                        issueDrawWithIblMaterial(context, [&]() noexcept {
+                            originalDrawInstanced(
+                                context,
+                                vertexCountPerInstance,
+                                instanceCount,
+                                startVertexLocation,
+                                startInstanceLocation);
+                        });
                     });
                 });
             }
@@ -1737,29 +2371,65 @@ namespace community_shaders::render
                     (kCreatePixelShaderVtableIndex + 1) * sizeof(void*)) ||
                 !isReadableRange(
                     contextVtable,
-                    (kPSSetShaderVtableIndex + 1) * sizeof(void*))) {
+                    (kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex + 1) *
+                        sizeof(void*))) {
                 logging::error(
                     "D3D11 method tables failed the readable-range gate; shader interception remains vanilla.");
                 return false;
             }
 
+            createVertexShaderTarget =
+                deviceVtable[kCreateVertexShaderVtableIndex];
             createPixelShaderTarget =
                 deviceVtable[kCreatePixelShaderVtableIndex];
+            vertexShaderBindTarget = contextVtable[kVSSetShaderVtableIndex];
             pixelShaderBindTarget = contextVtable[kPSSetShaderVtableIndex];
+            renderTargetBindTarget =
+                contextVtable[kOMSetRenderTargetsVtableIndex];
+            renderTargetAndUnorderedAccessBindTarget = contextVtable[
+                kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex];
             const auto d3d11 = GetModuleHandleW(L"d3d11.dll");
-            if (!isExecutableAddress(createPixelShaderTarget) ||
+            if (!isExecutableAddress(createVertexShaderTarget) ||
+                !isExecutableAddress(createPixelShaderTarget) ||
+                !isExecutableAddress(vertexShaderBindTarget) ||
                 !isExecutableAddress(pixelShaderBindTarget) ||
+                !isExecutableAddress(renderTargetBindTarget) ||
+                !isExecutableAddress(
+                    renderTargetAndUnorderedAccessBindTarget) ||
+                !addressBelongsToModule(createVertexShaderTarget, d3d11) ||
                 !addressBelongsToModule(createPixelShaderTarget, d3d11) ||
-                !addressBelongsToModule(pixelShaderBindTarget, d3d11)) {
+                !addressBelongsToModule(vertexShaderBindTarget, d3d11) ||
+                !addressBelongsToModule(pixelShaderBindTarget, d3d11) ||
+                !addressBelongsToModule(renderTargetBindTarget, d3d11) ||
+                !addressBelongsToModule(
+                    renderTargetAndUnorderedAccessBindTarget,
+                    d3d11)) {
+                const auto createVertexPath =
+                    modulePathForAddress(createVertexShaderTarget);
                 const auto createPath =
                     modulePathForAddress(createPixelShaderTarget);
+                const auto vertexBindPath =
+                    modulePathForAddress(vertexShaderBindTarget);
                 const auto bindPath = modulePathForAddress(pixelShaderBindTarget);
+                const auto renderTargetPath =
+                    modulePathForAddress(renderTargetBindTarget);
+                const auto renderTargetAndUnorderedAccessPath =
+                    modulePathForAddress(
+                        renderTargetAndUnorderedAccessBindTarget);
                 logging::error(
-                    "D3D11 method identity gate rejected shader targets (CreatePixelShader='{}' {}, PSSetShader='{}' {}); interception remains vanilla.",
+                    "D3D11 method identity gate rejected targets (CreateVertexShader='{}' {}, CreatePixelShader='{}' {}, VSSetShader='{}' {}, PSSetShader='{}' {}, OMSetRenderTargets='{}' {}, OMSetRenderTargetsAndUnorderedAccessViews='{}' {}); interception remains vanilla.",
+                    createVertexPath.data(),
+                    createVertexShaderTarget,
                     createPath.data(),
                     createPixelShaderTarget,
+                    vertexBindPath.data(),
+                    vertexShaderBindTarget,
                     bindPath.data(),
-                    pixelShaderBindTarget);
+                    pixelShaderBindTarget,
+                    renderTargetPath.data(),
+                    renderTargetBindTarget,
+                    renderTargetAndUnorderedAccessPath.data(),
+                    renderTargetAndUnorderedAccessBindTarget);
                 return false;
             }
 
@@ -1772,8 +2442,38 @@ namespace community_shaders::render
                 return false;
             }
 
+            bool createVertexShaderCreated{};
             bool createPixelShaderCreated{};
+            bool vertexShaderBindCreated{};
             bool pixelShaderBindCreated{};
+            bool renderTargetBindCreated{};
+            bool renderTargetAndUnorderedAccessBindCreated{};
+            void* createVertexShaderTrampoline{};
+            status = MH_CreateHook(
+                createVertexShaderTarget,
+                reinterpret_cast<void*>(&hookCreateVertexShader),
+                &createVertexShaderTrampoline);
+            if (status != MH_OK ||
+                !isExecutableAddress(createVertexShaderTrampoline)) {
+                logging::error(
+                    "CreateVertexShader detour creation/prologue validation failed: {} ({}), trampoline={}.",
+                    minHookStatusName(status),
+                    static_cast<int>(status),
+                    createVertexShaderTrampoline);
+                rollbackMethodDetours(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false);
+                return false;
+            }
+            createVertexShaderCreated = true;
+            originalCreateVertexShader =
+                reinterpret_cast<CreateVertexShaderFunction>(
+                    createVertexShaderTrampoline);
+
             void* createPixelShaderTrampoline{};
             status = MH_CreateHook(
                 createPixelShaderTarget,
@@ -1786,13 +2486,44 @@ namespace community_shaders::render
                     minHookStatusName(status),
                     static_cast<int>(status),
                     createPixelShaderTrampoline);
-                rollbackMethodDetours(false, false);
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false);
                 return false;
             }
             createPixelShaderCreated = true;
             originalCreatePixelShader =
                 reinterpret_cast<CreatePixelShaderFunction>(
                     createPixelShaderTrampoline);
+
+            void* vertexShaderBindTrampoline{};
+            status = MH_CreateHook(
+                vertexShaderBindTarget,
+                reinterpret_cast<void*>(&hookVSSetShader),
+                &vertexShaderBindTrampoline);
+            if (status != MH_OK ||
+                !isExecutableAddress(vertexShaderBindTrampoline)) {
+                logging::error(
+                    "VSSetShader detour creation/prologue validation failed: {} ({}), trampoline={}.",
+                    minHookStatusName(status),
+                    static_cast<int>(status),
+                    vertexShaderBindTrampoline);
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    false,
+                    false,
+                    false,
+                    false);
+                return false;
+            }
+            vertexShaderBindCreated = true;
+            originalVSSetShader = reinterpret_cast<VSSetShaderFunction>(
+                vertexShaderBindTrampoline);
 
             void* pixelShaderBindTrampoline{};
             status = MH_CreateHook(
@@ -1806,50 +2537,167 @@ namespace community_shaders::render
                     minHookStatusName(status),
                     static_cast<int>(status),
                     pixelShaderBindTrampoline);
-                rollbackMethodDetours(createPixelShaderCreated, false);
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    vertexShaderBindCreated,
+                    false,
+                    false,
+                    false);
                 return false;
             }
             pixelShaderBindCreated = true;
             originalPSSetShader = reinterpret_cast<PSSetShaderFunction>(
                 pixelShaderBindTrampoline);
 
+            void* renderTargetBindTrampoline{};
+            status = MH_CreateHook(
+                renderTargetBindTarget,
+                reinterpret_cast<void*>(&hookOMSetRenderTargets),
+                &renderTargetBindTrampoline);
+            if (status != MH_OK ||
+                !isExecutableAddress(renderTargetBindTrampoline)) {
+                logging::error(
+                    "OMSetRenderTargets detour creation/prologue validation failed: {} ({}), trampoline={}.",
+                    minHookStatusName(status),
+                    static_cast<int>(status),
+                    renderTargetBindTrampoline);
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    false,
+                    false);
+                return false;
+            }
+            renderTargetBindCreated = true;
+            originalOMSetRenderTargets =
+                reinterpret_cast<OMSetRenderTargetsFunction>(
+                    renderTargetBindTrampoline);
+
+            void* renderTargetAndUnorderedAccessBindTrampoline{};
+            status = MH_CreateHook(
+                renderTargetAndUnorderedAccessBindTarget,
+                reinterpret_cast<void*>(
+                    &hookOMSetRenderTargetsAndUnorderedAccessViews),
+                &renderTargetAndUnorderedAccessBindTrampoline);
+            if (status != MH_OK ||
+                !isExecutableAddress(
+                    renderTargetAndUnorderedAccessBindTrampoline)) {
+                logging::error(
+                    "OMSetRenderTargetsAndUnorderedAccessViews detour creation/prologue validation failed: {} ({}), trampoline={}.",
+                    minHookStatusName(status),
+                    static_cast<int>(status),
+                    renderTargetAndUnorderedAccessBindTrampoline);
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    renderTargetBindCreated,
+                    false);
+                return false;
+            }
+            renderTargetAndUnorderedAccessBindCreated = true;
+            originalOMSetRenderTargetsAndUnorderedAccessViews =
+                reinterpret_cast<
+                    OMSetRenderTargetsAndUnorderedAccessViewsFunction>(
+                    renderTargetAndUnorderedAccessBindTrampoline);
+
+            const auto createVertexQueueStatus =
+                MH_QueueEnableHook(createVertexShaderTarget);
             const auto createQueueStatus =
                 MH_QueueEnableHook(createPixelShaderTarget);
+            const auto vertexBindQueueStatus =
+                MH_QueueEnableHook(vertexShaderBindTarget);
             const auto bindQueueStatus =
                 MH_QueueEnableHook(pixelShaderBindTarget);
-            if (createQueueStatus != MH_OK || bindQueueStatus != MH_OK) {
+            const auto renderTargetQueueStatus =
+                MH_QueueEnableHook(renderTargetBindTarget);
+            const auto renderTargetAndUnorderedAccessQueueStatus =
+                MH_QueueEnableHook(
+                    renderTargetAndUnorderedAccessBindTarget);
+            if (createVertexQueueStatus != MH_OK ||
+                createQueueStatus != MH_OK ||
+                vertexBindQueueStatus != MH_OK ||
+                bindQueueStatus != MH_OK ||
+                renderTargetQueueStatus != MH_OK ||
+                renderTargetAndUnorderedAccessQueueStatus != MH_OK) {
                 logging::error(
-                    "D3D11 detour queue failed: CreatePixelShader={} ({}), PSSetShader={} ({}).",
+                    "D3D11 detour queue failed: CreateVertexShader={} ({}), CreatePixelShader={} ({}), VSSetShader={} ({}), PSSetShader={} ({}), OMSetRenderTargets={} ({}), OMSetRenderTargetsAndUnorderedAccessViews={} ({}).",
+                    minHookStatusName(createVertexQueueStatus),
+                    static_cast<int>(createVertexQueueStatus),
                     minHookStatusName(createQueueStatus),
                     static_cast<int>(createQueueStatus),
+                    minHookStatusName(vertexBindQueueStatus),
+                    static_cast<int>(vertexBindQueueStatus),
                     minHookStatusName(bindQueueStatus),
-                    static_cast<int>(bindQueueStatus));
+                    static_cast<int>(bindQueueStatus),
+                    minHookStatusName(renderTargetQueueStatus),
+                    static_cast<int>(renderTargetQueueStatus),
+                    minHookStatusName(
+                        renderTargetAndUnorderedAccessQueueStatus),
+                    static_cast<int>(
+                        renderTargetAndUnorderedAccessQueueStatus));
                 rollbackMethodDetours(
+                    createVertexShaderCreated,
                     createPixelShaderCreated,
-                    pixelShaderBindCreated);
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    renderTargetBindCreated,
+                    renderTargetAndUnorderedAccessBindCreated);
                 return false;
             }
 
             status = MH_ApplyQueued();
             if (status != MH_OK ||
                 !captureMinHookPatchIdentity(
+                    createVertexShaderTarget,
+                    createVertexShaderPatch) ||
+                !captureMinHookPatchIdentity(
                     createPixelShaderTarget,
                     createPixelShaderPatch) ||
                 !captureMinHookPatchIdentity(
+                    vertexShaderBindTarget,
+                    vertexShaderBindPatch) ||
+                !captureMinHookPatchIdentity(
                     pixelShaderBindTarget,
-                    pixelShaderBindPatch)) {
+                    pixelShaderBindPatch) ||
+                !captureMinHookPatchIdentity(
+                    renderTargetBindTarget,
+                    renderTargetBindPatch) ||
+                !captureMinHookPatchIdentity(
+                    renderTargetAndUnorderedAccessBindTarget,
+                    renderTargetAndUnorderedAccessBindPatch)) {
                 logging::error(
                     "D3D11 detour activation/ownership validation failed: {} ({}).",
                     minHookStatusName(status),
                     static_cast<int>(status));
                 rollbackMethodDetours(
+                    createVertexShaderCreated,
                     createPixelShaderCreated,
-                    pixelShaderBindCreated);
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    renderTargetBindCreated,
+                    renderTargetAndUnorderedAccessBindCreated);
                 return false;
             }
 
+            createVertexShaderDetourEnabled.store(
+                true,
+                std::memory_order_release);
             createPixelShaderDetourEnabled.store(true, std::memory_order_release);
+            vertexShaderBindDetourEnabled.store(
+                true,
+                std::memory_order_release);
             pixelShaderBindDetourEnabled.store(true, std::memory_order_release);
+            renderTargetBindDetourEnabled.store(
+                true,
+                std::memory_order_release);
+            renderTargetAndUnorderedAccessBindDetourEnabled.store(
+                true,
+                std::memory_order_release);
             if (!installQualificationDrawDetours(context)) {
                 qualificationDrawHookInstallFailures.fetch_add(
                     1,
@@ -1858,9 +2706,13 @@ namespace community_shaders::render
                     "D3D11 qualification draw detours remain unavailable; shader replacement stays active, but the automated report will fail closed at draw proof.");
             }
             logging::info(
-                "Installed validated d3d11.dll method detours (CreatePixelShader target={}, PSSetShader target={}); complete native COM vtables remain untouched.",
+                "Installed validated d3d11.dll method detours (CreateVertexShader target={}, CreatePixelShader target={}, VSSetShader target={}, PSSetShader target={}, OMSetRenderTargets target={}, OMSetRenderTargetsAndUnorderedAccessViews target={}); complete native COM vtables remain untouched.",
+                createVertexShaderTarget,
                 createPixelShaderTarget,
-                pixelShaderBindTarget);
+                vertexShaderBindTarget,
+                pixelShaderBindTarget,
+                renderTargetBindTarget,
+                renderTargetAndUnorderedAccessBindTarget);
             return true;
         }
 
@@ -1925,10 +2777,45 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            surface_classification::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            wrapped_grass::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            hair_specular::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            basic_wetness::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            cloud_shadows::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            subsurface_scattering::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
             ibl::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            firstTrackedContactShaderBindLogged.store(
+                false,
+                std::memory_order_relaxed);
+            firstDFPrePassDescriptorConsumeLogged.store(
+                false,
+                std::memory_order_relaxed);
+            firstDFPrePassDescriptorExpiryLogged.store(
+                false,
+                std::memory_order_relaxed);
+            firstDFPrePassTechniqueOverflowLogged.store(
+                false,
+                std::memory_order_relaxed);
+            firstDFPrePassTechniqueMismatchLogged.store(
+                false,
+                std::memory_order_relaxed);
+            activeDFPrePassTechniques = {};
+            pendingDFPrePassDescriptor = {};
             contact_shadows::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
@@ -1939,6 +2826,62 @@ namespace community_shaders::render
                 "D3D11 device captured through Fallout4VR's verified creation import; shader interception is active.");
             return result;
         }
+    }
+
+    void beginDFPrePassTechnique(std::uint32_t descriptor) noexcept
+    {
+        linear_lighting::Runtime::get().observeDFPrePassDescriptor(
+            descriptor);
+        if (activeDFPrePassTechniques.depth >=
+            activeDFPrePassTechniques.descriptors.size()) {
+            activeDFPrePassTechniques = {};
+            pendingDFPrePassDescriptor = {};
+            if (!firstDFPrePassTechniqueOverflowLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::error(
+                    "DFPrePass technique descriptor stack overflowed; classification failed closed until the next verified technique boundary.");
+            }
+            return;
+        }
+        activeDFPrePassTechniques.descriptors[
+            activeDFPrePassTechniques.depth++] = descriptor;
+        pendingDFPrePassDescriptor = { descriptor, true };
+    }
+
+    void endDFPrePassTechnique(std::uint32_t descriptor) noexcept
+    {
+        pendingDFPrePassDescriptor = {};
+        if (activeDFPrePassTechniques.depth == 0) {
+            return;
+        }
+        const auto top = activeDFPrePassTechniques.descriptors[
+            activeDFPrePassTechniques.depth - 1];
+        if (top != descriptor) {
+            activeDFPrePassTechniques = {};
+            if (!firstDFPrePassTechniqueMismatchLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::error(
+                    "DFPrePass technique descriptor restore mismatch (active=0x{:08X}, restored=0x{:08X}); classification failed closed.",
+                    top,
+                    descriptor);
+            }
+            return;
+        }
+        --activeDFPrePassTechniques.depth;
+        if (activeDFPrePassTechniques.depth != 0) {
+            pendingDFPrePassDescriptor = {
+                activeDFPrePassTechniques.descriptors[
+                    activeDFPrePassTechniques.depth - 1],
+                true,
+            };
+        }
+    }
+
+    void publishDFPrePassDescriptor(std::uint32_t descriptor) noexcept
+    {
+        pendingDFPrePassDescriptor = { descriptor, true };
     }
 
     bool installEarlyD3D11Hooks() noexcept
@@ -1991,17 +2934,42 @@ namespace community_shaders::render
         try {
             const auto active =
                 shaderInterceptionActive.load(std::memory_order_acquire);
+            const auto createVertexOwned = active && detourPatchOwned(
+                createVertexShaderTarget,
+                createVertexShaderPatch);
             const auto createOwned = active && detourPatchOwned(
                 createPixelShaderTarget,
                 createPixelShaderPatch);
+            const auto vertexBindOwned = active && detourPatchOwned(
+                vertexShaderBindTarget,
+                vertexShaderBindPatch);
             const auto bindOwned = active && detourPatchOwned(
                 pixelShaderBindTarget,
                 pixelShaderBindPatch);
+            const auto renderTargetOwned = active && detourPatchOwned(
+                renderTargetBindTarget,
+                renderTargetBindPatch);
+            const auto renderTargetAndUnorderedAccessOwned = active &&
+                detourPatchOwned(
+                    renderTargetAndUnorderedAccessBindTarget,
+                    renderTargetAndUnorderedAccessBindPatch);
+            createVertexShaderDetourEnabled.store(
+                createVertexOwned,
+                std::memory_order_release);
             createPixelShaderDetourEnabled.store(
                 createOwned,
                 std::memory_order_release);
+            vertexShaderBindDetourEnabled.store(
+                vertexBindOwned,
+                std::memory_order_release);
             pixelShaderBindDetourEnabled.store(
                 bindOwned,
+                std::memory_order_release);
+            renderTargetBindDetourEnabled.store(
+                renderTargetOwned,
+                std::memory_order_release);
+            renderTargetAndUnorderedAccessBindDetourEnabled.store(
+                renderTargetAndUnorderedAccessOwned,
                 std::memory_order_release);
             const auto drawInstalled =
                 qualificationDrawDetoursInstalled.load(
@@ -2030,7 +2998,9 @@ namespace community_shaders::render
                         drawFailures);
                 }
             }
-            if (createOwned && bindOwned) {
+            if (createVertexOwned && createOwned && vertexBindOwned &&
+                bindOwned && renderTargetOwned &&
+                renderTargetAndUnorderedAccessOwned) {
                 return true;
             }
 
@@ -2040,11 +3010,15 @@ namespace community_shaders::render
                 1;
             if (failures == 1 || (failures & (failures - 1)) == 0) {
                 logging::error(
-                    "D3D11 shader detour ownership validation failed (trigger={}, active={}, createOwned={}, bindOwned={}, failures={}); no hook repair was attempted.",
+                    "D3D11 shader detour ownership validation failed (trigger={}, active={}, createVertexOwned={}, createOwned={}, vertexBindOwned={}, bindOwned={}, renderTargetOwned={}, renderTargetAndUnorderedAccessOwned={}, failures={}); no hook repair was attempted.",
                     trigger ? trigger : "unknown",
                     active,
+                    createVertexOwned,
                     createOwned,
+                    vertexBindOwned,
                     bindOwned,
+                    renderTargetOwned,
+                    renderTargetAndUnorderedAccessOwned,
                     failures);
             }
             return false;
@@ -2076,10 +3050,22 @@ namespace community_shaders::render
             .deviceHooksInstalled =
                 deviceHooksInstalled.load(std::memory_order_acquire),
             .shaderInterceptionActive = active,
+            .createVertexShaderDetourEnabled =
+                createVertexShaderDetourEnabled.load(
+                    std::memory_order_acquire),
             .createPixelShaderDetourEnabled =
                 createPixelShaderDetourEnabled.load(std::memory_order_acquire),
+            .vertexShaderBindDetourEnabled =
+                vertexShaderBindDetourEnabled.load(
+                    std::memory_order_acquire),
             .pixelShaderBindDetourEnabled =
                 pixelShaderBindDetourEnabled.load(std::memory_order_acquire),
+            .renderTargetBindDetourEnabled =
+                renderTargetBindDetourEnabled.load(
+                    std::memory_order_acquire),
+            .renderTargetAndUnorderedAccessBindDetourEnabled =
+                renderTargetAndUnorderedAccessBindDetourEnabled.load(
+                    std::memory_order_acquire),
             .qualificationDrawDetoursInstalled =
                 qualificationDrawDetoursInstalled.load(
                     std::memory_order_acquire),
@@ -2099,10 +3085,19 @@ namespace community_shaders::render
                 pixelShaderBindRecursions.load(std::memory_order_relaxed),
             .deviceCreationCalls =
                 deviceCreationCalls.load(std::memory_order_relaxed),
+            .vertexShaderCreationCalls =
+                vertexShaderCreationCalls.load(std::memory_order_relaxed),
             .pixelShaderCreationCalls =
                 pixelShaderCreationCalls.load(std::memory_order_relaxed),
+            .vertexShaderBindCalls =
+                vertexShaderBindCalls.load(std::memory_order_relaxed),
             .pixelShaderBindCalls =
                 pixelShaderBindCalls.load(std::memory_order_relaxed),
+            .renderTargetBindCalls =
+                renderTargetBindCalls.load(std::memory_order_relaxed),
+            .renderTargetAndUnorderedAccessBindCalls =
+                renderTargetAndUnorderedAccessBindCalls.load(
+                    std::memory_order_relaxed),
         };
     }
 

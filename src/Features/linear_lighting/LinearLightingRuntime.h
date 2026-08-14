@@ -115,6 +115,10 @@ namespace community_shaders::linear_lighting
         ContractMask matchingShaderContractMask{};
         std::uint32_t matchingShadersCreated{};
         std::uint32_t trackedOriginalShaders{};
+        std::uint8_t matchingGrassVertexShaderIdentityMask{};
+        std::uint32_t matchingGrassVertexShadersCreated{};
+        std::uint32_t trackedGrassVertexShaders{};
+        std::uint64_t grassVertexClassSelections{};
         std::uint32_t firstReplacementContractPlusOne{};
         std::uint32_t verifiedSkyShaderContracts{};
         std::uint16_t matchingSkyShaderContractMask{};
@@ -187,6 +191,7 @@ namespace community_shaders::linear_lighting
         ID3D11PixelShader* shader{};
         ReplacementShaderBinding binding{};
         bool retainedForBind{};
+        std::uint32_t surfaceClassCode{};
     };
 
     class Runtime final
@@ -201,6 +206,10 @@ namespace community_shaders::linear_lighting
         static constexpr std::size_t kEffectShaderContractCount = 631;
         static constexpr std::size_t kDFLightAmbientShaderContractCount = 39;
         static constexpr std::size_t kComplexParallaxShaderContractCount = 3;
+        static constexpr std::size_t
+            kSpecializedSurfaceClassContractCount = 106;
+        static constexpr std::size_t kGrassVertexShaderIdentityCount = 5;
+        static constexpr std::size_t kMaximumTrackedGrassVertexShaders = 64;
         static constexpr std::size_t kShaderBindingLookupCapacity = 32768;
         static constexpr std::size_t
             kMaximumTrackedOriginalShadersPerContract = 8;
@@ -229,15 +238,38 @@ namespace community_shaders::linear_lighting
             const void* bytecode,
             SIZE_T bytecodeLength,
             ID3D11PixelShader* shader) noexcept;
+        void onVertexShaderCreated(
+            const void* bytecode,
+            SIZE_T bytecodeLength,
+            ID3D11VertexShader* shader) noexcept;
+        [[nodiscard]] bool isGrassVertexShader(
+            ID3D11VertexShader* shader) const noexcept;
 
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
+        [[nodiscard]] PixelShaderSelection
+            selectPixelShaderForDFPrePassDescriptor(
+                ID3D11DeviceContext* context,
+                ID3D11PixelShader* requested,
+                std::uint32_t descriptor) noexcept;
+        [[nodiscard]] PixelShaderSelection selectPixelShaderForGrassVertex(
+            ID3D11DeviceContext* context,
+            ID3D11PixelShader* requested) noexcept;
+
+        // Verified BSDFPrePass technique boundary only. This records whether
+        // an exact FXP descriptor reaches the engine independently of whether
+        // the retained D3D shader can be replaced for that draw.
+        void observeDFPrePassDescriptor(std::uint32_t descriptor) noexcept;
 
         // Cheap draw-boundary guard used to retire a replacement that was
         // already bound when every feature capable of selecting it became
         // disabled.
         [[nodiscard]] bool replacementFeaturesEnabled() noexcept;
+        [[nodiscard]] bool linearLightingEnabled() const noexcept
+        {
+            return enabled_.load(std::memory_order_acquire);
+        }
 
         // Captures only the constant-buffer slots owned by the selected
         // replacement family, installs the private buffers for one draw, and
@@ -251,7 +283,8 @@ namespace community_shaders::linear_lighting
         // observed interfaces, which this method releases before returning.
         [[nodiscard]] std::uint32_t inspectReplacementPipelineState(
             ID3D11DeviceContext* context,
-            ReplacementShaderBinding binding) const noexcept;
+            ReplacementShaderBinding binding,
+            std::uint32_t surfaceClassCode) const noexcept;
 
         [[nodiscard]] std::uint64_t geometryUpdateGeneration() const noexcept;
         [[nodiscard]] bool dFLightAmbientDescriptorReady(
@@ -281,6 +314,13 @@ namespace community_shaders::linear_lighting
 
     private:
         Runtime() = default;
+
+        [[nodiscard]] PixelShaderSelection selectPixelShaderImpl(
+            ID3D11DeviceContext* context,
+            ID3D11PixelShader* requested,
+            std::uint32_t descriptor,
+            bool descriptorActive,
+            bool grassVertexActive) noexcept;
 
         [[nodiscard]] bool createResources(
             ID3D11Device* device,
@@ -322,8 +362,17 @@ namespace community_shaders::linear_lighting
             kShaderContractCount>
             replacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kShaderContractCount>
+            surfaceClassReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSpecializedSurfaceClassContractCount>
+            specializedSurfaceClassReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kComplexParallaxShaderContractCount>
             complexParallaxReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kComplexParallaxShaderContractCount>
+            surfaceClassComplexParallaxReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kSkyShaderContractCount>
             skyReplacementShaders_{};
@@ -419,8 +468,13 @@ namespace community_shaders::linear_lighting
                        kMaximumTrackedOriginalShadersPerContract>,
             kDFLightAmbientShaderContractCount>
             dFLightAmbientOriginalShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11VertexShader>,
+            kMaximumTrackedGrassVertexShaders>
+            grassVertexShaderOwners_{};
         FixedShaderBindingLookup<kShaderBindingLookupCapacity>
             shaderBindingLookup_{};
+        FixedShaderBindingLookup<kMaximumTrackedGrassVertexShaders>
+            grassVertexShaderLookup_{};
         CreatePixelShaderFunction createPixelShader_{};
         std::atomic_bool enabled_{};
         std::atomic_bool complexParallaxEnabled_{};
@@ -433,6 +487,10 @@ namespace community_shaders::linear_lighting
         AtomicContractMask matchingShaderContractMask_{};
         std::atomic_uint32_t matchingShadersCreated_{};
         std::atomic_uint32_t trackedOriginalShaders_{};
+        std::atomic_uint8_t matchingGrassVertexShaderIdentityMask_{};
+        std::atomic_uint32_t matchingGrassVertexShadersCreated_{};
+        std::atomic_uint32_t trackedGrassVertexShaders_{};
+        std::atomic_uint64_t grassVertexClassSelections_{};
         std::atomic_uint16_t matchingSkyShaderContractMask_{};
         std::atomic_uint32_t matchingSkyShadersCreated_{};
         std::atomic_uint32_t trackedOriginalSkyShaders_{};
@@ -468,6 +526,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t replacementConstantScopes_{};
         std::atomic_uint64_t replacementConstantRestores_{};
         std::atomic_uint64_t shaderBindingLookupFailures_{};
+        std::atomic_bool grassVertexShaderCapacityWarningLogged_{};
         std::atomic_uint64_t matchingDFLightAmbientContractMask_{};
         std::atomic_uint64_t readyDFLightAmbientContractMask_{};
         std::atomic_uint32_t dFLightAmbientGammaBits_{

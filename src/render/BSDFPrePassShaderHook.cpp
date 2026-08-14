@@ -1,5 +1,7 @@
 #include "render/BSDFPrePassShaderHook.h"
 
+#include "render/D3D11Hooks.h"
+
 #include "support/Logger.h"
 
 #include <Windows.h>
@@ -16,76 +18,100 @@ namespace community_shaders::render
     namespace
     {
         // Independently verified in Fallout4VR.exe 1.2.72. The constructor at
-        // 0x142878930 publishes vtable 0x1430B8C68. Slot 3 is
-        // 0x142878F80 and reads the uint32 descriptor at pass + 0x48 before
-        // selecting the DFPrepass program and binding its pixel shader.
+        // 0x142878930 publishes vtable 0x1430B8C68. Ghidra verifies slot 4 as
+        // SetupTechnique(descriptor, techniqueState), slot 5 as the matching
+        // RestoreTechnique(descriptor), and slot 9 as per-draw
+        // SetupGeometry(pass, geometryState). SetupTechnique decodes the exact
+        // descriptor through 0x1429379F0/0x142937A20/0x142937A50/
+        // 0x142937A80. SetupGeometry receives the pass in RDX and the
+        // geometry state in R8. At 0x14287D1AB it loads the exact per-draw
+        // descriptor from geometryState + 0x40 (MOV EDX,[RDI+0x40], after
+        // preserving R8 in RDI). The scoped technique owner covers retained
+        // shaders; SetupGeometry publishes a one-draw reinforcement. Slot 3
+        // merely constructs programs and is not a draw boundary.
         constexpr std::uintptr_t kVtableRva = 0x030B8C68;
-        constexpr std::size_t kSetupSlot = 3;
-        constexpr std::uintptr_t kSetupFunctionRva = 0x02878F80;
-        constexpr std::size_t kDescriptorOffset = 0x48;
-        constexpr std::array<std::byte, 49> kSetupSignature{
-            std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
-            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x58 },
-            std::byte{ 0x08 }, std::byte{ 0x4C }, std::byte{ 0x89 },
-            std::byte{ 0x40 }, std::byte{ 0x18 }, std::byte{ 0x55 },
+        constexpr std::size_t kTechniqueSetupSlot = 4;
+        constexpr std::uintptr_t kTechniqueSetupFunctionRva = 0x0287B720;
+        constexpr std::size_t kTechniqueRestoreSlot = 5;
+        constexpr std::uintptr_t kTechniqueRestoreFunctionRva = 0x028789B0;
+        constexpr std::size_t kGeometrySetupSlot = 9;
+        constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0287CF60;
+        constexpr std::uintptr_t kGeometryDescriptorLoadRva = 0x0287D1AB;
+        constexpr std::size_t kGeometryStateDescriptorOffset = 0x40;
+        constexpr std::array<std::byte, 26> kTechniqueSetupSignature{
+            std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x55 },
             std::byte{ 0x56 }, std::byte{ 0x57 }, std::byte{ 0x41 },
-            std::byte{ 0x54 }, std::byte{ 0x41 }, std::byte{ 0x55 },
-            std::byte{ 0x41 }, std::byte{ 0x56 }, std::byte{ 0x41 },
-            std::byte{ 0x57 }, std::byte{ 0x48 }, std::byte{ 0x8D },
-            std::byte{ 0xA8 }, std::byte{ 0x38 }, std::byte{ 0xFE },
-            std::byte{ 0xFF }, std::byte{ 0xFF }, std::byte{ 0x48 },
-            std::byte{ 0x81 }, std::byte{ 0xEC }, std::byte{ 0x90 },
-            std::byte{ 0x02 }, std::byte{ 0x00 }, std::byte{ 0x00 },
-            std::byte{ 0x0F }, std::byte{ 0x29 }, std::byte{ 0x78 },
-            std::byte{ 0xA8 }, std::byte{ 0x4D }, std::byte{ 0x8B },
-            std::byte{ 0xF1 }, std::byte{ 0x49 }, std::byte{ 0x8B },
-            std::byte{ 0xD8 }, std::byte{ 0x4C }, std::byte{ 0x8B },
-            std::byte{ 0xE2 },
+            std::byte{ 0x55 }, std::byte{ 0x41 }, std::byte{ 0x56 },
+            std::byte{ 0x41 }, std::byte{ 0x57 }, std::byte{ 0x48 },
+            std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x70 },
+            std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xE9 },
+            std::byte{ 0x8B }, std::byte{ 0xCA }, std::byte{ 0x4D },
+            std::byte{ 0x8B }, std::byte{ 0xF8 }, std::byte{ 0x44 },
+            std::byte{ 0x8B }, std::byte{ 0xF2 },
+        };
+        constexpr std::array<std::byte, 16> kTechniqueRestoreSignature{
+            std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0x0D },
+            std::byte{ 0x11 }, std::byte{ 0xD1 }, std::byte{ 0x9B },
+            std::byte{ 0x03 }, std::byte{ 0x45 }, std::byte{ 0x33 },
+            std::byte{ 0xC0 }, std::byte{ 0x0F }, std::byte{ 0xBA },
+            std::byte{ 0xE2 }, std::byte{ 0x0C }, std::byte{ 0x73 },
+            std::byte{ 0x35 },
+        };
+        constexpr std::array<std::byte, 55> kGeometrySetupSignature{
+            std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x50 },
+            std::byte{ 0x10 }, std::byte{ 0x48 }, std::byte{ 0x89 },
+            std::byte{ 0x48 }, std::byte{ 0x08 }, std::byte{ 0x55 },
+            std::byte{ 0x53 }, std::byte{ 0x56 }, std::byte{ 0x57 },
+            std::byte{ 0x41 }, std::byte{ 0x54 }, std::byte{ 0x41 },
+            std::byte{ 0x55 }, std::byte{ 0x41 }, std::byte{ 0x56 },
+            std::byte{ 0x41 }, std::byte{ 0x57 }, std::byte{ 0x48 },
+            std::byte{ 0x8D }, std::byte{ 0xA8 }, std::byte{ 0x18 },
+            std::byte{ 0xFE }, std::byte{ 0xFF }, std::byte{ 0xFF },
+            std::byte{ 0x48 }, std::byte{ 0x81 }, std::byte{ 0xEC },
+            std::byte{ 0xA8 }, std::byte{ 0x02 }, std::byte{ 0x00 },
+            std::byte{ 0x00 }, std::byte{ 0x4C }, std::byte{ 0x8B },
+            std::byte{ 0x72 }, std::byte{ 0x18 }, std::byte{ 0x0F },
+            std::byte{ 0x29 }, std::byte{ 0x78 }, std::byte{ 0x98 },
+            std::byte{ 0x48 }, std::byte{ 0xB8 }, std::byte{ 0x00 },
+            std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+            std::byte{ 0x10 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+            std::byte{ 0x00 },
+        };
+        constexpr std::array<std::byte, 3> kGeometryDescriptorLoadSignature{
+            std::byte{ 0x8B }, std::byte{ 0x57 }, std::byte{ 0x40 },
         };
 
-        using SetupFunction = void(__fastcall*)(
+        using SetupTechniqueFunction = bool(__fastcall*)(
+            void* receiver,
+            std::uint32_t descriptor,
+            void* techniqueState);
+        using RestoreTechniqueFunction = void(__fastcall*)(
+            void* receiver,
+            std::uint32_t descriptor);
+        using SetupGeometryFunction = void(__fastcall*)(
             void* receiver,
             void* pass,
-            void* compiledProgram,
-            void* techniqueState);
+            void* geometryState);
 
-        SetupFunction originalSetup{};
-        void** setupCell{};
+        SetupTechniqueFunction originalSetupTechnique{};
+        RestoreTechniqueFunction originalRestoreTechnique{};
+        SetupGeometryFunction originalSetupGeometry{};
+        void** techniqueSetupCell{};
+        void** techniqueRestoreCell{};
+        void** geometrySetupCell{};
         std::atomic_bool installed{};
-        std::atomic_uint64_t setupCalls{};
+        std::atomic_uint64_t techniqueSetupCalls{};
+        std::atomic_uint64_t techniqueRestoreCalls{};
+        std::atomic_uint64_t geometrySetupCalls{};
         std::atomic_uint64_t validationFailures{};
         std::atomic_uint32_t lastDescriptor{};
 
         constexpr std::uint32_t kLinearLightingConsumer = 1u << 0;
         constexpr std::uint32_t kComplexEnvironmentConsumer = 1u << 1;
         constexpr std::uint32_t kIblConsumer = 1u << 2;
-        constexpr std::uint32_t kAllDescriptorConsumers =
-            kLinearLightingConsumer | kComplexEnvironmentConsumer |
-            kIblConsumer;
+        constexpr std::uint32_t kSurfaceClassificationConsumer = 1u << 3;
         std::atomic_uint32_t descriptorConsumerMask{};
-
-        thread_local DFPrePassDescriptorScope activeScope{};
-
-        class DescriptorScope final
-        {
-        public:
-            explicit DescriptorScope(std::uint32_t descriptor) noexcept :
-                previous_(activeScope)
-            {
-                activeScope = { descriptor, true };
-            }
-
-            ~DescriptorScope() noexcept
-            {
-                activeScope = previous_;
-            }
-
-            DescriptorScope(const DescriptorScope&) = delete;
-            DescriptorScope& operator=(const DescriptorScope&) = delete;
-
-        private:
-            DFPrePassDescriptorScope previous_{};
-        };
 
         [[nodiscard]] bool readable(
             const void* address,
@@ -152,8 +178,9 @@ namespace community_shaders::render
                 oldProtection,
                 &discarded)) {
                 // The page is still writable, so restore the engine target
-                // before reporting failure. Never leave hookSetup installed
-                // unless originalSetup remains live and ownership is published.
+                // before reporting failure. Never leave a replacement live
+                // unless its original remains callable and complete ownership
+                // is published.
                 if (*cell == replacement) {
                     *cell = expected;
                 }
@@ -186,46 +213,97 @@ namespace community_shaders::render
             }
         }
 
-        void __fastcall hookSetup(
+        bool __fastcall hookSetupTechnique(
             void* receiver,
-            void* pass,
-            void* compiledProgram,
+            std::uint32_t descriptor,
             void* techniqueState) noexcept
         {
-            const auto original = originalSetup;
+            const auto original = originalSetupTechnique;
+            if (!original) {
+                return false;
+            }
+            if (!installed.load(std::memory_order_acquire) ||
+                descriptorConsumerMask.load(std::memory_order_acquire) == 0) {
+                return original(receiver, descriptor, techniqueState);
+            }
+
+            beginDFPrePassTechnique(descriptor);
+            const auto accepted = original(
+                receiver,
+                descriptor,
+                techniqueState);
+            if (!accepted) {
+                endDFPrePassTechnique(descriptor);
+                return false;
+            }
+            const auto previousCalls = techniqueSetupCalls.fetch_add(
+                1,
+                std::memory_order_relaxed);
+            lastDescriptor.store(descriptor, std::memory_order_relaxed);
+            if (previousCalls == 0) {
+                logging::info(
+                    "BSDFPrePass SetupTechnique opened its first exact descriptor lifetime 0x{:08X}.",
+                    descriptor);
+            }
+            return true;
+        }
+
+        void __fastcall hookRestoreTechnique(
+            void* receiver,
+            std::uint32_t descriptor) noexcept
+        {
+            const auto original = originalRestoreTechnique;
+            if (!original) {
+                return;
+            }
+            if (!installed.load(std::memory_order_acquire)) {
+                original(receiver, descriptor);
+                return;
+            }
+            endDFPrePassTechnique(descriptor);
+            techniqueRestoreCalls.fetch_add(1, std::memory_order_relaxed);
+            original(receiver, descriptor);
+        }
+
+        void __fastcall hookSetupGeometry(
+            void* receiver,
+            void* pass,
+            void* geometryState) noexcept
+        {
+            const auto original = originalSetupGeometry;
             if (!original) {
                 return;
             }
 
-            if ((descriptorConsumerMask.load(std::memory_order_acquire) &
-                    kAllDescriptorConsumers) != kAllDescriptorConsumers ||
-                !pass) {
-                original(
-                    receiver,
-                    pass,
-                    compiledProgram,
-                    techniqueState);
+            if (!installed.load(std::memory_order_acquire) ||
+                descriptorConsumerMask.load(std::memory_order_acquire) == 0 ||
+                !pass || !geometryState) {
+                original(receiver, pass, geometryState);
                 return;
             }
 
-            // Ghidra verification of Fallout4VR.exe 1.2.72 at 0x142878F80
-            // confirms that the original immediately performs the same
-            // unchecked 32-bit read from its mandatory second argument.
+            // Ghidra verification of Fallout4VR.exe 1.2.72 at 0x14287CF60
+            // confirms that native SetupGeometry performs unchecked reads
+            // from the mandatory pass and geometry-state arguments.
             // A per-draw VirtualQuery adds no safety and is prohibitively
             // expensive in this renderer hot path.
             std::uint32_t descriptor{};
             std::memcpy(
                 &descriptor,
-                static_cast<const std::byte*>(pass) + kDescriptorOffset,
+                static_cast<const std::byte*>(geometryState) +
+                    kGeometryStateDescriptorOffset,
                 sizeof(descriptor));
-            setupCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto previousCalls = geometrySetupCalls.fetch_add(
+                1,
+                std::memory_order_relaxed);
             lastDescriptor.store(descriptor, std::memory_order_relaxed);
-            const DescriptorScope scope(descriptor);
-            original(
-                receiver,
-                pass,
-                compiledProgram,
-                techniqueState);
+            if (previousCalls == 0) {
+                logging::info(
+                    "BSDFPrePass SetupGeometry produced its first exact draw descriptor 0x{:08X}.",
+                    descriptor);
+            }
+            publishDFPrePassDescriptor(descriptor);
+            original(receiver, pass, geometryState);
         }
     }
 
@@ -241,33 +319,121 @@ namespace community_shaders::render
                 "BSDFPrePass descriptor hook could not resolve Fallout4VR.exe.");
             return false;
         }
-        auto** cell = reinterpret_cast<void**>(
-            image + kVtableRva + kSetupSlot * sizeof(void*));
-        auto* expected = image + kSetupFunctionRva;
-        if (!readable(cell, sizeof(*cell)) || *cell != expected ||
-            !executable(expected, kSetupSignature.size()) ||
+        auto** nextTechniqueSetupCell = reinterpret_cast<void**>(
+            image + kVtableRva + kTechniqueSetupSlot * sizeof(void*));
+        auto** nextTechniqueRestoreCell = reinterpret_cast<void**>(
+            image + kVtableRva + kTechniqueRestoreSlot * sizeof(void*));
+        auto** nextGeometrySetupCell = reinterpret_cast<void**>(
+            image + kVtableRva + kGeometrySetupSlot * sizeof(void*));
+        auto* expectedTechniqueSetup = image + kTechniqueSetupFunctionRva;
+        auto* expectedTechniqueRestore = image + kTechniqueRestoreFunctionRva;
+        auto* expectedGeometrySetup = image + kGeometrySetupFunctionRva;
+        auto* expectedGeometryDescriptorLoad =
+            image + kGeometryDescriptorLoadRva;
+        const auto techniqueSetupCellMatches =
+            readable(nextTechniqueSetupCell, sizeof(*nextTechniqueSetupCell)) &&
+            *nextTechniqueSetupCell == expectedTechniqueSetup;
+        const auto techniqueRestoreCellMatches =
+            readable(
+                nextTechniqueRestoreCell,
+                sizeof(*nextTechniqueRestoreCell)) &&
+            *nextTechniqueRestoreCell == expectedTechniqueRestore;
+        const auto geometrySetupCellMatches =
+            readable(nextGeometrySetupCell, sizeof(*nextGeometrySetupCell)) &&
+            *nextGeometrySetupCell == expectedGeometrySetup;
+        const auto techniqueSetupCodeMatches =
+            executable(
+                expectedTechniqueSetup,
+                kTechniqueSetupSignature.size()) &&
             std::memcmp(
-                expected,
-                kSetupSignature.data(),
-                kSetupSignature.size()) != 0) {
+                expectedTechniqueSetup,
+                kTechniqueSetupSignature.data(),
+                kTechniqueSetupSignature.size()) == 0;
+        const auto techniqueRestoreCodeMatches =
+            executable(
+                expectedTechniqueRestore,
+                kTechniqueRestoreSignature.size()) &&
+            std::memcmp(
+                expectedTechniqueRestore,
+                kTechniqueRestoreSignature.data(),
+                kTechniqueRestoreSignature.size()) == 0;
+        const auto geometrySetupCodeMatches =
+            executable(
+                expectedGeometrySetup,
+                kGeometrySetupSignature.size()) &&
+            std::memcmp(
+                expectedGeometrySetup,
+                kGeometrySetupSignature.data(),
+                kGeometrySetupSignature.size()) == 0;
+        const auto geometryDescriptorLoadMatches =
+            executable(
+                expectedGeometryDescriptorLoad,
+                kGeometryDescriptorLoadSignature.size()) &&
+            std::memcmp(
+                expectedGeometryDescriptorLoad,
+                kGeometryDescriptorLoadSignature.data(),
+                kGeometryDescriptorLoadSignature.size()) == 0;
+        if (!techniqueSetupCellMatches || !techniqueRestoreCellMatches ||
+            !geometrySetupCellMatches || !techniqueSetupCodeMatches ||
+            !techniqueRestoreCodeMatches || !geometrySetupCodeMatches ||
+            !geometryDescriptorLoadMatches) {
             logging::error(
-                "BSDFPrePass descriptor hook live identity gate failed; complex environment materials remain fail-closed.");
+                "BSDFPrePass descriptor hook live identity gate failed (setupCell={} setupCode={} restoreCell={} restoreCode={} geometryCell={} geometryCode={} geometryDescriptorLoad={}); complex environment materials remain fail-closed.",
+                techniqueSetupCellMatches,
+                techniqueSetupCodeMatches,
+                techniqueRestoreCellMatches,
+                techniqueRestoreCodeMatches,
+                geometrySetupCellMatches,
+                geometrySetupCodeMatches,
+                geometryDescriptorLoadMatches);
             return false;
         }
-        originalSetup = reinterpret_cast<SetupFunction>(expected);
-        if (!patchPointer(
-                cell,
-                expected,
-                reinterpret_cast<void*>(&hookSetup))) {
-            originalSetup = nullptr;
+
+        originalSetupTechnique = reinterpret_cast<SetupTechniqueFunction>(
+            expectedTechniqueSetup);
+        originalRestoreTechnique = reinterpret_cast<RestoreTechniqueFunction>(
+            expectedTechniqueRestore);
+        originalSetupGeometry = reinterpret_cast<SetupGeometryFunction>(
+            expectedGeometrySetup);
+        const auto techniqueSetupPatched = patchPointer(
+            nextTechniqueSetupCell,
+            expectedTechniqueSetup,
+            reinterpret_cast<void*>(&hookSetupTechnique));
+        const auto techniqueRestorePatched = techniqueSetupPatched &&
+            patchPointer(
+                nextTechniqueRestoreCell,
+                expectedTechniqueRestore,
+                reinterpret_cast<void*>(&hookRestoreTechnique));
+        const auto geometrySetupPatched = techniqueRestorePatched &&
+            patchPointer(
+                nextGeometrySetupCell,
+                expectedGeometrySetup,
+                reinterpret_cast<void*>(&hookSetupGeometry));
+        if (!geometrySetupPatched) {
+            auto rollbackComplete = true;
+            if (techniqueRestorePatched) {
+                rollbackComplete = patchPointer(
+                    nextTechniqueRestoreCell,
+                    reinterpret_cast<void*>(&hookRestoreTechnique),
+                    expectedTechniqueRestore) && rollbackComplete;
+            }
+            if (techniqueSetupPatched) {
+                rollbackComplete = patchPointer(
+                    nextTechniqueSetupCell,
+                    reinterpret_cast<void*>(&hookSetupTechnique),
+                    expectedTechniqueSetup) && rollbackComplete;
+            }
             logging::error(
-                "BSDFPrePass descriptor vtable patch failed; complex environment materials remain fail-closed.");
+                "BSDFPrePass descriptor vtable transaction failed (rollbackComplete={}); all descriptor consumers remain fail-closed.",
+                rollbackComplete);
             return false;
         }
-        setupCell = cell;
+        techniqueSetupCell = nextTechniqueSetupCell;
+        techniqueRestoreCell = nextTechniqueRestoreCell;
+        geometrySetupCell = nextGeometrySetupCell;
         installed.store(true, std::memory_order_release);
         logging::info(
-            "Installed verified Fallout4VR BSDFPrePass descriptor hook (vtable 0x030B8C68 slot 3, descriptor +0x48).");
+            "Installed verified Fallout4VR BSDFPrePass descriptor lifetime hooks (vtable 0x030B8C68: SetupTechnique slot 4 RVA 0x0287B720, RestoreTechnique slot 5 RVA 0x028789B0, SetupGeometry slot 9 RVA 0x0287CF60, geometry-state descriptor +0x40 verified at RVA 0x0287D1AB).");
         return true;
     }
 
@@ -275,10 +441,18 @@ namespace community_shaders::render
     {
         const auto hookInstalled =
             installed.load(std::memory_order_acquire);
-        const auto owned = hookInstalled && readable(
-            setupCell, sizeof(*setupCell)) &&
-            *setupCell == reinterpret_cast<void*>(&hookSetup);
+        const auto owned = hookInstalled &&
+            readable(techniqueSetupCell, sizeof(*techniqueSetupCell)) &&
+            readable(techniqueRestoreCell, sizeof(*techniqueRestoreCell)) &&
+            readable(geometrySetupCell, sizeof(*geometrySetupCell)) &&
+            *techniqueSetupCell ==
+                reinterpret_cast<void*>(&hookSetupTechnique) &&
+            *techniqueRestoreCell ==
+                reinterpret_cast<void*>(&hookRestoreTechnique) &&
+            *geometrySetupCell ==
+                reinterpret_cast<void*>(&hookSetupGeometry);
         if (!owned && hookInstalled) {
+            installed.store(false, std::memory_order_release);
             const auto failures = validationFailures.fetch_add(
                                       1,
                                       std::memory_order_relaxed) +
@@ -308,9 +482,9 @@ namespace community_shaders::render
         setDescriptorConsumer(kIblConsumer, enabled);
     }
 
-    DFPrePassDescriptorScope activeDFPrePassDescriptorScope() noexcept
+    void setDFPrePassSurfaceClassificationEnabled(bool enabled) noexcept
     {
-        return activeScope;
+        setDescriptorConsumer(kSurfaceClassificationConsumer, enabled);
     }
 
     DFPrePassHookSnapshot dFPrePassHookSnapshot() noexcept
@@ -319,10 +493,19 @@ namespace community_shaders::render
             installed.load(std::memory_order_acquire);
         return {
             .installed = hookInstalled,
-            .vtableCellOwned = hookInstalled && readable(
-                setupCell, sizeof(*setupCell)) &&
-                *setupCell == reinterpret_cast<void*>(&hookSetup),
-            .setupCalls = setupCalls.load(std::memory_order_relaxed),
+            .vtableCellOwned = hookInstalled &&
+                readable(techniqueSetupCell, sizeof(*techniqueSetupCell)) &&
+                readable(
+                    techniqueRestoreCell,
+                    sizeof(*techniqueRestoreCell)) &&
+                readable(geometrySetupCell, sizeof(*geometrySetupCell)) &&
+                *techniqueSetupCell ==
+                    reinterpret_cast<void*>(&hookSetupTechnique) &&
+                *techniqueRestoreCell ==
+                    reinterpret_cast<void*>(&hookRestoreTechnique) &&
+                *geometrySetupCell ==
+                    reinterpret_cast<void*>(&hookSetupGeometry),
+            .setupCalls = geometrySetupCalls.load(std::memory_order_relaxed),
             .validationFailures =
                 validationFailures.load(std::memory_order_relaxed),
             .lastDescriptor =

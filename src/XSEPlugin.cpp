@@ -1,13 +1,20 @@
 #include "PCH.h"
 
+#include "Features/basic_wetness/BasicWetnessSettingsStore.h"
+#include "Features/cloud_shadows/CloudShadowRuntime.h"
+#include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
+#include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
+#include "Features/wrapped_grass/WrappedGrassRuntime.h"
+#include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "diagnostics/LinearLightingQualification.h"
 #include "render/BSDFPrePassShaderHook.h"
 #include "render/BSLightingGeometryHook.h"
@@ -85,12 +92,16 @@ namespace
             const auto pointLight = community_shaders::linear_lighting::
                 dFTiledPointLightHookSnapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, ambientContractMask=0x{:010X}, ambientReadyMask=0x{:010X}, ambientShaders={}, ambientTracked={}, ambientBuilds={}, ambientBuildFailures={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, ambientReplacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightProducerOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientTransformPrepared={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
+                "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, grassVsMask=0x{:02X}, grassVsCreated={}, grassVsTracked={}, grassClassSelections={}, ambientContractMask=0x{:010X}, ambientReadyMask=0x{:010X}, ambientShaders={}, ambientTracked={}, ambientBuilds={}, ambientBuildFailures={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, ambientReplacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightProducerOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientTransformPrepared={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
                 linearLighting.geometryProviderReady,
                 linearLighting.matchingShadersCreated,
                 linearLighting.trackedOriginalShaders,
+                linearLighting.matchingGrassVertexShaderIdentityMask,
+                linearLighting.matchingGrassVertexShadersCreated,
+                linearLighting.trackedGrassVertexShaders,
+                linearLighting.grassVertexClassSelections,
                 linearLighting.matchingDFLightAmbientContractMask,
                 linearLighting.readyDFLightAmbientContractMask,
                 linearLighting.matchingDFLightAmbientShaders,
@@ -220,6 +231,16 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::contact_shadows::loadSettings();
         const auto complexMaterialSettings =
             community_shaders::complex_materials::loadSettings();
+        const auto wrappedGrassSettings =
+            community_shaders::wrapped_grass::loadSettings();
+        const auto hairSpecularSettings =
+            community_shaders::hair_specular::loadSettings();
+        const auto subsurfaceScatteringSettings =
+            community_shaders::subsurface_scattering::loadSettings();
+        const auto basicWetnessSettings =
+            community_shaders::basic_wetness::loadSettings();
+        const auto cloudShadowSettings =
+            community_shaders::cloud_shadows::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::linear_lighting::Runtime::get().
@@ -227,9 +248,21 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);
         community_shaders::contact_shadows::Runtime::get().applySettings(
             contactShadowSettings);
+        community_shaders::cloud_shadows::Runtime::get().applySettings(
+            cloudShadowSettings);
         community_shaders::ui::setInitialSettings(settings);
         community_shaders::ui::setInitialComplexParallaxSettings(
             complexMaterialSettings);
+        community_shaders::ui::setInitialWrappedGrassSettings(
+            wrappedGrassSettings);
+        community_shaders::ui::setInitialHairSpecularSettings(
+            hairSpecularSettings);
+        community_shaders::ui::setInitialSubsurfaceScatteringSettings(
+            subsurfaceScatteringSettings);
+        community_shaders::ui::setInitialBasicWetnessSettings(
+            basicWetnessSettings);
+        community_shaders::ui::setInitialCloudShadowSettings(
+            cloudShadowSettings);
 
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
             community_shaders::logging::warn(
@@ -254,13 +287,23 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
             settings.enabled,
             iblSettings.enabled,
             iblSettings.diffuseEnabled,
             iblSettings.diffuseLevel,
             contactShadowSettings.enabled,
             contactShadowSettings.sampleCount,
+            wrappedGrassSettings.enabled,
+            wrappedGrassSettings.wrapAmount,
+            hairSpecularSettings.enabled,
+            hairSpecularSettings.specularMultiplier,
+            subsurfaceScatteringSettings.enabled,
+            subsurfaceScatteringSettings.strength,
+            basicWetnessSettings.enabled,
+            basicWetnessSettings.wetness,
+            cloudShadowSettings.enabled,
+            cloudShadowSettings.opacity,
             complexMaterialSettings.parallaxEnabled,
             complexMaterialSettings.parallaxQuality);
         return true;

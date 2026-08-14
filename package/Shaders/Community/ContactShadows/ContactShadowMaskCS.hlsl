@@ -1,5 +1,7 @@
 Texture2D<float> SceneDepth : register(t0);
+TextureCube<float> CloudOcclusion : register(t1);
 RWTexture2D<unorm float> ContactShadowMask : register(u0);
+SamplerState CloudSampler : register(s0);
 
 cbuffer NativeDFLight : register(b2)
 {
@@ -26,6 +28,8 @@ cbuffer ContactShadowSettings : register(b13)
     float4 ContactParams1;
     // x=view-space distance where contact shadows fade out.
     float4 ContactParams2;
+    // x=enabled, y=opacity, z=cloud-shell height, w=planet radius.
+    float4 CloudParams;
 };
 
 float4 NativeClip(float2 packedUv, float depth, uint eye)
@@ -73,6 +77,30 @@ float4 ProjectViewPosition(float3 position, uint eye)
         dot(Camera[row + 1u], homogeneousPoint),
         dot(Camera[row + 2u], homogeneousPoint),
         dot(Camera[row + 3u], homogeneousPoint));
+}
+
+float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
+{
+    if (CloudParams.x <= 0.5f) {
+        return 1.0f;
+    }
+    const float cloudHeight = max(CloudParams.z, 1.0f);
+    const float planetRadius = max(CloudParams.w, cloudHeight);
+    const float shellRadius = planetRadius + cloudHeight;
+    const float3 p =
+        (relativeWorldPosition + float3(0.0f, 0.0f, planetRadius)) /
+        shellRadius;
+    const float projected = dot(p, towardLight);
+    const float discriminant = max(
+        projected * projected - dot(p, p) + 1.0f,
+        0.0f);
+    const float travel = -projected + sqrt(discriminant);
+    const float3 sampleDirection =
+        (p + towardLight * travel) * shellRadius -
+        float3(0.0f, 0.0f, planetRadius);
+    const float cloud = CloudOcclusion.SampleLevel(
+        CloudSampler, sampleDirection, 0.0f);
+    return saturate(1.0f - cloud * saturate(CloudParams.y));
 }
 
 uint StableRayStride(uint sampleCount)
@@ -129,7 +157,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     }
 
     const float centerDepth = SceneDepth.Load(int3(pixel, 0));
-    if (centerDepth <= 1.0e-6f || ContactParams0.x <= 0.0f) {
+    if (centerDepth <= 1.0e-6f) {
         ContactShadowMask[pixel] = 1.0f;
         return;
     }
@@ -147,6 +175,13 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     // Native DFLight evaluates N.L against DFLight[eye + 1].xyz. Marching
     // along that same effective light vector is required to find blockers.
     const float3 towardLight = normalize(DFLight[eye + 1u].xyz);
+    const float cloudVisibility = CloudVisibility(surface, towardLight);
+    const bool contactEnabled =
+        ContactParams2.z > 0.5f && ContactParams0.x > 0.0f;
+    if (!contactEnabled) {
+        ContactShadowMask[pixel] = cloudVisibility;
+        return;
+    }
     // Fade by forward view depth, matching the mature VR Contact Shadows
     // contract. Euclidean length creates a literal eye-centred sphere whose
     // shadow budget slides over world geometry as the headset moves. The
@@ -162,7 +197,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         16.0f));
     float sampleBudget = (float)sampleCount * distanceScale;
     if (sampleBudget <= 0.0f) {
-        ContactShadowMask[pixel] = 1.0f;
+        ContactShadowMask[pixel] = cloudVisibility;
         return;
     }
 
@@ -240,5 +275,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         occlusion = max(occlusion, hit * sampleWeight);
     }
 
-    ContactShadowMask[pixel] = 1.0f - occlusion;
+    const float contactVisibility =
+        1.0f - occlusion * saturate(ContactParams0.x);
+    ContactShadowMask[pixel] = contactVisibility * cloudVisibility;
 }

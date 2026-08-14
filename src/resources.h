@@ -1,5 +1,7 @@
 #pragma once
 
+#include "GeneratedSurfaceClassificationResources.h"
+
 #define IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_PS 101
 #define IDR_LINEAR_LIGHTING_DEFAULT_PROJECTED_VERTEX_COLOR_PS 102
 #define IDR_LINEAR_LIGHTING_DEFAULT_SIX_MRT_PS 103

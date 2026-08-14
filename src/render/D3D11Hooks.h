@@ -13,8 +13,12 @@ namespace community_shaders::render
         bool deviceCaptured{};
         bool deviceHooksInstalled{};
         bool shaderInterceptionActive{};
+        bool createVertexShaderDetourEnabled{};
         bool createPixelShaderDetourEnabled{};
+        bool vertexShaderBindDetourEnabled{};
         bool pixelShaderBindDetourEnabled{};
+        bool renderTargetBindDetourEnabled{};
+        bool renderTargetAndUnorderedAccessBindDetourEnabled{};
         bool qualificationDrawDetoursInstalled{};
         bool qualificationDrawDetoursOwned{};
         std::uint64_t shaderHookInstallFailures{};
@@ -23,8 +27,12 @@ namespace community_shaders::render
         std::uint64_t qualificationDrawHookValidationFailures{};
         std::uint64_t pixelShaderBindRecursions{};
         std::uint64_t deviceCreationCalls{};
+        std::uint64_t vertexShaderCreationCalls{};
         std::uint64_t pixelShaderCreationCalls{};
+        std::uint64_t vertexShaderBindCalls{};
         std::uint64_t pixelShaderBindCalls{};
+        std::uint64_t renderTargetBindCalls{};
+        std::uint64_t renderTargetAndUnorderedAccessBindCalls{};
     };
 
     struct QualificationSnapshot
@@ -59,6 +67,16 @@ namespace community_shaders::render
     [[nodiscard]] bool validateD3D11ShaderHooks(
         const char* trigger) noexcept;
     [[nodiscard]] HookSnapshot d3d11HookSnapshot() noexcept;
+
+    // BSDFPrePass SetupTechnique/RestoreTechnique bracket the exact descriptor
+    // lifetime across retained material draws. SetupGeometry additionally
+    // publishes a one-draw transaction so a retained shader can be specialized
+    // immediately before its draw. All state is fixed-capacity render-thread
+    // storage; no engine pointer is retained.
+    void beginDFPrePassTechnique(std::uint32_t descriptor) noexcept;
+    void endDFPrePassTechnique(std::uint32_t descriptor) noexcept;
+    void publishDFPrePassDescriptor(
+        std::uint32_t descriptor) noexcept;
 
     // A new session invalidates render-thread-local proof state through its
     // monotonically increasing ID. All counters below are session-local.

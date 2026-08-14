@@ -86,26 +86,50 @@ namespace community_shaders::contact_shadows
             SIZE_T bytecodeLength,
             ID3D11PixelShader* shader) noexcept;
         [[nodiscard]] PixelShaderSelection selectPixelShader(
-            ID3D11PixelShader* requested) noexcept;
+            ID3D11PixelShader* requested,
+            bool compositorFeatureActive) noexcept;
+        [[nodiscard]] bool tracksOriginal(
+            ID3D11PixelShader* shader) const noexcept;
         [[nodiscard]] ScopedDrawBindings scopeDraw(
             ID3D11DeviceContext* context,
-            ShaderBinding binding) noexcept;
+            ShaderBinding binding,
+            bool contactShadowsActive,
+            bool cloudShadowsActive) noexcept;
         void recordDrawFallback() noexcept;
         [[nodiscard]] bool featureEnabled() const noexcept;
+        [[nodiscard]] bool compositorReady(
+            bool wrappedGrassActive) const noexcept;
         void applySettings(const Settings& settings) noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
         Runtime() = default;
-        void uploadSettings(ID3D11DeviceContext* context) noexcept;
+        void uploadSettings(
+            ID3D11DeviceContext* context,
+            bool contactShadowsActive,
+            bool maskActive,
+            bool cloudShadowsActive,
+            float cloudOpacity) noexcept;
         [[nodiscard]] bool ensureMaskResources(
             ID3D11ShaderResourceView* depth) noexcept;
-        [[nodiscard]] bool dispatchMask(ID3D11DeviceContext* context) noexcept;
+        [[nodiscard]] bool dispatchMask(
+            ID3D11DeviceContext* context,
+            bool contactShadowsActive,
+            bool cloudShadowsActive,
+            bool& maskActive) noexcept;
 
-        static constexpr std::size_t kMaximumTrackedShaders = 8;
+        struct TrackedShader
+        {
+            Microsoft::WRL::ComPtr<ID3D11PixelShader> shader;
+            std::uint16_t contractIndex{};
+        };
+
+        static constexpr std::size_t kMaximumShaderContracts = 32;
+        static constexpr std::size_t kMaximumTrackedShaders = 128;
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
-        Microsoft::WRL::ComPtr<ID3D11PixelShader> replacement_;
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kMaximumShaderContracts> replacements_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> maskTexture_;
@@ -113,8 +137,7 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> maskOutput_;
         UINT maskWidth_{};
         UINT maskHeight_{};
-        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
-            kMaximumTrackedShaders> originals_{};
+        std::array<TrackedShader, kMaximumTrackedShaders> originals_{};
         std::atomic_bool enabled_{ true };
         std::atomic_bool foveated_{ true };
         std::atomic<float> strength_{ 0.85f };
@@ -125,6 +148,10 @@ namespace community_shaders::contact_shadows
         std::atomic_uint64_t settingsRevision_{ 1 };
         std::atomic_bool resourcesReady_{};
         std::uint64_t uploadedRevision_{};
+        bool uploadedContactActive_{};
+        bool uploadedMaskActive_{};
+        bool uploadedCloudActive_{};
+        float uploadedCloudOpacity_{};
         std::atomic_uint32_t matchingShaders_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_uint64_t replacementBinds_{};
@@ -134,5 +161,9 @@ namespace community_shaders::contact_shadows
         std::atomic_uint64_t drawRestores_{};
         std::atomic_uint64_t drawFallbacks_{};
         std::atomic_uint64_t failures_{};
+        std::atomic_bool firstMatchLogged_{};
+        std::atomic_bool firstReplacementBindLogged_{};
+        std::atomic_bool firstDispatchLogged_{};
+        std::atomic_bool firstDispatchFailureLogged_{};
     };
 }

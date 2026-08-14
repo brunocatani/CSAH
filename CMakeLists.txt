@@ -246,16 +246,94 @@ set(CONTACT_SHADOW_SETTINGS_STORE_HEADER
   "${SOURCE_DIR}/Features/contact_shadows/ContactShadowSettingsStore.h")
 set(CONTACT_SHADOW_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/ContactShadows/ContactShadowTransform.hlsl")
+set(CONTACT_SHADOW_WRAPPED_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/ContactShadows/WrappedGrassTransform.hlsl")
+set(CONTACT_SHADOW_HAIR_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/ContactShadows/HairSpecularTransform.hlsl")
+set(CONTACT_SHADOW_WETNESS_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/ContactShadows/BasicWetnessTransform.hlsl")
 set(CONTACT_SHADOW_MASK_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/ContactShadows/ContactShadowMaskCS.hlsl")
 set_source_files_properties(
   "${CONTACT_SHADOW_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_WRAPPED_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_HAIR_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_WETNESS_SHADER_SOURCE}"
   "${CONTACT_SHADOW_MASK_SHADER_SOURCE}"
   PROPERTIES HEADER_FILE_ONLY TRUE)
 set(CONTACT_SHADOW_SHADER_GENERATOR
   "${ROOT_DIR}/tools/generate_contact_shadow_shader.py")
 set(CONTACT_SHADOW_VERIFY_SCRIPT
   "${ROOT_DIR}/cmake/VerifyContactShadows.cmake")
+set(SURFACE_CLASSIFICATION_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/surface_classification/SurfaceClassificationRuntime.cpp")
+set(SURFACE_CLASSIFICATION_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/surface_classification/SurfaceClassificationRuntime.h")
+set(SURFACE_CLASSIFICATION_LINEAR_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
+set(SURFACE_CLASSIFICATION_GENERATOR
+  "${ROOT_DIR}/tools/generate_surface_classification_shaders.py")
+set(SURFACE_CLASSIFICATION_GENERATED_CONTRACTS
+  "${SOURCE_DIR}/Features/surface_classification/GeneratedSurfaceClassContracts.inl")
+set(SURFACE_CLASSIFICATION_RUNTIME_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifySurfaceClassificationRuntime.cmake")
+set(WRAPPED_GRASS_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/wrapped_grass/WrappedGrassRuntime.cpp")
+set(WRAPPED_GRASS_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/wrapped_grass/WrappedGrassRuntime.h")
+set(WRAPPED_GRASS_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/wrapped_grass/WrappedGrassSettings.h")
+set(WRAPPED_GRASS_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/wrapped_grass/WrappedGrassSettingsStore.cpp")
+set(WRAPPED_GRASS_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/wrapped_grass/WrappedGrassSettingsStore.h")
+set(HAIR_SPECULAR_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/hair_specular/HairSpecularRuntime.cpp")
+set(HAIR_SPECULAR_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/hair_specular/HairSpecularRuntime.h")
+set(HAIR_SPECULAR_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/hair_specular/HairSpecularSettings.h")
+set(HAIR_SPECULAR_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/hair_specular/HairSpecularSettingsStore.cpp")
+set(HAIR_SPECULAR_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/hair_specular/HairSpecularSettingsStore.h")
+set(BASIC_WETNESS_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/basic_wetness/BasicWetnessRuntime.cpp")
+set(BASIC_WETNESS_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/basic_wetness/BasicWetnessRuntime.h")
+set(BASIC_WETNESS_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/basic_wetness/BasicWetnessSettings.h")
+set(BASIC_WETNESS_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/basic_wetness/BasicWetnessSettingsStore.cpp")
+set(BASIC_WETNESS_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/basic_wetness/BasicWetnessSettingsStore.h")
+set(CLOUD_SHADOW_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/cloud_shadows/CloudShadowRuntime.cpp")
+set(CLOUD_SHADOW_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/cloud_shadows/CloudShadowRuntime.h")
+set(CLOUD_SHADOW_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/cloud_shadows/CloudShadowSettings.h")
+set(CLOUD_SHADOW_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/cloud_shadows/CloudShadowSettingsStore.cpp")
+set(CLOUD_SHADOW_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/cloud_shadows/CloudShadowSettingsStore.h")
+set(SUBSURFACE_SCATTERING_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/subsurface_scattering/SubsurfaceScatteringRuntime.cpp")
+set(SUBSURFACE_SCATTERING_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/subsurface_scattering/SubsurfaceScatteringRuntime.h")
+set(SUBSURFACE_SCATTERING_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/subsurface_scattering/SubsurfaceScatteringSettings.h")
+set(SUBSURFACE_SCATTERING_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.cpp")
+set(SUBSURFACE_SCATTERING_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h")
+set(SUBSURFACE_SCATTERING_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/SubsurfaceScattering/SubsurfaceScatteringCS.hlsl")
+set(SUBSURFACE_SCATTERING_SHADER_GENERATOR
+  "${ROOT_DIR}/tools/generate_subsurface_scattering_shader.py")
+set_source_files_properties(
+  "${SUBSURFACE_SCATTERING_SHADER_SOURCE}"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 set(COMPLEX_MATERIAL_PRODUCER_MODEL
   "${SOURCE_DIR}/Features/complex_materials/ComplexMaterialProducerModel.h")
 set(COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR
@@ -620,6 +698,7 @@ add_custom_target(VerifySkyLinearLighting ALL
     "-DLINEAR_LIGHTING_RUNTIME_HEADER=${LINEAR_LIGHTING_RUNTIME_HEADER}"
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     "-DSKY_LINEAR_LIGHTING_SHADER_SOURCE=${SKY_LINEAR_LIGHTING_SHADER_SOURCE}"
+    "-DCLOUD_SHADOW_RUNTIME_SOURCE=${CLOUD_SHADOW_RUNTIME_SOURCE}"
     "-DRESOURCE_SOURCE=${RESOURCE_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifySkyLinearLighting.cmake"
   COMMENT "Verifying frame-only Sky Linear Lighting ownership"
@@ -780,6 +859,19 @@ find_program(FO4VR_CS_FXC_EXECUTABLE
   HINTS
     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
   REQUIRED)
+add_custom_target(VerifySurfaceClassification ALL
+  COMMAND "${Python3_EXECUTABLE}"
+    "${SURFACE_CLASSIFICATION_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --check
+  COMMAND "${CMAKE_COMMAND}"
+    -DSURFACE_CLASSIFICATION_RUNTIME_SOURCE=${SURFACE_CLASSIFICATION_RUNTIME_SOURCE}
+    -DSURFACE_CLASSIFICATION_LINEAR_RUNTIME_SOURCE=${SURFACE_CLASSIFICATION_LINEAR_RUNTIME_SOURCE}
+    -DSURFACE_CLASSIFICATION_GENERATOR=${SURFACE_CLASSIFICATION_GENERATOR}
+    -P "${SURFACE_CLASSIFICATION_RUNTIME_VERIFY_SCRIPT}"
+  COMMENT "Verifying exact material surface-classification shaders"
+  VERBATIM)
 set(CONTACT_SHADOW_GENERATED_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/generated/ContactShadows")
 set(CONTACT_SHADOW_SHADER_BINARY
@@ -807,6 +899,9 @@ add_custom_command(
   DEPENDS
     "${CONTACT_SHADOW_SHADER_GENERATOR}"
     "${CONTACT_SHADOW_SHADER_SOURCE}"
+    "${CONTACT_SHADOW_WRAPPED_SHADER_SOURCE}"
+    "${CONTACT_SHADOW_HAIR_SHADER_SOURCE}"
+    "${CONTACT_SHADOW_WETNESS_SHADER_SOURCE}"
     "${CONTACT_SHADOW_MASK_SHADER_SOURCE}"
     "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
     "${ROOT_DIR}/tools/dxbc_transform.py"
@@ -819,6 +914,31 @@ add_custom_target(ContactShadowShader
     "${CONTACT_SHADOW_SHADER_HEADER}"
     "${CONTACT_SHADOW_MASK_BINARY}"
     "${CONTACT_SHADOW_MASK_HEADER}")
+set(SUBSURFACE_SCATTERING_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/SubsurfaceScattering")
+set(SUBSURFACE_SCATTERING_SHADER_BINARY
+  "${SUBSURFACE_SCATTERING_GENERATED_DIR}/SubsurfaceScatteringCS.dxbc")
+set(SUBSURFACE_SCATTERING_SHADER_HEADER
+  "${SUBSURFACE_SCATTERING_GENERATED_DIR}/SubsurfaceScatteringCS.h")
+add_custom_command(
+  OUTPUT
+    "${SUBSURFACE_SCATTERING_SHADER_BINARY}"
+    "${SUBSURFACE_SCATTERING_SHADER_HEADER}"
+  COMMAND "${Python3_EXECUTABLE}"
+    "${SUBSURFACE_SCATTERING_SHADER_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --binary "${SUBSURFACE_SCATTERING_SHADER_BINARY}"
+    --header "${SUBSURFACE_SCATTERING_SHADER_HEADER}"
+  DEPENDS
+    "${SUBSURFACE_SCATTERING_SHADER_GENERATOR}"
+    "${SUBSURFACE_SCATTERING_SHADER_SOURCE}"
+  COMMENT "Compiling stereo-safe subsurface scattering compute pass"
+  VERBATIM)
+add_custom_target(SubsurfaceScatteringShader
+  DEPENDS
+    "${SUBSURFACE_SCATTERING_SHADER_BINARY}"
+    "${SUBSURFACE_SCATTERING_SHADER_HEADER}")
 add_custom_target(VerifyContactShadows ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DCONTACT_SHADOW_RUNTIME_SOURCE=${CONTACT_SHADOW_RUNTIME_SOURCE}"
@@ -850,6 +970,18 @@ set(COMPLEX_PARALLAX_INSTANCED_BINARY
   "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeInstancedLod.dxbc")
 set(COMPLEX_PARALLAX_INSTANCED_HEADER
   "${COMPLEX_PARALLAX_GENERATED_DIR}/ComplexParallaxLandscapeInstancedLod.h")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_BASE_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeBase.dxbc")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeBase.h")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_LOD_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeLod.dxbc")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeLod.h")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_BINARY
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeInstancedLod.dxbc")
+set(SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER
+  "${COMPLEX_PARALLAX_GENERATED_DIR}/SurfaceClassComplexParallaxLandscapeInstancedLod.h")
 
 add_custom_command(
   OUTPUT "${COMPLEX_PARALLAX_BASE_BINARY}" "${COMPLEX_PARALLAX_BASE_HEADER}"
@@ -907,6 +1039,69 @@ add_custom_command(
   COMMENT "Compiling combined instanced LOD landscape complex parallax"
   VERBATIM)
 
+add_custom_command(
+  OUTPUT
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
+    "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_BINARY}"
+    "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER}"
+    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_base
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling classified base landscape complex parallax"
+  VERBATIM)
+
+add_custom_command(
+  OUTPUT
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
+    /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
+    "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_BINARY}"
+    "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER}"
+    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_lod
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling classified LOD landscape complex parallax"
+  VERBATIM)
+
+add_custom_command(
+  OUTPUT
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
+    /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
+    /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
+    /DLINEAR_LIGHTING_INSTANCED_LANDSCAPE=1
+    /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
+    "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER}"
+    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+  DEPENDS
+    "${COMPLEX_PARALLAX_HLSL_SOURCE}"
+    "${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
+  COMMENT "Compiling classified instanced LOD landscape complex parallax"
+  VERBATIM)
+
 add_custom_target(ComplexParallaxShaders
   DEPENDS
     "${COMPLEX_PARALLAX_BASE_BINARY}"
@@ -914,7 +1109,13 @@ add_custom_target(ComplexParallaxShaders
     "${COMPLEX_PARALLAX_LOD_BINARY}"
     "${COMPLEX_PARALLAX_LOD_HEADER}"
     "${COMPLEX_PARALLAX_INSTANCED_BINARY}"
-    "${COMPLEX_PARALLAX_INSTANCED_HEADER}")
+    "${COMPLEX_PARALLAX_INSTANCED_HEADER}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_BINARY}"
+    "${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER}")
 
 add_custom_target(VerifyComplexParallax ALL
   COMMAND "${CMAKE_COMMAND}"
@@ -987,9 +1188,43 @@ add_library(${PROJECT_NAME} SHARED
   "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
   "${CONTACT_SHADOW_SHADER_GENERATOR}"
   "${CONTACT_SHADOW_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_WRAPPED_SHADER_SOURCE}"
   "${CONTACT_SHADOW_SHADER_HEADER}"
   "${CONTACT_SHADOW_MASK_SHADER_SOURCE}"
   "${CONTACT_SHADOW_MASK_HEADER}"
+  "${SURFACE_CLASSIFICATION_RUNTIME_SOURCE}"
+  "${SURFACE_CLASSIFICATION_RUNTIME_HEADER}"
+  "${SURFACE_CLASSIFICATION_GENERATOR}"
+  "${SURFACE_CLASSIFICATION_GENERATED_CONTRACTS}"
+  "${SOURCE_DIR}/GeneratedSurfaceClassificationResources.h"
+  "${WRAPPED_GRASS_RUNTIME_SOURCE}"
+  "${WRAPPED_GRASS_RUNTIME_HEADER}"
+  "${WRAPPED_GRASS_SETTINGS_HEADER}"
+  "${WRAPPED_GRASS_SETTINGS_STORE_SOURCE}"
+  "${WRAPPED_GRASS_SETTINGS_STORE_HEADER}"
+  "${HAIR_SPECULAR_RUNTIME_SOURCE}"
+  "${HAIR_SPECULAR_RUNTIME_HEADER}"
+  "${HAIR_SPECULAR_SETTINGS_HEADER}"
+  "${HAIR_SPECULAR_SETTINGS_STORE_SOURCE}"
+  "${HAIR_SPECULAR_SETTINGS_STORE_HEADER}"
+  "${BASIC_WETNESS_RUNTIME_SOURCE}"
+  "${BASIC_WETNESS_RUNTIME_HEADER}"
+  "${BASIC_WETNESS_SETTINGS_HEADER}"
+  "${BASIC_WETNESS_SETTINGS_STORE_SOURCE}"
+  "${BASIC_WETNESS_SETTINGS_STORE_HEADER}"
+  "${CONTACT_SHADOW_WETNESS_SHADER_SOURCE}"
+  "${CLOUD_SHADOW_RUNTIME_SOURCE}"
+  "${CLOUD_SHADOW_RUNTIME_HEADER}"
+  "${CLOUD_SHADOW_SETTINGS_HEADER}"
+  "${CLOUD_SHADOW_SETTINGS_STORE_SOURCE}"
+  "${CLOUD_SHADOW_SETTINGS_STORE_HEADER}"
+  "${SUBSURFACE_SCATTERING_RUNTIME_SOURCE}"
+  "${SUBSURFACE_SCATTERING_RUNTIME_HEADER}"
+  "${SUBSURFACE_SCATTERING_SETTINGS_HEADER}"
+  "${SUBSURFACE_SCATTERING_SETTINGS_STORE_SOURCE}"
+  "${SUBSURFACE_SCATTERING_SETTINGS_STORE_HEADER}"
+  "${SUBSURFACE_SCATTERING_SHADER_SOURCE}"
+  "${SUBSURFACE_SCATTERING_SHADER_HEADER}"
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
@@ -1040,6 +1275,7 @@ add_library(${PROJECT_NAME} SHARED
 )
 add_dependencies(${PROJECT_NAME}
   ContactShadowShader
+  SubsurfaceScatteringShader
   ComplexParallaxShaders
   VerifyComplexParallax
   VerifyFo4VrLoader
@@ -1052,6 +1288,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyComplexMaterialProducerContracts
   VerifyComplexEnvironmentContracts
   VerifyContactShadows
+  VerifySurfaceClassification
   VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
@@ -1077,7 +1314,8 @@ add_dependencies(${PROJECT_NAME}
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE
   "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  "${CONTACT_SHADOW_GENERATED_DIR}")
+  "${CONTACT_SHADOW_GENERATED_DIR}"
+  "${SUBSURFACE_SCATTERING_GENERATED_DIR}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   UNICODE
   _UNICODE

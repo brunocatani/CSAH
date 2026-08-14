@@ -14,6 +14,10 @@
 #define LINEAR_LIGHTING_COMPLEX_PARALLAX 0
 #endif
 
+#ifndef LINEAR_LIGHTING_SURFACE_CLASSIFICATION
+#define LINEAR_LIGHTING_SURFACE_CLASSIFICATION 0
+#endif
+
 cbuffer PerMaterial : register(b2)
 {
     float4 cb2[9];
@@ -136,6 +140,9 @@ struct PSOutput
     float4 target3 : SV_Target3;
     float3 target4 : SV_Target4;
     float2 target5 : SV_Target5;
+#if LINEAR_LIGHTING_SURFACE_CLASSIFICATION
+    float surfaceClass : SV_Target6;
+#endif
 };
 
 #if LINEAR_LIGHTING_COMPLEX_PARALLAX
@@ -567,5 +574,10 @@ PSOutput PSMain(PSInput input)
         dot(cb12[matrixBase + 52u], previousPosition)) / previousW;
     output.target5.xy =
         (currentNdc - previousNdc) * float2(-0.5, 0.5);
+#if LINEAR_LIGHTING_SURFACE_CLASSIFICATION
+    // Every shader produced from this reconstruction is a landscape contract.
+    // Preserve the exact terrain class when Complex Parallax owns the draw.
+    output.surfaceClass = 4.0 / 255.0;
+#endif
     return output;
 }

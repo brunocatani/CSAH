@@ -3,6 +3,7 @@ foreach(variable IN ITEMS
     LINEAR_LIGHTING_RUNTIME_HEADER
     D3D11_HOOK_SOURCE
     SKY_LINEAR_LIGHTING_SHADER_SOURCE
+    CLOUD_SHADOW_RUNTIME_SOURCE
     RESOURCE_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
     message(FATAL_ERROR "${variable} is missing")
@@ -13,6 +14,7 @@ file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" runtimeSource)
 file(READ "${LINEAR_LIGHTING_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${SKY_LINEAR_LIGHTING_SHADER_SOURCE}" shaderSource)
+file(READ "${CLOUD_SHADOW_RUNTIME_SOURCE}" cloudRuntimeSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
 foreach(required IN ITEMS
@@ -28,6 +30,17 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Sky Linear Lighting regression: runtime is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "binding.contractPlusOne < 5 || binding.contractPlusOne > 7"
+    "Contracts 5-7 therefore map"
+    "Clouds, CloudsLerp, and CloudsFade descriptors 4-6")
+  string(FIND "${cloudRuntimeSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Cloud Shadows regression: capture runtime is missing '${required}'")
   endif()
 endforeach()
 
@@ -58,6 +71,9 @@ foreach(required IN ITEMS
     "LinearLightingSky(baseColor.xyz)"
     "LinearLightingSkyProducerColor(input.color.xyz)"
     "color *= skyParameters.y;"
+    "#if SKY_TECHNIQUE >= 4 && SKY_TECHNIQUE <= 6"
+    "float4 cloudOcclusion : SV_Target3;"
+    "output.cloudOcclusion = output.color.w;"
     "output.motion = ComputeMotionVector(input);")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
@@ -68,7 +84,8 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "LinearLightingSky(input.color.xyz)"
-    "LinearLightingSky(skyParameters.yyy)")
+    "LinearLightingSky(skyParameters.yyy)"
+    "#if SKY_TECHNIQUE >= 5 && SKY_TECHNIQUE <= 7")
   string(FIND "${shaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

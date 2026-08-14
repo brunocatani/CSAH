@@ -40,11 +40,13 @@ ADD_OPCODE = 0x00
 MAD_OPCODE = 0x32
 MOV_OPCODE = 0x36
 IBL_CONSTANT_SLOT = 5
+BASIC_WETNESS_CONSTANT_SLOT = 9
 VANILLA_ENVIRONMENT_SLOT = 8
 MATERIAL_DATA_SLOT = 3
 DFLIGHT_ALBEDO_SLOT = 29
 PUBLISHED_ENVIRONMENT_SLOT = 30
 PUBLISHED_VALIDITY_SLOT = 31
+SURFACE_CLASS_SLOT = 47
 ENVIRONMENT_SAMPLER_SLOT = 8
 MATERIAL_SAMPLER_SLOT = 3
 FIRST_RESOURCE_ID = 1054
@@ -148,6 +150,8 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "EnvironmentSampler : register(s8)",
         "MaterialSampler : register(s3)",
         "IblMaterialConstants : register(b5)",
+        "BasicWetnessSettings : register(b9)",
+        "SurfaceClass : register(t47)",
         "if (IblWeight > 1.0 / 255.0)",
         "saturate(validity * IblWeight)",
         "lerp(vanilla.xyz, published, weight)",
@@ -155,6 +159,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "input.EncodedMaterialTag",
         "[branch]",
         "retainedDiffuse / max(1.0 - metalness, 1.0 / 255.0)",
+        "BasicWetnessMaterialParams.x",
     ):
         if required not in source_text:
             raise ContractError(
@@ -184,12 +189,14 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     text = assembly.read_text(encoding="utf-8")
     for required in (
         "dcl_constantbuffer CB5[1], immediateIndexed",
+        "dcl_constantbuffer CB9[2], immediateIndexed",
         "dcl_sampler s3, mode_default",
         "dcl_sampler s8, mode_default",
         "dcl_resource_texturecubearray (float,float,float,float) t8",
         "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
         "dcl_resource_texturecube (float,float,float,float) t31",
+        "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if required not in text:
             raise ContractError(
@@ -236,6 +243,12 @@ def template_contract(
         ),
         declaration_for_slot(
             words,
+            OPCODE_DCL_CONSTANT_BUFFER,
+            OPERAND_CONSTANT_BUFFER,
+            BASIC_WETNESS_CONSTANT_SLOT,
+        ),
+        declaration_for_slot(
+            words,
             OPCODE_DCL_RESOURCE,
             OPERAND_RESOURCE,
             DFLIGHT_ALBEDO_SLOT,
@@ -251,6 +264,12 @@ def template_contract(
             OPCODE_DCL_RESOURCE,
             OPERAND_RESOURCE,
             PUBLISHED_VALIDITY_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
+            SURFACE_CLASS_SLOT,
         ),
     ]
     temp_declaration, _, body = shader_declarations_and_body(words)
@@ -747,6 +766,8 @@ def validate_candidate(
     candidate_buffers = dict(candidate_declarations.constant_buffers)
     if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 1:
         raise ContractError(f"{name} does not add exact b5[1]")
+    if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
+        raise ContractError(f"{name} does not add exact b9[2]")
     if candidate_buffers != original_buffers:
         raise ContractError(f"{name} changed vanilla constant buffers")
     original_textures = set(original_declarations.textures)
@@ -755,10 +776,12 @@ def validate_candidate(
         DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
+        SURFACE_CLASS_SLOT,
     } != original_textures or not {
         DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
+        SURFACE_CLASS_SLOT,
     }.issubset(candidate_textures):
         raise ContractError(f"{name} changed the texture contract")
     if (
@@ -773,6 +796,7 @@ def validate_candidate(
         "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
         "dcl_resource_texturecube (float,float,float,float) t31",
+        "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if declaration not in candidate_text:
             raise ContractError(f"{name} is missing {declaration}")
@@ -782,6 +806,8 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t31 exactly once")
     if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t29 exactly once")
+    if len(re.findall(r"\bt47(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t47 exactly once")
     if len(re.findall(r"\bt3(?:\b|\.)", candidate_text)) != len(
         re.findall(r"\bt3(?:\b|\.)", original_text)
     ):

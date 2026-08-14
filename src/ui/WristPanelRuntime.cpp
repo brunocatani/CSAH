@@ -3,9 +3,20 @@
 #include "PrismaUI_F4_API.h"
 #include "PrismaUI_F4VR_API.h"
 #include "ROCKProviderApi.h"
+#include "Features/basic_wetness/BasicWetnessRuntime.h"
+#include "Features/basic_wetness/BasicWetnessSettingsStore.h"
+#include "Features/cloud_shadows/CloudShadowRuntime.h"
+#include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
+#include "Features/hair_specular/HairSpecularRuntime.h"
+#include "Features/hair_specular/HairSpecularSettingsStore.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
+#include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "Features/wrapped_grass/WrappedGrassRuntime.h"
+#include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
@@ -596,6 +607,18 @@ namespace community_shaders::ui
             const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto contactRuntime =
                 contact_shadows::Runtime::get().snapshot();
+            const auto wrappedGrassRuntime =
+                wrapped_grass::Runtime::get().snapshot();
+            const auto hairSpecularRuntime =
+                hair_specular::Runtime::get().snapshot();
+            const auto subsurfaceScatteringRuntime =
+                subsurface_scattering::Runtime::get().snapshot();
+            const auto basicWetnessRuntime =
+                basic_wetness::Runtime::get().snapshot();
+            const auto cloudShadowRuntime =
+                cloud_shadows::Runtime::get().snapshot();
+            const auto surfaceRuntime =
+                surface_classification::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -630,7 +653,30 @@ namespace community_shaders::ui
                 (contactRuntime.replacementBinds << 57) ^
                 (contactRuntime.maskDispatches << 58) ^
                 (static_cast<std::uint64_t>(contactRuntime.settings.enabled)
-                    << 59);
+                    << 59) ^
+                (wrappedGrassRuntime.drawScopes << 60) ^
+                (static_cast<std::uint64_t>(
+                     wrappedGrassRuntime.settings.enabled)
+                    << 61) ^
+                (hairSpecularRuntime.drawScopes << 62) ^
+                (static_cast<std::uint64_t>(
+                     hairSpecularRuntime.settings.enabled)
+                    << 63) ^
+                (subsurfaceScatteringRuntime.executions *
+                    0x9E3779B185EBCA87ull) ^
+                static_cast<std::uint64_t>(
+                    subsurfaceScatteringRuntime.settings.enabled) ^
+                (basicWetnessRuntime.drawScopes *
+                    0xC2B2AE3D27D4EB4Full) ^
+                static_cast<std::uint64_t>(
+                    basicWetnessRuntime.settings.enabled) ^
+                (cloudShadowRuntime.capturedDraws *
+                    0x165667B19E3779F9ull) ^
+                static_cast<std::uint64_t>(
+                    cloudShadowRuntime.settings.enabled) ^
+                (surfaceRuntime.acceptedGBufferBinds *
+                    0x27D4EB2F165667C5ull) ^
+                surfaceRuntime.rejectedGBufferBinds;
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -646,6 +692,18 @@ namespace community_shaders::ui
             const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto contactRuntime =
                 contact_shadows::Runtime::get().snapshot();
+            const auto wrappedGrassRuntime =
+                wrapped_grass::Runtime::get().snapshot();
+            const auto hairSpecularRuntime =
+                hair_specular::Runtime::get().snapshot();
+            const auto subsurfaceScatteringRuntime =
+                subsurface_scattering::Runtime::get().snapshot();
+            const auto basicWetnessRuntime =
+                basic_wetness::Runtime::get().snapshot();
+            const auto cloudShadowRuntime =
+                cloud_shadows::Runtime::get().snapshot();
+            const auto surfaceRuntime =
+                surface_classification::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -715,6 +773,115 @@ namespace community_shaders::ui
                         { "maskDispatches", contactRuntime.maskDispatches },
                         { "drawFallbacks", contactRuntime.drawFallbacks },
                         { "failures", contactRuntime.failures },
+                    } },
+                { "wrappedGrass",
+                    {
+                        { "enabled",
+                            wrappedGrassRuntime.settings.enabled },
+                        { "wrapAmount",
+                            wrappedGrassRuntime.settings.wrapAmount },
+                        { "gpuReady", wrappedGrassRuntime.gpuReady },
+                        { "drawScopes", wrappedGrassRuntime.drawScopes },
+                        { "drawFallbacks",
+                            wrappedGrassRuntime.drawFallbacks },
+                        { "failures", wrappedGrassRuntime.failures },
+                    } },
+                { "hairSpecular",
+                    {
+                        { "enabled",
+                            hairSpecularRuntime.settings.enabled },
+                        { "specularMultiplier",
+                            hairSpecularRuntime.settings.specularMultiplier },
+                        { "gpuReady", hairSpecularRuntime.gpuReady },
+                        { "drawScopes", hairSpecularRuntime.drawScopes },
+                        { "drawFallbacks",
+                            hairSpecularRuntime.drawFallbacks },
+                        { "failures", hairSpecularRuntime.failures },
+                    } },
+                { "subsurfaceScattering",
+                    {
+                        { "enabled",
+                            subsurfaceScatteringRuntime.settings.enabled },
+                        { "strength",
+                            subsurfaceScatteringRuntime.settings.strength },
+                        { "radiusPixels",
+                            subsurfaceScatteringRuntime.settings.radiusPixels },
+                        { "depthRejection",
+                            subsurfaceScatteringRuntime.settings.depthRejection },
+                        { "gpuReady",
+                            subsurfaceScatteringRuntime.gpuReady },
+                        { "executions",
+                            subsurfaceScatteringRuntime.executions },
+                        { "dispatches",
+                            subsurfaceScatteringRuntime.dispatches },
+                        { "resourceRebuilds",
+                            subsurfaceScatteringRuntime.resourceRebuilds },
+                        { "failures",
+                            subsurfaceScatteringRuntime.failures },
+                    } },
+                { "basicWetness",
+                    {
+                        { "enabled", basicWetnessRuntime.settings.enabled },
+                        { "wetness", basicWetnessRuntime.settings.wetness },
+                        { "diffuseDarkening",
+                            basicWetnessRuntime.settings.diffuseDarkening },
+                        { "specularMultiplier",
+                            basicWetnessRuntime.settings.specularMultiplier },
+                        { "roughnessScale",
+                            basicWetnessRuntime.settings.roughnessScale },
+                        { "gpuReady", basicWetnessRuntime.gpuReady },
+                        { "drawScopes", basicWetnessRuntime.drawScopes },
+                        { "drawFallbacks",
+                            basicWetnessRuntime.drawFallbacks },
+                        { "failures", basicWetnessRuntime.failures },
+                    } },
+                { "cloudShadows",
+                    {
+                        { "enabled", cloudShadowRuntime.settings.enabled },
+                        { "opacity", cloudShadowRuntime.settings.opacity },
+                        { "gpuReady", cloudShadowRuntime.gpuReady },
+                        { "cubeReady", cloudShadowRuntime.cubeReady },
+                        { "populatedFaceMask",
+                            cloudShadowRuntime.populatedFaceMask },
+                        { "captureCandidates",
+                            cloudShadowRuntime.captureCandidates },
+                        { "capturedDraws",
+                            cloudShadowRuntime.capturedDraws },
+                        { "captureRejects",
+                            cloudShadowRuntime.captureRejects },
+                        { "cubeRebuilds", cloudShadowRuntime.cubeRebuilds },
+                        { "lightingBinds", cloudShadowRuntime.lightingBinds },
+                        { "lightingRejects",
+                            cloudShadowRuntime.lightingRejects },
+                        { "failures", cloudShadowRuntime.failures },
+                    } },
+                { "surfaceClassification",
+                    {
+                        { "consumerMask", surfaceRuntime.consumerMask },
+                        { "targetReady", surfaceRuntime.targetReady },
+                        { "width", surfaceRuntime.width },
+                        { "height", surfaceRuntime.height },
+                        { "acceptedGBufferBinds",
+                            surfaceRuntime.acceptedGBufferBinds },
+                        { "rejectedGBufferBinds",
+                            surfaceRuntime.rejectedGBufferBinds },
+                        { "targetRebuilds", surfaceRuntime.targetRebuilds },
+                        { "targetClears", surfaceRuntime.targetClears },
+                        { "ordinaryProducerSelections",
+                            surfaceRuntime.producerSelections[0] },
+                        { "grassProducerSelections",
+                            surfaceRuntime.producerSelections[1] },
+                        { "hairProducerSelections",
+                            surfaceRuntime.producerSelections[2] },
+                        { "skinProducerSelections",
+                            surfaceRuntime.producerSelections[3] },
+                        { "terrainProducerSelections",
+                            surfaceRuntime.producerSelections[4] },
+                        { "descriptorScopeMisses",
+                            surfaceRuntime.descriptorScopeMisses },
+                        { "descriptorContractMisses",
+                            surfaceRuntime.descriptorContractMisses },
+                        { "failures", surfaceRuntime.failures },
                     } },
                 { "coverage",
                     {
@@ -804,6 +971,14 @@ namespace community_shaders::ui
                         { "geometryReady", runtime.geometryProviderReady },
                         { "matchingShaders", runtime.matchingShadersCreated },
                         { "trackedShaders", runtime.trackedOriginalShaders },
+                        { "matchingGrassVertexShaderIdentityMask",
+                            runtime.matchingGrassVertexShaderIdentityMask },
+                        { "matchingGrassVertexShadersCreated",
+                            runtime.matchingGrassVertexShadersCreated },
+                        { "trackedGrassVertexShaders",
+                            runtime.trackedGrassVertexShaders },
+                        { "grassVertexClassSelections",
+                            runtime.grassVertexClassSelections },
                         { "matchingSkyShaders",
                             runtime.matchingSkyShadersCreated },
                         { "matchingSkyShaderMask",
@@ -881,10 +1056,18 @@ namespace community_shaders::ui
                         { "deviceHooks", d3d.deviceHooksInstalled },
                         { "shaderInterceptionActive",
                             d3d.shaderInterceptionActive },
+                        { "createVertexShaderDetourEnabled",
+                            d3d.createVertexShaderDetourEnabled },
                         { "createPixelShaderDetourEnabled",
                             d3d.createPixelShaderDetourEnabled },
+                        { "vertexShaderBindDetourEnabled",
+                            d3d.vertexShaderBindDetourEnabled },
                         { "pixelShaderBindDetourEnabled",
                             d3d.pixelShaderBindDetourEnabled },
+                        { "renderTargetBindDetourEnabled",
+                            d3d.renderTargetBindDetourEnabled },
+                        { "renderTargetAndUnorderedAccessBindDetourEnabled",
+                            d3d.renderTargetAndUnorderedAccessBindDetourEnabled },
                         { "shaderHookInstallFailures",
                             d3d.shaderHookInstallFailures },
                         { "shaderHookValidationFailures",
@@ -893,7 +1076,14 @@ namespace community_shaders::ui
                             d3d.pixelShaderBindRecursions },
                         { "pixelShaderCreates",
                             d3d.pixelShaderCreationCalls },
+                        { "vertexShaderCreates",
+                            d3d.vertexShaderCreationCalls },
+                        { "renderTargetBindCalls",
+                            d3d.renderTargetBindCalls },
+                        { "renderTargetAndUnorderedAccessBindCalls",
+                            d3d.renderTargetAndUnorderedAccessBindCalls },
                         { "pixelShaderBinds", d3d.pixelShaderBindCalls },
+                        { "vertexShaderBinds", d3d.vertexShaderBindCalls },
                         { "geometryInstalled", geometry.installed },
                         { "geometryVtableCellOwned",
                             geometry.vtableCellOwned },
@@ -1328,6 +1518,204 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "wrappedGrassEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next =
+                        wrapped_grass::Runtime::get().snapshot().settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = wrapped_grass::sanitize(next);
+                    wrapped_grass::Runtime::get().applySettings(accepted);
+                    const auto saved = wrapped_grass::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Wrapped Grass Lighting wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "wrappedGrassSet" &&
+                    action.contains("value") &&
+                    action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next =
+                        wrapped_grass::Runtime::get().snapshot().settings;
+                    next.wrapAmount = value;
+                    const auto accepted = wrapped_grass::sanitize(next);
+                    wrapped_grass::Runtime::get().applySettings(accepted);
+                    (void)wrapped_grass::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "hairSpecularEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next =
+                        hair_specular::Runtime::get().snapshot().settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = hair_specular::sanitize(next);
+                    hair_specular::Runtime::get().applySettings(accepted);
+                    const auto saved = hair_specular::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Hair Specular wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "hairSpecularSet" &&
+                    action.contains("value") &&
+                    action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next =
+                        hair_specular::Runtime::get().snapshot().settings;
+                    next.specularMultiplier = value;
+                    const auto accepted = hair_specular::sanitize(next);
+                    hair_specular::Runtime::get().applySettings(accepted);
+                    (void)hair_specular::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "subsurfaceScatteringEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = subsurface_scattering::Runtime::get()
+                                    .snapshot()
+                                    .settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted =
+                        subsurface_scattering::sanitize(next);
+                    subsurface_scattering::Runtime::get().applySettings(
+                        accepted);
+                    const auto saved =
+                        subsurface_scattering::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Subsurface Scattering wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "subsurfaceScatteringSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") && action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next = subsurface_scattering::Runtime::get()
+                                    .snapshot()
+                                    .settings;
+                    const auto key = action["key"].get<std::string>();
+                    if (key == "strength") {
+                        next.strength = value;
+                    } else if (key == "radiusPixels") {
+                        next.radiusPixels = value;
+                    } else if (key == "depthRejection") {
+                        next.depthRejection = value;
+                    } else {
+                        return;
+                    }
+                    const auto accepted =
+                        subsurface_scattering::sanitize(next);
+                    subsurface_scattering::Runtime::get().applySettings(
+                        accepted);
+                    (void)subsurface_scattering::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "basicWetnessEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next =
+                        basic_wetness::Runtime::get().snapshot().settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = basic_wetness::sanitize(next);
+                    basic_wetness::Runtime::get().applySettings(accepted);
+                    const auto saved = basic_wetness::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Basic Wetness wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "basicWetnessSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") && action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next =
+                        basic_wetness::Runtime::get().snapshot().settings;
+                    const auto key = action["key"].get<std::string>();
+                    if (key == "wetness") {
+                        next.wetness = value;
+                    } else if (key == "diffuseDarkening") {
+                        next.diffuseDarkening = value;
+                    } else if (key == "specularMultiplier") {
+                        next.specularMultiplier = value;
+                    } else if (key == "roughnessScale") {
+                        next.roughnessScale = value;
+                    } else {
+                        return;
+                    }
+                    const auto accepted = basic_wetness::sanitize(next);
+                    basic_wetness::Runtime::get().applySettings(accepted);
+                    (void)basic_wetness::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "cloudShadowsEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next =
+                        cloud_shadows::Runtime::get().snapshot().settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = cloud_shadows::sanitize(next);
+                    cloud_shadows::Runtime::get().applySettings(accepted);
+                    const auto saved = cloud_shadows::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Cloud Shadows wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "cloudShadowsSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") && action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value) ||
+                        action["key"].get<std::string>() != "opacity") {
+                        return;
+                    }
+                    auto next =
+                        cloud_shadows::Runtime::get().snapshot().settings;
+                    next.opacity = value;
+                    const auto accepted = cloud_shadows::sanitize(next);
+                    cloud_shadows::Runtime::get().applySettings(accepted);
+                    (void)cloud_shadows::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
                 if (type == "contactShadowsFoveated" &&
                     action.contains("value") &&
                     action["value"].is_boolean()) {
@@ -1480,6 +1868,28 @@ namespace community_shaders::ui
                     const contact_shadows::Settings nextContact{};
                     contact_shadows::Runtime::get().applySettings(nextContact);
                     (void)contact_shadows::saveSettings(nextContact);
+                    const wrapped_grass::Settings nextWrappedGrass{};
+                    wrapped_grass::Runtime::get().applySettings(
+                        nextWrappedGrass);
+                    (void)wrapped_grass::saveSettings(nextWrappedGrass);
+                    const hair_specular::Settings nextHairSpecular{};
+                    hair_specular::Runtime::get().applySettings(
+                        nextHairSpecular);
+                    (void)hair_specular::saveSettings(nextHairSpecular);
+                    const subsurface_scattering::Settings
+                        nextSubsurfaceScattering{};
+                    subsurface_scattering::Runtime::get().applySettings(
+                        nextSubsurfaceScattering);
+                    (void)subsurface_scattering::saveSettings(
+                        nextSubsurfaceScattering);
+                    const basic_wetness::Settings nextBasicWetness{};
+                    basic_wetness::Runtime::get().applySettings(
+                        nextBasicWetness);
+                    (void)basic_wetness::saveSettings(nextBasicWetness);
+                    const cloud_shadows::Settings nextCloudShadows{};
+                    cloud_shadows::Runtime::get().applySettings(
+                        nextCloudShadows);
+                    (void)cloud_shadows::saveSettings(nextCloudShadows);
                     const complex_materials::Settings nextComplex{};
                     {
                         std::scoped_lock lock(settingsMutex);
@@ -2089,6 +2499,41 @@ namespace community_shaders::ui
     {
         std::scoped_lock lock(settingsMutex);
         uiComplexParallaxSettings = complex_materials::sanitize(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialWrappedGrassSettings(
+        const wrapped_grass::Settings& settings) noexcept
+    {
+        wrapped_grass::Runtime::get().applySettings(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialHairSpecularSettings(
+        const hair_specular::Settings& settings) noexcept
+    {
+        hair_specular::Runtime::get().applySettings(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialSubsurfaceScatteringSettings(
+        const subsurface_scattering::Settings& settings) noexcept
+    {
+        subsurface_scattering::Runtime::get().applySettings(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialBasicWetnessSettings(
+        const basic_wetness::Settings& settings) noexcept
+    {
+        basic_wetness::Runtime::get().applySettings(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialCloudShadowSettings(
+        const cloud_shadows::Settings& settings) noexcept
+    {
+        cloud_shadows::Runtime::get().applySettings(settings);
         uiRevision.fetch_add(1, std::memory_order_release);
     }
 

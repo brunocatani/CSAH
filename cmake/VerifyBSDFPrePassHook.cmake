@@ -6,23 +6,37 @@ endif()
 file(READ "${DFPREPASS_HOOK_SOURCE}" hook_source)
 foreach(required_token IN ITEMS
     "kVtableRva = 0x030B8C68"
-    "kSetupSlot = 3"
-    "kSetupFunctionRva = 0x02878F80"
-    "kDescriptorOffset = 0x48"
-    "std::array<std::byte, 49> kSetupSignature"
+    "kTechniqueSetupSlot = 4"
+    "kTechniqueSetupFunctionRva = 0x0287B720"
+    "kTechniqueRestoreSlot = 5"
+    "kTechniqueRestoreFunctionRva = 0x028789B0"
+    "kGeometrySetupSlot = 9"
+    "kGeometrySetupFunctionRva = 0x0287CF60"
+    "kGeometryDescriptorLoadRva = 0x0287D1AB"
+    "kGeometryStateDescriptorOffset = 0x40"
+    "std::array<std::byte, 26> kTechniqueSetupSignature"
+    "std::byte{ 0x40 }, std::byte{ 0x53 }"
+    "std::array<std::byte, 16> kTechniqueRestoreSignature"
+    "std::array<std::byte, 55> kGeometrySetupSignature"
+    "std::array<std::byte, 3> kGeometryDescriptorLoadSignature"
+    "std::byte{ 0x8B }, std::byte{ 0x57 }, std::byte{ 0x40 }"
+    "void* geometryState"
     "std::memcmp("
-    "thread_local DFPrePassDescriptorScope activeScope"
-    "const DescriptorScope scope(descriptor)"
+    "#include \"render/D3D11Hooks.h\""
+    "beginDFPrePassTechnique(descriptor)"
+    "endDFPrePassTechnique(descriptor)"
+    "publishDFPrePassDescriptor(descriptor)"
     "std::atomic_uint32_t descriptorConsumerMask"
-    "kAllDescriptorConsumers"
     "setDFPrePassLinearLightingEnabled(bool enabled) noexcept"
     "setDFPrePassComplexEnvironmentEnabled(bool enabled) noexcept"
     "setDFPrePassIblEnabled(bool enabled) noexcept"
-    "descriptorConsumerMask.load(std::memory_order_acquire)"
-    "static_cast<const std::byte*>(pass) + kDescriptorOffset"
-    "Never leave hookSetup installed"
-    "*cell = expected;"
-    "activeDFPrePassDescriptorScope() noexcept")
+    "setDFPrePassSurfaceClassificationEnabled(bool enabled) noexcept"
+    "descriptorConsumerMask.load(std::memory_order_acquire) == 0"
+    "static_cast<const std::byte*>(geometryState) +"
+    "kGeometryStateDescriptorOffset"
+    "geometryDescriptorLoadMatches"
+    "rollbackComplete"
+    "installed.store(false, std::memory_order_release)")
   string(FIND "${hook_source}" "${required_token}" token_offset)
   if(token_offset EQUAL -1)
     message(FATAL_ERROR
@@ -30,27 +44,75 @@ foreach(required_token IN ITEMS
   endif()
 endforeach()
 
-string(FIND "${hook_source}" "void __fastcall hookSetup(" hook_start)
+string(FIND "${hook_source}" "bool __fastcall hookSetupTechnique(" hook_start)
 string(FIND "${hook_source}" "    bool installBSDFPrePassShaderHook()" hook_end)
 if(hook_start EQUAL -1 OR hook_end EQUAL -1 OR hook_end LESS_EQUAL hook_start)
-  message(FATAL_ERROR "BSDFPrePass hookSetup boundary is unavailable")
+  message(FATAL_ERROR "BSDFPrePass runtime-hook boundary is unavailable")
 endif()
 math(EXPR hook_length "${hook_end} - ${hook_start}")
 string(SUBSTRING "${hook_source}" ${hook_start} ${hook_length} hook_body)
 
 if(hook_body MATCHES "readable\\(|VirtualQuery\\(")
   message(FATAL_ERROR
-    "BSDFPrePass hookSetup must not query virtual memory in the per-draw path")
+    "BSDFPrePass runtime hooks must not query virtual memory in hot paths")
 endif()
 
 string(FIND "${hook_body}"
-  "descriptorConsumerMask.load(std::memory_order_acquire)" gate_offset)
+  "descriptorConsumerMask.load(std::memory_order_acquire) == 0" gate_offset)
 string(FIND "${hook_body}"
-  "static_cast<const std::byte*>(pass) + kDescriptorOffset" read_offset)
+  "static_cast<const std::byte*>(geometryState) +" read_offset)
 if(gate_offset EQUAL -1 OR read_offset EQUAL -1 OR
    gate_offset GREATER_EQUAL read_offset)
   message(FATAL_ERROR
-    "BSDFPrePass descriptor read must remain behind the complete consumer gate")
+    "BSDFPrePass descriptor read must remain behind the any-consumer gate")
+endif()
+
+foreach(forbidden_read IN ITEMS
+    "static_cast<const std::byte*>(pass) +"
+    "kDescriptorOffset = 0x48")
+  string(FIND "${hook_source}" "${forbidden_read}" forbidden_read_offset)
+  if(NOT forbidden_read_offset EQUAL -1)
+    message(FATAL_ERROR
+      "BSDFPrePass hook restored stale pass-owned descriptor read: ${forbidden_read}")
+  endif()
+endforeach()
+
+string(FIND "${hook_body}"
+  "beginDFPrePassTechnique(descriptor);" technique_begin)
+string(FIND "${hook_body}"
+  "const auto accepted = original(" technique_original)
+string(FIND "${hook_body}"
+  "endDFPrePassTechnique(descriptor);" technique_end)
+if(technique_begin EQUAL -1 OR technique_original EQUAL -1 OR
+   technique_end EQUAL -1 OR
+   NOT technique_begin LESS technique_original OR
+   NOT technique_original LESS technique_end)
+  message(FATAL_ERROR
+    "BSDFPrePass technique descriptor must bracket native setup failure")
+endif()
+
+string(FIND "${hook_body}"
+  "publishDFPrePassDescriptor(descriptor);\n            original(receiver, pass, geometryState)"
+  ordered_handoff)
+if(ordered_handoff EQUAL -1)
+  message(FATAL_ERROR
+    "BSDFPrePass descriptor publication must precede native SetupGeometry")
+endif()
+
+foreach(forbidden IN ITEMS
+    "DescriptorScope"
+    "activeDFPrePassDescriptorScope"
+    "compiledProgram")
+  string(FIND "${hook_source}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "BSDFPrePass hook restored stale temporary descriptor scope '${forbidden}'")
+  endif()
+endforeach()
+
+if(hook_body MATCHES "kAllDescriptorConsumers|!=[ \t\r\n]*kAllDescriptorConsumers")
+  message(FATAL_ERROR
+    "BSDFPrePass descriptor capture must not require unrelated consumers")
 endif()
 
 if(hook_source MATCHES "REL::|CommonLib|RuntimeVersion")

@@ -99,7 +99,7 @@
 
     .page-nav {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       align-items: center;
       padding: 20px 16px;
@@ -203,7 +203,10 @@
 
     .controls {
       padding: 25px 30px 22px;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-color: var(--amber-soft) var(--ink);
+      scrollbar-width: thin;
     }
 
     .section-heading {
@@ -448,9 +451,10 @@
         <small>Linear-lighting laboratory · Fallout 4 VR</small>
       </div>
       <nav class="page-nav" aria-label="Panel pages">
-        <button id="pageFeaturesButton" type="button" class="active">01 · Features</button>
-        <button id="pageResponseButton" type="button">02 · Response</button>
-        <button id="pageShadowsButton" type="button">03 · Shadows</button>
+        <button id="pageFeaturesButton" type="button" class="active">01 · Core</button>
+        <button id="pageSurfacesButton" type="button">02 · Surfaces</button>
+        <button id="pageResponseButton" type="button">03 · Response</button>
+        <button id="pageShadowsButton" type="button">04 · Shadows</button>
       </nav>
     </header>
 
@@ -506,13 +510,6 @@
             </div>
             <div class="master">
               <div class="master-copy">
-                <strong>Foveated Shadow Sampling</strong>
-                <span id="contactFoveatedState">CENTER-PRIORITY SAMPLING</span>
-              </div>
-              <div id="contactFoveatedSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
-            </div>
-            <div class="master">
-              <div class="master-copy">
                 <strong>Developer Overlay</strong>
                 <span>bounded, leased, automatic start</span>
               </div>
@@ -535,11 +532,75 @@
         </aside>
       </section>
 
+      <section id="surfacesPage" class="page" aria-label="Surface feature toggles">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Surface lighting</h2>
+            <span>CLASSIFIED MATERIALS · IMMEDIATE SAVE</span>
+          </div>
+          <div class="feature-grid">
+            <div class="master">
+              <div class="master-copy">
+                <strong>Wrapped Grass Lighting</strong>
+                <span id="wrappedGrassState">WAITING FOR SURFACE CLASS</span>
+              </div>
+              <div id="wrappedGrassSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Hair Specular</strong>
+                <span id="hairSpecularState">WAITING FOR SURFACE CLASS</span>
+              </div>
+              <div id="hairSpecularSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Subsurface Scattering</strong>
+                <span id="subsurfaceScatteringState">WAITING FOR SKIN CLASS</span>
+              </div>
+              <div id="subsurfaceScatteringSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Basic Wetness</strong>
+                <span id="basicWetnessState">MANUAL DRY STATE</span>
+              </div>
+              <div id="basicWetnessSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Cloud Shadows</strong>
+                <span id="cloudShadowsState">WAITING FOR SKY CUBE</span>
+              </div>
+              <div id="cloudShadowsSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+          </div>
+        </section>
+
+        <aside>
+          <div class="plate">
+            <h3>Classification contract</h3>
+            <p class="page-note">Surface features consume the private deferred classification target. Engine-owned G-buffer targets remain unchanged.</p>
+          </div>
+          <div class="plate">
+            <h3>Isolation</h3>
+            <p class="page-note">Each feature remains independently switchable and saves immediately to the Community Shaders INI.</p>
+          </div>
+        </aside>
+      </section>
+
       <section id="shadowsPage" class="page" aria-label="Contact shadow tuning">
         <section class="controls">
           <div class="section-heading">
             <h2>Directional contact shadows</h2>
             <span>EXACT DFLIGHT · PER-EYE RAYMARCH</span>
+          </div>
+          <div class="master">
+            <div class="master-copy">
+              <strong>Foveated Shadow Sampling</strong>
+              <span id="contactFoveatedState">CENTER-PRIORITY SAMPLING</span>
+            </div>
+            <div id="contactFoveatedSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
           </div>
           <div id="contactControlGrid" class="control-grid"></div>
         </section>
@@ -596,7 +657,17 @@
       { key: "vanillaDiffuseColorMultiplier", label: "Diffuse level", hint: "Preserves calibrated vanilla diffuse energy.", min: 0, max: 3, step: .01 },
       { key: "emitColorMultiplier", label: "Emission level", hint: "Scales geometry emission before output.", min: 0, max: 3, step: .01 },
       { key: "glowmapMultiplier", label: "Glow level", hint: "Scales textured emissive energy.", min: 0, max: 3, step: .01 },
-      { key: "diffuseIblLevel", source: "ibl", label: "IBL ambient level", hint: "Scales environment-derived diffuse ambient after vanilla brightness matching.", min: 0, max: 2, step: .01 }
+      { key: "diffuseIblLevel", source: "ibl", label: "IBL ambient level", hint: "Scales environment-derived diffuse ambient after vanilla brightness matching.", min: 0, max: 2, step: .01 },
+      { key: "wrappedGrassAmount", source: "wrappedGrass", label: "Grass light wrap", hint: "Wraps directional light around classified grass blades without changing terrain or other materials.", min: 0, max: 1, step: .01 },
+      { key: "hairSpecularMultiplier", source: "hairSpecular", label: "Hair highlight", hint: "Reshapes FO4VR's tangent-based strand lobe and adds a broad albedo-tinted secondary highlight only on classified hair.", min: 0, max: 4, step: .01 },
+      { key: "sssStrength", settingKey: "strength", source: "subsurfaceScattering", label: "Skin scattering", hint: "Blends the depth-aware separable diffusion result only on classified skin and face materials.", min: 0, max: 1, step: .01 },
+      { key: "sssRadius", settingKey: "radiusPixels", source: "subsurfaceScattering", label: "Skin radius", hint: "Controls the reference-eye diffusion radius; it scales with headset resolution while preserving albedo detail and the stereo seam.", min: .25, max: 5, step: .05 },
+      { key: "sssDepth", settingKey: "depthRejection", source: "subsurfaceScattering", label: "Skin edge rejection", hint: "Prevents scattering across depth discontinuities and facial silhouettes.", min: .0001, max: .05, step: .0001 },
+      { key: "wetnessAmount", settingKey: "wetness", source: "basicWetness", label: "Wetness", hint: "Manual wet-state amount for classified ordinary, grass, and terrain materials.", min: 0, max: 1, step: .01 },
+      { key: "wetnessDarkening", settingKey: "diffuseDarkening", source: "basicWetness", label: "Wet diffuse darkening", hint: "Reduces diffuse energy while retaining the existing material colour.", min: 0, max: .75, step: .01 },
+      { key: "wetnessSpecular", settingKey: "specularMultiplier", source: "basicWetness", label: "Wet highlight", hint: "Strengthens the existing direct and environment highlights on wettable surfaces.", min: 0, max: 4, step: .01 },
+      { key: "wetnessRoughness", settingKey: "roughnessScale", source: "basicWetness", label: "Wet reflection sharpness", hint: "Reduces the IBL mip level without introducing a separate reflection system.", min: .05, max: 1, step: .01 },
+      { key: "cloudOpacity", settingKey: "opacity", source: "cloudShadows", label: "Cloud shadow opacity", hint: "Scales the captured cloud cover projected along the directional light.", min: 0, max: 1, step: .01 }
     ];
     const contactControls = [
       { key: "strength", label: "Shadow strength", hint: "Blends the directional contact term without changing ambient or IBL.", min: 0, max: 1, step: .01 },
@@ -635,7 +706,17 @@
           state.timers.set(control.key, setTimeout(() => {
             bridge(control.source === "ibl"
               ? { type: "iblDiffuseLevel", value: Number(input.value) }
-              : { type: "set", key: control.key, value: Number(input.value) });
+              : (control.source === "wrappedGrass"
+                ? { type: "wrappedGrassSet", value: Number(input.value) }
+                : (control.source === "hairSpecular"
+                  ? { type: "hairSpecularSet", value: Number(input.value) }
+                  : (control.source === "subsurfaceScattering"
+                    ? { type: "subsurfaceScatteringSet", key: control.settingKey, value: Number(input.value) }
+                    : (control.source === "basicWetness"
+                      ? { type: "basicWetnessSet", key: control.settingKey, value: Number(input.value) }
+                      : (control.source === "cloudShadows"
+                        ? { type: "cloudShadowsSet", key: control.settingKey, value: Number(input.value) }
+                        : { type: "set", key: control.key, value: Number(input.value) }))))));
           }, 180));
         });
       }
@@ -671,14 +752,17 @@
     }
 
     function setPage(page) {
-      state.page = page === "response" || page === "shadows" ? page : "features";
+      state.page = page === "surfaces" || page === "response" || page === "shadows" ? page : "features";
       const featuresActive = state.page === "features";
+      const surfacesActive = state.page === "surfaces";
       const responseActive = state.page === "response";
       const shadowsActive = state.page === "shadows";
       document.getElementById("featuresPage").classList.toggle("active", featuresActive);
+      document.getElementById("surfacesPage").classList.toggle("active", surfacesActive);
       document.getElementById("responsePage").classList.toggle("active", responseActive);
       document.getElementById("shadowsPage").classList.toggle("active", shadowsActive);
       document.getElementById("pageFeaturesButton").classList.toggle("active", featuresActive);
+      document.getElementById("pageSurfacesButton").classList.toggle("active", surfacesActive);
       document.getElementById("pageResponseButton").classList.toggle("active", responseActive);
       document.getElementById("pageShadowsButton").classList.toggle("active", shadowsActive);
     }
@@ -694,6 +778,12 @@
       const ibl = model.ibl || {};
       const complexMaterials = model.complexMaterials || {};
       const contactShadows = model.contactShadows || {};
+      const wrappedGrass = model.wrappedGrass || {};
+      const hairSpecular = model.hairSpecular || {};
+      const subsurfaceScattering = model.subsurfaceScattering || {};
+      const basicWetness = model.basicWetness || {};
+      const cloudShadows = model.cloudShadows || {};
+      const surfaceClassification = model.surfaceClassification || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
@@ -756,11 +846,61 @@
       document.getElementById("contactFoveatedState").textContent = contactFoveated ?
         "CENTER-PRIORITY SAMPLING" : "UNIFORM SAMPLE COUNT";
 
+      const wrappedGrassEnabled = !!wrappedGrass.enabled;
+      const wrappedGrassSwitch = document.getElementById("wrappedGrassSwitch");
+      wrappedGrassSwitch.classList.toggle("on", wrappedGrassEnabled);
+      wrappedGrassSwitch.setAttribute("aria-checked", String(wrappedGrassEnabled));
+      document.getElementById("wrappedGrassState").textContent = !wrappedGrassEnabled ?
+        "VANILLA GRASS RESPONSE" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (wrappedGrass.gpuReady ? "CLASSIFIED WRAP ARMED" : "SHADER INTERLOCK CLOSED"));
+
+      const hairSpecularEnabled = !!hairSpecular.enabled;
+      const hairSpecularSwitch = document.getElementById("hairSpecularSwitch");
+      hairSpecularSwitch.classList.toggle("on", hairSpecularEnabled);
+      hairSpecularSwitch.setAttribute("aria-checked", String(hairSpecularEnabled));
+      document.getElementById("hairSpecularState").textContent = !hairSpecularEnabled ?
+        "VANILLA HAIR RESPONSE" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (hairSpecular.gpuReady ? "ANISOTROPIC HIGHLIGHT ARMED" : "SHADER INTERLOCK CLOSED"));
+
+      const subsurfaceScatteringEnabled = !!subsurfaceScattering.enabled;
+      const subsurfaceScatteringSwitch = document.getElementById("subsurfaceScatteringSwitch");
+      subsurfaceScatteringSwitch.classList.toggle("on", subsurfaceScatteringEnabled);
+      subsurfaceScatteringSwitch.setAttribute("aria-checked", String(subsurfaceScatteringEnabled));
+      document.getElementById("subsurfaceScatteringState").textContent = !subsurfaceScatteringEnabled ?
+        "NATIVE SKIN RESPONSE" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (subsurfaceScattering.gpuReady ? "STEREO SKIN DIFFUSION ARMED" : "SHADER INTERLOCK CLOSED"));
+
+      const basicWetnessEnabled = !!basicWetness.enabled;
+      const basicWetnessSwitch = document.getElementById("basicWetnessSwitch");
+      basicWetnessSwitch.classList.toggle("on", basicWetnessEnabled);
+      basicWetnessSwitch.setAttribute("aria-checked", String(basicWetnessEnabled));
+      document.getElementById("basicWetnessState").textContent = !basicWetnessEnabled ?
+        "MANUAL DRY STATE" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (basicWetness.gpuReady ? "DIRECT + IBL WET RESPONSE ARMED" : "SHADER INTERLOCK CLOSED"));
+
+      const cloudShadowsEnabled = !!cloudShadows.enabled;
+      const cloudShadowsSwitch = document.getElementById("cloudShadowsSwitch");
+      cloudShadowsSwitch.classList.toggle("on", cloudShadowsEnabled);
+      cloudShadowsSwitch.setAttribute("aria-checked", String(cloudShadowsEnabled));
+      document.getElementById("cloudShadowsState").textContent = !cloudShadowsEnabled ?
+        "NATIVE SUNLIGHT" :
+        (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
+          (cloudShadows.cubeReady ? "CLOUD PROJECTION ACTIVE" : "WAITING FOR SKY CUBE"));
+
       for (const control of controls) {
         const input = document.getElementById(control.key);
         const output = document.getElementById(`${control.key}Value`);
         const value = Number(control.source === "ibl" ?
-          ibl.diffuseLevel : settings[control.key]);
+          ibl.diffuseLevel : (control.source === "wrappedGrass" ?
+            wrappedGrass.wrapAmount : (control.source === "hairSpecular" ?
+              hairSpecular.specularMultiplier : (control.source === "subsurfaceScattering" ?
+                subsurfaceScattering[control.settingKey] : (control.source === "basicWetness" ?
+                  basicWetness[control.settingKey] : (control.source === "cloudShadows" ?
+                    cloudShadows[control.settingKey] : settings[control.key]))))));
         if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
         output.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
       }
@@ -805,6 +945,18 @@
         metric("Complex material binds", String(complexMaterials.environmentReplacementBinds || 0), complexMaterials.environmentReplacementBinds ? "good" : "wait"),
         metric("Contact shadows", contactShadows.gpuReady ? "READY" : "CLOSED", contactShadows.gpuReady ? "good" : "bad"),
         metric("Contact binds", String(contactShadows.replacementBinds || 0), contactShadows.replacementBinds ? "good" : "wait"),
+        metric("Surface target", surfaceClassification.targetReady ? "READY" : "WAIT", surfaceClassification.targetReady ? "good" : "wait"),
+        metric("Surface binds", String(surfaceClassification.acceptedGBufferBinds || 0), surfaceClassification.acceptedGBufferBinds ? "good" : "wait"),
+        metric("Wrapped grass", wrappedGrass.gpuReady ? "READY" : "CLOSED", wrappedGrass.gpuReady ? "good" : "bad"),
+        metric("Wrapped draws", String(wrappedGrass.drawScopes || 0), wrappedGrass.drawScopes ? "good" : "wait"),
+        metric("Hair specular", hairSpecular.gpuReady ? "READY" : "CLOSED", hairSpecular.gpuReady ? "good" : "bad"),
+        metric("Hair draws", String(hairSpecular.drawScopes || 0), hairSpecular.drawScopes ? "good" : "wait"),
+        metric("Skin scattering", subsurfaceScattering.gpuReady ? "READY" : "CLOSED", subsurfaceScattering.gpuReady ? "good" : "bad"),
+        metric("SSS passes", String(subsurfaceScattering.executions || 0), subsurfaceScattering.executions ? "good" : "wait"),
+        metric("Basic wetness", basicWetness.gpuReady ? "READY" : "CLOSED", basicWetness.gpuReady ? "good" : "bad"),
+        metric("Wetness draws", String(basicWetness.drawScopes || 0), basicWetness.drawScopes ? "good" : "wait"),
+        metric("Cloud cube", cloudShadows.cubeReady ? "READY" : "WAIT", cloudShadows.cubeReady ? "good" : "wait"),
+        metric("Cloud captures", String(cloudShadows.capturedDraws || 0), cloudShadows.capturedDraws ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -880,8 +1032,49 @@
       render();
     }
 
+    function toggleWrappedGrassEnabled() {
+      const wrappedGrass = (state.model || {}).wrappedGrass || {};
+      const enabled = !wrappedGrass.enabled;
+      bridge({ type: "wrappedGrassEnabled", value: enabled });
+      if (state.model) state.model.wrappedGrass = { ...wrappedGrass, enabled };
+      render();
+    }
+
+    function toggleHairSpecularEnabled() {
+      const hairSpecular = (state.model || {}).hairSpecular || {};
+      const enabled = !hairSpecular.enabled;
+      bridge({ type: "hairSpecularEnabled", value: enabled });
+      if (state.model) state.model.hairSpecular = { ...hairSpecular, enabled };
+      render();
+    }
+
+    function toggleSubsurfaceScatteringEnabled() {
+      const subsurfaceScattering = (state.model || {}).subsurfaceScattering || {};
+      const enabled = !subsurfaceScattering.enabled;
+      bridge({ type: "subsurfaceScatteringEnabled", value: enabled });
+      if (state.model) state.model.subsurfaceScattering = { ...subsurfaceScattering, enabled };
+      render();
+    }
+
+    function toggleBasicWetnessEnabled() {
+      const basicWetness = (state.model || {}).basicWetness || {};
+      const enabled = !basicWetness.enabled;
+      bridge({ type: "basicWetnessEnabled", value: enabled });
+      if (state.model) state.model.basicWetness = { ...basicWetness, enabled };
+      render();
+    }
+
+    function toggleCloudShadowsEnabled() {
+      const cloudShadows = (state.model || {}).cloudShadows || {};
+      const enabled = !cloudShadows.enabled;
+      bridge({ type: "cloudShadowsEnabled", value: enabled });
+      if (state.model) state.model.cloudShadows = { ...cloudShadows, enabled };
+      render();
+    }
+
     createControls();
     document.getElementById("pageFeaturesButton").addEventListener("click", () => setPage("features"));
+    document.getElementById("pageSurfacesButton").addEventListener("click", () => setPage("surfaces"));
     document.getElementById("pageResponseButton").addEventListener("click", () => setPage("response"));
     document.getElementById("pageShadowsButton").addEventListener("click", () => setPage("shadows"));
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
@@ -911,6 +1104,26 @@
     document.getElementById("contactFoveatedSwitch").addEventListener("click", toggleContactFoveated);
     document.getElementById("contactFoveatedSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleContactFoveated();
+    });
+    document.getElementById("wrappedGrassSwitch").addEventListener("click", toggleWrappedGrassEnabled);
+    document.getElementById("wrappedGrassSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleWrappedGrassEnabled();
+    });
+    document.getElementById("hairSpecularSwitch").addEventListener("click", toggleHairSpecularEnabled);
+    document.getElementById("hairSpecularSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleHairSpecularEnabled();
+    });
+    document.getElementById("subsurfaceScatteringSwitch").addEventListener("click", toggleSubsurfaceScatteringEnabled);
+    document.getElementById("subsurfaceScatteringSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleSubsurfaceScatteringEnabled();
+    });
+    document.getElementById("basicWetnessSwitch").addEventListener("click", toggleBasicWetnessEnabled);
+    document.getElementById("basicWetnessSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleBasicWetnessEnabled();
+    });
+    document.getElementById("cloudShadowsSwitch").addEventListener("click", toggleCloudShadowsEnabled);
+    document.getElementById("cloudShadowsSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleCloudShadowsEnabled();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

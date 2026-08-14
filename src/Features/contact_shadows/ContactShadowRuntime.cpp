@@ -1,5 +1,6 @@
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 
+#include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "render/ComputeStateScope.h"
 #include "support/Logger.h"
 
@@ -7,24 +8,20 @@
 #include "ContactShadowsDFLight.h"
 
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace community_shaders::contact_shadows
 {
     namespace
     {
-        constexpr std::size_t kOriginalSize = 26152;
-        constexpr std::array<std::byte, 16> kOriginalChecksum{
-            std::byte{ 0x12 }, std::byte{ 0x28 }, std::byte{ 0x07 },
-            std::byte{ 0x87 }, std::byte{ 0xD2 }, std::byte{ 0xA5 },
-            std::byte{ 0x11 }, std::byte{ 0x0C }, std::byte{ 0x82 },
-            std::byte{ 0x0F }, std::byte{ 0x43 }, std::byte{ 0x37 },
-            std::byte{ 0x51 }, std::byte{ 0xC8 }, std::byte{ 0x46 },
-            std::byte{ 0x48 },
-        };
+        constexpr std::size_t kInvalidContractIndex =
+            std::numeric_limits<std::size_t>::max();
         constexpr UINT kDepthSlot = 3;
+        constexpr UINT kCloudSlot = 1;
         constexpr UINT kMaskSlot = 46;
         constexpr UINT kConstantSlot = 13;
+        constexpr UINT kCloudSamplerSlot = 0;
         constexpr UINT kDFLightConstantSlot = 2;
         constexpr UINT kStereoConstantSlot = 8;
         constexpr UINT kCameraConstantSlot = 12;
@@ -45,19 +42,35 @@ namespace community_shaders::contact_shadows
             float reserved0{};
             float reserved1{};
             float reserved2{};
+            float cloudEnabled{};
+            float cloudOpacity{};
+            float cloudHeightUnits{ 140056.0f };
+            float planetRadiusUnits{ 446148448.0f };
         };
-        static_assert(sizeof(GpuSettings) == 48);
+        static_assert(sizeof(GpuSettings) == 64);
 
-        [[nodiscard]] bool matchesOriginal(
+        [[nodiscard]] std::size_t matchingContractIndex(
             const void* bytecode,
             SIZE_T bytecodeLength) noexcept
         {
-            return bytecode && bytecodeLength == kOriginalSize &&
-                std::memcmp(bytecode, "DXBC", 4) == 0 &&
-                std::memcmp(
-                    static_cast<const std::byte*>(bytecode) + 4,
-                    kOriginalChecksum.data(),
-                    kOriginalChecksum.size()) == 0;
+            if (!bytecode || bytecodeLength < 20 ||
+                std::memcmp(bytecode, "DXBC", 4) != 0) {
+                return kInvalidContractIndex;
+            }
+            for (std::size_t index = 0;
+                 index < fo4vr_cs_contact_shadow_dflight_contracts.size();
+                 ++index) {
+                const auto& contract =
+                    fo4vr_cs_contact_shadow_dflight_contracts[index];
+                if (bytecodeLength == contract.originalSize &&
+                    std::memcmp(
+                        static_cast<const std::byte*>(bytecode) + 4,
+                        contract.originalChecksum.data(),
+                        contract.originalChecksum.size()) == 0) {
+                    return index;
+                }
+            }
+            return kInvalidContractIndex;
         }
     }
 
@@ -68,7 +81,7 @@ namespace community_shaders::contact_shadows
         std::atomic_uint64_t* restoreCounter) noexcept :
         context_(context), restoreCounter_(restoreCounter)
     {
-        if (!context_ || !constants || !mask) {
+        if (!context_ || !constants) {
             context_ = nullptr;
             return;
         }
@@ -114,7 +127,9 @@ namespace community_shaders::contact_shadows
         resourcesReady_.store(false, std::memory_order_release);
         device_ = device;
         context_ = context;
-        replacement_.Reset();
+        for (auto& replacement : replacements_) {
+            replacement.Reset();
+        }
         maskCompute_.Reset();
         constants_.Reset();
         maskTexture_.Reset();
@@ -123,30 +138,59 @@ namespace community_shaders::contact_shadows
         maskWidth_ = 0;
         maskHeight_ = 0;
         for (auto& original : originals_) {
-            original.Reset();
+            original.shader.Reset();
+            original.contractIndex = 0;
         }
         trackedShaders_.store(0, std::memory_order_relaxed);
+        firstMatchLogged_.store(false, std::memory_order_relaxed);
+        firstReplacementBindLogged_.store(false, std::memory_order_relaxed);
+        firstDispatchLogged_.store(false, std::memory_order_relaxed);
+        firstDispatchFailureLogged_.store(false, std::memory_order_relaxed);
         uploadedRevision_ = 0;
+        uploadedContactActive_ = false;
+        uploadedMaskActive_ = false;
+        uploadedCloudActive_ = false;
+        uploadedCloudOpacity_ = 0.0f;
         if (!device || !context || !createPixelShader) {
             failures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
 
-        ID3D11PixelShader* replacement{};
-        const auto pixelShaderResult = createPixelShader(
-            device,
-            fo4vr_cs_contact_shadows_dflight,
-            sizeof(fo4vr_cs_contact_shadows_dflight),
-            nullptr,
-            &replacement);
-        if (FAILED(pixelShaderResult) || !replacement) {
-            failures_.fetch_add(1, std::memory_order_relaxed);
+        static_assert(
+            fo4vr_cs_contact_shadow_dflight_contracts.size() <=
+            kMaximumShaderContracts);
+        bool replacementCreationFailed{};
+        for (std::size_t index = 0;
+             index < fo4vr_cs_contact_shadow_dflight_contracts.size();
+             ++index) {
+            const auto& contract =
+                fo4vr_cs_contact_shadow_dflight_contracts[index];
+            ID3D11PixelShader* replacement{};
+            const auto pixelShaderResult = createPixelShader(
+                device,
+                contract.replacementBytecode,
+                contract.replacementBytecodeLength,
+                nullptr,
+                &replacement);
+            if (FAILED(pixelShaderResult) || !replacement) {
+                replacementCreationFailed = true;
+                failures_.fetch_add(1, std::memory_order_relaxed);
+                logging::error(
+                    "Contact Shadows DFLight contract {} replacement creation failed (HRESULT=0x{:08X}).",
+                    index,
+                    static_cast<std::uint32_t>(pixelShaderResult));
+                continue;
+            }
+            replacements_[index].Attach(replacement);
+        }
+        if (replacementCreationFailed) {
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
             logging::error(
-                "Contact Shadows exact DFLight replacement creation failed (HRESULT=0x{:08X}).",
-                static_cast<std::uint32_t>(pixelShaderResult));
+                "Contact Shadows DFLight family failed closed because one or more structurally verified replacements were rejected.");
             return;
         }
-        replacement_.Attach(replacement);
 
         const auto computeResult = device->CreateComputeShader(
             fo4vr_cs_contact_shadow_mask,
@@ -154,7 +198,9 @@ namespace community_shaders::contact_shadows
             nullptr,
             maskCompute_.ReleaseAndGetAddressOf());
         if (FAILED(computeResult) || !maskCompute_) {
-            replacement_.Reset();
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Contact Shadows mask compute creation failed (HRESULT=0x{:08X}).",
@@ -171,7 +217,9 @@ namespace community_shaders::contact_shadows
             nullptr,
             constants_.ReleaseAndGetAddressOf());
         if (FAILED(bufferResult) || !constants_) {
-            replacement_.Reset();
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
             maskCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
@@ -181,7 +229,8 @@ namespace community_shaders::contact_shadows
         }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Contact Shadows GPU mask pipeline ready; exact directional DFLight identity 12280787d2a5110c820f433751c84648 is armed fail-closed.");
+            "Contact Shadows GPU mask pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
+            fo4vr_cs_contact_shadow_dflight_contracts.size());
     }
 
     void Runtime::onPixelShaderCreated(
@@ -189,18 +238,30 @@ namespace community_shaders::contact_shadows
         SIZE_T bytecodeLength,
         ID3D11PixelShader* shader) noexcept
     {
-        if (!shader || !matchesOriginal(bytecode, bytecodeLength)) {
+        const auto contractIndex = matchingContractIndex(
+            bytecode,
+            bytecodeLength);
+        if (!shader || contractIndex == kInvalidContractIndex ||
+            contractIndex >= replacements_.size() ||
+            !replacements_[contractIndex]) {
             return;
         }
         matchingShaders_.fetch_add(1, std::memory_order_relaxed);
+        if (!firstMatchLogged_.exchange(true, std::memory_order_relaxed)) {
+            logging::info(
+                "Contact Shadows observed the first live member of its verified FO4VR directional DFLight family (contract {}).",
+                contractIndex);
+        }
         for (const auto& original : originals_) {
-            if (original.Get() == shader) {
+            if (original.shader.Get() == shader) {
                 return;
             }
         }
         for (auto& original : originals_) {
-            if (!original) {
-                original = shader;
+            if (!original.shader) {
+                original.shader = shader;
+                original.contractIndex = static_cast<std::uint16_t>(
+                    contractIndex);
                 trackedShaders_.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
@@ -209,25 +270,62 @@ namespace community_shaders::contact_shadows
     }
 
     PixelShaderSelection Runtime::selectPixelShader(
-        ID3D11PixelShader* requested) noexcept
+        ID3D11PixelShader* requested,
+        bool compositorFeatureActive) noexcept
     {
-        if (!requested || !featureEnabled() || !replacement_ ||
+        if (!requested || !compositorReady(compositorFeatureActive) ||
             !maskCompute_ || !constants_) {
             return { requested, {} };
         }
         for (const auto& original : originals_) {
-            if (original.Get() == requested) {
+            if (original.shader.Get() == requested &&
+                original.contractIndex < replacements_.size()) {
+                auto* replacement =
+                    replacements_[original.contractIndex].Get();
+                if (!replacement) {
+                    return { requested, {} };
+                }
                 replacementBinds_.fetch_add(1, std::memory_order_relaxed);
-                return { replacement_.Get(), { requested, replacement_.Get() } };
+                if (!firstReplacementBindLogged_.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    logging::info(
+                        "Contact Shadows verified DFLight family selected contract {} for its first live bind.",
+                        original.contractIndex);
+                }
+                return { replacement, { requested, replacement } };
             }
         }
         return { requested, {} };
     }
 
-    void Runtime::uploadSettings(ID3D11DeviceContext* context) noexcept
+    bool Runtime::tracksOriginal(ID3D11PixelShader* shader) const noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        for (const auto& original : originals_) {
+            if (original.shader.Get() == shader) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void Runtime::uploadSettings(
+        ID3D11DeviceContext* context,
+        bool contactShadowsActive,
+        bool maskActive,
+        bool cloudShadowsActive,
+        float cloudOpacity) noexcept
     {
         const auto revision = settingsRevision_.load(std::memory_order_acquire);
-        if (!context || !constants_ || revision == uploadedRevision_) {
+        if (!context || !constants_ ||
+            (revision == uploadedRevision_ &&
+                contactShadowsActive == uploadedContactActive_ &&
+                maskActive == uploadedMaskActive_ &&
+                cloudShadowsActive == uploadedCloudActive_ &&
+                cloudOpacity == uploadedCloudOpacity_)) {
             return;
         }
         const GpuSettings data{
@@ -238,9 +336,17 @@ namespace community_shaders::contact_shadows
                 sampleCount_.load(std::memory_order_relaxed)),
             .foveated = foveated_.load(std::memory_order_relaxed) ? 1.0f : 0.0f,
             .fadeDistance = fadeDistance_.load(std::memory_order_relaxed),
+            .reserved0 = maskActive ? 1.0f : 0.0f,
+            .reserved1 = contactShadowsActive ? 1.0f : 0.0f,
+            .cloudEnabled = cloudShadowsActive ? 1.0f : 0.0f,
+            .cloudOpacity = cloudOpacity,
         };
         context->UpdateSubresource(constants_.Get(), 0, nullptr, &data, 0, 0);
         uploadedRevision_ = revision;
+        uploadedContactActive_ = contactShadowsActive;
+        uploadedMaskActive_ = maskActive;
+        uploadedCloudActive_ = cloudShadowsActive;
+        uploadedCloudOpacity_ = cloudOpacity;
     }
 
     bool Runtime::ensureMaskResources(
@@ -320,10 +426,32 @@ namespace community_shaders::contact_shadows
         return true;
     }
 
-    bool Runtime::dispatchMask(ID3D11DeviceContext* context) noexcept
+    bool Runtime::dispatchMask(
+        ID3D11DeviceContext* context,
+        bool contactShadowsActive,
+        bool cloudShadowsActive,
+        bool& maskActive) noexcept
     {
+        maskActive = false;
         if (!context || !maskCompute_ || !constants_) {
             return false;
+        }
+
+        ID3D11ShaderResourceView* cloud{};
+        ID3D11SamplerState* cloudSampler{};
+        float cloudOpacity{};
+        const auto cloudReady = cloudShadowsActive &&
+            cloud_shadows::Runtime::get().prepareLighting(
+                context, cloud, cloudSampler, cloudOpacity);
+        maskActive = contactShadowsActive || cloudReady;
+        uploadSettings(
+            context,
+            contactShadowsActive,
+            maskActive,
+            cloudReady,
+            cloudOpacity);
+        if (!maskActive) {
+            return true;
         }
 
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> depth;
@@ -343,23 +471,42 @@ namespace community_shaders::contact_shadows
             kCameraConstantSlot,
             1,
             camera.GetAddressOf());
-        if (!depth || !dflight || !stereo || !camera ||
-            !ensureMaskResources(depth.Get())) {
+        const auto maskResourcesReady = depth && dflight && stereo && camera &&
+            ensureMaskResources(depth.Get());
+        if (!maskResourcesReady) {
+            if (!firstDispatchFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Contact Shadows first exact DFLight dispatch rejected its live inputs: depth={}, b2={}, b8={}, b12={}, maskResources={}; compositor fell back to vanilla for that draw.",
+                    static_cast<bool>(depth),
+                    static_cast<bool>(dflight),
+                    static_cast<bool>(stereo),
+                    static_cast<bool>(camera),
+                    maskTexture_ && maskView_ && maskOutput_);
+            }
             return false;
         }
-
         render::ScopedComputeState restore(
             context,
             {
                 .firstShaderResource = 0,
-                .shaderResourceCount = 1,
+                .shaderResourceCount = 2,
                 .firstUnorderedAccess = 0,
                 .unorderedAccessCount = 1,
+                .firstSampler = kCloudSamplerSlot,
+                .samplerCount = 1,
                 .firstConstantBuffer = kDFLightConstantSlot,
                 .constantBufferCount =
                     kConstantSlot - kDFLightConstantSlot + 1,
             });
         if (!restore.captured()) {
+            if (!firstDispatchFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Contact Shadows first exact DFLight dispatch could not capture the bounded compute-state footprint; compositor fell back to vanilla for that draw.");
+            }
             return false;
         }
 
@@ -371,6 +518,7 @@ namespace community_shaders::contact_shadows
         auto* settingsConstants = constants_.Get();
         context->CSSetShader(maskCompute_.Get(), nullptr, 0);
         context->CSSetShaderResources(0, 1, &depthView);
+        context->CSSetShaderResources(kCloudSlot, 1, &cloud);
         context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
         context->CSSetConstantBuffers(
             kDFLightConstantSlot,
@@ -388,27 +536,59 @@ namespace community_shaders::contact_shadows
             kConstantSlot,
             1,
             &settingsConstants);
+        context->CSSetSamplers(
+            kCloudSamplerSlot,
+            1,
+            &cloudSampler);
         context->Dispatch(
             (maskWidth_ + kThreadGroupWidth - 1) / kThreadGroupWidth,
             (maskHeight_ + kThreadGroupHeight - 1) / kThreadGroupHeight,
             1);
         if (!restore.restore()) {
+            if (!firstDispatchFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Contact Shadows exact DFLight dispatch could not restore its bounded compute-state footprint; compositor fell back to vanilla for that draw.");
+            }
             return false;
         }
         maskDispatches_.fetch_add(1, std::memory_order_relaxed);
+        if (!firstDispatchLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::info(
+                "Contact Shadows first exact DFLight stereo-mask dispatch completed and restored all touched compute state.");
+        }
         return true;
     }
 
     ScopedDrawBindings Runtime::scopeDraw(
         ID3D11DeviceContext* context,
-        ShaderBinding binding) noexcept
+        ShaderBinding binding,
+        bool contactShadowsActive,
+        bool cloudShadowsActive) noexcept
     {
-        if (!binding || binding.replacement != replacement_.Get() ||
-            !featureEnabled() || !constants_) {
+        bool verifiedBinding{};
+        for (const auto& original : originals_) {
+            if (original.shader.Get() == binding.original &&
+                original.contractIndex < replacements_.size() &&
+                replacements_[original.contractIndex].Get() ==
+                    binding.replacement) {
+                verifiedBinding = true;
+                break;
+            }
+        }
+        if (!binding || !verifiedBinding || !constants_ ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
             return {};
         }
-        uploadSettings(context);
-        if (!dispatchMask(context)) {
+        auto maskActive = false;
+        if (!dispatchMask(
+                context,
+                contactShadowsActive,
+                cloudShadowsActive,
+                maskActive)) {
             failures_.fetch_add(1, std::memory_order_relaxed);
             return {};
         }
@@ -416,7 +596,7 @@ namespace community_shaders::contact_shadows
         return ScopedDrawBindings(
             context,
             constants_.Get(),
-            maskView_.Get(),
+            maskActive ? maskView_.Get() : nullptr,
             &drawRestores_);
     }
 
@@ -429,6 +609,12 @@ namespace community_shaders::contact_shadows
     {
         return enabled_.load(std::memory_order_acquire) &&
             resourcesReady_.load(std::memory_order_acquire);
+    }
+
+    bool Runtime::compositorReady(bool wrappedGrassActive) const noexcept
+    {
+        return resourcesReady_.load(std::memory_order_acquire) &&
+            (featureEnabled() || wrappedGrassActive);
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept

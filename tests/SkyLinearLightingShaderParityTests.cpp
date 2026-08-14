@@ -259,6 +259,34 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return shader;
     }
 
+    bool hasOutputRegister(
+        const std::filesystem::path& path,
+        UINT outputRegister)
+    {
+        const auto bytes = readFile(path);
+        ComPtr<ID3D11ShaderReflection> reflection;
+        require(
+            D3DReflect(
+                bytes.data(),
+                bytes.size(),
+                __uuidof(ID3D11ShaderReflection),
+                reinterpret_cast<void**>(reflection.GetAddressOf())),
+            "D3DReflect");
+        D3D11_SHADER_DESC shaderDescription{};
+        require(reflection->GetDesc(&shaderDescription), "GetDesc(reflection)");
+        for (UINT index = 0; index < shaderDescription.OutputParameters;
+             ++index) {
+            D3D11_SIGNATURE_PARAMETER_DESC parameter{};
+            require(
+                reflection->GetOutputParameterDesc(index, &parameter),
+                "GetOutputParameterDesc");
+            if (parameter.Register == outputRegister) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     RenderResult render(
         ID3D11Device* device,
         ID3D11DeviceContext* context,
@@ -512,6 +540,16 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             const auto vanillaShader = createPixelShader(device.Get(), verified / name);
             const auto replacementShader =
                 createPixelShader(device.Get(), replacement / name);
+            const auto hasCloudTarget =
+                hasOutputRegister(replacement / name, 3);
+            const auto expectsCloudTarget =
+                descriptor >= 4 && descriptor <= 6;
+            if (hasCloudTarget != expectsCloudTarget) {
+                std::cerr << "Sky descriptor " << descriptor
+                          << (expectsCloudTarget ? " lost" : " unexpectedly owns")
+                          << " private cloud SV_Target3\n";
+                passed = false;
+            }
             const auto vanilla = render(
                 device.Get(), context.Get(), vertexShader.Get(), vanillaShader.Get(),
                 skyBuffer.Get(), disabledFrameBuffer.Get(), stereoBuffer.Get(),

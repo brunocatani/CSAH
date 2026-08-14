@@ -6,6 +6,7 @@
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFLightAmbientShaderPatch.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
+#include "Features/surface_classification/SurfaceClassificationRuntime.h"
 
 #include "render/BSLightingGeometryHook.h"
 #include "render/BSDFPrePassShaderHook.h"
@@ -22,6 +23,9 @@
 #include "ComplexParallaxLandscapeBase.h"
 #include "ComplexParallaxLandscapeInstancedLod.h"
 #include "ComplexParallaxLandscapeLod.h"
+#include "SurfaceClassComplexParallaxLandscapeBase.h"
+#include "SurfaceClassComplexParallaxLandscapeInstancedLod.h"
+#include "SurfaceClassComplexParallaxLandscapeLod.h"
 
 namespace community_shaders::linear_lighting
 {
@@ -108,6 +112,40 @@ namespace community_shaders::linear_lighting
             std::uint32_t contractIndex{};
         };
 
+        struct SurfaceClassContractDefinition
+        {
+            int resourceId{};
+            std::size_t replacementSize{};
+            std::array<std::byte, 16> replacementChecksum{};
+        };
+
+        struct SpecializedSurfaceClassContractDefinition
+        {
+            std::uint32_t contractIndex{};
+            std::uint32_t classCode{};
+            int resourceId{};
+            std::size_t replacementSize{};
+            std::array<std::byte, 16> replacementChecksum{};
+        };
+
+        struct SurfaceClassDescriptorContract
+        {
+            std::uint32_t descriptor{};
+            std::uint32_t contractIndex{};
+            std::uint32_t classCode{};
+            std::uint32_t variantIndexPlusOne{};
+        };
+
+        struct SurfaceClassMaterialContract
+        {
+            std::uint32_t classCode{};
+            std::uint32_t variantIndexPlusOne{};
+            std::uint32_t grassVariantIndexPlusOne{};
+        };
+
+        constexpr auto kAmbiguousSurfaceClassCode =
+            (std::numeric_limits<std::uint32_t>::max)();
+
         #include "Features/linear_lighting/GeneratedLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedSkyLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDistantTreeLinearLightingContract.inl"
@@ -116,6 +154,55 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedVLSCompositeLinearLightingContract.inl"
         #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
+        #include "Features/surface_classification/GeneratedSurfaceClassContracts.inl"
+
+        [[nodiscard]] const SurfaceClassDescriptorContract*
+            surfaceClassDescriptorContract(
+            std::uint32_t descriptor) noexcept
+        {
+            const auto found = std::lower_bound(
+                kSurfaceClassDescriptorContracts.begin(),
+                kSurfaceClassDescriptorContracts.end(),
+                descriptor,
+                [](const SurfaceClassDescriptorContract& contract,
+                    std::uint32_t value) {
+                    return contract.descriptor < value;
+                });
+            if (found == kSurfaceClassDescriptorContracts.end() ||
+                found->descriptor != descriptor) {
+                return nullptr;
+            }
+            return &*found;
+        }
+
+        [[nodiscard]] const SurfaceClassDescriptorContract*
+            surfaceClassDescriptorContract(
+            std::uint32_t descriptor,
+            std::size_t contractIndex) noexcept
+        {
+            const auto* found = surfaceClassDescriptorContract(descriptor);
+            return found && found->contractIndex == contractIndex ?
+                found : nullptr;
+        }
+
+        [[nodiscard]] std::size_t specializedSurfaceClassSlot(
+            std::size_t contractIndex,
+            std::uint32_t classCode,
+            std::uint32_t variantIndexPlusOne) noexcept
+        {
+            if (variantIndexPlusOne == 0) {
+                return kSpecializedSurfaceClassContracts.size();
+            }
+            const auto slot = static_cast<std::size_t>(
+                variantIndexPlusOne - 1);
+            if (slot >= kSpecializedSurfaceClassContracts.size()) {
+                return kSpecializedSurfaceClassContracts.size();
+            }
+            const auto& variant = kSpecializedSurfaceClassContracts[slot];
+            return variant.contractIndex == contractIndex &&
+                    variant.classCode == classCode ?
+                slot : kSpecializedSurfaceClassContracts.size();
+        }
 
         constexpr std::array<std::byte, 16> kLandscapeBaseChecksum{
             std::byte{ 0x60 }, std::byte{ 0x48 }, std::byte{ 0x32 },
@@ -172,6 +259,25 @@ namespace community_shaders::linear_lighting
                 sizeof(fo4vr_cs_complex_parallax_landscape_instanced_lod),
             },
         };
+
+        constexpr std::array<EmbeddedShader, 3>
+            kSurfaceClassComplexParallaxShaders{
+                EmbeddedShader{
+                    fo4vr_cs_surface_class_complex_parallax_landscape_base,
+                    sizeof(
+                        fo4vr_cs_surface_class_complex_parallax_landscape_base),
+                },
+                EmbeddedShader{
+                    fo4vr_cs_surface_class_complex_parallax_landscape_lod,
+                    sizeof(
+                        fo4vr_cs_surface_class_complex_parallax_landscape_lod),
+                },
+                EmbeddedShader{
+                    fo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod,
+                    sizeof(
+                        fo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod),
+                },
+            };
 
         [[nodiscard]] EmbeddedShader loadEmbeddedShader(int resourceId) noexcept
         {
@@ -392,6 +498,15 @@ namespace community_shaders::linear_lighting
         static_assert(kVLSCompositeShaderContractCount == 1);
         static_assert(
             kEffectShaderContracts.size() == kEffectShaderContractCount);
+        static_assert(kSurfaceClassContracts.size() == kShaderContractCount);
+        static_assert(
+            kSurfaceClassMaterialContracts.size() == kShaderContractCount);
+        static_assert(
+            kGrassVertexShaderIdentities.size() ==
+            kGrassVertexShaderIdentityCount);
+        static_assert(
+            kSpecializedSurfaceClassContracts.size() ==
+            kSpecializedSurfaceClassContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContracts.size()>
             replacements{};
@@ -419,6 +534,74 @@ namespace community_shaders::linear_lighting
                 logging::error(
                     "Linear Lighting replacement '{}' CreatePixelShader failed (HRESULT 0x{:08X}).",
                     contract.name,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSurfaceClassContracts.size()>
+            surfaceClassReplacements{};
+        for (std::size_t index = 0;
+             index < kSurfaceClassContracts.size();
+             ++index) {
+            const auto& contract = kSurfaceClassContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacementSize,
+                    contract.replacementChecksum)) {
+                logging::error(
+                    "Surface Classification class-zero material replacement {} is missing or invalid.",
+                    index);
+                return false;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                surfaceClassReplacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Surface Classification class-zero material replacement {} CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    index,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSpecializedSurfaceClassContracts.size()>
+            specializedSurfaceClassReplacements{};
+        for (std::size_t index = 0;
+             index < kSpecializedSurfaceClassContracts.size();
+             ++index) {
+            const auto& contract = kSpecializedSurfaceClassContracts[index];
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacementSize,
+                    contract.replacementChecksum)) {
+                logging::error(
+                    "Surface Classification specialized replacement {} (class {}) is missing or invalid.",
+                    index,
+                    contract.classCode);
+                return false;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                specializedSurfaceClassReplacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Surface Classification specialized replacement {} (class {}) CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    index,
+                    contract.classCode,
                     static_cast<std::uint32_t>(result));
                 return false;
             }
@@ -457,6 +640,44 @@ namespace community_shaders::linear_lighting
         }
         if (!complexParallaxReady) {
             for (auto& replacement : complexParallaxReplacements) {
+                replacement.Reset();
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSurfaceClassComplexParallaxShaders.size()>
+            surfaceClassComplexParallaxReplacements{};
+        auto surfaceClassComplexParallaxReady = true;
+        for (std::size_t index = 0;
+             index < kSurfaceClassComplexParallaxShaders.size();
+             ++index) {
+            const auto& embedded = kSurfaceClassComplexParallaxShaders[index];
+            if (!embedded.data || embedded.size < 20 ||
+                std::memcmp(embedded.data, "DXBC", 4) != 0) {
+                surfaceClassComplexParallaxReady = false;
+                break;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                surfaceClassComplexParallaxReplacements[index]
+                    .GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Surface Classification complex-parallax replacement {} CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    index,
+                    static_cast<std::uint32_t>(result));
+                surfaceClassComplexParallaxReady = false;
+                break;
+            }
+        }
+        if (!surfaceClassComplexParallaxReady) {
+            logging::error(
+                "Surface Classification complex-parallax variants are incomplete; classification remains fail-closed while Complex Parallax is active.");
+            for (auto& replacement :
+                 surfaceClassComplexParallaxReplacements) {
                 replacement.Reset();
             }
         }
@@ -729,8 +950,14 @@ namespace community_shaders::linear_lighting
 
         settings_ = safeSettings;
         replacementShaders_ = std::move(replacements);
+        surfaceClassReplacementShaders_ =
+            std::move(surfaceClassReplacements);
+        specializedSurfaceClassReplacementShaders_ =
+            std::move(specializedSurfaceClassReplacements);
         complexParallaxReplacementShaders_ =
             std::move(complexParallaxReplacements);
+        surfaceClassComplexParallaxReplacementShaders_ =
+            std::move(surfaceClassComplexParallaxReplacements);
         skyReplacementShaders_ = std::move(skyReplacements);
         distantTreeReplacementShaders_ =
             std::move(distantTreeReplacements);
@@ -884,6 +1111,76 @@ namespace community_shaders::linear_lighting
                 "Linear Lighting fixed shader-binding lookup rejected an original shader; the affected instance remains vanilla.");
         }
         return false;
+    }
+
+    void Runtime::onVertexShaderCreated(
+        const void* bytecode,
+        SIZE_T bytecodeLength,
+        ID3D11VertexShader* shader) noexcept
+    {
+        if (!shader) {
+            return;
+        }
+
+        std::size_t identityIndex = kGrassVertexShaderIdentities.size();
+        for (std::size_t index = 0;
+             index < kGrassVertexShaderIdentities.size();
+             ++index) {
+            const auto& identity = kGrassVertexShaderIdentities[index];
+            if (matchesDxbcIdentity(
+                    bytecode,
+                    bytecodeLength,
+                    identity.size,
+                    identity.checksum)) {
+                identityIndex = index;
+                break;
+            }
+        }
+        if (identityIndex == kGrassVertexShaderIdentities.size()) {
+            return;
+        }
+
+        matchingGrassVertexShaderIdentityMask_.fetch_or(
+            static_cast<std::uint8_t>(1u << identityIndex),
+            std::memory_order_relaxed);
+        matchingGrassVertexShadersCreated_.fetch_add(
+            1,
+            std::memory_order_relaxed);
+        std::scoped_lock lock(shaderRegistryMutex_);
+        for (auto& owner : grassVertexShaderOwners_) {
+            if (owner.Get() == shader) {
+                return;
+            }
+            if (!owner) {
+                owner = shader;
+                if (!grassVertexShaderLookup_.insert(shader, 1)) {
+                    owner.Reset();
+                    break;
+                }
+                const auto tracked = trackedGrassVertexShaders_.fetch_add(
+                    1,
+                    std::memory_order_relaxed) + 1;
+                if (tracked == 1) {
+                    logging::info(
+                        "Surface classification tracked its first exact grass-only DFPrepass vertex shader (identity {}/{}).",
+                        identityIndex + 1,
+                        kGrassVertexShaderIdentities.size());
+                }
+                return;
+            }
+        }
+        if (!grassVertexShaderCapacityWarningLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::error(
+                "Surface classification exhausted its fixed grass vertex-shader registry; additional instances remain ordinary-classified.");
+        }
+    }
+
+    bool Runtime::isGrassVertexShader(
+        ID3D11VertexShader* shader) const noexcept
+    {
+        return grassVertexShaderLookup_.find(shader) == 1;
     }
 
     void Runtime::onPixelShaderCreated(
@@ -1396,6 +1693,53 @@ namespace community_shaders::linear_lighting
         ID3D11DeviceContext* context,
         ID3D11PixelShader* requested) noexcept
     {
+        return selectPixelShaderImpl(context, requested, 0, false, false);
+    }
+
+    PixelShaderSelection Runtime::selectPixelShaderForDFPrePassDescriptor(
+        ID3D11DeviceContext* context,
+        ID3D11PixelShader* requested,
+        std::uint32_t descriptor) noexcept
+    {
+        return selectPixelShaderImpl(
+            context,
+            requested,
+            descriptor,
+            true,
+            false);
+    }
+
+    PixelShaderSelection Runtime::selectPixelShaderForGrassVertex(
+        ID3D11DeviceContext* context,
+        ID3D11PixelShader* requested) noexcept
+    {
+        return selectPixelShaderImpl(context, requested, 0, false, true);
+    }
+
+    void Runtime::observeDFPrePassDescriptor(
+        std::uint32_t descriptor) noexcept
+    {
+        auto& classification = surface_classification::Runtime::get();
+        if (!classification.required()) {
+            return;
+        }
+        const auto* contract = surfaceClassDescriptorContract(descriptor);
+        if (!contract) {
+            classification.recordDescriptorObservationMiss(descriptor);
+            return;
+        }
+        classification.recordDescriptorObservation(
+            contract->classCode,
+            descriptor);
+    }
+
+    PixelShaderSelection Runtime::selectPixelShaderImpl(
+        ID3D11DeviceContext* context,
+        ID3D11PixelShader* requested,
+        std::uint32_t descriptor,
+        bool descriptorActive,
+        bool grassVertexActive) noexcept
+    {
         shaderSelectionCalls_.fetch_add(1, std::memory_order_relaxed);
         const auto isCapturedContext = context == context_.Get();
         if (!isCapturedContext) {
@@ -1410,6 +1754,9 @@ namespace community_shaders::linear_lighting
 
         const auto linearLightingEnabled =
             enabled_.load(std::memory_order_acquire);
+        const auto surfaceClassificationActive =
+            linearLightingEnabled &&
+            surface_classification::Runtime::get().required();
         const auto complexParallaxActive =
             complexParallaxEnabled_.load(std::memory_order_acquire) &&
             complexParallaxResourcesReady_.load(std::memory_order_acquire);
@@ -1445,6 +1792,43 @@ namespace community_shaders::linear_lighting
                 complex_materials::landscapeParallaxSlot(contractIndex);
             const auto useComplexParallax = complexParallaxActive &&
                 parallaxSlot < complexParallaxReplacementShaders_.size();
+            const auto* surfaceClassDescriptor =
+                surfaceClassificationActive && descriptorActive ?
+                surfaceClassDescriptorContract(
+                    descriptor, contractIndex) :
+                nullptr;
+            const auto& surfaceClassMaterial =
+                kSurfaceClassMaterialContracts[contractIndex];
+            const auto materialClassUnambiguous =
+                surfaceClassMaterial.classCode !=
+                kAmbiguousSurfaceClassCode;
+            const auto grassVertexClassAvailable =
+                surfaceClassificationActive && grassVertexActive &&
+                surfaceClassMaterial.grassVariantIndexPlusOne != 0;
+            const auto selectedSurfaceClassCode =
+                grassVertexClassAvailable ?
+                static_cast<std::uint32_t>(
+                    surface_classification::SurfaceClassCode::grass) :
+                (surfaceClassDescriptor ?
+                        surfaceClassDescriptor->classCode :
+                        (materialClassUnambiguous ?
+                                surfaceClassMaterial.classCode :
+                                static_cast<std::uint32_t>(
+                                    surface_classification::SurfaceClassCode::
+                                        ordinary)));
+            const auto selectedSurfaceClassVariantPlusOne =
+                grassVertexClassAvailable ?
+                surfaceClassMaterial.grassVariantIndexPlusOne :
+                (surfaceClassDescriptor ?
+                        surfaceClassDescriptor->variantIndexPlusOne :
+                        (materialClassUnambiguous ?
+                                surfaceClassMaterial.variantIndexPlusOne :
+                                0u));
+            const auto specializedSurfaceClassIndex =
+                specializedSurfaceClassSlot(
+                    contractIndex,
+                    selectedSurfaceClassCode,
+                    selectedSurfaceClassVariantPlusOne);
             const auto complexEnvironmentProducer =
                 complex_materials::
                     kComplexEnvironmentProducerByLinearContract[
@@ -1466,11 +1850,9 @@ namespace community_shaders::linear_lighting
                 binding.constantFlags = static_cast<std::uint8_t>(
                     binding.constantFlags |
                     ReplacementPixelConstants_ComplexEnvironment);
-                const auto descriptorScope =
-                    render::activeDFPrePassDescriptorScope();
-                const auto* alias = descriptorScope.active ?
+                const auto* alias = descriptorActive ?
                     complex_materials::findComplexMaterialProducerAlias(
-                        descriptorScope.descriptor) :
+                        descriptor) :
                     nullptr;
                 useComplexEnvironment =
                     complexEnvironmentConsumerReady && alias &&
@@ -1501,13 +1883,65 @@ namespace community_shaders::linear_lighting
                 return { requested, {} };
             }
 
-            auto* replacement = useComplexParallax ?
-                complexParallaxReplacementShaders_[parallaxSlot].Get() :
-                replacementShaders_[contractIndex].Get();
+            ID3D11PixelShader* replacement{};
+            if (surfaceClassificationActive) {
+                if (useComplexParallax) {
+                    replacement =
+                        surfaceClassComplexParallaxReplacementShaders_[
+                            parallaxSlot]
+                            .Get();
+                } else if (
+                    specializedSurfaceClassIndex <
+                    specializedSurfaceClassReplacementShaders_.size()) {
+                    replacement = specializedSurfaceClassReplacementShaders_[
+                        specializedSurfaceClassIndex]
+                                      .Get();
+                } else {
+                    replacement =
+                        surfaceClassReplacementShaders_[contractIndex].Get();
+                }
+            } else {
+                replacement = useComplexParallax ?
+                    complexParallaxReplacementShaders_[parallaxSlot].Get() :
+                    replacementShaders_[contractIndex].Get();
+            }
             if (!replacement) {
                 inactiveShaderSelections_.fetch_add(
                     1, std::memory_order_relaxed);
                 return { requested, {} };
+            }
+
+            if (surfaceClassificationActive) {
+                auto& classification =
+                    surface_classification::Runtime::get();
+                if (descriptorActive && !surfaceClassDescriptor) {
+                    classification.recordDescriptorContractMiss(
+                        descriptor);
+                }
+                if (grassVertexClassAvailable) {
+                    classification.recordProducerSelection(
+                        selectedSurfaceClassCode,
+                        static_cast<std::uint32_t>(contractIndex),
+                        surface_classification::ProducerEvidence::
+                            grassVertexShaderIdentity,
+                        0);
+                    grassVertexClassSelections_.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                } else if (surfaceClassDescriptor) {
+                    classification.recordProducerSelection(
+                        surfaceClassDescriptor->classCode,
+                        static_cast<std::uint32_t>(contractIndex),
+                        surface_classification::ProducerEvidence::descriptor,
+                        descriptor);
+                } else if (materialClassUnambiguous) {
+                    classification.recordProducerSelection(
+                        surfaceClassMaterial.classCode,
+                        static_cast<std::uint32_t>(contractIndex),
+                        surface_classification::ProducerEvidence::
+                            materialIdentity,
+                        0);
+                }
             }
 
             auto noContractObserved = 0u;
@@ -1527,7 +1961,12 @@ namespace community_shaders::linear_lighting
                     1,
                     std::memory_order_relaxed);
             }
-            return { replacement, binding, false };
+            return {
+                replacement,
+                binding,
+                false,
+                selectedSurfaceClassCode,
+            };
         }
 
         if (!linearLightingEnabled) {
@@ -1755,7 +2194,8 @@ namespace community_shaders::linear_lighting
 
     std::uint32_t Runtime::inspectReplacementPipelineState(
         ID3D11DeviceContext* context,
-        ReplacementShaderBinding binding) const noexcept
+        ReplacementShaderBinding binding,
+        std::uint32_t surfaceClassCode) const noexcept
     {
         ID3D11PixelShader* expectedShader{};
         if (binding.family == ReplacementShaderFamily::material &&
@@ -1770,9 +2210,37 @@ namespace community_shaders::linear_lighting
                 complexParallaxResourcesReady_.load(
                     std::memory_order_acquire) &&
                 parallaxSlot < complexParallaxReplacementShaders_.size();
-            expectedShader = useComplexParallax ?
-                complexParallaxReplacementShaders_[parallaxSlot].Get() :
-                replacementShaders_[contractIndex].Get();
+            const auto surfaceClassificationActive =
+                enabled_.load(std::memory_order_acquire) &&
+                surface_classification::Runtime::get().required();
+            const auto specializedSurfaceClass = std::find_if(
+                kSpecializedSurfaceClassContracts.begin(),
+                kSpecializedSurfaceClassContracts.end(),
+                [contractIndex, surfaceClassCode](const auto& contract) {
+                    return contract.contractIndex == contractIndex &&
+                        contract.classCode == surfaceClassCode;
+                });
+            const auto specializedSurfaceClassIndex =
+                static_cast<std::size_t>(std::distance(
+                    kSpecializedSurfaceClassContracts.begin(),
+                    specializedSurfaceClass));
+            if (surfaceClassificationActive) {
+                expectedShader = useComplexParallax ?
+                    surfaceClassComplexParallaxReplacementShaders_[
+                        parallaxSlot]
+                        .Get() :
+                    (specializedSurfaceClassIndex <
+                            specializedSurfaceClassReplacementShaders_.size() ?
+                            specializedSurfaceClassReplacementShaders_[
+                                specializedSurfaceClassIndex]
+                                .Get() :
+                            surfaceClassReplacementShaders_[contractIndex]
+                                .Get());
+            } else {
+                expectedShader = useComplexParallax ?
+                    complexParallaxReplacementShaders_[parallaxSlot].Get() :
+                    replacementShaders_[contractIndex].Get();
+            }
         } else if (binding.family == ReplacementShaderFamily::sky &&
             binding.contractPlusOne > 0 &&
             binding.contractPlusOne <= skyReplacementShaders_.size()) {
@@ -2083,6 +2551,16 @@ namespace community_shaders::linear_lighting
                 matchingShaderContractMask_.load(std::memory_order_relaxed),
             .matchingShadersCreated = matchingShadersCreated_.load(std::memory_order_relaxed),
             .trackedOriginalShaders = trackedOriginalShaders_.load(std::memory_order_relaxed),
+            .matchingGrassVertexShaderIdentityMask =
+                matchingGrassVertexShaderIdentityMask_.load(
+                    std::memory_order_relaxed),
+            .matchingGrassVertexShadersCreated =
+                matchingGrassVertexShadersCreated_.load(
+                    std::memory_order_relaxed),
+            .trackedGrassVertexShaders =
+                trackedGrassVertexShaders_.load(std::memory_order_relaxed),
+            .grassVertexClassSelections =
+                grassVertexClassSelections_.load(std::memory_order_relaxed),
             .firstReplacementContractPlusOne =
                 firstReplacementContractPlusOne_.load(
                     std::memory_order_acquire),

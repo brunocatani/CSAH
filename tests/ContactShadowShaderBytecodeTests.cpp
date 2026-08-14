@@ -81,12 +81,20 @@ int main(int argumentCount, char** arguments)
             disassembly->GetBufferSize());
         require(
             assembly.contains(
-                "dcl_constantbuffer CB13[1], immediateIndexed"),
+                "dcl_constantbuffer CB13[3], immediateIndexed"),
             "Contact Shadows settings buffer must remain at b13");
         require(
             assembly.contains(
                 "dcl_resource_texture2d (float,float,float,float) t46"),
             "Contact Shadows mask input must remain at t46");
+        require(
+            assembly.contains(
+                "dcl_constantbuffer CB11[1], immediateIndexed"),
+            "Wrapped Grass settings buffer must remain at b11");
+        require(
+            assembly.contains(
+                "dcl_resource_texture2d (float,float,float,float) t47"),
+            "surface-classification input must remain at t47");
         require(
             std::regex_search(
                 assembly,

@@ -21,6 +21,21 @@ namespace
         ID3D11PixelShader*,
         ID3D11ClassInstance* const*,
         UINT);
+    using OMSetRenderTargetsFunction = void(STDMETHODCALLTYPE*)(
+        ID3D11DeviceContext*,
+        UINT,
+        ID3D11RenderTargetView* const*,
+        ID3D11DepthStencilView*);
+    using OMSetRenderTargetsAndUnorderedAccessViewsFunction =
+        void(STDMETHODCALLTYPE*)(
+            ID3D11DeviceContext*,
+            UINT,
+            ID3D11RenderTargetView* const*,
+            ID3D11DepthStencilView*,
+            UINT,
+            UINT,
+            ID3D11UnorderedAccessView* const*,
+            const UINT*);
     using DrawIndexedFunction = void(STDMETHODCALLTYPE*)(
         ID3D11DeviceContext*, UINT, UINT, INT);
     using DrawFunction = void(STDMETHODCALLTYPE*)(
@@ -32,6 +47,9 @@ namespace
 
     constexpr std::size_t kCreatePixelShaderVtableIndex = 15;
     constexpr std::size_t kPSSetShaderVtableIndex = 9;
+    constexpr std::size_t kOMSetRenderTargetsVtableIndex = 33;
+    constexpr std::size_t
+        kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex = 34;
     constexpr std::size_t kDrawIndexedVtableIndex = 12;
     constexpr std::size_t kDrawVtableIndex = 13;
     constexpr std::size_t kDrawIndexedInstancedVtableIndex = 20;
@@ -39,12 +57,17 @@ namespace
 
     CreatePixelShaderFunction originalCreatePixelShader{};
     PSSetShaderFunction originalPSSetShader{};
+    OMSetRenderTargetsFunction originalOMSetRenderTargets{};
+    OMSetRenderTargetsAndUnorderedAccessViewsFunction
+        originalOMSetRenderTargetsAndUnorderedAccessViews{};
     DrawIndexedFunction originalDrawIndexed{};
     DrawFunction originalDraw{};
     DrawIndexedInstancedFunction originalDrawIndexedInstanced{};
     DrawInstancedFunction originalDrawInstanced{};
     std::atomic_uint64_t createCalls{};
     std::atomic_uint64_t bindCalls{};
+    std::atomic_uint64_t renderTargetCalls{};
+    std::atomic_uint64_t renderTargetAndUnorderedAccessCalls{};
     std::atomic_uint64_t drawIndexedCalls{};
     std::atomic_uint64_t drawCalls{};
     std::atomic_uint64_t drawIndexedInstancedCalls{};
@@ -78,6 +101,44 @@ namespace
             shader,
             classInstances,
             classInstanceCount);
+    }
+
+    void STDMETHODCALLTYPE hookOMSetRenderTargets(
+        ID3D11DeviceContext* context,
+        UINT renderTargetCount,
+        ID3D11RenderTargetView* const* renderTargets,
+        ID3D11DepthStencilView* depthStencil) noexcept
+    {
+        renderTargetCalls.fetch_add(1, std::memory_order_relaxed);
+        originalOMSetRenderTargets(
+            context,
+            renderTargetCount,
+            renderTargets,
+            depthStencil);
+    }
+
+    void STDMETHODCALLTYPE hookOMSetRenderTargetsAndUnorderedAccessViews(
+        ID3D11DeviceContext* context,
+        UINT renderTargetCount,
+        ID3D11RenderTargetView* const* renderTargets,
+        ID3D11DepthStencilView* depthStencil,
+        UINT unorderedAccessStartSlot,
+        UINT unorderedAccessViewCount,
+        ID3D11UnorderedAccessView* const* unorderedAccessViews,
+        const UINT* initialCounts) noexcept
+    {
+        renderTargetAndUnorderedAccessCalls.fetch_add(
+            1,
+            std::memory_order_relaxed);
+        originalOMSetRenderTargetsAndUnorderedAccessViews(
+            context,
+            renderTargetCount,
+            renderTargets,
+            depthStencil,
+            unorderedAccessStartSlot,
+            unorderedAccessViewCount,
+            unorderedAccessViews,
+            initialCounts);
     }
 
     void STDMETHODCALLTYPE hookDrawIndexed(
@@ -179,14 +240,20 @@ int main()
     auto** contextVtable = *reinterpret_cast<void***>(context);
     auto* createTarget = deviceVtable[kCreatePixelShaderVtableIndex];
     auto* bindTarget = contextVtable[kPSSetShaderVtableIndex];
+    auto* renderTargetTarget =
+        contextVtable[kOMSetRenderTargetsVtableIndex];
+    auto* renderTargetAndUnorderedAccessTarget = contextVtable[
+        kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex];
     auto* drawIndexedTarget = contextVtable[kDrawIndexedVtableIndex];
     auto* drawTarget = contextVtable[kDrawVtableIndex];
     auto* drawIndexedInstancedTarget =
         contextVtable[kDrawIndexedInstancedVtableIndex];
     auto* drawInstancedTarget = contextVtable[kDrawInstancedVtableIndex];
-    const std::array<void*, 6> targets{
+    const std::array<void*, 8> targets{
         createTarget,
         bindTarget,
+        renderTargetTarget,
+        renderTargetAndUnorderedAccessTarget,
         drawIndexedTarget,
         drawTarget,
         drawIndexedInstancedTarget,
@@ -210,15 +277,18 @@ int main()
         return EXIT_FAILURE;
     }
 
-    const std::array<void*, 6> detours{
+    const std::array<void*, 8> detours{
         reinterpret_cast<void*>(&hookCreatePixelShader),
         reinterpret_cast<void*>(&hookPSSetShader),
+        reinterpret_cast<void*>(&hookOMSetRenderTargets),
+        reinterpret_cast<void*>(
+            &hookOMSetRenderTargetsAndUnorderedAccessViews),
         reinterpret_cast<void*>(&hookDrawIndexed),
         reinterpret_cast<void*>(&hookDraw),
         reinterpret_cast<void*>(&hookDrawIndexedInstanced),
         reinterpret_cast<void*>(&hookDrawInstanced),
     };
-    std::array<void*, 6> trampolines{};
+    std::array<void*, 8> trampolines{};
     for (std::size_t index = 0; index < targets.size(); ++index) {
         if (MH_CreateHook(
                 targets[index],
@@ -236,12 +306,16 @@ int main()
     originalCreatePixelShader =
         reinterpret_cast<CreatePixelShaderFunction>(trampolines[0]);
     originalPSSetShader = reinterpret_cast<PSSetShaderFunction>(trampolines[1]);
-    originalDrawIndexed = reinterpret_cast<DrawIndexedFunction>(trampolines[2]);
-    originalDraw = reinterpret_cast<DrawFunction>(trampolines[3]);
+    originalOMSetRenderTargets =
+        reinterpret_cast<OMSetRenderTargetsFunction>(trampolines[2]);
+    originalOMSetRenderTargetsAndUnorderedAccessViews = reinterpret_cast<
+        OMSetRenderTargetsAndUnorderedAccessViewsFunction>(trampolines[3]);
+    originalDrawIndexed = reinterpret_cast<DrawIndexedFunction>(trampolines[4]);
+    originalDraw = reinterpret_cast<DrawFunction>(trampolines[5]);
     originalDrawIndexedInstanced =
-        reinterpret_cast<DrawIndexedInstancedFunction>(trampolines[4]);
+        reinterpret_cast<DrawIndexedInstancedFunction>(trampolines[6]);
     originalDrawInstanced =
-        reinterpret_cast<DrawInstancedFunction>(trampolines[5]);
+        reinterpret_cast<DrawInstancedFunction>(trampolines[7]);
 
     bool queueSucceeded = true;
     for (const auto target : targets) {
@@ -260,6 +334,15 @@ int main()
     ID3D11PixelShader* invalidShader{};
     (void)device->CreatePixelShader(nullptr, 0, nullptr, &invalidShader);
     context->PSSetShader(nullptr, nullptr, 0);
+    context->OMSetRenderTargets(0, nullptr, nullptr);
+    context->OMSetRenderTargetsAndUnorderedAccessViews(
+        0,
+        nullptr,
+        nullptr,
+        0,
+        0,
+        nullptr,
+        nullptr);
     context->DrawIndexed(0, 0, 0);
     context->Draw(0, 0);
     context->DrawIndexedInstanced(0, 0, 0, 0, 0);
@@ -267,6 +350,9 @@ int main()
     const auto callsObserved =
         createCalls.load(std::memory_order_relaxed) == 1 &&
         bindCalls.load(std::memory_order_relaxed) == 1 &&
+        renderTargetCalls.load(std::memory_order_relaxed) == 1 &&
+        renderTargetAndUnorderedAccessCalls.load(
+            std::memory_order_relaxed) == 1 &&
         drawIndexedCalls.load(std::memory_order_relaxed) == 1 &&
         drawCalls.load(std::memory_order_relaxed) == 1 &&
         drawIndexedInstancedCalls.load(std::memory_order_relaxed) == 1 &&
@@ -282,7 +368,7 @@ int main()
     device->Release();
 
     if (!callsObserved) {
-        reportFailure("detoured D3D11 calls did not reach all six hooks");
+        reportFailure("detoured D3D11 calls did not reach all eight hooks");
         return EXIT_FAILURE;
     }
     if (disableStatus != MH_OK || !removeSucceeded ||

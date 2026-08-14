@@ -18,7 +18,33 @@ foreach(required IN ITEMS
     "resident hooks remain strict pass-through"
     "complete native COM vtables remain untouched"
     "validateD3D11ShaderHooks"
+    "hookCreateVertexShader"
+    "kCreateVertexShaderVtableIndex = 12"
+    "hookVSSetShader"
+    "kVSSetShaderVtableIndex = 11"
+    "onVertexShaderCreated("
+    "isGrassVertexShader(shader)"
+    "reconcileGrassVertexClassAtDraw(context)"
+    "selectPixelShaderForGrassVertex("
     "original(context, shader, classInstances, classInstanceCount)"
+    "hookOMSetRenderTargets"
+    "kOMSetRenderTargetsVtableIndex = 33"
+    "hookOMSetRenderTargetsAndUnorderedAccessViews"
+    "kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex = 34"
+    "surfaceRuntime.prepareGBufferBinding"
+    "markWorldFrameConsumed()"
+    "void beginDFPrePassTechnique("
+    "observeDFPrePassDescriptor("
+    "void endDFPrePassTechnique("
+    "activeDFPrePassDescriptor() noexcept"
+    "kMaxDFPrePassTechniqueDepth = 8"
+    "void publishDFPrePassDescriptor("
+    "pendingDFPrePassDescriptor = { descriptor, true }"
+    "consumePendingDFPrePassDescriptorAtDraw(context)"
+    "selectPixelShaderForDFPrePassDescriptor("
+    "activeReplacementOriginal"
+    "activeReplacementContext"
+    "activeSurfaceClassCode = selection.surfaceClassCode"
     "no hook repair was attempted")
   string(FIND "${source}" "${required}" found)
   if(found EQUAL -1)
@@ -27,11 +53,66 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+string(REGEX MATCHALL
+  "markWorldFrameConsumed\(\)"
+  surfaceFrameConsumes "${source}")
+list(LENGTH surfaceFrameConsumes surfaceFrameConsumeCount)
+if(NOT surfaceFrameConsumeCount EQUAL 2)
+  message(FATAL_ERROR
+    "D3D11 surface-classification lifetime must close after both directional-light draw paths")
+endif()
+
+string(FIND "${source}"
+  "void beginDFPrePassTechnique(" descriptorRebindStart)
+string(FIND "${source}"
+  "    bool installEarlyD3D11Hooks()" descriptorRebindEnd)
+if(descriptorRebindStart EQUAL -1 OR descriptorRebindEnd EQUAL -1 OR
+   NOT descriptorRebindStart LESS descriptorRebindEnd)
+  message(FATAL_ERROR
+    "D3D11 detour regression: descriptor transaction boundary is missing")
+endif()
+math(EXPR descriptorRebindLength
+  "${descriptorRebindEnd} - ${descriptorRebindStart}")
+string(SUBSTRING "${source}" ${descriptorRebindStart}
+  ${descriptorRebindLength} descriptorRebindSource)
+foreach(forbidden IN ITEMS
+    "PSGetShader"
+    "VirtualQuery"
+    "new "
+    "std::vector"
+    "std::ifstream"
+    "std::ofstream"
+    "CreateFile")
+  string(FIND "${descriptorRebindSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "D3D11 descriptor rebind hot-path regression: contains '${forbidden}'")
+  endif()
+endforeach()
+
+string(REGEX MATCHALL
+  "consumePendingDFPrePassDescriptorAtDraw\\(context\\)"
+  descriptorDrawConsumes "${source}")
+list(LENGTH descriptorDrawConsumes descriptorDrawConsumeCount)
+if(NOT descriptorDrawConsumeCount EQUAL 4)
+  message(FATAL_ERROR
+    "D3D11 descriptor transaction must expire at all four intercepted draw boundaries")
+endif()
+
+string(REGEX MATCHALL
+  "reconcileGrassVertexClassAtDraw\\(context\\)"
+  grassDrawReconciles "${source}")
+list(LENGTH grassDrawReconciles grassDrawReconcileCount)
+if(NOT grassDrawReconcileCount EQUAL 4)
+  message(FATAL_ERROR
+    "D3D11 exact grass classification must reconcile at all four intercepted draw boundaries")
+endif()
+
 string(REGEX MATCHALL "MH_CreateHook\\(" createHookCalls "${source}")
 list(LENGTH createHookCalls createHookCallCount)
-if(NOT createHookCallCount EQUAL 3)
+if(NOT createHookCallCount EQUAL 7)
   message(FATAL_ERROR
-    "D3D11 detour regression: expected two shader calls and one bounded draw helper")
+    "D3D11 detour regression: expected six core calls and one bounded draw helper")
 endif()
 
 string(FIND "${source}" "Runtime::get().onDeviceCreated" deviceReady)
