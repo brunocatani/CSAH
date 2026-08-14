@@ -81,7 +81,7 @@ foreach(required IN ITEMS
     "NativeStereo : register(b8)"
     "NativeCamera : register(b12)"
     "ContactShadowSettings : register(b13)"
-    "const float3 towardLight = -normalize(DFLight[eye + 1u].xyz)"
+    "const float3 towardLight = normalize(DFLight[eye + 1u].xyz)"
     "eyeFirstPixel"
     "eyeLastPixel"
     "sampleEyeUv <= 0.0f"
@@ -133,6 +133,7 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "length(surface)"
+    "-normalize(DFLight[eye + 1u].xyz)"
     "sampleCount = max((uint)scaled"
     "clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale")
   string(FIND "${maskShaderSource}" "${forbidden}" found)
