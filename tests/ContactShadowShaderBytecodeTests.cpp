@@ -1,0 +1,142 @@
+#include <Windows.h>
+#include <d3d11.h>
+#include <d3d11shader.h>
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace
+{
+    using Microsoft::WRL::ComPtr;
+
+    void require(bool condition, const std::string& message)
+    {
+        if (!condition) {
+            throw std::runtime_error(message);
+        }
+    }
+
+    std::vector<char> readBytes(const std::filesystem::path& path)
+    {
+        std::ifstream stream(path, std::ios::binary);
+        require(stream.good(), "could not open " + path.string());
+        return {
+            std::istreambuf_iterator<char>(stream),
+            std::istreambuf_iterator<char>(),
+        };
+    }
+}
+
+int main(int argumentCount, char** arguments)
+{
+    try {
+        require(argumentCount == 2, "expected generated shader argument");
+        const auto path = std::filesystem::path(arguments[1]);
+        const auto bytes = readBytes(path);
+        require(
+            bytes.size() >= 20 && bytes[0] == 'D' && bytes[1] == 'X' &&
+                bytes[2] == 'B' && bytes[3] == 'C',
+            "generated Contact Shadows shader is not DXBC");
+
+        ComPtr<ID3D11ShaderReflection> reflection;
+        require(
+            SUCCEEDED(D3DReflect(
+                bytes.data(),
+                bytes.size(),
+                __uuidof(ID3D11ShaderReflection),
+                reinterpret_cast<void**>(reflection.GetAddressOf()))) &&
+                reflection,
+            "D3DReflect rejected generated Contact Shadows shader");
+        D3D11_SHADER_DESC shaderDescription{};
+        require(
+            SUCCEEDED(reflection->GetDesc(&shaderDescription)),
+            "could not inspect generated Contact Shadows shader");
+        require(
+            shaderDescription.OutputParameters == 2,
+            "directional DFLight must retain both render-target outputs");
+
+        ComPtr<ID3DBlob> disassembly;
+        require(
+            SUCCEEDED(D3DDisassemble(
+                bytes.data(),
+                bytes.size(),
+                0,
+                nullptr,
+                &disassembly)) &&
+                disassembly,
+            "D3DDisassemble rejected generated Contact Shadows shader");
+        const std::string assembly(
+            static_cast<const char*>(disassembly->GetBufferPointer()),
+            disassembly->GetBufferSize());
+        require(
+            assembly.contains(
+                "dcl_constantbuffer CB13[3], immediateIndexed"),
+            "Contact Shadows settings buffer must remain at b13");
+        require(
+            assembly.contains(
+                "dcl_resource_texture2d (float,float,float,float) t3"),
+            "Contact Shadows depth input must retain native t3");
+        require(
+            assembly.contains("mul r1.xyz, r1.xyzx, r20.x") &&
+                assembly.contains("mul r0.xyz, r0.xyzx, r20.x"),
+            "visibility must modulate both directional DFLight outputs");
+        std::istringstream lines(assembly);
+        std::string line;
+        std::size_t returnCount = 0;
+        while (std::getline(lines, line)) {
+            const auto first = line.find_first_not_of(" \t\r");
+            const auto last = line.find_last_not_of(" \t\r");
+            if (first != std::string::npos &&
+                line.substr(first, last - first + 1) == "ret") {
+                ++returnCount;
+            }
+        }
+        require(
+            returnCount == 1,
+            "generated shader must retain exactly one final return");
+
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
+        D3D_FEATURE_LEVEL selected{};
+        constexpr D3D_FEATURE_LEVEL requested{ D3D_FEATURE_LEVEL_11_0 };
+        require(
+            SUCCEEDED(D3D11CreateDevice(
+                nullptr,
+                D3D_DRIVER_TYPE_WARP,
+                nullptr,
+                0,
+                &requested,
+                1,
+                D3D11_SDK_VERSION,
+                &device,
+                &selected,
+                &context)),
+            "D3D11CreateDevice(WARP)");
+        ComPtr<ID3D11PixelShader> shader;
+        require(
+            selected == D3D_FEATURE_LEVEL_11_0 &&
+                SUCCEEDED(device->CreatePixelShader(
+                    bytes.data(),
+                    bytes.size(),
+                    nullptr,
+                    &shader)) &&
+                shader,
+            "WARP rejected generated Contact Shadows DFLight shader");
+
+        std::cout
+            << "FO4VR Contact Shadows DFLight bytecode accepted by disassembly, reflection, and WARP.\n";
+        return EXIT_SUCCESS;
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return EXIT_FAILURE;
+    }
+}

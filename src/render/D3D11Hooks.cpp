@@ -1,5 +1,6 @@
 #include "render/D3D11Hooks.h"
 
+#include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
@@ -183,6 +184,8 @@ namespace community_shaders::render
         thread_local linear_lighting::ReplacementShaderBinding
             activeReplacementBinding{};
         thread_local ID3D11PixelShader* activeReplacementOriginal{};
+        thread_local contact_shadows::ShaderBinding
+            activeContactShadowBinding{};
         thread_local ibl::Runtime::MaterialShaderBinding
             activeIblMaterialBinding{};
         thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
@@ -990,6 +993,17 @@ namespace community_shaders::render
                 }
                 activeIblMaterialBinding = {};
             }
+            if (activeContactShadowBinding &&
+                !contact_shadows::Runtime::get().featureEnabled()) {
+                if (originalPSSetShader) {
+                    originalPSSetShader(
+                        context,
+                        activeContactShadowBinding.original,
+                        nullptr,
+                        0);
+                }
+                activeContactShadowBinding = {};
+            }
         }
 
         [[nodiscard]] bool activeDrawInterceptionRequired() noexcept
@@ -997,6 +1011,7 @@ namespace community_shaders::render
             return activeReplacementBinding.family !=
                     linear_lighting::ReplacementShaderFamily::none ||
                 activeIblMaterialBinding ||
+                activeContactShadowBinding ||
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne != 0 ||
                 qualificationSessionActive.load(std::memory_order_acquire);
         }
@@ -1128,6 +1143,15 @@ namespace community_shaders::render
             preserveActiveIblCaptureProbeDraw(context);
         }
 
+        [[nodiscard]] contact_shadows::ScopedConstants
+        scopeActiveContactShadowConstants(
+            ID3D11DeviceContext* context) noexcept
+        {
+            return contact_shadows::Runtime::get().scopeConstants(
+                context,
+                activeContactShadowBinding);
+        }
+
         [[nodiscard]] void** findMainModuleImport(
             const char* importedModule,
             const char* importedFunction) noexcept
@@ -1214,6 +1238,10 @@ namespace community_shaders::render
                     bytecode,
                     bytecodeLength,
                     *shader);
+                contact_shadows::Runtime::get().onPixelShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
             }
             return result;
         }
@@ -1232,6 +1260,7 @@ namespace community_shaders::render
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
                 activeReplacementOriginal = nullptr;
+                activeContactShadowBinding = {};
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1241,6 +1270,7 @@ namespace community_shaders::render
                 pixelShaderBindRecursions.fetch_add(1, std::memory_order_relaxed);
                 activeReplacementBinding = {};
                 activeReplacementOriginal = nullptr;
+                activeContactShadowBinding = {};
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1251,15 +1281,20 @@ namespace community_shaders::render
             activatePendingQualificationSession();
             auto& replacementRuntime = linear_lighting::Runtime::get();
             auto& iblRuntime = ibl::Runtime::get();
+            auto& contactShadowRuntime = contact_shadows::Runtime::get();
             const auto qualificationActive =
                 qualificationSessionActive.load(std::memory_order_acquire);
             const auto replacementFeaturesActive =
                 replacementRuntime.replacementFeaturesEnabled();
             const auto iblFeatureActive = iblRuntime.featureEnabled();
+            const auto contactShadowFeatureActive =
+                contactShadowRuntime.featureEnabled();
             if (!replacementFeaturesActive && !iblFeatureActive &&
+                !contactShadowFeatureActive &&
                 !qualificationActive) {
                 activeReplacementBinding = {};
                 activeReplacementOriginal = nullptr;
+                activeContactShadowBinding = {};
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -1283,12 +1318,23 @@ namespace community_shaders::render
                 (replacementFeaturesActive || qualificationActive) ?
                 replacementRuntime.selectPixelShader(context, shader) :
                 linear_lighting::PixelShaderSelection{ shader, {} };
+            auto contactShadowSelection =
+                contact_shadows::PixelShaderSelection{ selection.shader, {} };
+            if (contactShadowFeatureActive && !qualificationActive &&
+                classInstanceCount == 0 &&
+                selection.shader == shader &&
+                selection.binding.family ==
+                    linear_lighting::ReplacementShaderFamily::none) {
+                contactShadowSelection =
+                    contactShadowRuntime.selectPixelShader(shader);
+            }
             auto iblSelection = ibl::Runtime::MaterialPixelShaderSelection{
-                selection.shader,
+                contactShadowSelection.shader,
                 {},
             };
             if (iblFeatureActive && classInstanceCount == 0 &&
                 selection.shader == shader &&
+                !contactShadowSelection.binding &&
                 selection.binding.family ==
                     linear_lighting::ReplacementShaderFamily::none) {
                 iblSelection = iblRuntime.selectMaterialPixelShader(
@@ -1311,6 +1357,7 @@ namespace community_shaders::render
             activeReplacementOriginal = selection.binding.family !=
                     linear_lighting::ReplacementShaderFamily::none ?
                 shader : nullptr;
+            activeContactShadowBinding = contactShadowSelection.binding;
             activeIblMaterialBinding = iblSelection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
@@ -1346,6 +1393,8 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto contactShadowConstants =
+                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
@@ -1378,6 +1427,8 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto contactShadowConstants =
+                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
@@ -1413,6 +1464,8 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto contactShadowConstants =
+                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
@@ -1454,6 +1507,8 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto contactShadowConstants =
+                scopeActiveContactShadowConstants(context);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
@@ -1845,6 +1900,10 @@ namespace community_shaders::render
                 *immediateContext,
                 originalCreatePixelShader);
             ibl::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext,
+                originalCreatePixelShader);
+            contact_shadows::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);

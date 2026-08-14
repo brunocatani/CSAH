@@ -1,0 +1,174 @@
+foreach(variable IN ITEMS
+    CONTACT_SHADOW_RUNTIME_SOURCE
+    CONTACT_SHADOW_RUNTIME_HEADER
+    CONTACT_SHADOW_SETTINGS_HEADER
+    CONTACT_SHADOW_SETTINGS_STORE_SOURCE
+    CONTACT_SHADOW_SETTINGS_STORE_HEADER
+    CONTACT_SHADOW_SHADER_SOURCE
+    CONTACT_SHADOW_SHADER_GENERATOR
+    D3D11_HOOK_SOURCE
+    WRIST_PANEL_SOURCE
+    WRIST_PANEL_VIEW_SOURCE
+    PLUGIN_SOURCE)
+  if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
+    message(FATAL_ERROR "${variable} is missing")
+  endif()
+endforeach()
+
+file(READ "${CONTACT_SHADOW_RUNTIME_SOURCE}" runtimeSource)
+file(READ "${CONTACT_SHADOW_RUNTIME_HEADER}" runtimeHeader)
+file(READ "${CONTACT_SHADOW_SETTINGS_HEADER}" settingsHeader)
+file(READ "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}" settingsStoreSource)
+file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
+file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
+file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
+file(READ "${D3D11_HOOK_SOURCE}" hookSource)
+file(READ "${WRIST_PANEL_SOURCE}" wristSource)
+file(READ "${WRIST_PANEL_VIEW_SOURCE}" wristView)
+file(READ "${PLUGIN_SOURCE}" pluginSource)
+
+foreach(required IN ITEMS
+    "12280787d2a5110c820f433751c84648"
+    "kConstantSlot = 13"
+    "matchesOriginal"
+    "resourcesReady_.store(false"
+    "resourcesReady_.store(true"
+    "PSGetConstantBuffers(kConstantSlot"
+    "PSSetConstantBuffers(kConstantSlot"
+    "selectPixelShader"
+    "for (auto& original : originals_)"
+    "original.Reset()")
+  string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows runtime regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS "RE::" "REL::" "GetRendererData")
+  string(FIND "${runtimeSource}${runtimeHeader}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows runtime contains unverified engine access '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "Texture2D<float> SceneDepth : register(t3)"
+    "NativeDFLight : register(b2)"
+    "NativeStereo : register(b8)"
+    "NativeCamera : register(b12)"
+    "ContactShadowSettings : register(b13)"
+    "nointerpolation uint Eye : EYEINDEX"
+    "sampleEyeUv <= 0.0f"
+    "sampleEyeUv >= 1.0f"
+    "length(surface) / max(ContactParams2.x"
+    "index < 16u"
+    "A fixed sequence avoids view-dependent jitter disagreement between eyes")
+  string(FIND "${shaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows stereo shader regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS "PixelNoise" "discard")
+  string(FIND "${shaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows stereo shader contains forbidden '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "EXPECTED_IDENTITY = (26152, \"12280787d2a5110c820f433751c84648\")"
+    "EXPECTED_ALIAS_KEYS = {0x01200202, 0x01200282, 0x11200202}"
+    "contact-shadow template contains an early return"
+    "contact-shadow candidate contains an injected early return"
+    "multiply_rgb(1, visibility_scratch)"
+    "multiply_rgb(0, visibility_scratch)")
+  string(FIND "${generatorSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows generation regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "contact_shadows::Runtime::get().onDeviceCreated"
+    "contact_shadows::Runtime::get().onPixelShaderCreated"
+    "contactShadowRuntime.selectPixelShader(shader)"
+    "!qualificationActive"
+    "scopeActiveContactShadowConstants(context)"
+    "activeContactShadowBinding.original")
+  string(FIND "${hookSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows D3D ownership regression: missing '${required}'")
+  endif()
+endforeach()
+
+string(REGEX MATCHALL
+  "scopeActiveContactShadowConstants\\(context\\)" drawScopes
+  "${hookSource}")
+list(LENGTH drawScopes drawScopeCount)
+if(NOT drawScopeCount EQUAL 4)
+  message(FATAL_ERROR
+    "Contact Shadows must own one restoration scope in all four draw paths")
+endif()
+
+foreach(required IN ITEMS
+    "bEnabled"
+    "bFoveated"
+    "fStrength"
+    "fMaxDistance"
+    "fFadeDistance"
+    "fThickness"
+    "iSampleCount"
+    "parseBoolean")
+  string(FIND
+    "${settingsHeader}${settingsStoreSource}${settingsStoreHeader}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows settings regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "contactShadowsEnabled"
+    "contactShadowsFoveated"
+    "contactShadowsSet"
+    "contact_shadows::saveSettings"
+    "fadeDistance")
+  string(FIND "${wristSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows wrist runtime regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "id=\"contactShadowsSwitch\""
+    "id=\"contactFoveatedSwitch\""
+    "id=\"shadowsPage\""
+    "type: \"contactShadowsEnabled\""
+    "type: \"contactShadowsFoveated\""
+    "type: \"contactShadowsSet\""
+    "fadeDistance")
+  string(FIND "${wristView}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows wrist view regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "contact_shadows::loadSettings"
+    "contact_shadows::Runtime::get().applySettings")
+  string(FIND "${pluginSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows bootstrap regression: missing '${required}'")
+  endif()
+endforeach()

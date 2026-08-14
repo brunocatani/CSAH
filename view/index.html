@@ -99,15 +99,17 @@
 
     .page-nav {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
       align-items: center;
-      padding: 20px 24px;
+      padding: 20px 16px;
     }
 
     .page-nav button {
+      min-width: 0;
       min-height: 64px;
-      font-size: 13px;
+      padding: 0 8px;
+      font-size: 11px;
     }
 
     .master {
@@ -229,6 +231,10 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 14px;
+    }
+
+    #shadowsPage .control-grid {
+      grid-template-columns: repeat(3, 1fr);
     }
 
     .control {
@@ -444,6 +450,7 @@
       <nav class="page-nav" aria-label="Panel pages">
         <button id="pageFeaturesButton" type="button" class="active">01 · Features</button>
         <button id="pageResponseButton" type="button">02 · Response</button>
+        <button id="pageShadowsButton" type="button">03 · Shadows</button>
       </nav>
     </header>
 
@@ -492,6 +499,20 @@
             </div>
             <div class="master">
               <div class="master-copy">
+                <strong>Contact Shadows</strong>
+                <span id="contactShadowsState">WAITING FOR DIRECTIONAL PASS</span>
+              </div>
+              <div id="contactShadowsSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Foveated Shadow Sampling</strong>
+                <span id="contactFoveatedState">CENTER-PRIORITY SAMPLING</span>
+              </div>
+              <div id="contactFoveatedSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
                 <strong>Developer Overlay</strong>
                 <span>bounded, leased, automatic start</span>
               </div>
@@ -510,6 +531,27 @@
           <div class="plate">
             <h3>Runtime interlocks</h3>
             <div id="statusGrid" class="status-grid"></div>
+          </div>
+        </aside>
+      </section>
+
+      <section id="shadowsPage" class="page" aria-label="Contact shadow tuning">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Directional contact shadows</h2>
+            <span>EXACT DFLIGHT · PER-EYE RAYMARCH</span>
+          </div>
+          <div id="contactControlGrid" class="control-grid"></div>
+        </section>
+
+        <aside>
+          <div class="plate">
+            <h3>Screen-space limits</h3>
+            <p class="page-note">Only geometry present in each eye's depth image can cast a contact shadow. Off-screen occluders remain the responsibility of the native shadow maps.</p>
+          </div>
+          <div class="plate">
+            <h3>Performance contract</h3>
+            <p class="page-note">A deterministic sample sequence avoids cross-eye noise disagreement. Distance scaling and foveation reduce work without crossing the stereo seam.</p>
           </div>
         </aside>
       </section>
@@ -556,6 +598,13 @@
       { key: "glowmapMultiplier", label: "Glow level", hint: "Scales textured emissive energy.", min: 0, max: 3, step: .01 },
       { key: "diffuseIblLevel", source: "ibl", label: "IBL ambient level", hint: "Scales environment-derived diffuse ambient after vanilla brightness matching.", min: 0, max: 2, step: .01 }
     ];
+    const contactControls = [
+      { key: "strength", label: "Shadow strength", hint: "Blends the directional contact term without changing ambient or IBL.", min: 0, max: 1, step: .01 },
+      { key: "maxDistance", label: "Ray distance", hint: "Maximum view-space reach of small-object sunlight shadows.", min: 8, max: 256, step: 1 },
+      { key: "fadeDistance", label: "View fade distance", hint: "Reduces samples with distance and disables contact shadows beyond this range.", min: 256, max: 8192, step: 64 },
+      { key: "thickness", label: "Surface thickness", hint: "Rejects depth crossings too thick to be a local contact occluder.", min: .002, max: .05, step: .001 },
+      { key: "sampleCount", label: "Center samples", hint: "Maximum center-view samples; distance and foveation reduce work elsewhere.", min: 2, max: 16, step: 1 }
+    ];
 
     const state = { model: null, page: "features", timers: new Map() };
 
@@ -590,6 +639,27 @@
           }, 180));
         });
       }
+
+      const contactGrid = document.getElementById("contactControlGrid");
+      contactGrid.innerHTML = contactControls.map(control => `
+        <div class="control">
+          <label for="contact_${control.key}">${control.label}<output id="contact_${control.key}Value">—</output></label>
+          <p>${control.hint}</p>
+          <input id="contact_${control.key}" type="range"
+            min="${control.min}" max="${control.max}" step="${control.step}">
+        </div>`).join("");
+      for (const control of contactControls) {
+        const input = document.getElementById(`contact_${control.key}`);
+        const output = document.getElementById(`contact_${control.key}Value`);
+        input.addEventListener("input", () => {
+          const digits = control.step < .01 ? 3 : (control.step < 1 ? 2 : 0);
+          output.textContent = Number(input.value).toFixed(digits);
+          clearTimeout(state.timers.get(`contact_${control.key}`));
+          state.timers.set(`contact_${control.key}`, setTimeout(() => {
+            bridge({ type: "contactShadowsSet", key: control.key, value: Number(input.value) });
+          }, 180));
+        });
+      }
     }
 
     function truth(value, yes, no) {
@@ -601,12 +671,16 @@
     }
 
     function setPage(page) {
-      state.page = page === "response" ? "response" : "features";
+      state.page = page === "response" || page === "shadows" ? page : "features";
       const featuresActive = state.page === "features";
+      const responseActive = state.page === "response";
+      const shadowsActive = state.page === "shadows";
       document.getElementById("featuresPage").classList.toggle("active", featuresActive);
-      document.getElementById("responsePage").classList.toggle("active", !featuresActive);
+      document.getElementById("responsePage").classList.toggle("active", responseActive);
+      document.getElementById("shadowsPage").classList.toggle("active", shadowsActive);
       document.getElementById("pageFeaturesButton").classList.toggle("active", featuresActive);
-      document.getElementById("pageResponseButton").classList.toggle("active", !featuresActive);
+      document.getElementById("pageResponseButton").classList.toggle("active", responseActive);
+      document.getElementById("pageShadowsButton").classList.toggle("active", shadowsActive);
     }
 
     function render() {
@@ -619,6 +693,7 @@
       const qualification = model.qualification || {};
       const ibl = model.ibl || {};
       const complexMaterials = model.complexMaterials || {};
+      const contactShadows = model.contactShadows || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
@@ -665,6 +740,22 @@
           (complexMaterials.environmentConsumerReady ?
             "METAL RESPONSE ARMED" : "WAITING FOR IBL CONSUMER"));
 
+      const contactEnabled = !!contactShadows.enabled;
+      const contactSwitch = document.getElementById("contactShadowsSwitch");
+      contactSwitch.classList.toggle("on", contactEnabled);
+      contactSwitch.setAttribute("aria-checked", String(contactEnabled));
+      document.getElementById("contactShadowsState").textContent = !contactEnabled ?
+        "NATIVE DIRECTIONAL LIGHT" :
+        (contactShadows.gpuReady ?
+          (contactShadows.matchingShaders ? "DIRECTIONAL RAYMARCH ACTIVE" : "WAITING FOR DFLIGHT") :
+          "SHADER INTERLOCK CLOSED");
+      const contactFoveated = !!contactShadows.foveated;
+      const contactFoveatedSwitch = document.getElementById("contactFoveatedSwitch");
+      contactFoveatedSwitch.classList.toggle("on", contactFoveated);
+      contactFoveatedSwitch.setAttribute("aria-checked", String(contactFoveated));
+      document.getElementById("contactFoveatedState").textContent = contactFoveated ?
+        "CENTER-PRIORITY SAMPLING" : "UNIFORM SAMPLE COUNT";
+
       for (const control of controls) {
         const input = document.getElementById(control.key);
         const output = document.getElementById(`${control.key}Value`);
@@ -672,6 +763,14 @@
           ibl.diffuseLevel : settings[control.key]);
         if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
         output.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
+      }
+      for (const control of contactControls) {
+        const input = document.getElementById(`contact_${control.key}`);
+        const output = document.getElementById(`contact_${control.key}Value`);
+        const value = Number(contactShadows[control.key]);
+        if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
+        const digits = control.step < .01 ? 3 : (control.step < 1 ? 2 : 0);
+        output.textContent = Number.isFinite(value) ? value.toFixed(digits) : "—";
       }
 
       document.getElementById("coverageName").textContent = coverage.label || "No verified shader slice";
@@ -704,6 +803,8 @@
         metric("Parallax shaders", complexMaterials.parallaxResourcesReady ? "3 / 3 READY" : "CLOSED", complexMaterials.parallaxResourcesReady ? "good" : "bad"),
         metric("Parallax binds", String(complexMaterials.parallaxReplacementBinds || 0), complexMaterials.parallaxReplacementBinds ? "good" : "wait"),
         metric("Complex material binds", String(complexMaterials.environmentReplacementBinds || 0), complexMaterials.environmentReplacementBinds ? "good" : "wait"),
+        metric("Contact shadows", contactShadows.gpuReady ? "READY" : "CLOSED", contactShadows.gpuReady ? "good" : "bad"),
+        metric("Contact binds", String(contactShadows.replacementBinds || 0), contactShadows.replacementBinds ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -763,9 +864,26 @@
       render();
     }
 
+    function toggleContactShadowsEnabled() {
+      const contactShadows = (state.model || {}).contactShadows || {};
+      const enabled = !contactShadows.enabled;
+      bridge({ type: "contactShadowsEnabled", value: enabled });
+      if (state.model) state.model.contactShadows = { ...contactShadows, enabled };
+      render();
+    }
+
+    function toggleContactFoveated() {
+      const contactShadows = (state.model || {}).contactShadows || {};
+      const foveated = !contactShadows.foveated;
+      bridge({ type: "contactShadowsFoveated", value: foveated });
+      if (state.model) state.model.contactShadows = { ...contactShadows, foveated };
+      render();
+    }
+
     createControls();
     document.getElementById("pageFeaturesButton").addEventListener("click", () => setPage("features"));
     document.getElementById("pageResponseButton").addEventListener("click", () => setPage("response"));
+    document.getElementById("pageShadowsButton").addEventListener("click", () => setPage("shadows"));
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
@@ -785,6 +903,14 @@
     document.getElementById("complexEnvironmentSwitch").addEventListener("click", toggleComplexEnvironmentEnabled);
     document.getElementById("complexEnvironmentSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleComplexEnvironmentEnabled();
+    });
+    document.getElementById("contactShadowsSwitch").addEventListener("click", toggleContactShadowsEnabled);
+    document.getElementById("contactShadowsSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleContactShadowsEnabled();
+    });
+    document.getElementById("contactFoveatedSwitch").addEventListener("click", toggleContactFoveated);
+    document.getElementById("contactFoveatedSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleContactFoveated();
     });
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};

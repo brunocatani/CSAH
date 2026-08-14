@@ -3,6 +3,8 @@
 #include "PrismaUI_F4_API.h"
 #include "PrismaUI_F4VR_API.h"
 #include "ROCKProviderApi.h"
+#include "Features/contact_shadows/ContactShadowRuntime.h"
+#include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
@@ -592,6 +594,8 @@ namespace community_shaders::ui
         {
             const auto runtime = linear_lighting::Runtime::get().snapshot();
             const auto iblRuntime = ibl::Runtime::get().snapshot();
+            const auto contactRuntime =
+                contact_shadows::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -622,7 +626,11 @@ namespace community_shaders::ui
                      iblRuntime.resourcesReady)
                     << 54) ^
                 (static_cast<std::uint64_t>(iblRuntime.diffuseEnabled) << 55) ^
-                (iblRuntime.diffuseFitsPublished << 56);
+                (iblRuntime.diffuseFitsPublished << 56) ^
+                (contactRuntime.replacementBinds << 57) ^
+                (contactRuntime.constantScopes << 58) ^
+                (static_cast<std::uint64_t>(contactRuntime.settings.enabled)
+                    << 59);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -636,6 +644,8 @@ namespace community_shaders::ui
             }
             const auto runtime = linear_lighting::Runtime::get().snapshot();
             const auto iblRuntime = ibl::Runtime::get().snapshot();
+            const auto contactRuntime =
+                contact_shadows::Runtime::get().snapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -684,6 +694,25 @@ namespace community_shaders::ui
                             runtime.complexEnvironmentReplacementBinds },
                         { "environmentDescriptorRejects",
                             runtime.complexEnvironmentDescriptorRejects },
+                    } },
+                { "contactShadows",
+                    {
+                        { "enabled", contactRuntime.settings.enabled },
+                        { "foveated", contactRuntime.settings.foveated },
+                        { "strength", contactRuntime.settings.strength },
+                        { "maxDistance",
+                            contactRuntime.settings.maxDistance },
+                        { "fadeDistance",
+                            contactRuntime.settings.fadeDistance },
+                        { "thickness", contactRuntime.settings.thickness },
+                        { "sampleCount",
+                            contactRuntime.settings.sampleCount },
+                        { "gpuReady", contactRuntime.gpuReady },
+                        { "matchingShaders",
+                            contactRuntime.matchingShaders },
+                        { "replacementBinds",
+                            contactRuntime.replacementBinds },
+                        { "failures", contactRuntime.failures },
                     } },
                 { "coverage",
                     {
@@ -1281,6 +1310,65 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "contactShadowsEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = contact_shadows::Runtime::get().snapshot().settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = contact_shadows::sanitize(next);
+                    contact_shadows::Runtime::get().applySettings(accepted);
+                    const auto saved = contact_shadows::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Contact Shadows wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "contactShadowsFoveated" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = contact_shadows::Runtime::get().snapshot().settings;
+                    next.foveated = action["value"].get<bool>();
+                    const auto accepted = contact_shadows::sanitize(next);
+                    contact_shadows::Runtime::get().applySettings(accepted);
+                    (void)contact_shadows::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "contactShadowsSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") && action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next = contact_shadows::Runtime::get().snapshot().settings;
+                    const auto key = action["key"].get<std::string>();
+                    if (key == "strength") {
+                        next.strength = value;
+                    } else if (key == "maxDistance") {
+                        next.maxDistance = value;
+                    } else if (key == "fadeDistance") {
+                        next.fadeDistance = value;
+                    } else if (key == "thickness") {
+                        next.thickness = value;
+                    } else if (key == "sampleCount") {
+                        const auto bounded = std::clamp(value, 2.0f, 16.0f);
+                        next.sampleCount = static_cast<std::uint32_t>(
+                            std::lround(bounded));
+                    } else {
+                        return;
+                    }
+                    const auto accepted = contact_shadows::sanitize(next);
+                    contact_shadows::Runtime::get().applySettings(accepted);
+                    (void)contact_shadows::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
                 if (type == "iblDiffuseEnabled" &&
                     action.contains("value") &&
                     action["value"].is_boolean()) {
@@ -1387,6 +1475,9 @@ namespace community_shaders::ui
                     const ibl::Settings nextIbl{};
                     ibl::Runtime::get().applySettings(nextIbl);
                     (void)ibl::saveSettings(nextIbl);
+                    const contact_shadows::Settings nextContact{};
+                    contact_shadows::Runtime::get().applySettings(nextContact);
+                    (void)contact_shadows::saveSettings(nextContact);
                     const complex_materials::Settings nextComplex{};
                     {
                         std::scoped_lock lock(settingsMutex);

@@ -234,6 +234,24 @@ set(IBL_MATERIAL_DXBC_TRANSFORM
   "${ROOT_DIR}/tools/dxbc_transform.py")
 set(IBL_MATERIAL_GENERATED_CONTRACTS
   "${SOURCE_DIR}/Features/ibl/GeneratedIblMaterialContracts.inl")
+set(CONTACT_SHADOW_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/contact_shadows/ContactShadowRuntime.cpp")
+set(CONTACT_SHADOW_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/contact_shadows/ContactShadowRuntime.h")
+set(CONTACT_SHADOW_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/contact_shadows/ContactShadowSettings.h")
+set(CONTACT_SHADOW_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/contact_shadows/ContactShadowSettingsStore.cpp")
+set(CONTACT_SHADOW_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/contact_shadows/ContactShadowSettingsStore.h")
+set(CONTACT_SHADOW_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/ContactShadows/ContactShadowTransform.hlsl")
+set_source_files_properties(
+  "${CONTACT_SHADOW_SHADER_SOURCE}" PROPERTIES HEADER_FILE_ONLY TRUE)
+set(CONTACT_SHADOW_SHADER_GENERATOR
+  "${ROOT_DIR}/tools/generate_contact_shadow_shader.py")
+set(CONTACT_SHADOW_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifyContactShadows.cmake")
 set(COMPLEX_MATERIAL_PRODUCER_MODEL
   "${SOURCE_DIR}/Features/complex_materials/ComplexMaterialProducerModel.h")
 set(COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR
@@ -289,6 +307,7 @@ set(IBL_PROJECTION_SHADER_VERIFIER
 set(GEOMETRY_HOOK_SOURCE "${RENDERER_HOOK_SOURCE}")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
 include("${ROOT_DIR}/cmake/VerifyIblFoundation.cmake")
+include("${CONTACT_SHADOW_VERIFY_SCRIPT}")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
 include("${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake")
 include("${ROOT_DIR}/cmake/VerifyWristPanel.cmake")
@@ -340,6 +359,14 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${CONTACT_SHADOW_RUNTIME_SOURCE}"
+  "${CONTACT_SHADOW_RUNTIME_HEADER}"
+  "${CONTACT_SHADOW_SETTINGS_HEADER}"
+  "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
+  "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
+  "${CONTACT_SHADOW_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_SHADER_GENERATOR}"
+  "${CONTACT_SHADOW_VERIFY_SCRIPT}"
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
@@ -748,6 +775,46 @@ find_program(FO4VR_CS_FXC_EXECUTABLE
   HINTS
     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
   REQUIRED)
+set(CONTACT_SHADOW_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/ContactShadows")
+set(CONTACT_SHADOW_SHADER_BINARY
+  "${CONTACT_SHADOW_GENERATED_DIR}/ContactShadowsDFLight.dxbc")
+set(CONTACT_SHADOW_SHADER_HEADER
+  "${CONTACT_SHADOW_GENERATED_DIR}/ContactShadowsDFLight.h")
+add_custom_command(
+  OUTPUT "${CONTACT_SHADOW_SHADER_BINARY}" "${CONTACT_SHADOW_SHADER_HEADER}"
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CONTACT_SHADOW_SHADER_GENERATOR}"
+    --root "${ROOT_DIR}"
+    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --binary "${CONTACT_SHADOW_SHADER_BINARY}"
+    --header "${CONTACT_SHADOW_SHADER_HEADER}"
+  DEPENDS
+    "${CONTACT_SHADOW_SHADER_GENERATOR}"
+    "${CONTACT_SHADOW_SHADER_SOURCE}"
+    "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
+    "${ROOT_DIR}/tools/dxbc_transform.py"
+    "${ROOT_DIR}/Shaders012_VR.fxp"
+  COMMENT "Generating exact stereo Contact Shadows DFLight shader"
+  VERBATIM)
+add_custom_target(ContactShadowShader
+  DEPENDS "${CONTACT_SHADOW_SHADER_BINARY}" "${CONTACT_SHADOW_SHADER_HEADER}")
+add_custom_target(VerifyContactShadows ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DCONTACT_SHADOW_RUNTIME_SOURCE=${CONTACT_SHADOW_RUNTIME_SOURCE}"
+    "-DCONTACT_SHADOW_RUNTIME_HEADER=${CONTACT_SHADOW_RUNTIME_HEADER}"
+    "-DCONTACT_SHADOW_SETTINGS_HEADER=${CONTACT_SHADOW_SETTINGS_HEADER}"
+    "-DCONTACT_SHADOW_SETTINGS_STORE_SOURCE=${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
+    "-DCONTACT_SHADOW_SETTINGS_STORE_HEADER=${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
+    "-DCONTACT_SHADOW_SHADER_SOURCE=${CONTACT_SHADOW_SHADER_SOURCE}"
+    "-DCONTACT_SHADOW_SHADER_GENERATOR=${CONTACT_SHADOW_SHADER_GENERATOR}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
+    "-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}"
+    "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    -P "${CONTACT_SHADOW_VERIFY_SCRIPT}"
+  COMMENT "Verifying stereo Contact Shadows ownership contract"
+  VERBATIM)
 set(COMPLEX_PARALLAX_GENERATED_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/generated/ComplexParallax")
 set(COMPLEX_PARALLAX_BASE_BINARY
@@ -892,6 +959,14 @@ add_library(${PROJECT_NAME} SHARED
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${CONTACT_SHADOW_RUNTIME_SOURCE}"
+  "${CONTACT_SHADOW_RUNTIME_HEADER}"
+  "${CONTACT_SHADOW_SETTINGS_HEADER}"
+  "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
+  "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
+  "${CONTACT_SHADOW_SHADER_GENERATOR}"
+  "${CONTACT_SHADOW_SHADER_SOURCE}"
+  "${CONTACT_SHADOW_SHADER_HEADER}"
   "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
   "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
   "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
@@ -941,6 +1016,7 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/ui/WristProviderRetry.h"
 )
 add_dependencies(${PROJECT_NAME}
+  ContactShadowShader
   ComplexParallaxShaders
   VerifyComplexParallax
   VerifyFo4VrLoader
@@ -952,6 +1028,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyIblMaterialContracts
   VerifyComplexMaterialProducerContracts
   VerifyComplexEnvironmentContracts
+  VerifyContactShadows
   VerifyIblProjectionShaderAsset
   VerifyDistantTreeLinearLighting
   VerifyDistantTreeLinearLightingContracts
@@ -976,7 +1053,8 @@ add_dependencies(${PROJECT_NAME}
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE
-  "${COMPLEX_PARALLAX_GENERATED_DIR}")
+  "${COMPLEX_PARALLAX_GENERATED_DIR}"
+  "${CONTACT_SHADOW_GENERATED_DIR}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   UNICODE
   _UNICODE
@@ -1179,6 +1257,54 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.D3D11HookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
+
+  add_test(NAME FO4VRCommunityShaders.ContactShadowsSource
+    COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
+      "& '${CMAKE_COMMAND}' '-DCONTACT_SHADOW_RUNTIME_SOURCE=${CONTACT_SHADOW_RUNTIME_SOURCE}' '-DCONTACT_SHADOW_RUNTIME_HEADER=${CONTACT_SHADOW_RUNTIME_HEADER}' '-DCONTACT_SHADOW_SETTINGS_HEADER=${CONTACT_SHADOW_SETTINGS_HEADER}' '-DCONTACT_SHADOW_SETTINGS_STORE_SOURCE=${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}' '-DCONTACT_SHADOW_SETTINGS_STORE_HEADER=${CONTACT_SHADOW_SETTINGS_STORE_HEADER}' '-DCONTACT_SHADOW_SHADER_SOURCE=${CONTACT_SHADOW_SHADER_SOURCE}' '-DCONTACT_SHADOW_SHADER_GENERATOR=${CONTACT_SHADOW_SHADER_GENERATOR}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DPLUGIN_SOURCE=${PLUGIN_SOURCE}' '-P' '${CONTACT_SHADOW_VERIFY_SCRIPT}'")
+
+  add_executable(FO4VRCommunityShadersContactShadowSettingsTests
+    "${ROOT_DIR}/tests/ContactShadowSettingsTests.cpp"
+    "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
+    "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
+    "${CONTACT_SHADOW_SETTINGS_HEADER}"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+  target_link_libraries(
+    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
+  add_test(NAME FO4VRCommunityShaders.ContactShadowSettings
+    COMMAND FO4VRCommunityShadersContactShadowSettingsTests)
+
+  add_executable(FO4VRCommunityShadersContactShadowShaderBytecodeTests
+    "${ROOT_DIR}/tests/ContactShadowShaderBytecodeTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    d3d11 d3dcompiler)
+  add_dependencies(
+    FO4VRCommunityShadersContactShadowShaderBytecodeTests ContactShadowShader)
+  add_test(NAME FO4VRCommunityShaders.ContactShadowShaderBytecode
+    COMMAND FO4VRCommunityShadersContactShadowShaderBytecodeTests
+      "${CONTACT_SHADOW_SHADER_BINARY}")
 
   add_test(NAME FO4VRCommunityShaders.IblFoundationSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command

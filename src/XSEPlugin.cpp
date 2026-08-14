@@ -1,5 +1,7 @@
 #include "PCH.h"
 
+#include "Features/contact_shadows/ContactShadowRuntime.h"
+#include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
@@ -214,6 +216,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         const auto settings =
             community_shaders::linear_lighting::loadSettings();
         const auto iblSettings = community_shaders::ibl::loadSettings();
+        const auto contactShadowSettings =
+            community_shaders::contact_shadows::loadSettings();
         const auto complexMaterialSettings =
             community_shaders::complex_materials::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
@@ -221,6 +225,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         community_shaders::linear_lighting::Runtime::get().
             applyComplexParallaxSettings(complexMaterialSettings);
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);
+        community_shaders::contact_shadows::Runtime::get().applySettings(
+            contactShadowSettings);
         community_shaders::ui::setInitialSettings(settings);
         community_shaders::ui::setInitialComplexParallaxSettings(
             complexMaterialSettings);
@@ -248,11 +254,13 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
             settings.enabled,
             iblSettings.enabled,
             iblSettings.diffuseEnabled,
             iblSettings.diffuseLevel,
+            contactShadowSettings.enabled,
+            contactShadowSettings.sampleCount,
             complexMaterialSettings.parallaxEnabled,
             complexMaterialSettings.parallaxQuality);
         return true;
