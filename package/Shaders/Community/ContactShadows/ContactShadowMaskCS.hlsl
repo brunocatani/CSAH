@@ -75,6 +75,48 @@ float4 ProjectViewPosition(float3 position, uint eye)
         dot(Camera[row + 3u], homogeneousPoint));
 }
 
+uint StableRayStride(uint sampleCount)
+{
+    // Each stride is coprime with its matching sample count, so the complete
+    // sequence visits the original midpoint lattice exactly once. The order
+    // spreads every prefix across the ray. Distance fading and foveation can
+    // therefore reduce work without moving surviving taps with headset motion.
+    switch (sampleCount) {
+    case 2u:
+        return 1u;
+    case 3u:
+        return 2u;
+    case 4u:
+        return 3u;
+    case 5u:
+        return 3u;
+    case 6u:
+        return 5u;
+    case 7u:
+        return 4u;
+    case 8u:
+        return 5u;
+    case 9u:
+        return 5u;
+    case 10u:
+        return 7u;
+    case 11u:
+        return 6u;
+    case 12u:
+        return 7u;
+    case 13u:
+        return 7u;
+    case 14u:
+        return 9u;
+    case 15u:
+        return 8u;
+    case 16u:
+        return 9u;
+    default:
+        return 1u;
+    }
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
@@ -107,9 +149,12 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float3 towardLight = -normalize(DFLight[eye + 1u].xyz);
     const float distanceScale = saturate(
         1.0f - length(surface) / max(ContactParams2.x, 1.0f));
-    uint sampleCount = (uint)round(
-        clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale);
-    if (sampleCount == 0u) {
+    const uint sampleCount = (uint)round(clamp(
+        ContactParams0.w,
+        2.0f,
+        16.0f));
+    float sampleBudget = (float)sampleCount * distanceScale;
+    if (sampleBudget <= 0.0f) {
         ContactShadowMask[pixel] = 1.0f;
         return;
     }
@@ -121,14 +166,11 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     if (ContactParams1.w > 0.5f) {
         const float2 radial = (eyeUv - 0.5f) * float2(1.0f, 0.78f);
         const float outer = smoothstep(0.30f, 0.62f, length(radial));
-        const float scaled = lerp(
-            (float)sampleCount,
-            max(1.0f, (float)sampleCount * ContactParams1.z),
-            outer);
-        sampleCount = max((uint)scaled, 1u);
+        sampleBudget *= lerp(1.0f, ContactParams1.z, outer);
     }
 
     const float rayLength = ContactParams0.y;
+    const uint sampleStride = StableRayStride(sampleCount);
     const float4 startClip = ProjectViewPosition(surface, eye);
     const float4 endClip = ProjectViewPosition(
         surface + towardLight * rayLength,
@@ -139,7 +181,16 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         if (index >= sampleCount) {
             break;
         }
-        const float step = ((float)index + 0.5f) / (float)sampleCount;
+        // Only the boundary tap changes continuously as the budget changes.
+        // Earlier taps retain fixed ray positions, removing screen-space rings
+        // and whole-lattice jumps from foveation and distance scaling.
+        const float sampleWeight = saturate(sampleBudget - (float)index);
+        if (sampleWeight <= 0.0f) {
+            break;
+        }
+        const uint sampleSlot = (index * sampleStride) % sampleCount;
+        const float step =
+            ((float)sampleSlot + 0.5f) / (float)sampleCount;
         const float rayFraction = 0.18f * step + 0.82f * step * step;
         const float rayDistance = rayLength * rayFraction;
         const float4 projected = lerp(startClip, endClip, rayFraction);
@@ -179,7 +230,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float hit = separation > ContactParams1.y &&
                 separation < thickness ?
             1.0f - separation / thickness : 0.0f;
-        occlusion = max(occlusion, hit);
+        occlusion = max(occlusion, hit * sampleWeight);
     }
 
     ContactShadowMask[pixel] = 1.0f - occlusion;
