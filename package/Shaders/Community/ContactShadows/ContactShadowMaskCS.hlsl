@@ -145,6 +145,125 @@ uint StableRayStride(uint sampleCount)
     }
 }
 
+bool LoadCompatibleViewDepth(
+    int2 requestedPixel,
+    float centerDepth,
+    uint eye,
+    uint eyeFirstPixel,
+    uint eyeLastPixel,
+    uint height,
+    float2 dimensions,
+    out float viewDepth)
+{
+    const int2 samplePixel = int2(
+        clamp(requestedPixel.x, (int)eyeFirstPixel, (int)eyeLastPixel),
+        clamp(requestedPixel.y, 0, (int)height - 1));
+    const float sampleDepth = SceneDepth.Load(int3(samplePixel, 0));
+    if (sampleDepth <= 1.0e-6f ||
+        (sampleDepth <= 0.01f) != (centerDepth <= 0.01f)) {
+        viewDepth = 0.0f;
+        return false;
+    }
+
+    viewDepth = abs(ReconstructViewDepth(
+        (float2(samplePixel) + 0.5f) / dimensions,
+        sampleDepth,
+        eye));
+    return viewDepth > 0.0f && viewDepth < 1.0e8f;
+}
+
+bool SampleEdgeAwareViewDepth(
+    float2 samplePackedUv,
+    float2 rayPixelDelta,
+    float centerDepth,
+    uint eye,
+    uint eyeFirstPixel,
+    uint eyeLastPixel,
+    uint height,
+    float2 dimensions,
+    out float sampledDepth)
+{
+    // Bend's screen-space shadow resolve interpolates only across the ray's
+    // minor axis and switches to point sampling at a depth discontinuity.
+    // That keeps a projected ray from blending foreground and background
+    // surfaces while removing the one-texel stepping of a nearest Load.
+    const float2 pixelPosition = samplePackedUv * dimensions - 0.5f;
+    const bool xMajor = abs(rayPixelDelta.x) >= abs(rayPixelDelta.y);
+    const float majorCoordinate = xMajor ?
+        pixelPosition.x : pixelPosition.y;
+    const float minorCoordinate = xMajor ?
+        pixelPosition.y : pixelPosition.x;
+    const int majorPixel = (int)floor(majorCoordinate + 0.5f);
+    const int minorPixel = (int)floor(minorCoordinate);
+    const float minorWeight = frac(minorCoordinate);
+    const int2 firstPixel = xMajor ?
+        int2(majorPixel, minorPixel) :
+        int2(minorPixel, majorPixel);
+    const int2 secondPixel = xMajor ?
+        int2(majorPixel, minorPixel + 1) :
+        int2(minorPixel + 1, majorPixel);
+
+    float firstDepth;
+    float secondDepth;
+    const bool firstValid = LoadCompatibleViewDepth(
+        firstPixel,
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        firstDepth);
+    const bool secondValid = LoadCompatibleViewDepth(
+        secondPixel,
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        secondDepth);
+    if (!firstValid && !secondValid) {
+        sampledDepth = 0.0f;
+        return false;
+    }
+    if (!firstValid || !secondValid) {
+        sampledDepth = firstValid ? firstDepth : secondDepth;
+        return true;
+    }
+
+    static const float kBilinearThreshold = 0.02f;
+    const float relativeDifference =
+        abs(firstDepth - secondDepth) /
+        max(min(firstDepth, secondDepth), 1.0f);
+    sampledDepth = relativeDifference > kBilinearThreshold ?
+        (minorWeight < 0.5f ? firstDepth : secondDepth) :
+        lerp(firstDepth, secondDepth, minorWeight);
+    return true;
+}
+
+float BlockerOcclusion(float separation, float bias, float thickness)
+{
+    const float validRange = thickness - bias;
+    if (validRange <= 1.0e-5f) {
+        return 0.0f;
+    }
+
+    // Thickness is a blocker-validity slab, not an opacity ramp. Preserve a
+    // fully occluding plateau and feather only the two depth boundaries. This
+    // prevents the old dark-border/transparent-interior result and stops tiny
+    // reconstructed-depth changes from continuously changing shadow strength.
+    const float edgeFeather = min(
+        max(bias, validRange * 0.08f),
+        validRange * 0.25f);
+    const float entry = smoothstep(bias, bias + edgeFeather, separation);
+    const float exit = 1.0f - smoothstep(
+        thickness - edgeFeather,
+        thickness,
+        separation);
+    return entry * exit;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
@@ -191,24 +310,35 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float fadeDistance = max(ContactParams2.x, 1.0f);
     const float distanceScale =
         1.0f - smoothstep(0.0f, fadeDistance, viewDepth);
+    if (distanceScale <= 0.0f) {
+        ContactShadowMask[pixel] = cloudVisibility;
+        return;
+    }
     const uint sampleCount = (uint)round(clamp(
         ContactParams0.w,
         2.0f,
         16.0f));
-    float sampleBudget = (float)sampleCount * distanceScale;
-    if (sampleBudget <= 0.0f) {
-        ContactShadowMask[pixel] = cloudVisibility;
-        return;
-    }
 
     const float2 eyeUv = float2(
         (float(pixel.x - eyeFirstPixel) + 0.5f) /
             max(float(width / 2u), 1.0f),
         packedUv.y);
+    uint activeSampleCount = sampleCount;
     if (ContactParams1.w > 0.5f) {
         const float2 radial = (eyeUv - 0.5f) * float2(1.0f, 0.78f);
         const float outer = smoothstep(0.30f, 0.62f, length(radial));
-        sampleBudget *= lerp(1.0f, ContactParams1.z, outer);
+        // The first eight taps are a stable coverage floor. Foveation may
+        // reduce only user-requested quality taps above that floor, so the
+        // default shadow cannot fade or lose its blocker as geometry moves
+        // through a headset-centred quality region.
+        const uint stableSampleFloor = min(sampleCount, 8u);
+        const uint optionalSamples = sampleCount - stableSampleFloor;
+        const float optionalScale = lerp(
+            1.0f,
+            ContactParams1.z,
+            outer);
+        activeSampleCount = stableSampleFloor + (uint)round(
+            (float)optionalSamples * optionalScale);
     }
 
     const float rayLength = ContactParams0.y;
@@ -217,17 +347,17 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float4 endClip = ProjectViewPosition(
         surface + towardLight * rayLength,
         eye);
+    const float2 startNdc = startClip.xy /
+        max(abs(startClip.w), 1.0e-7f);
+    const float2 endNdc = endClip.xy /
+        max(abs(endClip.w), 1.0e-7f);
+    const float2 rayPixelDelta = float2(
+        (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
+        (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
     float occlusion = 0.0f;
     [loop]
     for (uint index = 0u; index < 16u; ++index) {
-        if (index >= sampleCount) {
-            break;
-        }
-        // Only the boundary tap changes continuously as the budget changes.
-        // Earlier taps retain fixed ray positions, removing screen-space rings
-        // and whole-lattice jumps from foveation and distance scaling.
-        const float sampleWeight = saturate(sampleBudget - (float)index);
-        if (sampleWeight <= 0.0f) {
+        if (index >= activeSampleCount) {
             break;
         }
         const uint sampleSlot = (index * sampleStride) % sampleCount;
@@ -250,32 +380,37 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float2 samplePackedUv = float2(
             (sampleEyeUv.x + (float)eye) * 0.5f,
             sampleEyeUv.y);
-        uint2 samplePixel = uint2(samplePackedUv * dimensions);
-        samplePixel.x = clamp(samplePixel.x, eyeFirstPixel, eyeLastPixel);
-        samplePixel.y = min(samplePixel.y, height - 1u);
-        const float sampleDepth = SceneDepth.Load(int3(samplePixel, 0));
-        if (sampleDepth <= 1.0e-6f ||
-            (sampleDepth <= 0.01f) != (centerDepth <= 0.01f)) {
+        float sampledDepth;
+        if (!SampleEdgeAwareViewDepth(
+                samplePackedUv,
+                rayPixelDelta,
+                centerDepth,
+                eye,
+                eyeFirstPixel,
+                eyeLastPixel,
+                height,
+                dimensions,
+                sampledDepth)) {
             continue;
         }
 
         const float candidateDepth = abs(
             surface.z + towardLight.z * rayDistance);
-        const float sampledDepth = abs(ReconstructViewDepth(
-            (float2(samplePixel) + 0.5f) / dimensions,
-            sampleDepth,
-            eye));
         const float separation = candidateDepth - sampledDepth;
         const float thickness = max(
             ContactParams1.x,
             candidateDepth * ContactParams0.z);
-        const float hit = separation > ContactParams1.y &&
-                separation < thickness ?
-            1.0f - separation / thickness : 0.0f;
-        occlusion = max(occlusion, hit * sampleWeight);
+        const float hit = BlockerOcclusion(
+            separation,
+            ContactParams1.y,
+            thickness);
+        occlusion = max(occlusion, hit);
+        if (occlusion >= 0.999f) {
+            break;
+        }
     }
 
     const float contactVisibility =
-        1.0f - occlusion * saturate(ContactParams0.x);
+        1.0f - occlusion * distanceScale * saturate(ContactParams0.x);
     ContactShadowMask[pixel] = contactVisibility * cloudVisibility;
 }

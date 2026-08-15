@@ -95,10 +95,17 @@ foreach(required IN ITEMS
     "const float viewDepth = abs(surface.z)"
     "1.0f - smoothstep(0.0f, fadeDistance, viewDepth)"
     "StableRayStride"
-    "sampleBudget *= lerp(1.0f, ContactParams1.z, outer)"
-    "const float sampleWeight = saturate(sampleBudget - (float)index)"
+    "LoadCompatibleViewDepth"
+    "SampleEdgeAwareViewDepth"
+    "const float relativeDifference"
+    "relativeDifference > kBilinearThreshold"
+    "BlockerOcclusion"
+    "const float entry = smoothstep"
+    "const float exit = 1.0f - smoothstep"
+    "const uint stableSampleFloor = min(sampleCount, 8u)"
     "const uint sampleSlot = (index * sampleStride) % sampleCount"
-    "hit * sampleWeight"
+    "occlusion = max(occlusion, hit)"
+    "occlusion * distanceScale"
     "index < 16u")
   string(FIND "${maskShaderSource}" "${required}" found)
   if(found EQUAL -1)
@@ -139,7 +146,10 @@ foreach(forbidden IN ITEMS
     "length(surface)"
     "-normalize(DFLight[eye + 1u].xyz)"
     "sampleCount = max((uint)scaled"
-    "clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale")
+    "clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale"
+    "1.0f - separation / thickness"
+    "hit * sampleWeight"
+    "sampleBudget")
   string(FIND "${maskShaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
