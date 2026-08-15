@@ -50,6 +50,12 @@ SURFACE_CLASS_SLOT = 47
 ENVIRONMENT_SAMPLER_SLOT = 8
 MATERIAL_SAMPLER_SLOT = 3
 FIRST_RESOURCE_ID = 1054
+SURFACE_ANCHORED_IDENTITIES = {
+    (9348, "93edc6af41cbb2d290962e995a4fce25"),
+    (9564, "4d6870ba7d5498e729b3195f7dcdf978"),
+    (11100, "eb839491ab08ee92fc485990945bbec5"),
+    (11316, "fc24da7bbdad0360e221fc9e45ad2e9f"),
+}
 
 CONTRACT_PATTERN = re.compile(
     r"\{\s*(\d+)\s*,\s*"
@@ -65,6 +71,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--surface-anchor-tool", type=Path, required=True)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--write-assets", action="store_true")
     return parser.parse_args()
@@ -203,6 +210,36 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
                 "IBL material template assembly changed: " + required
             )
     return output.read_bytes()
+
+
+def apply_surface_anchor(
+    original: census.DxbcContainer,
+    tool: Path,
+    temporary: Path,
+    name: str,
+) -> tuple[bytes, bool]:
+    if original.identity not in SURFACE_ANCHORED_IDENTITIES:
+        return original.data, False
+    source = temporary / f"{name}.surface-anchor-input.dxbc"
+    output = temporary / f"{name}.surface-anchor-output.dxbc"
+    source.write_bytes(original.data)
+    result = subprocess.run(
+        [str(tool), str(source), str(output)],
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0 or not output.is_file():
+        details = (result.stdout + result.stderr).strip()
+        raise ContractError(
+            f"{name} surface-anchor transform failed "
+            f"({result.returncode}): {details}"
+        )
+    candidate = output.read_bytes()
+    if candidate == original.data:
+        raise ContractError(f"{name} surface-anchor transform was a no-op")
+    return candidate, True
 
 
 def declaration_for_slot(
@@ -727,6 +764,7 @@ def validate_candidate(
     original: bytes,
     candidate: bytes,
     temporary: Path,
+    surface_anchored: bool,
 ) -> None:
     original_path = temporary / f"{name}.vanilla.dxbc"
     candidate_path = temporary / f"{name}.dxbc"
@@ -768,8 +806,14 @@ def validate_candidate(
         raise ContractError(f"{name} does not add exact b5[1]")
     if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
         raise ContractError(f"{name} does not add exact b9[2]")
-    if candidate_buffers != original_buffers:
-        raise ContractError(f"{name} changed vanilla constant buffers")
+    expected_buffers = dict(original_buffers)
+    if surface_anchored and expected_buffers.get(12) == 51:
+        expected_buffers[12] = 61
+    if candidate_buffers != expected_buffers:
+        raise ContractError(
+            f"{name} changed vanilla constant buffers outside the "
+            "verified surface-anchor camera extension"
+        )
     original_textures = set(original_declarations.textures)
     candidate_textures = set(candidate_declarations.textures)
     if candidate_textures - {
@@ -918,6 +962,11 @@ def main() -> int:
         return 1
     try:
         root = arguments.root.resolve()
+        surface_anchor_tool = arguments.surface_anchor_tool.resolve()
+        if not surface_anchor_tool.is_file():
+            raise ContractError(
+                f"surface-anchor tool is unavailable: {surface_anchor_tool}"
+            )
         contracts = parse_contracts(root)
         originals = exact_originals(root, contracts)
         fxc = census.find_fxc(None)
@@ -932,10 +981,18 @@ def main() -> int:
                 template_temp_count,
             ) = template_contract(template)
             candidates: list[bytes] = []
+            anchored_count = 0
             for index, original in enumerate(originals):
                 name = contract_name(index, original.checksum)
+                anchored_original, surface_anchored = apply_surface_anchor(
+                    original,
+                    surface_anchor_tool,
+                    temporary,
+                    name,
+                )
+                anchored_count += int(surface_anchored)
                 candidate = patch_shader(
-                    original.data,
+                    anchored_original,
                     declarations,
                     transform,
                     template_temp_count,
@@ -946,8 +1003,14 @@ def main() -> int:
                     original.data,
                     candidate,
                     temporary,
+                    surface_anchored,
                 )
                 candidates.append(candidate)
+            if anchored_count != len(SURFACE_ANCHORED_IDENTITIES):
+                raise ContractError(
+                    "IBL generation did not surface-anchor all four exact "
+                    "cubemap identities"
+                )
 
         generated = render_contracts(originals, candidates)
         output = arguments.output.resolve()
@@ -1002,7 +1065,8 @@ def main() -> int:
                     )
             verify_resource_contract(root, originals)
         print(
-            "IBL material contracts verified: 41 exact DFComposite identities; "
+            "IBL material contracts verified: 41 exact DFComposite identities, "
+            "including four surface-anchored cubemap permutations; "
             "vanilla t8/s8 fallback and weight-gated, validity-aware "
             "t29/t30/t31/b5 consumption."
         )

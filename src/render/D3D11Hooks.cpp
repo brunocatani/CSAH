@@ -9,6 +9,9 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "Features/vanilla_fixes/FocusShadowRuntime.h"
+#include "Features/vanilla_fixes/VanillaFixesRuntime.h"
+#include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "support/Logger.h"
 
@@ -26,6 +29,7 @@
 #include <cstring>
 #include <limits>
 #include <utility>
+#include <vector>
 
 namespace community_shaders::render
 {
@@ -56,6 +60,12 @@ namespace community_shaders::render
             SIZE_T,
             ID3D11ClassLinkage*,
             ID3D11VertexShader**);
+        using CreateComputeShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11ComputeShader**);
         using PSSetShaderFunction = void(STDMETHODCALLTYPE*)(
             ID3D11DeviceContext*,
             ID3D11PixelShader*,
@@ -92,6 +102,7 @@ namespace community_shaders::render
 
         constexpr std::size_t kCreateVertexShaderVtableIndex = 12;
         constexpr std::size_t kCreatePixelShaderVtableIndex = 15;
+        constexpr std::size_t kCreateComputeShaderVtableIndex = 18;
         constexpr std::size_t kPSSetShaderVtableIndex = 9;
         constexpr std::size_t kVSSetShaderVtableIndex = 11;
         constexpr std::size_t kOMSetRenderTargetsVtableIndex = 33;
@@ -157,6 +168,7 @@ namespace community_shaders::render
         D3D11CreateDeviceAndSwapChainFunction originalCreateDeviceAndSwapChain{};
         CreateVertexShaderFunction originalCreateVertexShader{};
         CreatePixelShaderFunction originalCreatePixelShader{};
+        CreateComputeShaderFunction originalCreateComputeShader{};
         VSSetShaderFunction originalVSSetShader{};
         PSSetShaderFunction originalPSSetShader{};
         OMSetRenderTargetsFunction originalOMSetRenderTargets{};
@@ -169,6 +181,7 @@ namespace community_shaders::render
         void** deviceCreationImportCell{};
         void* createVertexShaderTarget{};
         void* createPixelShaderTarget{};
+        void* createComputeShaderTarget{};
         void* vertexShaderBindTarget{};
         void* pixelShaderBindTarget{};
         void* renderTargetBindTarget{};
@@ -179,6 +192,7 @@ namespace community_shaders::render
         void* drawInstancedTarget{};
         DetourPatchIdentity createVertexShaderPatch{};
         DetourPatchIdentity createPixelShaderPatch{};
+        DetourPatchIdentity createComputeShaderPatch{};
         DetourPatchIdentity vertexShaderBindPatch{};
         DetourPatchIdentity pixelShaderBindPatch{};
         DetourPatchIdentity renderTargetBindPatch{};
@@ -193,6 +207,7 @@ namespace community_shaders::render
         std::atomic_bool shaderInterceptionActive{};
         std::atomic_bool createVertexShaderDetourEnabled{};
         std::atomic_bool createPixelShaderDetourEnabled{};
+        std::atomic_bool createComputeShaderDetourEnabled{};
         std::atomic_bool vertexShaderBindDetourEnabled{};
         std::atomic_bool pixelShaderBindDetourEnabled{};
         std::atomic_bool renderTargetBindDetourEnabled{};
@@ -207,10 +222,12 @@ namespace community_shaders::render
         std::atomic_uint64_t deviceCreationCalls{};
         std::atomic_uint64_t vertexShaderCreationCalls{};
         std::atomic_uint64_t pixelShaderCreationCalls{};
+        std::atomic_uint64_t computeShaderCreationCalls{};
         std::atomic_uint64_t vertexShaderBindCalls{};
         std::atomic_uint64_t pixelShaderBindCalls{};
         std::atomic_uint64_t renderTargetBindCalls{};
         std::atomic_uint64_t renderTargetAndUnorderedAccessBindCalls{};
+        thread_local bool activeFocusShadowPixel{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -587,18 +604,21 @@ namespace community_shaders::render
             (void)MH_Uninitialize();
             originalCreateVertexShader = nullptr;
             originalCreatePixelShader = nullptr;
+            originalCreateComputeShader = nullptr;
             originalVSSetShader = nullptr;
             originalPSSetShader = nullptr;
             originalOMSetRenderTargets = nullptr;
             originalOMSetRenderTargetsAndUnorderedAccessViews = nullptr;
             createVertexShaderTarget = nullptr;
             createPixelShaderTarget = nullptr;
+            createComputeShaderTarget = nullptr;
             vertexShaderBindTarget = nullptr;
             pixelShaderBindTarget = nullptr;
             renderTargetBindTarget = nullptr;
             renderTargetAndUnorderedAccessBindTarget = nullptr;
             createVertexShaderPatch = {};
             createPixelShaderPatch = {};
+            createComputeShaderPatch = {};
             vertexShaderBindPatch = {};
             pixelShaderBindPatch = {};
             renderTargetBindPatch = {};
@@ -1593,12 +1613,28 @@ namespace community_shaders::render
             if (!original) {
                 return E_UNEXPECTED;
             }
-            const auto result = original(
-                device,
+            const auto selection = vanilla_fixes::selectVertexShader(
                 bytecode,
-                bytecodeLength,
+                bytecodeLength);
+            auto result = original(
+                device,
+                selection.data,
+                selection.size,
                 classLinkage,
                 shader);
+            auto replacementAccepted =
+                selection.replaced() && SUCCEEDED(result) && shader && *shader;
+            if (selection.replaced() && !replacementAccepted) {
+                result = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
+            vanilla_fixes::reportShaderCreationResult(
+                selection,
+                replacementAccepted);
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 SUCCEEDED(result) && shader && *shader) {
                 linear_lighting::Runtime::get().onVertexShaderCreated(
@@ -1621,14 +1657,41 @@ namespace community_shaders::render
             if (!original) {
                 return E_UNEXPECTED;
             }
-            const auto result = original(
-                device,
+            const auto identity = vanilla_fixes::identifyShader(
+                bytecode,
+                bytecodeLength);
+            const auto focusShadow =
+                vanilla_fixes::isStockFocusShadowPixel(identity);
+            std::vector<std::byte> patchStorage;
+            const auto selection = vanilla_fixes::selectPixelShader(
                 bytecode,
                 bytecodeLength,
+                patchStorage);
+            auto result = original(
+                device,
+                selection.data,
+                selection.size,
                 classLinkage,
                 shader);
+            auto replacementAccepted =
+                selection.replaced() && SUCCEEDED(result) && shader && *shader;
+            if (selection.replaced() && !replacementAccepted) {
+                result = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
+            vanilla_fixes::reportShaderCreationResult(
+                selection,
+                replacementAccepted);
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 SUCCEEDED(result) && shader && *shader) {
+                if (focusShadow) {
+                    vanilla_fixes::registerFocusShadowPixelShader(*shader);
+                    vanilla_fixes::reportFocusShaderCreated();
+                }
                 linear_lighting::Runtime::get().onPixelShaderCreated(
                     bytecode,
                     bytecodeLength,
@@ -1642,6 +1705,43 @@ namespace community_shaders::render
                     bytecodeLength,
                     *shader);
             }
+            return result;
+        }
+
+        HRESULT STDMETHODCALLTYPE hookCreateComputeShader(
+            ID3D11Device* device,
+            const void* bytecode,
+            SIZE_T bytecodeLength,
+            ID3D11ClassLinkage* classLinkage,
+            ID3D11ComputeShader** shader) noexcept
+        {
+            computeShaderCreationCalls.fetch_add(1, std::memory_order_relaxed);
+            const auto original = originalCreateComputeShader;
+            if (!original) {
+                return E_UNEXPECTED;
+            }
+            const auto selection = vanilla_fixes::selectComputeShader(
+                bytecode,
+                bytecodeLength);
+            auto result = original(
+                device,
+                selection.data,
+                selection.size,
+                classLinkage,
+                shader);
+            auto replacementAccepted =
+                selection.replaced() && SUCCEEDED(result) && shader && *shader;
+            if (selection.replaced() && !replacementAccepted) {
+                result = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
+            vanilla_fixes::reportShaderCreationResult(
+                selection,
+                replacementAccepted);
             return result;
         }
 
@@ -1674,6 +1774,7 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
             auto& surfaceRuntime = surface_classification::Runtime::get();
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
@@ -1717,6 +1818,7 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
             auto& surfaceRuntime = surface_classification::Runtime::get();
             const auto appendDoesNotOverlapUavs =
@@ -1766,6 +1868,8 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            activeFocusShadowPixel =
+                vanilla_fixes::isFocusShadowPixelShader(shader);
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
                 activeReplacementBinding = {};
                 activeSurfaceClassCode = 0;
@@ -2015,6 +2119,10 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
+                context,
+                activeFocusShadowPixel &&
+                    vanilla_fixes::focusShadowsEnabled());
             const auto caller = _ReturnAddress();
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
@@ -2059,6 +2167,10 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
+                context,
+                activeFocusShadowPixel &&
+                    vanilla_fixes::focusShadowsEnabled());
             const auto caller = _ReturnAddress();
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
@@ -2097,6 +2209,10 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
+                context,
+                activeFocusShadowPixel &&
+                    vanilla_fixes::focusShadowsEnabled());
             const auto caller = _ReturnAddress();
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
@@ -2147,6 +2263,10 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
+                context,
+                activeFocusShadowPixel &&
+                    vanilla_fixes::focusShadowsEnabled());
             const auto caller = _ReturnAddress();
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
@@ -2368,7 +2488,7 @@ namespace community_shaders::render
             auto** contextVtable = *reinterpret_cast<void***>(context);
             if (!isReadableRange(
                     deviceVtable,
-                    (kCreatePixelShaderVtableIndex + 1) * sizeof(void*)) ||
+                    (kCreateComputeShaderVtableIndex + 1) * sizeof(void*)) ||
                 !isReadableRange(
                     contextVtable,
                     (kOMSetRenderTargetsAndUnorderedAccessViewsVtableIndex + 1) *
@@ -2382,6 +2502,8 @@ namespace community_shaders::render
                 deviceVtable[kCreateVertexShaderVtableIndex];
             createPixelShaderTarget =
                 deviceVtable[kCreatePixelShaderVtableIndex];
+            createComputeShaderTarget =
+                deviceVtable[kCreateComputeShaderVtableIndex];
             vertexShaderBindTarget = contextVtable[kVSSetShaderVtableIndex];
             pixelShaderBindTarget = contextVtable[kPSSetShaderVtableIndex];
             renderTargetBindTarget =
@@ -2391,6 +2513,7 @@ namespace community_shaders::render
             const auto d3d11 = GetModuleHandleW(L"d3d11.dll");
             if (!isExecutableAddress(createVertexShaderTarget) ||
                 !isExecutableAddress(createPixelShaderTarget) ||
+                !isExecutableAddress(createComputeShaderTarget) ||
                 !isExecutableAddress(vertexShaderBindTarget) ||
                 !isExecutableAddress(pixelShaderBindTarget) ||
                 !isExecutableAddress(renderTargetBindTarget) ||
@@ -2398,6 +2521,7 @@ namespace community_shaders::render
                     renderTargetAndUnorderedAccessBindTarget) ||
                 !addressBelongsToModule(createVertexShaderTarget, d3d11) ||
                 !addressBelongsToModule(createPixelShaderTarget, d3d11) ||
+                !addressBelongsToModule(createComputeShaderTarget, d3d11) ||
                 !addressBelongsToModule(vertexShaderBindTarget, d3d11) ||
                 !addressBelongsToModule(pixelShaderBindTarget, d3d11) ||
                 !addressBelongsToModule(renderTargetBindTarget, d3d11) ||
@@ -2408,6 +2532,8 @@ namespace community_shaders::render
                     modulePathForAddress(createVertexShaderTarget);
                 const auto createPath =
                     modulePathForAddress(createPixelShaderTarget);
+                const auto createComputePath =
+                    modulePathForAddress(createComputeShaderTarget);
                 const auto vertexBindPath =
                     modulePathForAddress(vertexShaderBindTarget);
                 const auto bindPath = modulePathForAddress(pixelShaderBindTarget);
@@ -2417,11 +2543,13 @@ namespace community_shaders::render
                     modulePathForAddress(
                         renderTargetAndUnorderedAccessBindTarget);
                 logging::error(
-                    "D3D11 method identity gate rejected targets (CreateVertexShader='{}' {}, CreatePixelShader='{}' {}, VSSetShader='{}' {}, PSSetShader='{}' {}, OMSetRenderTargets='{}' {}, OMSetRenderTargetsAndUnorderedAccessViews='{}' {}); interception remains vanilla.",
+                    "D3D11 method identity gate rejected targets (CreateVertexShader='{}' {}, CreatePixelShader='{}' {}, CreateComputeShader='{}' {}, VSSetShader='{}' {}, PSSetShader='{}' {}, OMSetRenderTargets='{}' {}, OMSetRenderTargetsAndUnorderedAccessViews='{}' {}); interception remains vanilla.",
                     createVertexPath.data(),
                     createVertexShaderTarget,
                     createPath.data(),
                     createPixelShaderTarget,
+                    createComputePath.data(),
+                    createComputeShaderTarget,
                     vertexBindPath.data(),
                     vertexShaderBindTarget,
                     bindPath.data(),
@@ -2684,10 +2812,62 @@ namespace community_shaders::render
                 return false;
             }
 
+            void* createComputeShaderTrampoline{};
+            status = MH_CreateHook(
+                createComputeShaderTarget,
+                reinterpret_cast<void*>(&hookCreateComputeShader),
+                &createComputeShaderTrampoline);
+            if (status != MH_OK ||
+                !isExecutableAddress(createComputeShaderTrampoline)) {
+                logging::error(
+                    "CreateComputeShader detour creation/prologue validation failed: {} ({}), trampoline={}.",
+                    minHookStatusName(status),
+                    static_cast<int>(status),
+                    createComputeShaderTrampoline);
+                if (status == MH_OK) {
+                    (void)MH_RemoveHook(createComputeShaderTarget);
+                }
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    renderTargetBindCreated,
+                    renderTargetAndUnorderedAccessBindCreated);
+                return false;
+            }
+            originalCreateComputeShader =
+                reinterpret_cast<CreateComputeShaderFunction>(
+                    createComputeShaderTrampoline);
+            status = MH_EnableHook(createComputeShaderTarget);
+            if (status != MH_OK ||
+                !captureMinHookPatchIdentity(
+                    createComputeShaderTarget,
+                    createComputeShaderPatch)) {
+                logging::error(
+                    "CreateComputeShader activation/ownership validation failed: {} ({}).",
+                    minHookStatusName(status),
+                    static_cast<int>(status));
+                (void)MH_DisableHook(createComputeShaderTarget);
+                (void)MH_RemoveHook(createComputeShaderTarget);
+                originalCreateComputeShader = nullptr;
+                rollbackMethodDetours(
+                    createVertexShaderCreated,
+                    createPixelShaderCreated,
+                    vertexShaderBindCreated,
+                    pixelShaderBindCreated,
+                    renderTargetBindCreated,
+                    renderTargetAndUnorderedAccessBindCreated);
+                return false;
+            }
+
             createVertexShaderDetourEnabled.store(
                 true,
                 std::memory_order_release);
             createPixelShaderDetourEnabled.store(true, std::memory_order_release);
+            createComputeShaderDetourEnabled.store(
+                true,
+                std::memory_order_release);
             vertexShaderBindDetourEnabled.store(
                 true,
                 std::memory_order_release);
@@ -2705,10 +2885,15 @@ namespace community_shaders::render
                 logging::warn(
                     "D3D11 qualification draw detours remain unavailable; shader replacement stays active, but the automated report will fail closed at draw proof.");
             }
+            if (!vanilla_fixes::installFocusShadowNativeHooks()) {
+                logging::warn(
+                    "Vanilla Fixes focus-shadow map ownership is unavailable; other Vanilla Fixes remain active.");
+            }
             logging::info(
-                "Installed validated d3d11.dll method detours (CreateVertexShader target={}, CreatePixelShader target={}, VSSetShader target={}, PSSetShader target={}, OMSetRenderTargets target={}, OMSetRenderTargetsAndUnorderedAccessViews target={}); complete native COM vtables remain untouched.",
+                "Installed validated d3d11.dll method detours (CreateVertexShader target={}, CreatePixelShader target={}, CreateComputeShader target={}, VSSetShader target={}, PSSetShader target={}, OMSetRenderTargets target={}, OMSetRenderTargetsAndUnorderedAccessViews target={}); complete native COM vtables remain untouched.",
                 createVertexShaderTarget,
                 createPixelShaderTarget,
+                createComputeShaderTarget,
                 vertexShaderBindTarget,
                 pixelShaderBindTarget,
                 renderTargetBindTarget,
@@ -2940,6 +3125,9 @@ namespace community_shaders::render
             const auto createOwned = active && detourPatchOwned(
                 createPixelShaderTarget,
                 createPixelShaderPatch);
+            const auto createComputeOwned = active && detourPatchOwned(
+                createComputeShaderTarget,
+                createComputeShaderPatch);
             const auto vertexBindOwned = active && detourPatchOwned(
                 vertexShaderBindTarget,
                 vertexShaderBindPatch);
@@ -2958,6 +3146,9 @@ namespace community_shaders::render
                 std::memory_order_release);
             createPixelShaderDetourEnabled.store(
                 createOwned,
+                std::memory_order_release);
+            createComputeShaderDetourEnabled.store(
+                createComputeOwned,
                 std::memory_order_release);
             vertexShaderBindDetourEnabled.store(
                 vertexBindOwned,
@@ -2998,7 +3189,8 @@ namespace community_shaders::render
                         drawFailures);
                 }
             }
-            if (createVertexOwned && createOwned && vertexBindOwned &&
+            if (createVertexOwned && createOwned && createComputeOwned &&
+                vertexBindOwned &&
                 bindOwned && renderTargetOwned &&
                 renderTargetAndUnorderedAccessOwned) {
                 return true;
@@ -3010,11 +3202,12 @@ namespace community_shaders::render
                 1;
             if (failures == 1 || (failures & (failures - 1)) == 0) {
                 logging::error(
-                    "D3D11 shader detour ownership validation failed (trigger={}, active={}, createVertexOwned={}, createOwned={}, vertexBindOwned={}, bindOwned={}, renderTargetOwned={}, renderTargetAndUnorderedAccessOwned={}, failures={}); no hook repair was attempted.",
+                    "D3D11 shader detour ownership validation failed (trigger={}, active={}, createVertexOwned={}, createOwned={}, createComputeOwned={}, vertexBindOwned={}, bindOwned={}, renderTargetOwned={}, renderTargetAndUnorderedAccessOwned={}, failures={}); no hook repair was attempted.",
                     trigger ? trigger : "unknown",
                     active,
                     createVertexOwned,
                     createOwned,
+                    createComputeOwned,
                     vertexBindOwned,
                     bindOwned,
                     renderTargetOwned,
@@ -3055,6 +3248,9 @@ namespace community_shaders::render
                     std::memory_order_acquire),
             .createPixelShaderDetourEnabled =
                 createPixelShaderDetourEnabled.load(std::memory_order_acquire),
+            .createComputeShaderDetourEnabled =
+                createComputeShaderDetourEnabled.load(
+                    std::memory_order_acquire),
             .vertexShaderBindDetourEnabled =
                 vertexShaderBindDetourEnabled.load(
                     std::memory_order_acquire),
@@ -3089,6 +3285,8 @@ namespace community_shaders::render
                 vertexShaderCreationCalls.load(std::memory_order_relaxed),
             .pixelShaderCreationCalls =
                 pixelShaderCreationCalls.load(std::memory_order_relaxed),
+            .computeShaderCreationCalls =
+                computeShaderCreationCalls.load(std::memory_order_relaxed),
             .vertexShaderBindCalls =
                 vertexShaderBindCalls.load(std::memory_order_relaxed),
             .pixelShaderBindCalls =

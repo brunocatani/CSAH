@@ -13,6 +13,8 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
+#include "Features/vanilla_fixes/VanillaFixesRuntime.h"
+#include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "diagnostics/LinearLightingQualification.h"
@@ -241,6 +243,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::basic_wetness::loadSettings();
         const auto cloudShadowSettings =
             community_shaders::cloud_shadows::loadSettings();
+        const auto vanillaFixesSettings =
+            community_shaders::vanilla_fixes::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::linear_lighting::Runtime::get().
@@ -250,6 +254,11 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             contactShadowSettings);
         community_shaders::cloud_shadows::Runtime::get().applySettings(
             cloudShadowSettings);
+        if (!community_shaders::vanilla_fixes::startRuntime(
+                vanillaFixesSettings)) {
+            community_shaders::logging::warn(
+                "Vanilla Fixes engine-gate contract was rejected; shader fixes remain available, but engine-gate ownership stays fail-closed.");
+        }
         community_shaders::ui::setInitialSettings(settings);
         community_shaders::ui::setInitialComplexParallaxSettings(
             complexMaterialSettings);
@@ -263,6 +272,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             basicWetnessSettings);
         community_shaders::ui::setInitialCloudShadowSettings(
             cloudShadowSettings);
+        community_shaders::ui::setInitialVanillaFixesSettings(
+            vanillaFixesSettings);
 
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
             community_shaders::logging::warn(
@@ -287,7 +298,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             settings.enabled,
             iblSettings.enabled,
             iblSettings.diffuseEnabled,
@@ -305,7 +316,9 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             cloudShadowSettings.enabled,
             cloudShadowSettings.opacity,
             complexMaterialSettings.parallaxEnabled,
-            complexMaterialSettings.parallaxQuality);
+            complexMaterialSettings.parallaxQuality,
+            vanillaFixesSettings.enabled,
+            vanillaFixesSettings.focusShadows);
         return true;
     } catch (const std::exception& error) {
         reportPluginBoundaryFailure("F4SEPlugin_Load", error.what());

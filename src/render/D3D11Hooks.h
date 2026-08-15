@@ -15,6 +15,7 @@ namespace community_shaders::render
         bool shaderInterceptionActive{};
         bool createVertexShaderDetourEnabled{};
         bool createPixelShaderDetourEnabled{};
+        bool createComputeShaderDetourEnabled{};
         bool vertexShaderBindDetourEnabled{};
         bool pixelShaderBindDetourEnabled{};
         bool renderTargetBindDetourEnabled{};
@@ -29,6 +30,7 @@ namespace community_shaders::render
         std::uint64_t deviceCreationCalls{};
         std::uint64_t vertexShaderCreationCalls{};
         std::uint64_t pixelShaderCreationCalls{};
+        std::uint64_t computeShaderCreationCalls{};
         std::uint64_t vertexShaderBindCalls{};
         std::uint64_t pixelShaderBindCalls{};
         std::uint64_t renderTargetBindCalls{};

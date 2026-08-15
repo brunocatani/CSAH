@@ -1,0 +1,287 @@
+function(vanilla_fixes_require_file variable_name)
+  if(NOT DEFINED ${variable_name} OR NOT EXISTS "${${variable_name}}")
+    message(FATAL_ERROR
+      "Vanilla Fixes verification input '${variable_name}' is missing")
+  endif()
+endfunction()
+
+function(vanilla_fixes_require_text source label)
+  foreach(required IN LISTS ARGN)
+    string(FIND "${source}" "${required}" found)
+    if(found EQUAL -1)
+      message(FATAL_ERROR
+        "Vanilla Fixes ${label} regression: missing '${required}'")
+    endif()
+  endforeach()
+endfunction()
+
+foreach(input IN ITEMS
+    VANILLA_SHADER_RUNTIME_SOURCE
+    VANILLA_FOCUS_RUNTIME_SOURCE
+    VANILLA_RUNTIME_SOURCE
+    VANILLA_SETTINGS_STORE_SOURCE
+    VANILLA_REFLECTION_PATCH_SOURCE
+    VANILLA_SSLR_RAYTRACE_PATCH_SOURCE
+    VANILLA_D3D11_HOOK_SOURCE
+    VANILLA_WRIST_PANEL_SOURCE
+    VANILLA_WRIST_PANEL_VIEW_SOURCE
+    VANILLA_PLUGIN_SOURCE
+    VANILLA_IBL_GENERATOR_SOURCE
+    VANILLA_SAO_BLUR_SOURCE
+    VANILLA_SAO_RAW_SOURCE
+    VANILLA_SSLR_BLUR_SOURCE
+    VANILLA_SSLR_PREPASS_SOURCE)
+  vanilla_fixes_require_file(${input})
+endforeach()
+
+file(READ "${VANILLA_SHADER_RUNTIME_SOURCE}" shader_runtime)
+vanilla_fixes_require_text("${shader_runtime}" "shader identity"
+  "kSaoRawAo"
+  "3892"
+  "0x4A8B8CB64AC24499ull"
+  "kSaoHorizontalBlur"
+  "2324"
+  "0x5186B7FAB41E51CEull"
+  "kSslrHorizontalBlur"
+  "800"
+  "0x45D4CB8E6B37F5E7ull"
+  "kSslrPrepass"
+  "3080"
+  "0xBB9FDCC3817DC31Cull"
+  "kSslrRaytrace"
+  "68624"
+  "0xE4DB1ED97A719E55ull"
+  "kFocusShadow"
+  "19504"
+  "0xF4EBA56324D74051ull"
+  "CompleteIdentity{ 9348, 0x59FAED17411F08C7ull"
+  "CompleteIdentity{ 9564, 0x0903D20AD75EBB0Eull"
+  "CompleteIdentity{ 11100, 0x81247323F5EF60D3ull"
+  "CompleteIdentity{ 11316, 0x29D9E8483ACB1988ull"
+  "identity.hasDxbcHeader"
+  "identity.bytecodeSize == expected.size"
+  "identity.hash == expected.hash"
+  "identity.checksum == expected.checksum"
+  "patchStockReflectionCompositeSurfaceAnchoredCubemap"
+  "patchStockSslrRaytracePixel")
+
+file(READ "${VANILLA_FOCUS_RUNTIME_SOURCE}" focus_runtime)
+vanilla_fixes_require_text("${focus_runtime}" "focus-shadow native/resource"
+  "kProducerRva = 0x29126C0"
+  "kTaskPrepareRva = 0x28AAC40"
+  "kMapPublishRva = 0x2912500"
+  "kMapTaskExecuteRva = 0x28CB6C0"
+  "exactEntry(targets[0], kProducerEntry)"
+  "exactEntry(targets[1], kTaskPrepareEntry)"
+  "exactEntry(targets[2], kMapPublishEntry)"
+  "exactEntry(targets[3], kMapTaskExecuteEntry)"
+  "kShadowMapSlot = 5"
+  "kShadowMapWidth = 8192"
+  "kShadowMapHeight = 8192"
+  "kShadowMapArraySize = 4"
+  "DXGI_FORMAT_D16_UNORM"
+  "DXGI_FORMAT_R16_TYPELESS"
+  "DXGI_FORMAT_R16_UNORM"
+  "D3D11_DSV_DIMENSION_TEXTURE2DARRAY"
+  "D3D11_SRV_DIMENSION_TEXTURE2DARRAY"
+  "CreateShaderResourceView"
+  "PSGetShaderResources"
+  "PSSetShaderResources"
+  "ScopedFocusShadowBinding::~ScopedFocusShadowBinding")
+
+file(READ "${VANILLA_RUNTIME_SOURCE}" runtime)
+vanilla_fixes_require_text("${runtime}" "engine-gate"
+  "0x03740E38"
+  "0x037C69F8"
+  "0x037C6A10"
+  "0x037C76E8"
+  "0x03924D50"
+  "0x03924D68"
+  "0x03924EB8"
+  "0x03924ED0"
+  "0x039255F0"
+  "0x03925608"
+  "kRendererConfigRva = 0x068787F0"
+  "kImageSpaceManagerPointerRva = 0x068789E8"
+  "kSunbeamsAvailabilityRva = 0x0689AC94"
+  "kSaoEffectVtableRva = 0x030B8FD8"
+  "saoEffectIndex = 0x47"
+  "validateRipTarget"
+  "writableRange"
+  "InterlockedExchange8"
+  "preserveStartupCapability"
+  "kPollInterval = std::chrono::milliseconds(250)"
+  "reloadIfChanged()")
+foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
+  string(FIND "${runtime}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Vanilla Fixes engine-gate contains forbidden '${forbidden}'")
+  endif()
+endforeach()
+
+file(READ "${VANILLA_SETTINGS_STORE_SOURCE}" settings_store)
+vanilla_fixes_require_text("${settings_store}" "settings"
+  "kSection = L\"VanillaFixes\""
+  "L\"bEnabled\""
+  "L\"bPrecipitationOcclusion\""
+  "L\"bAllowImageSpaceModifiers\""
+  "L\"bVrAllowSAO\""
+  "L\"bVrAllowScreenSpaceReflections\""
+  "L\"bVrAllowScreenSpaceSubsurfaceScattering\""
+  "L\"bLensFlareVr\""
+  "L\"bVrAllowFocusShadows\""
+  "L\"bUseSunbeams\""
+  "settings_path::resolveIniPath()")
+
+file(READ "${VANILLA_REFLECTION_PATCH_SOURCE}" reflection_patch)
+vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
+  "patchStockReflectionCompositeSurfaceAnchoredCubemap"
+  "recomputeDxbcChecksum"
+  "patchedBytecode.swap(candidate)")
+file(READ "${VANILLA_SSLR_RAYTRACE_PATCH_SOURCE}" sslr_patch)
+vanilla_fixes_require_text("${sslr_patch}" "SSLR raytrace transform"
+  "kStockFade"
+  "kStereoFade"
+  "kStockFinalBounds"
+  "kStereoEyeGuard"
+  "localCenteredX = (abs(packedX - 0.5) - 0.25) * 4"
+  "localCenteredY = (packedY - 0.5) * 2"
+  "findUniqueSequence"
+  "recomputeDxbcChecksum"
+  "patchedBytecode.swap(candidate)")
+
+file(READ "${VANILLA_D3D11_HOOK_SOURCE}" d3d11)
+vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
+  "hookCreateComputeShader"
+  "vanilla_fixes::selectVertexShader("
+  "vanilla_fixes::selectPixelShader("
+  "vanilla_fixes::selectComputeShader("
+  "observeFocusShadowRenderTargets(depthStencil)"
+  "vanilla_fixes::isFocusShadowPixelShader(shader)"
+  "ScopedFocusShadowBinding focusShadowBinding"
+  "installFocusShadowNativeHooks()")
+string(REGEX MATCHALL
+  "ScopedFocusShadowBinding focusShadowBinding" focus_draw_bindings "${d3d11}")
+list(LENGTH focus_draw_bindings focus_draw_binding_count)
+if(NOT focus_draw_binding_count EQUAL 4)
+  message(FATAL_ERROR
+    "Vanilla Fixes focus resource must bind at all four draw boundaries")
+endif()
+
+file(READ "${VANILLA_WRIST_PANEL_SOURCE}" wrist)
+vanilla_fixes_require_text("${wrist}" "Prisma action/model"
+  "{ \"vanillaFixes\""
+  "type == \"vanillaFixesSet\""
+  "vanilla_fixes::applySettings(next)"
+  "vanilla_fixes::saveSettings(next)"
+  "focusShadows.nativeHooksInstalled"
+  "focusShadows.fullArrayViewsCreated"
+  "focusShadows.bindingsApplied")
+file(READ "${VANILLA_WRIST_PANEL_VIEW_SOURCE}" view)
+vanilla_fixes_require_text("${view}" "Prisma page"
+  "id=\"pageVanillaFixesButton\""
+  "id=\"vanillaFixesPage\""
+  "const vanillaFixControls"
+  "type: \"vanillaFixesSet\""
+  "function toggleVanillaFix(key)"
+  "FO4VR ENGINE GATES · LIVE INI OWNERSHIP"
+  "Focus array views")
+
+file(READ "${VANILLA_PLUGIN_SOURCE}" plugin)
+vanilla_fixes_require_text("${plugin}" "startup"
+  "vanilla_fixes::loadSettings()"
+  "vanilla_fixes::startRuntime("
+  "ui::setInitialVanillaFixesSettings("
+  "render::installEarlyD3D11Hooks()")
+string(FIND "${plugin}" "vanilla_fixes::startRuntime(" runtime_start)
+string(FIND "${plugin}" "render::installEarlyD3D11Hooks()" d3d_start)
+if(runtime_start EQUAL -1 OR d3d_start EQUAL -1 OR
+   NOT runtime_start LESS d3d_start)
+  message(FATAL_ERROR
+    "Vanilla Fixes engine-gate runtime must start before D3D interception")
+endif()
+
+file(READ "${VANILLA_IBL_GENERATOR_SOURCE}" ibl_generator)
+vanilla_fixes_require_text("${ibl_generator}" "IBL composition"
+  "--surface-anchor-tool"
+  "len(SURFACE_ANCHORED_IDENTITIES)"
+  "anchored_count"
+  "9348"
+  "9564"
+  "11100"
+  "11316")
+
+file(READ "${VANILLA_SAO_BLUR_SOURCE}" sao_blur)
+vanilla_fixes_require_text("${sao_blur}" "SAO blur source"
+  "kTileOutputWidth = 960"
+  "kFilterRadius = 6"
+  "width >> 1u"
+  "sampleX = eyeBoundary - 1"
+  "sampleX = eyeBoundary")
+file(READ "${VANILLA_SAO_RAW_SOURCE}" sao_raw)
+vanilla_fixes_require_text("${sao_raw}" "raw SAO source"
+  "eyeLocalX * 2 + 1"
+  "clampInternalEyeSampleX"
+  "eyeLocalUvX"
+  "sampleIndex < 5"
+  "motionDirection.x * 0.5f"
+  "motion.x * 0.5f"
+  "clampInternalEyeUv"
+  "depthAgreement * motionAgreement * 0.99f")
+file(READ "${VANILLA_SSLR_BLUR_SOURCE}" sslr_blur)
+vanilla_fixes_require_text("${sslr_blur}" "SSLR blur source"
+  "centerX >= 0.5f"
+  "0.5f + halfTexel"
+  "0.5f - halfTexel"
+  "-3.294215f"
+  "3.294215f")
+file(READ "${VANILLA_SSLR_PREPASS_SOURCE}" sslr_prepass)
+vanilla_fixes_require_text("${sslr_prepass}" "SSLR prepass source"
+  "depth <= 0.01f"
+  "input.uv.x >= 0.5f"
+  "eyeMatrixOffset = rightEye ? 4u : 0u"
+  "eyeLocalX = (input.uv.x - (rightEye ? 0.5f : 0.0f)) * 2.0f"
+  "eyeLocalEndpoint.x * 0.5f + (rightEye ? 0.5f : 0.0f)"
+  "reflected * 1000.0f")
+
+if(DEFINED VANILLA_FXC_EXECUTABLE)
+  vanilla_fixes_require_file(VANILLA_FXC_EXECUTABLE)
+  foreach(shader IN ITEMS SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS)
+    vanilla_fixes_require_file(VANILLA_${shader}_BINARY)
+  endforeach()
+
+  set(binary_specs
+    "VANILLA_SAO_BLUR_BINARY|3564|d390578f8f6cea606fed706fcc041c421c5d724e48536544fda83d702feaada9|cs_5_0|dcl_thread_group 972, 1, 1"
+    "VANILLA_SAO_RAW_BINARY|5936|5a0373b4ac810c4abc392d3887d4bb916a798de6aa63bff140a9d0f49e6a53ee|cs_5_0|dcl_thread_group 16, 16, 1"
+    "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
+    "VANILLA_SSLR_PREPASS_BINARY|4160|3b97e1198285cb2d6134b20f4b006d84b10fec3c201ab83d73683c5778675762|ps_5_0|dynamicIndexed")
+  foreach(spec IN LISTS binary_specs)
+    string(REPLACE "|" ";" fields "${spec}")
+    list(GET fields 0 path_variable)
+    list(GET fields 1 expected_size)
+    list(GET fields 2 expected_sha)
+    list(GET fields 3 profile_pattern)
+    list(GET fields 4 contract_pattern)
+    file(SIZE "${${path_variable}}" actual_size)
+    file(SHA256 "${${path_variable}}" actual_sha)
+    if(NOT actual_size EQUAL expected_size OR
+       NOT actual_sha STREQUAL expected_sha)
+      message(FATAL_ERROR
+        "Vanilla Fixes shader identity changed for ${path_variable}: size=${actual_size}, sha256=${actual_sha}")
+    endif()
+    execute_process(
+      COMMAND "${VANILLA_FXC_EXECUTABLE}" /dumpbin /nologo "${${path_variable}}"
+      RESULT_VARIABLE dump_result
+      OUTPUT_VARIABLE assembly
+      ERROR_VARIABLE dump_error)
+    if(NOT dump_result EQUAL 0 OR
+       NOT assembly MATCHES "${profile_pattern}" OR
+       NOT assembly MATCHES "${contract_pattern}")
+      message(FATAL_ERROR
+        "Vanilla Fixes shader contract failed for ${path_variable}: ${dump_error}")
+    endif()
+  endforeach()
+endif()
+
+message(STATUS "Verified Vanilla Fixes native, shader, settings, and Prisma contracts")

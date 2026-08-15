@@ -15,6 +15,10 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "Features/vanilla_fixes/FocusShadowRuntime.h"
+#include "Features/vanilla_fixes/VanillaFixesRuntime.h"
+#include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
+#include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
@@ -619,6 +623,12 @@ namespace community_shaders::ui
                 cloud_shadows::Runtime::get().snapshot();
             const auto surfaceRuntime =
                 surface_classification::Runtime::get().snapshot();
+            const auto vanillaFixes =
+                vanilla_fixes::runtimeSnapshot();
+            const auto vanillaShaders =
+                vanilla_fixes::shaderFixSnapshot();
+            const auto focusShadows =
+                vanilla_fixes::focusShadowSnapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -676,7 +686,11 @@ namespace community_shaders::ui
                     cloudShadowRuntime.settings.enabled) ^
                 (surfaceRuntime.acceptedGBufferBinds *
                     0x27D4EB2F165667C5ull) ^
-                surfaceRuntime.rejectedGBufferBinds;
+                surfaceRuntime.rejectedGBufferBinds ^
+                (vanillaFixes.appliedPolicies *
+                    0x94D049BB133111EBull) ^
+                (vanillaShaders.accepted << 17) ^
+                (focusShadows.bindingsApplied << 23);
         }
 
         [[nodiscard]] std::string buildModelJson()
@@ -704,6 +718,12 @@ namespace community_shaders::ui
                 cloud_shadows::Runtime::get().snapshot();
             const auto surfaceRuntime =
                 surface_classification::Runtime::get().snapshot();
+            const auto vanillaFixes =
+                vanilla_fixes::runtimeSnapshot();
+            const auto vanillaShaders =
+                vanilla_fixes::shaderFixSnapshot();
+            const auto focusShadows =
+                vanilla_fixes::focusShadowSnapshot();
             const auto geometry = render::geometryHookSnapshot();
             const auto d3d = render::d3d11HookSnapshot();
             const auto qualification =
@@ -854,6 +874,46 @@ namespace community_shaders::ui
                         { "lightingRejects",
                             cloudShadowRuntime.lightingRejects },
                         { "failures", cloudShadowRuntime.failures },
+                    } },
+                { "vanillaFixes",
+                    {
+                        { "enabled", vanillaFixes.settings.enabled },
+                        { "precipitationOcclusion",
+                            vanillaFixes.settings.precipitationOcclusion },
+                        { "imageSpaceModifiers",
+                            vanillaFixes.settings.imageSpaceModifiers },
+                        { "sao", vanillaFixes.settings.sao },
+                        { "screenSpaceReflections",
+                            vanillaFixes.settings.screenSpaceReflections },
+                        { "screenSpaceSubsurfaceScattering",
+                            vanillaFixes.settings.
+                                screenSpaceSubsurfaceScattering },
+                        { "lensFlare", vanillaFixes.settings.lensFlare },
+                        { "focusShadows",
+                            vanillaFixes.settings.focusShadows },
+                        { "sunbeams", vanillaFixes.settings.sunbeams },
+                        { "nativeContractValid",
+                            vanillaFixes.nativeContractValid },
+                        { "hotReloadActive",
+                            vanillaFixes.hotReloadActive },
+                        { "appliedPolicies",
+                            vanillaFixes.appliedPolicies },
+                        { "externalReloads",
+                            vanillaFixes.externalReloads },
+                        { "shaderFixesTargeted",
+                            vanillaShaders.targeted },
+                        { "shaderFixesAccepted",
+                            vanillaShaders.accepted },
+                        { "shaderFixFallbacks",
+                            vanillaShaders.stockFallbacks },
+                        { "focusNativeHooks",
+                            focusShadows.nativeHooksInstalled },
+                        { "focusMapTargets",
+                            focusShadows.exactMapTargetsObserved },
+                        { "focusArrayViews",
+                            focusShadows.fullArrayViewsCreated },
+                        { "focusBindings",
+                            focusShadows.bindingsApplied },
                     } },
                 { "surfaceClassification",
                     {
@@ -1484,6 +1544,46 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "vanillaFixesSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = vanilla_fixes::activeSettings();
+                    const auto key = action["key"].get<std::string>();
+                    const auto value = action["value"].get<bool>();
+                    if (key == "enabled") {
+                        next.enabled = value;
+                    } else if (key == "precipitationOcclusion") {
+                        next.precipitationOcclusion = value;
+                    } else if (key == "imageSpaceModifiers") {
+                        next.imageSpaceModifiers = value;
+                    } else if (key == "sao") {
+                        next.sao = value;
+                    } else if (key == "screenSpaceReflections") {
+                        next.screenSpaceReflections = value;
+                    } else if (
+                        key == "screenSpaceSubsurfaceScattering") {
+                        next.screenSpaceSubsurfaceScattering = value;
+                    } else if (key == "lensFlare") {
+                        next.lensFlare = value;
+                    } else if (key == "focusShadows") {
+                        next.focusShadows = value;
+                    } else if (key == "sunbeams") {
+                        next.sunbeams = value;
+                    } else {
+                        return;
+                    }
+                    vanilla_fixes::applySettings(next);
+                    const auto saved = vanilla_fixes::saveSettings(next);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Vanilla Fixes wrist action accepted; key={}, value={}, settings save={}.",
+                        key,
+                        value,
+                        saved);
+                    schedulePush();
+                    return;
+                }
                 if (type == "iblEnabled" && action.contains("value") &&
                     action["value"].is_boolean()) {
                     const auto current = ibl::Runtime::get().snapshot();
@@ -1862,6 +1962,9 @@ namespace community_shaders::ui
                 auto changed = false;
                 if (type == "reset") {
                     next = {};
+                    const vanilla_fixes::Settings nextVanillaFixes{};
+                    vanilla_fixes::applySettings(nextVanillaFixes);
+                    (void)vanilla_fixes::saveSettings(nextVanillaFixes);
                     const ibl::Settings nextIbl{};
                     ibl::Runtime::get().applySettings(nextIbl);
                     (void)ibl::saveSettings(nextIbl);
@@ -2534,6 +2637,13 @@ namespace community_shaders::ui
         const cloud_shadows::Settings& settings) noexcept
     {
         cloud_shadows::Runtime::get().applySettings(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialVanillaFixesSettings(
+        const vanilla_fixes::Settings& settings) noexcept
+    {
+        vanilla_fixes::applySettings(settings);
         uiRevision.fetch_add(1, std::memory_order_release);
     }
 

@@ -6,6 +6,7 @@
 #include "Features/hair_specular/HairSpecularSettings.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
+#include "Features/vanilla_fixes/VanillaFixesSettings.h"
 #include "Features/wrapped_grass/WrappedGrassSettings.h"
 
 namespace community_shaders::ui
@@ -25,6 +26,8 @@ namespace community_shaders::ui
         const basic_wetness::Settings& settings) noexcept;
     void setInitialCloudShadowSettings(
         const cloud_shadows::Settings& settings) noexcept;
+    void setInitialVanillaFixesSettings(
+        const vanilla_fixes::Settings& settings) noexcept;
 
     // Optional initialization. Missing PrismaUI_F4 or ROCK leaves the renderer
     // and INI owner fully operational without a compatibility fallback.

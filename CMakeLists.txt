@@ -94,6 +94,42 @@ set(SETTINGS_PATH_HEADER "${SOURCE_DIR}/support/SettingsPath.h")
 set(WRIST_PANEL_VIEW_SOURCE
   "${ROOT_DIR}/view/index.html")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
+set(VANILLA_FIXES_SOURCE_DIR
+  "${SOURCE_DIR}/Features/vanilla_fixes")
+set(VANILLA_REFLECTION_PATCH_TOOL_SOURCE
+  "${ROOT_DIR}/tools/VanillaReflectionPatchTool.cpp")
+set(VANILLA_REFLECTION_PATCH_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.cpp")
+set(VANILLA_REFLECTION_PATCH_HEADER
+  "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.h")
+set(VANILLA_SAO_BLUR_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/VanillaFixes/SaoBlurHCS.hlsl")
+set(VANILLA_SAO_RAW_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/VanillaFixes/SaoRawAOCS.hlsl")
+set(VANILLA_SSLR_BLUR_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/VanillaFixes/SslrBlurHVS.hlsl")
+set(VANILLA_SSLR_PREPASS_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/VanillaFixes/SslrPrepassPS.hlsl")
+set(VANILLA_SHADER_RUNTIME_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaShaderFixes.cpp")
+set(VANILLA_FOCUS_RUNTIME_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.cpp")
+set(VANILLA_RUNTIME_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesRuntime.cpp")
+set(VANILLA_SETTINGS_STORE_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.cpp")
+set(VANILLA_SSLR_RAYTRACE_PATCH_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/SslrRaytracePatch.cpp")
+set(VANILLA_IBL_GENERATOR_SOURCE
+  "${ROOT_DIR}/tools/generate_ibl_material_contracts.py")
+set(VANILLA_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifyVanillaFixes.cmake")
+set_source_files_properties(
+  "${VANILLA_SAO_BLUR_SOURCE}"
+  "${VANILLA_SAO_RAW_SOURCE}"
+  "${VANILLA_SSLR_BLUR_SOURCE}"
+  "${VANILLA_SSLR_PREPASS_SOURCE}"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 set(LINEAR_LIGHTING_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingRuntime.cpp")
 set(LINEAR_LIGHTING_RUNTIME_HEADER
@@ -103,6 +139,10 @@ set(POINT_LIGHT_HOOK_SOURCE
 set(QUALIFICATION_SOURCE
   "${SOURCE_DIR}/diagnostics/LinearLightingQualification.cpp")
 set(PLUGIN_SOURCE "${SOURCE_DIR}/XSEPlugin.cpp")
+set(VANILLA_D3D11_HOOK_SOURCE "${D3D11_HOOK_SOURCE}")
+set(VANILLA_WRIST_PANEL_SOURCE "${WRIST_PANEL_SOURCE}")
+set(VANILLA_WRIST_PANEL_VIEW_SOURCE "${WRIST_PANEL_VIEW_SOURCE}")
+set(VANILLA_PLUGIN_SOURCE "${PLUGIN_SOURCE}")
 set(DFLIGHT_AMBIENT_CONTRACT_MANIFEST
   "${ROOT_DIR}/package/Shaders/Community/DFLightAmbientContracts.json")
 set(DFLIGHT_AMBIENT_CONTRACT_GENERATOR
@@ -388,6 +428,7 @@ set(IBL_PROJECTION_SHADER_VERIFIER
   "${ROOT_DIR}/tools/verify_ibl_projection_shader.py")
 set(GEOMETRY_HOOK_SOURCE "${RENDERER_HOOK_SOURCE}")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
+include("${VANILLA_VERIFY_SCRIPT}")
 include("${ROOT_DIR}/cmake/VerifyIblFoundation.cmake")
 include("${CONTACT_SHADOW_VERIFY_SCRIPT}")
 include("${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake")
@@ -419,6 +460,18 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
+  "${VANILLA_VERIFY_SCRIPT}"
+  "${VANILLA_SHADER_RUNTIME_SOURCE}"
+  "${VANILLA_FOCUS_RUNTIME_SOURCE}"
+  "${VANILLA_RUNTIME_SOURCE}"
+  "${VANILLA_SETTINGS_STORE_SOURCE}"
+  "${VANILLA_REFLECTION_PATCH_SOURCE}"
+  "${VANILLA_SSLR_RAYTRACE_PATCH_SOURCE}"
+  "${VANILLA_IBL_GENERATOR_SOURCE}"
+  "${VANILLA_SAO_BLUR_SOURCE}"
+  "${VANILLA_SAO_RAW_SOURCE}"
+  "${VANILLA_SSLR_BLUR_SOURCE}"
+  "${VANILLA_SSLR_PREPASS_SOURCE}"
   "${IBL_RUNTIME_SOURCE}"
   "${IBL_RUNTIME_HEADER}"
   "${IBL_SETTINGS_HEADER}"
@@ -577,6 +630,16 @@ add_custom_target(VerifyD3D11Hooks ALL
   COMMENT "Verifying D3D11 method-detour ownership contract"
   VERBATIM)
 
+add_executable(VanillaReflectionPatchTool
+  "${VANILLA_REFLECTION_PATCH_TOOL_SOURCE}"
+  "${VANILLA_REFLECTION_PATCH_SOURCE}"
+  "${VANILLA_REFLECTION_PATCH_HEADER}"
+  "${SOURCE_DIR}/Features/linear_lighting/DxbcChecksum.h")
+target_compile_features(VanillaReflectionPatchTool PRIVATE cxx_std_23)
+target_include_directories(VanillaReflectionPatchTool PRIVATE "${SOURCE_DIR}")
+target_compile_options(VanillaReflectionPatchTool PRIVATE
+  /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+
 add_custom_target(VerifyIblFoundation ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DIBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}"
@@ -635,7 +698,9 @@ add_custom_target(VerifyIblMaterialContracts ALL
     "${IBL_MATERIAL_CONTRACT_GENERATOR}"
     --root "${ROOT_DIR}"
     --output "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+    --surface-anchor-tool "$<TARGET_FILE:VanillaReflectionPatchTool>"
     --check
+  DEPENDS VanillaReflectionPatchTool
   COMMENT "Verifying exact DFComposite IBL material contracts"
   VERBATIM)
 
@@ -859,6 +924,95 @@ find_program(FO4VR_CS_FXC_EXECUTABLE
   HINTS
     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
   REQUIRED)
+set(VANILLA_FIXES_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/VanillaFixes")
+set(VANILLA_SAO_BLUR_BINARY
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSaoBlurHCS.dxbc")
+set(VANILLA_SAO_BLUR_HEADER
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSaoBlurHCS.h")
+set(VANILLA_SAO_RAW_BINARY
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSaoRawAOCS.dxbc")
+set(VANILLA_SAO_RAW_HEADER
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSaoRawAOCS.h")
+set(VANILLA_SSLR_BLUR_BINARY
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSslrBlurHVS.dxbc")
+set(VANILLA_SSLR_BLUR_HEADER
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSslrBlurHVS.h")
+set(VANILLA_SSLR_PREPASS_BINARY
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSslrPrepassPS.dxbc")
+set(VANILLA_SSLR_PREPASS_HEADER
+  "${VANILLA_FIXES_GENERATED_DIR}/VanillaFixesSslrPrepassPS.h")
+add_custom_command(
+  OUTPUT
+    "${VANILLA_SAO_BLUR_BINARY}" "${VANILLA_SAO_BLUR_HEADER}"
+    "${VANILLA_SAO_RAW_BINARY}" "${VANILLA_SAO_RAW_HEADER}"
+    "${VANILLA_SSLR_BLUR_BINARY}" "${VANILLA_SSLR_BLUR_HEADER}"
+    "${VANILLA_SSLR_PREPASS_BINARY}" "${VANILLA_SSLR_PREPASS_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${VANILLA_FIXES_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges
+    "/Fo${VANILLA_SAO_BLUR_BINARY}"
+    "/Fh${VANILLA_SAO_BLUR_HEADER}"
+    /Vnfo4vr_cs_vanilla_sao_blur_h_cs
+    "${VANILLA_SAO_BLUR_SOURCE}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges
+    "/Fo${VANILLA_SAO_RAW_BINARY}"
+    "/Fh${VANILLA_SAO_RAW_HEADER}"
+    /Vnfo4vr_cs_vanilla_sao_raw_ao_cs
+    "${VANILLA_SAO_RAW_SOURCE}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T vs_5_0 /E main /O3 /Ges
+    "/Fo${VANILLA_SSLR_BLUR_BINARY}"
+    "/Fh${VANILLA_SSLR_BLUR_HEADER}"
+    /Vnfo4vr_cs_vanilla_sslr_blur_h_vs
+    "${VANILLA_SSLR_BLUR_SOURCE}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T ps_5_0 /E main /O3 /Ges
+    "/Fo${VANILLA_SSLR_PREPASS_BINARY}"
+    "/Fh${VANILLA_SSLR_PREPASS_HEADER}"
+    /Vnfo4vr_cs_vanilla_sslr_prepass_ps
+    "${VANILLA_SSLR_PREPASS_SOURCE}"
+  DEPENDS
+    "${VANILLA_SAO_BLUR_SOURCE}"
+    "${VANILLA_SAO_RAW_SOURCE}"
+    "${VANILLA_SSLR_BLUR_SOURCE}"
+    "${VANILLA_SSLR_PREPASS_SOURCE}"
+  COMMENT "Compiling stereo-safe Vanilla Fixes shaders"
+  VERBATIM)
+add_custom_target(VanillaFixesShaders
+  DEPENDS
+    "${VANILLA_SAO_BLUR_BINARY}" "${VANILLA_SAO_BLUR_HEADER}"
+    "${VANILLA_SAO_RAW_BINARY}" "${VANILLA_SAO_RAW_HEADER}"
+    "${VANILLA_SSLR_BLUR_BINARY}" "${VANILLA_SSLR_BLUR_HEADER}"
+    "${VANILLA_SSLR_PREPASS_BINARY}" "${VANILLA_SSLR_PREPASS_HEADER}")
+add_custom_target(VerifyVanillaFixes ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DVANILLA_SHADER_RUNTIME_SOURCE=${VANILLA_SHADER_RUNTIME_SOURCE}"
+    "-DVANILLA_FOCUS_RUNTIME_SOURCE=${VANILLA_FOCUS_RUNTIME_SOURCE}"
+    "-DVANILLA_RUNTIME_SOURCE=${VANILLA_RUNTIME_SOURCE}"
+    "-DVANILLA_SETTINGS_STORE_SOURCE=${VANILLA_SETTINGS_STORE_SOURCE}"
+    "-DVANILLA_REFLECTION_PATCH_SOURCE=${VANILLA_REFLECTION_PATCH_SOURCE}"
+    "-DVANILLA_SSLR_RAYTRACE_PATCH_SOURCE=${VANILLA_SSLR_RAYTRACE_PATCH_SOURCE}"
+    "-DVANILLA_D3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DVANILLA_WRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
+    "-DVANILLA_WRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}"
+    "-DVANILLA_PLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    "-DVANILLA_IBL_GENERATOR_SOURCE=${VANILLA_IBL_GENERATOR_SOURCE}"
+    "-DVANILLA_SAO_BLUR_SOURCE=${VANILLA_SAO_BLUR_SOURCE}"
+    "-DVANILLA_SAO_RAW_SOURCE=${VANILLA_SAO_RAW_SOURCE}"
+    "-DVANILLA_SSLR_BLUR_SOURCE=${VANILLA_SSLR_BLUR_SOURCE}"
+    "-DVANILLA_SSLR_PREPASS_SOURCE=${VANILLA_SSLR_PREPASS_SOURCE}"
+    "-DVANILLA_FXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+    "-DVANILLA_SAO_BLUR_BINARY=${VANILLA_SAO_BLUR_BINARY}"
+    "-DVANILLA_SAO_RAW_BINARY=${VANILLA_SAO_RAW_BINARY}"
+    "-DVANILLA_SSLR_BLUR_BINARY=${VANILLA_SSLR_BLUR_BINARY}"
+    "-DVANILLA_SSLR_PREPASS_BINARY=${VANILLA_SSLR_PREPASS_BINARY}"
+    -P "${VANILLA_VERIFY_SCRIPT}"
+  DEPENDS VanillaFixesShaders
+  COMMENT "Verifying Vanilla Fixes native, shader, settings, and Prisma contracts"
+  VERBATIM)
 add_custom_target(VerifySurfaceClassification ALL
   COMMAND "${Python3_EXECUTABLE}"
     "${SURFACE_CLASSIFICATION_GENERATOR}"
@@ -1262,6 +1416,27 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/render/BSDFPrePassShaderHook.h"
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/SslrRaytracePatch.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/SslrRaytracePatch.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesRuntime.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesRuntime.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettings.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.h"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaShaderFixes.cpp"
+  "${VANILLA_FIXES_SOURCE_DIR}/VanillaShaderFixes.h"
+  "${VANILLA_SAO_BLUR_SOURCE}"
+  "${VANILLA_SAO_RAW_SOURCE}"
+  "${VANILLA_SSLR_BLUR_SOURCE}"
+  "${VANILLA_SSLR_PREPASS_SOURCE}"
+  "${VANILLA_SAO_BLUR_HEADER}"
+  "${VANILLA_SAO_RAW_HEADER}"
+  "${VANILLA_SSLR_BLUR_HEADER}"
+  "${VANILLA_SSLR_PREPASS_HEADER}"
   "${SOURCE_DIR}/support/Logger.h"
   "${SOURCE_DIR}/support/NearAllocation.h"
   "${SOURCE_DIR}/ui/LinearLightingTelemetryGate.h"
@@ -1274,6 +1449,8 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/ui/WristProviderRetry.h"
 )
 add_dependencies(${PROJECT_NAME}
+  VanillaFixesShaders
+  VanillaReflectionPatchTool
   ContactShadowShader
   SubsurfaceScatteringShader
   ComplexParallaxShaders
@@ -1282,6 +1459,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrRendererHook
   VerifyBSDFPrePassHook
   VerifyD3D11Hooks
+  VerifyVanillaFixes
   VerifyIblFoundation
   VerifyIblCaptureProbeContracts
   VerifyIblMaterialContracts
@@ -1315,7 +1493,8 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE
   "${COMPLEX_PARALLAX_GENERATED_DIR}"
   "${CONTACT_SHADOW_GENERATED_DIR}"
-  "${SUBSURFACE_SCATTERING_GENERATED_DIR}")
+  "${SUBSURFACE_SCATTERING_GENERATED_DIR}"
+  "${VANILLA_FIXES_GENERATED_DIR}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   UNICODE
   _UNICODE
@@ -1519,6 +1698,30 @@ if(BUILD_FO4VR_CS_TESTS)
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
 
+  add_test(NAME FO4VRCommunityShaders.VanillaFixesSource
+    COMMAND "${CMAKE_COMMAND}"
+      "-DVANILLA_SHADER_RUNTIME_SOURCE=${VANILLA_SHADER_RUNTIME_SOURCE}"
+      "-DVANILLA_FOCUS_RUNTIME_SOURCE=${VANILLA_FOCUS_RUNTIME_SOURCE}"
+      "-DVANILLA_RUNTIME_SOURCE=${VANILLA_RUNTIME_SOURCE}"
+      "-DVANILLA_SETTINGS_STORE_SOURCE=${VANILLA_SETTINGS_STORE_SOURCE}"
+      "-DVANILLA_REFLECTION_PATCH_SOURCE=${VANILLA_REFLECTION_PATCH_SOURCE}"
+      "-DVANILLA_SSLR_RAYTRACE_PATCH_SOURCE=${VANILLA_SSLR_RAYTRACE_PATCH_SOURCE}"
+      "-DVANILLA_D3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+      "-DVANILLA_WRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}"
+      "-DVANILLA_WRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}"
+      "-DVANILLA_PLUGIN_SOURCE=${PLUGIN_SOURCE}"
+      "-DVANILLA_IBL_GENERATOR_SOURCE=${VANILLA_IBL_GENERATOR_SOURCE}"
+      "-DVANILLA_SAO_BLUR_SOURCE=${VANILLA_SAO_BLUR_SOURCE}"
+      "-DVANILLA_SAO_RAW_SOURCE=${VANILLA_SAO_RAW_SOURCE}"
+      "-DVANILLA_SSLR_BLUR_SOURCE=${VANILLA_SSLR_BLUR_SOURCE}"
+      "-DVANILLA_SSLR_PREPASS_SOURCE=${VANILLA_SSLR_PREPASS_SOURCE}"
+      "-DVANILLA_FXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+      "-DVANILLA_SAO_BLUR_BINARY=${VANILLA_SAO_BLUR_BINARY}"
+      "-DVANILLA_SAO_RAW_BINARY=${VANILLA_SAO_RAW_BINARY}"
+      "-DVANILLA_SSLR_BLUR_BINARY=${VANILLA_SSLR_BLUR_BINARY}"
+      "-DVANILLA_SSLR_PREPASS_BINARY=${VANILLA_SSLR_PREPASS_BINARY}"
+      -P "${VANILLA_VERIFY_SCRIPT}")
+
   add_test(NAME FO4VRCommunityShaders.ContactShadowsSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DCONTACT_SHADOW_RUNTIME_SOURCE=${CONTACT_SHADOW_RUNTIME_SOURCE}' '-DCONTACT_SHADOW_RUNTIME_HEADER=${CONTACT_SHADOW_RUNTIME_HEADER}' '-DCONTACT_SHADOW_SETTINGS_HEADER=${CONTACT_SHADOW_SETTINGS_HEADER}' '-DCONTACT_SHADOW_SETTINGS_STORE_SOURCE=${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}' '-DCONTACT_SHADOW_SETTINGS_STORE_HEADER=${CONTACT_SHADOW_SETTINGS_STORE_HEADER}' '-DCONTACT_SHADOW_SHADER_SOURCE=${CONTACT_SHADOW_SHADER_SOURCE}' '-DCONTACT_SHADOW_MASK_SHADER_SOURCE=${CONTACT_SHADOW_MASK_SHADER_SOURCE}' '-DCONTACT_SHADOW_SHADER_GENERATOR=${CONTACT_SHADOW_SHADER_GENERATOR}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DWRIST_PANEL_SOURCE=${WRIST_PANEL_SOURCE}' '-DWRIST_PANEL_VIEW_SOURCE=${WRIST_PANEL_VIEW_SOURCE}' '-DPLUGIN_SOURCE=${PLUGIN_SOURCE}' '-P' '${CONTACT_SHADOW_VERIFY_SCRIPT}'")
@@ -1547,6 +1750,31 @@ if(BUILD_FO4VR_CS_TESTS)
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.ContactShadowSettings
     COMMAND FO4VRCommunityShadersContactShadowSettingsTests)
+
+  add_executable(FO4VRCommunityShadersVanillaFixesSettingsTests
+    "${ROOT_DIR}/tests/VanillaFixesSettingsTests.cpp"
+    "${VANILLA_SETTINGS_STORE_SOURCE}"
+    "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.h"
+    "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettings.h"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+  target_link_libraries(
+    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
+  add_test(NAME FO4VRCommunityShaders.VanillaFixesSettings
+    COMMAND FO4VRCommunityShadersVanillaFixesSettingsTests)
 
   add_executable(FO4VRCommunityShadersContactShadowShaderBytecodeTests
     "${ROOT_DIR}/tests/ContactShadowShaderBytecodeTests.cpp")
@@ -1588,6 +1816,7 @@ if(BUILD_FO4VR_CS_TESTS)
       "${IBL_MATERIAL_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+      --surface-anchor-tool "$<TARGET_FILE:VanillaReflectionPatchTool>"
       --check)
 
   add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerContracts

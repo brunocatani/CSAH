@@ -99,7 +99,7 @@
 
     .page-nav {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 8px;
       align-items: center;
       padding: 20px 16px;
@@ -455,6 +455,7 @@
         <button id="pageSurfacesButton" type="button">02 · Surfaces</button>
         <button id="pageResponseButton" type="button">03 · Response</button>
         <button id="pageShadowsButton" type="button">04 · Shadows</button>
+        <button id="pageVanillaFixesButton" type="button">05 · Vanilla Fixes</button>
       </nav>
     </header>
 
@@ -617,6 +618,95 @@
         </aside>
       </section>
 
+      <section id="vanillaFixesPage" class="page" aria-label="Vanilla Fixes controls">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Vanilla Fixes</h2>
+            <span>FO4VR ENGINE GATES · LIVE INI OWNERSHIP</span>
+          </div>
+          <div class="feature-grid">
+            <div class="master">
+              <div class="master-copy">
+                <strong>Vanilla Fixes</strong>
+                <span id="vanillaFixesEnabledState">ALL OWNED FEATURES ARMED</span>
+              </div>
+              <div id="vanillaFixesEnabledSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Precipitation Occlusion</strong>
+                <span id="vanillaPrecipitationOcclusionState">ENGINE GATE ENABLED</span>
+              </div>
+              <div id="vanillaPrecipitationOcclusionSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Image-Space Modifiers</strong>
+                <span id="vanillaImageSpaceModifiersState">ENGINE GATE ENABLED</span>
+              </div>
+              <div id="vanillaImageSpaceModifiersSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Screen-Space Ambient Occlusion</strong>
+                <span id="vanillaSaoState">STEREO CORRECTION ARMED</span>
+              </div>
+              <div id="vanillaSaoSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Screen-Space Reflections</strong>
+                <span id="vanillaScreenSpaceReflectionsState">STEREO CORRECTION ARMED</span>
+              </div>
+              <div id="vanillaScreenSpaceReflectionsSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Screen-Space Subsurface Scattering</strong>
+                <span id="vanillaScreenSpaceSubsurfaceScatteringState">ENGINE GATE ENABLED</span>
+              </div>
+              <div id="vanillaScreenSpaceSubsurfaceScatteringSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>VR Lens Flare</strong>
+                <span id="vanillaLensFlareState">ENGINE GATE ENABLED</span>
+              </div>
+              <div id="vanillaLensFlareSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Focus Shadows</strong>
+                <span id="vanillaFocusShadowsState">STEREO ARRAY CORRECTION ARMED</span>
+              </div>
+              <div id="vanillaFocusShadowsSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Sunbeams</strong>
+                <span id="vanillaSunbeamsState">ENGINE GATE ENABLED</span>
+              </div>
+              <div id="vanillaSunbeamsSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+          </div>
+        </section>
+
+        <aside>
+          <div class="plate">
+            <h3>Runtime contract</h3>
+            <div id="vanillaFixesStatusGrid" class="status-grid"></div>
+          </div>
+          <div class="plate">
+            <h3>Ownership</h3>
+            <p class="page-note">These values are owned by Community Shaders while the mod is loaded. Panel changes apply immediately and save to the shared Community Shaders INI.</p>
+          </div>
+          <div class="plate">
+            <h3>Stereo corrections</h3>
+            <p class="page-note">SAO, reflection, cubemap-composite, and focus-shadow corrections are selected only for exact verified FO4VR shader identities. Unrecognized bytecode stays vanilla.</p>
+          </div>
+        </aside>
+      </section>
+
       <section id="responsePage" class="page" aria-label="Response sliders">
         <section class="controls">
           <div class="section-heading">
@@ -675,6 +765,17 @@
       { key: "fadeDistance", label: "View fade distance", hint: "Reduces samples with distance and disables contact shadows beyond this range.", min: 256, max: 8192, step: 64 },
       { key: "thickness", label: "Surface thickness", hint: "Rejects depth crossings too thick to be a local contact occluder.", min: .002, max: .05, step: .001 },
       { key: "sampleCount", label: "Center samples", hint: "Maximum center-view samples; distance and foveation reduce work elsewhere.", min: 2, max: 16, step: 1 }
+    ];
+    const vanillaFixControls = [
+      { key: "enabled", switchId: "vanillaFixesEnabledSwitch", stateId: "vanillaFixesEnabledState", on: "ALL OWNED FEATURES ARMED", off: "ALL OWNED FEATURES DISABLED" },
+      { key: "precipitationOcclusion", switchId: "vanillaPrecipitationOcclusionSwitch", stateId: "vanillaPrecipitationOcclusionState", on: "ENGINE GATE ENABLED", off: "ENGINE GATE DISABLED" },
+      { key: "imageSpaceModifiers", switchId: "vanillaImageSpaceModifiersSwitch", stateId: "vanillaImageSpaceModifiersState", on: "ENGINE GATE ENABLED", off: "ENGINE GATE DISABLED" },
+      { key: "sao", switchId: "vanillaSaoSwitch", stateId: "vanillaSaoState", on: "STEREO CORRECTION ARMED", off: "SAO DISABLED" },
+      { key: "screenSpaceReflections", switchId: "vanillaScreenSpaceReflectionsSwitch", stateId: "vanillaScreenSpaceReflectionsState", on: "STEREO CORRECTION ARMED", off: "REFLECTIONS DISABLED" },
+      { key: "screenSpaceSubsurfaceScattering", switchId: "vanillaScreenSpaceSubsurfaceScatteringSwitch", stateId: "vanillaScreenSpaceSubsurfaceScatteringState", on: "ENGINE GATE ENABLED", off: "ENGINE GATE DISABLED" },
+      { key: "lensFlare", switchId: "vanillaLensFlareSwitch", stateId: "vanillaLensFlareState", on: "ENGINE GATE ENABLED", off: "ENGINE GATE DISABLED" },
+      { key: "focusShadows", switchId: "vanillaFocusShadowsSwitch", stateId: "vanillaFocusShadowsState", on: "STEREO ARRAY CORRECTION ARMED", off: "FOCUS SHADOWS DISABLED" },
+      { key: "sunbeams", switchId: "vanillaSunbeamsSwitch", stateId: "vanillaSunbeamsState", on: "ENGINE GATE ENABLED", off: "ENGINE GATE DISABLED" }
     ];
 
     const state = { model: null, page: "features", timers: new Map() };
@@ -752,19 +853,22 @@
     }
 
     function setPage(page) {
-      state.page = page === "surfaces" || page === "response" || page === "shadows" ? page : "features";
+      state.page = page === "surfaces" || page === "response" || page === "shadows" || page === "vanillaFixes" ? page : "features";
       const featuresActive = state.page === "features";
       const surfacesActive = state.page === "surfaces";
       const responseActive = state.page === "response";
       const shadowsActive = state.page === "shadows";
+      const vanillaFixesActive = state.page === "vanillaFixes";
       document.getElementById("featuresPage").classList.toggle("active", featuresActive);
       document.getElementById("surfacesPage").classList.toggle("active", surfacesActive);
       document.getElementById("responsePage").classList.toggle("active", responseActive);
       document.getElementById("shadowsPage").classList.toggle("active", shadowsActive);
+      document.getElementById("vanillaFixesPage").classList.toggle("active", vanillaFixesActive);
       document.getElementById("pageFeaturesButton").classList.toggle("active", featuresActive);
       document.getElementById("pageSurfacesButton").classList.toggle("active", surfacesActive);
       document.getElementById("pageResponseButton").classList.toggle("active", responseActive);
       document.getElementById("pageShadowsButton").classList.toggle("active", shadowsActive);
+      document.getElementById("pageVanillaFixesButton").classList.toggle("active", vanillaFixesActive);
     }
 
     function render() {
@@ -784,6 +888,7 @@
       const basicWetness = model.basicWetness || {};
       const cloudShadows = model.cloudShadows || {};
       const surfaceClassification = model.surfaceClassification || {};
+      const vanillaFixes = model.vanillaFixes || {};
 
       const enabled = !!settings.enabled;
       const master = document.getElementById("masterSwitch");
@@ -890,6 +995,25 @@
         "NATIVE SUNLIGHT" :
         (!settings.enabled ? "WAITING FOR LINEAR LIGHTING" :
           (cloudShadows.cubeReady ? "CLOUD PROJECTION ACTIVE" : "WAITING FOR SKY CUBE"));
+
+      for (const control of vanillaFixControls) {
+        const value = !!vanillaFixes[control.key];
+        const element = document.getElementById(control.switchId);
+        element.classList.toggle("on", value);
+        element.setAttribute("aria-checked", String(value));
+        document.getElementById(control.stateId).textContent = value ? control.on : control.off;
+      }
+      document.getElementById("vanillaFixesStatusGrid").innerHTML = [
+        metric("Native contract", vanillaFixes.nativeContractValid ? "VERIFIED" : "CLOSED", vanillaFixes.nativeContractValid ? "good" : "bad"),
+        metric("INI hot reload", vanillaFixes.hotReloadActive ? "ACTIVE" : "WAIT", vanillaFixes.hotReloadActive ? "good" : "wait"),
+        metric("Applied policies", String(vanillaFixes.appliedPolicies || 0), vanillaFixes.appliedPolicies ? "good" : "wait"),
+        metric("External reloads", String(vanillaFixes.externalReloads || 0), vanillaFixes.externalReloads ? "good" : "wait"),
+        metric("Shader corrections", `${vanillaFixes.shaderFixesAccepted || 0}/${vanillaFixes.shaderFixesTargeted || 0}`, vanillaFixes.shaderFixesAccepted ? "good" : "wait"),
+        metric("Shader fallbacks", String(vanillaFixes.shaderFixFallbacks || 0), vanillaFixes.shaderFixFallbacks ? "bad" : "good"),
+        metric("Focus hooks", vanillaFixes.focusNativeHooks ? "VERIFIED" : "CLOSED", vanillaFixes.focusNativeHooks ? "good" : "bad"),
+        metric("Focus array views", String(vanillaFixes.focusArrayViews || 0), vanillaFixes.focusArrayViews ? "good" : "wait"),
+        metric("Focus bindings", String(vanillaFixes.focusBindings || 0), vanillaFixes.focusBindings ? "good" : "wait")
+      ].join("");
 
       for (const control of controls) {
         const input = document.getElementById(control.key);
@@ -1072,11 +1196,20 @@
       render();
     }
 
+    function toggleVanillaFix(key) {
+      const vanillaFixes = (state.model || {}).vanillaFixes || {};
+      const value = !vanillaFixes[key];
+      bridge({ type: "vanillaFixesSet", key, value });
+      if (state.model) state.model.vanillaFixes = { ...vanillaFixes, [key]: value };
+      render();
+    }
+
     createControls();
     document.getElementById("pageFeaturesButton").addEventListener("click", () => setPage("features"));
     document.getElementById("pageSurfacesButton").addEventListener("click", () => setPage("surfaces"));
     document.getElementById("pageResponseButton").addEventListener("click", () => setPage("response"));
     document.getElementById("pageShadowsButton").addEventListener("click", () => setPage("shadows"));
+    document.getElementById("pageVanillaFixesButton").addEventListener("click", () => setPage("vanillaFixes"));
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
@@ -1125,6 +1258,13 @@
     document.getElementById("cloudShadowsSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleCloudShadowsEnabled();
     });
+    for (const control of vanillaFixControls) {
+      const element = document.getElementById(control.switchId);
+      element.addEventListener("click", () => toggleVanillaFix(control.key));
+      element.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") toggleVanillaFix(control.key);
+      });
+    }
     document.getElementById("diagnosticsButton").addEventListener("click", () => {
       const wrist = (state.model || {}).wrist || {};
       bridge({ type: "diagnostics", enabled: !wrist.overlayEnabled });
