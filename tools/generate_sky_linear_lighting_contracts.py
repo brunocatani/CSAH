@@ -122,6 +122,7 @@ def compile_candidates(
         '#include "../LinearLighting/LinearLighting.hlsli"',
         "LinearLightingSky(baseColor.xyz)",
         "LinearLightingSkyProducerColor(input.color.xyz)",
+        "LinearLightingSkyCloudColor(input.color.xyz)",
         "color *= skyParameters.y;",
         "#if SKY_TECHNIQUE >= 4 && SKY_TECHNIQUE <= 6",
         "float4 cloudOcclusion : SV_Target3;",
@@ -138,12 +139,21 @@ def compile_candidates(
         if forbidden in source_text:
             raise ContractError(f"Sky HLSL contains forbidden color-domain path: {forbidden}")
 
+    cloud_color_path = "LinearLightingSkyCloudColor(input.color.xyz)"
+    if source_text.count(cloud_color_path) != 3:
+        raise ContractError(
+            "Sky HLSL must apply the authored cloud tint exactly once in "
+            "each of descriptors 4-6"
+        )
+
     include_text = (
         source_directory.parent / "LinearLighting" / "LinearLighting.hlsli"
     ).read_text(encoding="utf-8")
     for required in (
         "kLinearLightingVanillaProducerGamma = 2.2f",
         "skyGamma / kLinearLightingVanillaProducerGamma",
+        "float3 LinearLightingSkyCloudColor(float3 color)",
+        "return LinearLightingSky(color);",
     ):
         if required not in include_text:
             raise ContractError(

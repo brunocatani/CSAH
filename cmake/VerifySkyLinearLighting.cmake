@@ -70,6 +70,7 @@ foreach(required IN ITEMS
     "#include \"../LinearLighting/LinearLighting.hlsli\""
     "LinearLightingSky(baseColor.xyz)"
     "LinearLightingSkyProducerColor(input.color.xyz)"
+    "LinearLightingSkyCloudColor(input.color.xyz)"
     "color *= skyParameters.y;"
     "#if SKY_TECHNIQUE >= 4 && SKY_TECHNIQUE <= 6"
     "float4 cloudOcclusion : SV_Target3;"
@@ -81,6 +82,15 @@ foreach(required IN ITEMS
       "Sky Linear Lighting regression: shader is missing '${required}'")
   endif()
 endforeach()
+
+string(REGEX MATCHALL
+  "LinearLightingSkyCloudColor\\(input\\.color\\.xyz\\)"
+  cloudColorPaths "${shaderSource}")
+list(LENGTH cloudColorPaths cloudColorPathCount)
+if(NOT cloudColorPathCount EQUAL 3)
+  message(FATAL_ERROR
+    "Sky Linear Lighting regression: descriptors 4-6 must own exactly three cloud color decodes")
+endif()
 
 foreach(forbidden IN ITEMS
     "LinearLightingSky(input.color.xyz)"

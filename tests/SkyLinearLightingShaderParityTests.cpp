@@ -35,6 +35,7 @@ namespace
     constexpr float kHorizonFade = 0.6F;
     constexpr float kSkyGamma = 1.8F;
     constexpr float kSkyProducerGamma = 2.2F;
+    constexpr float kNativeSkyGamma = 2.2F;
 
     struct RenderTarget
     {
@@ -378,32 +379,35 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         return true;
     }
 
-    float sky(float value)
+    float sky(float value, float gamma)
     {
-        return std::pow(std::abs(value), kSkyGamma);
+        return std::pow(std::abs(value), gamma);
     }
 
-    float skyProducerColor(float value)
+    float skyProducerColor(float value, float gamma)
     {
         return std::pow(
-            std::abs(value), kSkyGamma / kSkyProducerGamma);
+            std::abs(value), gamma / kSkyProducerGamma);
     }
 
-    Pixel expectedEnabled(std::uint32_t descriptor)
+    Pixel expectedEnabled(std::uint32_t descriptor, float gamma)
     {
         Pixel expected{};
-        const auto scaledProduct = [](float lhs, float rhs) {
-            return sky(lhs) * skyProducerColor(rhs) * kScale;
+        const auto scaledProduct = [gamma](float lhs, float rhs) {
+            return sky(lhs, gamma) * skyProducerColor(rhs, gamma) * kScale;
+        };
+        const auto scaledCloudProduct = [gamma](float lhs, float rhs) {
+            return sky(lhs, gamma) * sky(rhs, gamma) * kScale;
         };
         const float noise = kNoise * 0.0078125F - 0.001953125F;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             switch (descriptor) {
             case 1:
                 expected[channel] =
-                    skyProducerColor(kVertexColor[channel]) * kScale + noise;
+                    skyProducerColor(kVertexColor[channel], gamma) * kScale + noise;
                 break;
             case 2:
-                expected[channel] = sky(kBaseColor[channel]);
+                expected[channel] = sky(kBaseColor[channel], gamma);
                 break;
             case 3:
                 expected[channel] =
@@ -411,17 +415,20 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 break;
             case 4:
             case 5:
-            case 7:
                 expected[channel] =
-                    scaledProduct(kBaseColor[channel], kVertexColor[channel]);
+                    scaledCloudProduct(kBaseColor[channel], kVertexColor[channel]);
                 break;
             case 6:
                 expected[channel] =
                     std::lerp(
-                        sky(kBaseColor[channel]),
-                        sky(kBlendColor[channel]),
+                        sky(kBaseColor[channel], gamma),
+                        sky(kBlendColor[channel], gamma),
                         kBlend) *
-                    skyProducerColor(kVertexColor[channel]) * kScale;
+                    sky(kVertexColor[channel], gamma) * kScale;
+                break;
+            case 7:
+                expected[channel] =
+                    scaledProduct(kBaseColor[channel], kVertexColor[channel]);
                 break;
             case 8:
                 expected[channel] =
@@ -504,12 +511,18 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             disabledSettings, true, false, 1.0F);
         const FrameData enabledFrame = makeFrameData(
             enabledSettings, true, false, 1.0F);
+        Settings nativeNightSettings = enabledSettings;
+        nativeNightSettings.preserveNativeDarkness = true;
+        const FrameData nativeNightFrame = makeFrameData(
+            nativeNightSettings, true, false, 1.0F);
 
         const auto skyBuffer = createConstantBuffer(device.Get(), skyParameters);
         const auto disabledFrameBuffer =
             createConstantBuffer(device.Get(), disabledFrame);
         const auto enabledFrameBuffer =
             createConstantBuffer(device.Get(), enabledFrame);
+        const auto nativeNightFrameBuffer =
+            createConstantBuffer(device.Get(), nativeNightFrame);
         const auto stereoBuffer = createConstantBuffer(device.Get(), stereo);
         const std::array<ComPtr<ID3D11ShaderResourceView>, 3> textures{
             createTexture(device.Get(), kBaseColor),
@@ -563,12 +576,25 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 device.Get(), context.Get(), vertexShader.Get(), replacementShader.Get(),
                 skyBuffer.Get(), enabledFrameBuffer.Get(), stereoBuffer.Get(),
                 textures, sampler.Get());
+            const auto nativeNight = render(
+                device.Get(), context.Get(), vertexShader.Get(), replacementShader.Get(),
+                skyBuffer.Get(), nativeNightFrameBuffer.Get(), stereoBuffer.Get(),
+                textures, sampler.Get());
 
             const auto label = "Sky descriptor " + std::to_string(descriptor);
             passed &= compare(disabled[0], vanilla[0], label + " disabled color");
             passed &= compare(disabled[1], vanilla[1], label + " disabled motion");
-            passed &= compare(enabled[0], expectedEnabled(descriptor), label + " enabled color");
+            passed &= compare(
+                enabled[0],
+                expectedEnabled(descriptor, kSkyGamma),
+                label + " enabled color");
             passed &= compare(enabled[1], vanilla[1], label + " enabled motion");
+            passed &= compare(
+                nativeNight[0],
+                expectedEnabled(descriptor, kNativeSkyGamma),
+                label + " native-night color");
+            passed &= compare(
+                nativeNight[1], vanilla[1], label + " native-night motion");
         }
         if (!passed) {
             return 1;

@@ -212,6 +212,15 @@ float3 LinearLightingSkyProducerColor(float3 color)
         color;
 }
 
+// Cloud techniques receive an authored weather tint rather than the fixed
+// producer-decoded gradient colour used by the other Sky techniques. Decode
+// that tint with the complete Sky response before composing it with the
+// already-decoded cloud texture.
+float3 LinearLightingSkyCloudColor(float3 color)
+{
+    return LinearLightingSky(color);
+}
+
 float3 LinearLightingWater(float3 color)
 {
     return enableLinearLighting != 0u ? pow(abs(color), waterGamma) : color;
