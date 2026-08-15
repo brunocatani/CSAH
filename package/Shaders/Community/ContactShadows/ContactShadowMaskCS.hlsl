@@ -145,7 +145,7 @@ uint StableRayStride(uint sampleCount)
     }
 }
 
-bool LoadCompatibleViewDepth(
+bool LoadCompatibleViewPosition(
     int2 requestedPixel,
     float centerDepth,
     uint eye,
@@ -153,7 +153,7 @@ bool LoadCompatibleViewDepth(
     uint eyeLastPixel,
     uint height,
     float2 dimensions,
-    out float viewDepth)
+    out float3 viewPosition)
 {
     const int2 samplePixel = int2(
         clamp(requestedPixel.x, (int)eyeFirstPixel, (int)eyeLastPixel),
@@ -161,18 +161,19 @@ bool LoadCompatibleViewDepth(
     const float sampleDepth = SceneDepth.Load(int3(samplePixel, 0));
     if (sampleDepth <= 1.0e-6f ||
         (sampleDepth <= 0.01f) != (centerDepth <= 0.01f)) {
-        viewDepth = 0.0f;
+        viewPosition = 0.0f;
         return false;
     }
 
-    viewDepth = abs(ReconstructViewDepth(
+    viewPosition = ReconstructViewPosition(
         (float2(samplePixel) + 0.5f) / dimensions,
         sampleDepth,
-        eye));
-    return viewDepth > 0.0f && viewDepth < 1.0e8f;
+        eye);
+    return all(abs(viewPosition) < 1.0e8f) &&
+        abs(viewPosition.z) > 0.0f;
 }
 
-bool SampleEdgeAwareViewDepth(
+bool SampleEdgeAwareViewPosition(
     float2 samplePackedUv,
     float2 rayPixelDelta,
     float centerDepth,
@@ -181,7 +182,7 @@ bool SampleEdgeAwareViewDepth(
     uint eyeLastPixel,
     uint height,
     float2 dimensions,
-    out float sampledDepth)
+    out float3 sampledPosition)
 {
     // Bend's screen-space shadow resolve interpolates only across the ray's
     // minor axis and switches to point sampling at a depth discontinuity.
@@ -203,9 +204,9 @@ bool SampleEdgeAwareViewDepth(
         int2(majorPixel, minorPixel + 1) :
         int2(minorPixel + 1, majorPixel);
 
-    float firstDepth;
-    float secondDepth;
-    const bool firstValid = LoadCompatibleViewDepth(
+    float3 firstPosition;
+    float3 secondPosition;
+    const bool firstValid = LoadCompatibleViewPosition(
         firstPixel,
         centerDepth,
         eye,
@@ -213,8 +214,8 @@ bool SampleEdgeAwareViewDepth(
         eyeLastPixel,
         height,
         dimensions,
-        firstDepth);
-    const bool secondValid = LoadCompatibleViewDepth(
+        firstPosition);
+    const bool secondValid = LoadCompatibleViewPosition(
         secondPixel,
         centerDepth,
         eye,
@@ -222,23 +223,122 @@ bool SampleEdgeAwareViewDepth(
         eyeLastPixel,
         height,
         dimensions,
-        secondDepth);
+        secondPosition);
     if (!firstValid && !secondValid) {
-        sampledDepth = 0.0f;
+        sampledPosition = 0.0f;
         return false;
     }
     if (!firstValid || !secondValid) {
-        sampledDepth = firstValid ? firstDepth : secondDepth;
+        sampledPosition = firstValid ? firstPosition : secondPosition;
         return true;
     }
 
     static const float kBilinearThreshold = 0.02f;
+    const float firstDepth = abs(firstPosition.z);
+    const float secondDepth = abs(secondPosition.z);
     const float relativeDifference =
         abs(firstDepth - secondDepth) /
         max(min(firstDepth, secondDepth), 1.0f);
-    sampledDepth = relativeDifference > kBilinearThreshold ?
-        (minorWeight < 0.5f ? firstDepth : secondDepth) :
-        lerp(firstDepth, secondDepth, minorWeight);
+    sampledPosition = relativeDifference > kBilinearThreshold ?
+        (minorWeight < 0.5f ? firstPosition : secondPosition) :
+        lerp(firstPosition, secondPosition, minorWeight);
+    return true;
+}
+
+float3 ClosestSurfaceTangent(
+    float3 center,
+    float3 negativePosition,
+    bool negativeValid,
+    float3 positivePosition,
+    bool positiveValid)
+{
+    const float3 negativeTangent = center - negativePosition;
+    const float3 positiveTangent = positivePosition - center;
+    if (negativeValid && positiveValid) {
+        return dot(negativeTangent, negativeTangent) <
+                dot(positiveTangent, positiveTangent) ?
+            negativeTangent : positiveTangent;
+    }
+    return negativeValid ? negativeTangent : positiveTangent;
+}
+
+bool EstimateReceiverNormal(
+    uint2 pixel,
+    float centerDepth,
+    float3 surface,
+    uint eye,
+    uint eyeFirstPixel,
+    uint eyeLastPixel,
+    uint height,
+    float2 dimensions,
+    out float3 receiverNormal)
+{
+    float3 leftPosition;
+    float3 rightPosition;
+    float3 upPosition;
+    float3 downPosition;
+    const bool leftValid = LoadCompatibleViewPosition(
+        int2(pixel) + int2(-1, 0),
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        leftPosition);
+    const bool rightValid = LoadCompatibleViewPosition(
+        int2(pixel) + int2(1, 0),
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        rightPosition);
+    const bool upValid = LoadCompatibleViewPosition(
+        int2(pixel) + int2(0, -1),
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        upPosition);
+    const bool downValid = LoadCompatibleViewPosition(
+        int2(pixel) + int2(0, 1),
+        centerDepth,
+        eye,
+        eyeFirstPixel,
+        eyeLastPixel,
+        height,
+        dimensions,
+        downPosition);
+    if ((!leftValid && !rightValid) || (!upValid && !downValid)) {
+        receiverNormal = 0.0f;
+        return false;
+    }
+
+    const float3 tangentX = ClosestSurfaceTangent(
+        surface,
+        leftPosition,
+        leftValid,
+        rightPosition,
+        rightValid);
+    const float3 tangentY = ClosestSurfaceTangent(
+        surface,
+        upPosition,
+        upValid,
+        downPosition,
+        downValid);
+    const float3 unnormalizedNormal = cross(tangentX, tangentY);
+    const float normalLengthSquared = dot(
+        unnormalizedNormal,
+        unnormalizedNormal);
+    if (normalLengthSquared <= 1.0e-10f) {
+        receiverNormal = 0.0f;
+        return false;
+    }
+    receiverNormal = unnormalizedNormal * rsqrt(normalLengthSquared);
     return true;
 }
 
@@ -314,6 +414,33 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         ContactShadowMask[pixel] = cloudVisibility;
         return;
     }
+
+    float3 receiverNormal;
+    if (!EstimateReceiverNormal(
+            pixel,
+            centerDepth,
+            surface,
+            eye,
+            eyeFirstPixel,
+            eyeLastPixel,
+            height,
+            dimensions,
+            receiverNormal)) {
+        ContactShadowMask[pixel] = cloudVisibility;
+        return;
+    }
+    const float normalTowardLight = dot(receiverNormal, towardLight);
+    if (abs(normalTowardLight) <= 1.0e-4f) {
+        ContactShadowMask[pixel] = cloudVisibility;
+        return;
+    }
+    const float planeOrientation = normalTowardLight >= 0.0f ? 1.0f : -1.0f;
+    // View-position reconstruction noise grows with distance. The absolute
+    // floor preserves nearby thin contacts, while the depth-scaled term keeps
+    // a curved receiver's adjacent facets from becoming its own blockers.
+    const float receiverPlaneBias = max(
+        ContactParams1.x * 0.25f,
+        viewDepth * 5.0e-4f);
     const uint sampleCount = (uint)round(clamp(
         ContactParams0.w,
         2.0f,
@@ -354,16 +481,17 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float2 rayPixelDelta = float2(
         (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
         (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
-    float occlusion = 0.0f;
+    float4 laneOcclusion = 0.0f;
     [loop]
     for (uint index = 0u; index < 16u; ++index) {
         if (index >= activeSampleCount) {
             break;
         }
         const uint sampleSlot = (index * sampleStride) % sampleCount;
-        const float step =
+        const float rayStep =
             ((float)sampleSlot + 0.5f) / (float)sampleCount;
-        const float rayFraction = 0.18f * step + 0.82f * step * step;
+        const float rayFraction =
+            0.18f * rayStep + 0.82f * rayStep * rayStep;
         const float rayDistance = rayLength * rayFraction;
         const float4 projected = lerp(startClip, endClip, rayFraction);
         if (projected.w <= 1.0e-5f) {
@@ -380,8 +508,8 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float2 samplePackedUv = float2(
             (sampleEyeUv.x + (float)eye) * 0.5f,
             sampleEyeUv.y);
-        float sampledDepth;
-        if (!SampleEdgeAwareViewDepth(
+        float3 sampledPosition;
+        if (!SampleEdgeAwareViewPosition(
                 samplePackedUv,
                 rayPixelDelta,
                 centerDepth,
@@ -390,10 +518,23 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 eyeLastPixel,
                 height,
                 dimensions,
-                sampledDepth)) {
+                sampledPosition)) {
             continue;
         }
 
+        // A valid blocker must lie on the receiver tangent plane's light-facing
+        // side. Samples on the plane are the receiver itself; samples behind it
+        // are adjacent facets of convex geometry (the mailbox-body failure).
+        // The orientation term makes this independent of the reconstructed
+        // normal's arbitrary winding.
+        const float orientedPlaneSeparation =
+            dot(sampledPosition - surface, receiverNormal) *
+            planeOrientation;
+        if (orientedPlaneSeparation <= receiverPlaneBias) {
+            continue;
+        }
+
+        const float sampledDepth = abs(sampledPosition.z);
         const float candidateDepth = abs(
             surface.z + towardLight.z * rayDistance);
         const float separation = candidateDepth - sampledDepth;
@@ -404,12 +545,41 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             separation,
             ContactParams1.y,
             thickness);
-        occlusion = max(occlusion, hit);
-        if (occlusion >= 0.999f) {
+        const uint lane = sampleSlot & 3u;
+        if (lane == 0u) {
+            laneOcclusion.x = max(laneOcclusion.x, hit);
+        } else if (lane == 1u) {
+            laneOcclusion.y = max(laneOcclusion.y, hit);
+        } else if (lane == 2u) {
+            laneOcclusion.z = max(laneOcclusion.z, hit);
+        } else {
+            laneOcclusion.w = max(laneOcclusion.w, hit);
+        }
+        const float supportedLanes = dot(
+            step(0.35f, laneOcclusion),
+            float4(1.0f, 1.0f, 1.0f, 1.0f));
+        const float strongestLane = max(
+            max(laneOcclusion.x, laneOcclusion.y),
+            max(laneOcclusion.z, laneOcclusion.w));
+        if (supportedLanes >= 2.0f && strongestLane >= 0.999f) {
             break;
         }
     }
 
+    // Isolated depth coincidences form screen-space rays and facet outlines.
+    // Require the blocker to survive in at least two interleaved ray lanes;
+    // genuine blockers retain their plateau while a single false lane fades.
+    const float maxOcclusion = max(
+        max(laneOcclusion.x, laneOcclusion.y),
+        max(laneOcclusion.z, laneOcclusion.w));
+    const float supportFraction = dot(
+        step(0.35f, laneOcclusion),
+        float4(0.25f, 0.25f, 0.25f, 0.25f));
+    const float supportConfidence = smoothstep(
+        0.20f,
+        0.50f,
+        supportFraction);
+    const float occlusion = maxOcclusion * supportConfidence;
     const float contactVisibility =
         1.0f - occlusion * distanceScale * saturate(ContactParams0.x);
     ContactShadowMask[pixel] = contactVisibility * cloudVisibility;

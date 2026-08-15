@@ -95,16 +95,24 @@ foreach(required IN ITEMS
     "const float viewDepth = abs(surface.z)"
     "1.0f - smoothstep(0.0f, fadeDistance, viewDepth)"
     "StableRayStride"
-    "LoadCompatibleViewDepth"
-    "SampleEdgeAwareViewDepth"
+    "LoadCompatibleViewPosition"
+    "SampleEdgeAwareViewPosition"
     "const float relativeDifference"
     "relativeDifference > kBilinearThreshold"
+    "EstimateReceiverNormal"
+    "ClosestSurfaceTangent"
+    "const float normalTowardLight"
+    "const float receiverPlaneBias"
+    "const float orientedPlaneSeparation"
     "BlockerOcclusion"
     "const float entry = smoothstep"
     "const float exit = 1.0f - smoothstep"
     "const uint stableSampleFloor = min(sampleCount, 8u)"
     "const uint sampleSlot = (index * sampleStride) % sampleCount"
-    "occlusion = max(occlusion, hit)"
+    "float4 laneOcclusion = 0.0f"
+    "const float supportFraction"
+    "const float supportConfidence"
+    "maxOcclusion * supportConfidence"
     "occlusion * distanceScale"
     "index < 16u")
   string(FIND "${maskShaderSource}" "${required}" found)
@@ -149,7 +157,10 @@ foreach(forbidden IN ITEMS
     "clamp(ContactParams0.w, 2.0f, 16.0f) * distanceScale"
     "1.0f - separation / thickness"
     "hit * sampleWeight"
-    "sampleBudget")
+    "sampleBudget"
+    "LoadCompatibleViewDepth"
+    "SampleEdgeAwareViewDepth"
+    "occlusion = max(occlusion, hit)")
   string(FIND "${maskShaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
