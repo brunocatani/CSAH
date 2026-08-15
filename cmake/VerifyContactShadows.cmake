@@ -103,16 +103,14 @@ foreach(required IN ITEMS
     "ClosestSurfaceTangent"
     "const float normalTowardLight"
     "const float receiverPlaneBias"
+    "viewDepth * 1.0e-6f"
     "const float orientedPlaneSeparation"
     "BlockerOcclusion"
     "const float entry = smoothstep"
     "const float exit = 1.0f - smoothstep"
     "const uint stableSampleFloor = min(sampleCount, 8u)"
     "const uint sampleSlot = (index * sampleStride) % sampleCount"
-    "float4 laneOcclusion = 0.0f"
-    "const float supportFraction"
-    "const float supportConfidence"
-    "maxOcclusion * supportConfidence"
+    "occlusion = max(occlusion, hit)"
     "occlusion * distanceScale"
     "index < 16u")
   string(FIND "${maskShaderSource}" "${required}" found)
@@ -160,7 +158,10 @@ foreach(forbidden IN ITEMS
     "sampleBudget"
     "LoadCompatibleViewDepth"
     "SampleEdgeAwareViewDepth"
-    "occlusion = max(occlusion, hit)")
+    "float4 laneOcclusion"
+    "supportConfidence"
+    "ContactParams1.x * 0.25f"
+    "viewDepth * 5.0e-4f")
   string(FIND "${maskShaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

@@ -435,12 +435,12 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         return;
     }
     const float planeOrientation = normalTowardLight >= 0.0f ? 1.0f : -1.0f;
-    // View-position reconstruction noise grows with distance. The absolute
-    // floor preserves nearby thin contacts, while the depth-scaled term keeps
-    // a curved receiver's adjacent facets from becoming its own blockers.
+    // Reject only tangent-plane reconstruction noise. Contact shadows exist
+    // specifically to resolve very close blockers, so this tolerance must not
+    // inherit the much wider blocker-thickness slab or grow visibly with depth.
     const float receiverPlaneBias = max(
-        ContactParams1.x * 0.25f,
-        viewDepth * 5.0e-4f);
+        1.0e-3f,
+        viewDepth * 1.0e-6f);
     const uint sampleCount = (uint)round(clamp(
         ContactParams0.w,
         2.0f,
@@ -481,7 +481,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float2 rayPixelDelta = float2(
         (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
         (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
-    float4 laneOcclusion = 0.0f;
+    float occlusion = 0.0f;
     [loop]
     for (uint index = 0u; index < 16u; ++index) {
         if (index >= activeSampleCount) {
@@ -545,41 +545,12 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             separation,
             ContactParams1.y,
             thickness);
-        const uint lane = sampleSlot & 3u;
-        if (lane == 0u) {
-            laneOcclusion.x = max(laneOcclusion.x, hit);
-        } else if (lane == 1u) {
-            laneOcclusion.y = max(laneOcclusion.y, hit);
-        } else if (lane == 2u) {
-            laneOcclusion.z = max(laneOcclusion.z, hit);
-        } else {
-            laneOcclusion.w = max(laneOcclusion.w, hit);
-        }
-        const float supportedLanes = dot(
-            step(0.35f, laneOcclusion),
-            float4(1.0f, 1.0f, 1.0f, 1.0f));
-        const float strongestLane = max(
-            max(laneOcclusion.x, laneOcclusion.y),
-            max(laneOcclusion.z, laneOcclusion.w));
-        if (supportedLanes >= 2.0f && strongestLane >= 0.999f) {
+        occlusion = max(occlusion, hit);
+        if (occlusion >= 0.999f) {
             break;
         }
     }
 
-    // Isolated depth coincidences form screen-space rays and facet outlines.
-    // Require the blocker to survive in at least two interleaved ray lanes;
-    // genuine blockers retain their plateau while a single false lane fades.
-    const float maxOcclusion = max(
-        max(laneOcclusion.x, laneOcclusion.y),
-        max(laneOcclusion.z, laneOcclusion.w));
-    const float supportFraction = dot(
-        step(0.35f, laneOcclusion),
-        float4(0.25f, 0.25f, 0.25f, 0.25f));
-    const float supportConfidence = smoothstep(
-        0.20f,
-        0.50f,
-        supportFraction);
-    const float occlusion = maxOcclusion * supportConfidence;
     const float contactVisibility =
         1.0f - occlusion * distanceScale * saturate(ContactParams0.x);
     ContactShadowMask[pixel] = contactVisibility * cloudVisibility;
