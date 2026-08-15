@@ -151,7 +151,7 @@ SkyPixelOutput PSMain(SkyPixelInput input)
         skyBaseSampler, input.baseUv);
     output.color.xyz = ApplySkyScale(
         LinearLightingSky(baseColor.xyz) *
-        LinearLightingSkyProducerColor(input.color.xyz));
+        LinearLightingSkyCloudColor(input.color.xyz));
     output.color.w = saturate(skyParameters.x - 0.4f) *
         baseColor.w * input.color.w * (1.0f / 0.6f);
 #elif SKY_TECHNIQUE == 8
@@ -159,7 +159,7 @@ SkyPixelOutput PSMain(SkyPixelInput input)
         skyBaseSampler, input.baseUv);
     float3 skyColor = ApplySkyScale(
         LinearLightingSky(baseColor.xyz) *
-        LinearLightingSkyProducerColor(input.color.xyz));
+        LinearLightingSkyCloudColor(input.color.xyz));
     const float2 noiseUv = input.position.xy * 0.125f;
     const float noise =
         skyNoiseTexture.Sample(skyNoiseSampler, noiseUv).x * 0.0078125f -

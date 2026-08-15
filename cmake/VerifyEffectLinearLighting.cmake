@@ -57,7 +57,8 @@ foreach(required IN ITEMS
     "LinearLightingEffectMaterialColor(EffectBaseColor.xyz)"
     "LinearLightingEffectMaterialColor(baseColor.xyz)"
     "LinearLightingEffectGeometryColor("
-    "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x)"
+    "LinearLightingEffectMembraneColor("
+    "LinearLightingEffectMembraneCoordinate(EffectPropertyColor.x)"
     "(EFFECT_TECHNIQUE & 0x1)"
     "(EFFECT_TECHNIQUE & 0x4)"
     "(EFFECT_TECHNIQUE & 0x20)"
@@ -119,7 +120,10 @@ endforeach()
 foreach(forbidden IN ITEMS
     "LinearLightingEffect(EffectBaseColor.xyz)"
     "LinearLightingEffect(EffectPropertyColor.xyz)"
-    "pow(abs(EffectPropertyColor.x), 1.0f / 2.2f)")
+    "pow(abs(EffectPropertyColor.x), 1.0f / 2.2f)"
+    "baseColor.xyz *= LinearLightingEffectGeometryColor(\n        EffectPropertyColor.xyz);"
+    "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x) *\n        membraneGrayscaleScale"
+    "EffectMembraneRimColor * membraneFactor")
   string(FIND "${shaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

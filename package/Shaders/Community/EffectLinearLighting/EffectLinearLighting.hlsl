@@ -418,13 +418,13 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
         LinearLightingEffectVertexColor(input.vertexColor);
     baseColor *= vertexColor;
 #endif
-    baseColor.xyz *= LinearLightingEffectGeometryColor(
+    baseColor.xyz *= LinearLightingEffectMembraneColor(
         EffectPropertyColor.xyz);
     baseColor.w *= EffectPropertyColor.w;
 
 #if (EFFECT_TECHNIQUE & 0x00002000) != 0
     float grayscaleColorY =
-        LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x) *
+        LinearLightingEffectMembraneCoordinate(EffectPropertyColor.x) *
         membraneGrayscaleScale;
 #if (EFFECT_TECHNIQUE & 0x1) != 0
     grayscaleColorY *= input.vertexColor.x;
@@ -456,8 +456,9 @@ float4 PSMain(EffectPixelInput input) : SV_Target0
                 input.membraneViewVector.xyz,
                 membraneNormal)),
         EffectMembraneVariables.x);
-    const float4 membraneColor =
-        EffectMembraneRimColor * membraneFactor;
+    const float4 membraneColor = float4(
+        LinearLightingEffectMembraneColor(EffectMembraneRimColor.xyz),
+        EffectMembraneRimColor.w) * membraneFactor;
     baseColor.xyz += membraneColor.xyz * membraneColor.w;
     baseColor.w += membraneColor.w;
     if (enableLinearLighting != 0u) {

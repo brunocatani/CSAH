@@ -30,30 +30,64 @@ namespace
     constexpr float kTolerance = 8.0e-5F;
     constexpr Pixel kShallowColor{ 0.42F, -0.63F, 0.31F, 0.77F };
     constexpr Pixel kDeepColor{ 0.18F, 0.36F, -0.72F, 0.54F };
-    constexpr std::array<const char*, 17> kContracts{
+    constexpr Pixel kSunColor{ 0.74F, 0.28F, -0.46F, 1.35F };
+    constexpr Pixel kFogNearColor{ 0.31F, -0.52F, 0.68F, 0.23F };
+    constexpr Pixel kFogFarColor{ 0.77F, 0.44F, -0.19F, 0.81F };
+    constexpr Pixel kPointLightColor{ 0.61F, -0.37F, 0.24F, 0.93F };
+    constexpr std::array<const char*, 31> kContracts{
         "WaterColor_00000000",
         "WaterColor_0000001C",
+        "WaterColor_0000003C",
         "WaterColor_0000005E",
+        "WaterColor_0000007E",
         "WaterColor_0000009F",
+        "WaterColor_000000BF",
         "WaterColor_0000021C",
+        "WaterColor_0000023C",
         "WaterColor_0000025E",
+        "WaterColor_0000027E",
         "WaterColor_0000029F",
+        "WaterColor_000002BF",
         "WaterColor_00001002",
         "WaterColor_0000105E",
         "WaterColor_0000109F",
         "WaterColor_0000121E",
         "WaterColor_0000125E",
         "WaterColor_00001A8F",
+        "WaterColor_00002002",
+        "WaterColor_00003002",
+        "WaterColor_00004002",
+        "WaterColor_00006002",
+        "WaterColor_00008002",
+        "WaterColor_00009000",
+        "WaterColor_0000A002",
+        "WaterColor_0000C002",
         "WaterColor_00010000",
         "WaterColor_00010204",
         "WaterColor_00018010",
         "WaterColor_00020204",
     };
 
+    struct alignas(16) WaterPerFrame
+    {
+        Pixel padding0{};
+        Pixel padding1{};
+        Pixel sun{};
+    };
+
     struct alignas(16) WaterPerMaterial
     {
-        Pixel shallow;
-        Pixel deep;
+        Pixel shallow{};
+        Pixel deep{};
+        std::array<Pixel, 4> padding{};
+        Pixel fogNear{};
+        Pixel fogFar{};
+    };
+
+    struct alignas(16) WaterPerLights
+    {
+        std::array<Pixel, 20> padding{};
+        Pixel pointLight{};
     };
 
     struct RenderTarget
@@ -158,7 +192,8 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
 
     ComPtr<ID3D11PixelShader> compileTransformShader(
         ID3D11Device* device,
-        const std::filesystem::path& path)
+        const std::filesystem::path& path,
+        const char* entryPoint)
     {
         ComPtr<ID3DBlob> bytecode;
         ComPtr<ID3DBlob> errors;
@@ -166,7 +201,7 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
             path.c_str(),
             nullptr,
             D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            "PSMain",
+            entryPoint,
             "ps_5_0",
             D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3 |
                 D3DCOMPILE_WARNINGS_ARE_ERRORS,
@@ -180,7 +215,8 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
                     errors->GetBufferSize()) :
                 "no compiler diagnostics";
             throw std::runtime_error(
-                "Water transform shader compile failed: " + detail);
+                std::string("Water transform shader compile failed for ") +
+                entryPoint + ": " + detail);
         }
         ComPtr<ID3D11PixelShader> shader;
         require(
@@ -255,7 +291,9 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         ID3D11DeviceContext* context,
         ID3D11VertexShader* vertexShader,
         ID3D11PixelShader* pixelShader,
+        ID3D11Buffer* waterFrameBuffer,
         ID3D11Buffer* materialBuffer,
+        ID3D11Buffer* lightBuffer,
         ID3D11Buffer* frameBuffer)
     {
         std::array<RenderTarget, 2> targets{
@@ -276,7 +314,9 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(vertexShader, nullptr, 0);
         context->PSSetShader(pixelShader, nullptr, 0);
+        context->PSSetConstantBuffers(0, 1, &waterFrameBuffer);
         context->PSSetConstantBuffers(1, 1, &materialBuffer);
+        context->PSSetConstantBuffers(2, 1, &lightBuffer);
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->Draw(3, 0);
 
@@ -312,11 +352,15 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         return true;
     }
 
-    Pixel expectedEnabled(const Pixel& color, float gamma)
+    Pixel expectedEnabled(
+        const Pixel& color,
+        float gamma,
+        float multiplier = 1.0F)
     {
         Pixel result = color;
         for (std::size_t channel = 0; channel < 3; ++channel) {
-            result[channel] = std::pow(std::abs(color[channel]), gamma);
+            result[channel] =
+                std::pow(std::abs(color[channel]), gamma) * multiplier;
         }
         return result;
     }
@@ -359,18 +403,40 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         }
 
         const auto vertexShader = createVertexShader(device.Get());
-        const auto transformShader = compileTransformShader(
-            device.Get(),
-            root /
-                "package/Shaders/Community/WaterLinearLighting/WaterColorTransformTemplate.hlsl");
-        const WaterPerMaterial material{ kShallowColor, kDeepColor };
+        const auto transformSource = root /
+            "package/Shaders/Community/WaterLinearLighting/WaterColorTransformTemplate.hlsl";
+        const auto shallowDeepShader = compileTransformShader(
+            device.Get(), transformSource, "PSMain");
+        const auto sunShader = compileTransformShader(
+            device.Get(), transformSource, "PSSunMain");
+        const auto fogShader = compileTransformShader(
+            device.Get(), transformSource, "PSFogMain");
+        const auto pointLightShader = compileTransformShader(
+            device.Get(), transformSource, "PSPointMain");
+        const WaterPerFrame waterFrame{ {}, {}, kSunColor };
+        const WaterPerMaterial material{
+            kShallowColor,
+            kDeepColor,
+            {},
+            kFogNearColor,
+            kFogFarColor,
+        };
+        const WaterPerLights lights{ {}, kPointLightColor };
+        const auto waterFrameBuffer =
+            createConstantBuffer(device.Get(), waterFrame);
         const auto materialBuffer = createConstantBuffer(device.Get(), material);
+        const auto lightBuffer = createConstantBuffer(device.Get(), lights);
 
         Settings disabledSettings{};
         disabledSettings.enabled = false;
         Settings enabledSettings = disabledSettings;
         enabledSettings.enabled = true;
+        enabledSettings.preserveNativeDarkness = false;
+        enabledSettings.lightGamma = 1.65F;
+        enabledSettings.fogGamma = 1.93F;
         enabledSettings.waterGamma = 1.75F;
+        enabledSettings.directionalLightMultiplier = 1.17F;
+        enabledSettings.pointLightMultiplier = 0.83F;
         const FrameData disabledFrame =
             makeFrameData(disabledSettings, true, false, 1.0F);
         const FrameData enabledFrame =
@@ -380,29 +446,85 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         const auto enabledFrameBuffer =
             createConstantBuffer(device.Get(), enabledFrame);
 
-        const auto disabled = renderTransform(
-            device.Get(), context.Get(), vertexShader.Get(), transformShader.Get(),
-            materialBuffer.Get(), disabledFrameBuffer.Get());
-        const auto enabled = renderTransform(
-            device.Get(), context.Get(), vertexShader.Get(), transformShader.Get(),
-            materialBuffer.Get(), enabledFrameBuffer.Get());
+        const auto renderWith = [&](
+                                    ID3D11PixelShader* shader,
+                                    ID3D11Buffer* frameBuffer) {
+            return renderTransform(
+                device.Get(),
+                context.Get(),
+                vertexShader.Get(),
+                shader,
+                waterFrameBuffer.Get(),
+                materialBuffer.Get(),
+                lightBuffer.Get(),
+                frameBuffer);
+        };
+        const auto disabledShallowDeep = renderWith(
+            shallowDeepShader.Get(), disabledFrameBuffer.Get());
+        const auto enabledShallowDeep = renderWith(
+            shallowDeepShader.Get(), enabledFrameBuffer.Get());
+        const auto disabledSun = renderWith(
+            sunShader.Get(), disabledFrameBuffer.Get());
+        const auto enabledSun = renderWith(
+            sunShader.Get(), enabledFrameBuffer.Get());
+        const auto disabledFog = renderWith(
+            fogShader.Get(), disabledFrameBuffer.Get());
+        const auto enabledFog = renderWith(
+            fogShader.Get(), enabledFrameBuffer.Get());
+        const auto disabledPointLight = renderWith(
+            pointLightShader.Get(), disabledFrameBuffer.Get());
+        const auto enabledPointLight = renderWith(
+            pointLightShader.Get(), enabledFrameBuffer.Get());
 
         bool passed = true;
-        passed &= compare(disabled[0], kShallowColor, "disabled shallow parity");
-        passed &= compare(disabled[1], kDeepColor, "disabled deep parity");
         passed &= compare(
-            enabled[0],
+            disabledShallowDeep[0], kShallowColor, "disabled shallow parity");
+        passed &= compare(
+            disabledShallowDeep[1], kDeepColor, "disabled deep parity");
+        passed &= compare(
+            enabledShallowDeep[0],
             expectedEnabled(kShallowColor, enabledSettings.waterGamma),
             "enabled shallow model");
         passed &= compare(
-            enabled[1],
+            enabledShallowDeep[1],
             expectedEnabled(kDeepColor, enabledSettings.waterGamma),
             "enabled deep model");
+        passed &= compare(disabledSun[0], kSunColor, "disabled sun parity");
+        passed &= compare(
+            enabledSun[0],
+            expectedEnabled(
+                kSunColor,
+                enabledSettings.lightGamma / 2.2F,
+                enabledSettings.directionalLightMultiplier),
+            "enabled sun residual model");
+        passed &= compare(
+            disabledFog[0], kFogNearColor, "disabled near fog parity");
+        passed &= compare(
+            disabledFog[1], kFogFarColor, "disabled far fog parity");
+        passed &= compare(
+            enabledFog[0],
+            expectedEnabled(kFogNearColor, enabledSettings.fogGamma),
+            "enabled near fog model");
+        passed &= compare(
+            enabledFog[1],
+            expectedEnabled(kFogFarColor, enabledSettings.fogGamma),
+            "enabled far fog model");
+        passed &= compare(
+            disabledPointLight[0],
+            kPointLightColor,
+            "disabled point-light parity");
+        passed &= compare(
+            enabledPointLight[0],
+            expectedEnabled(
+                kPointLightColor,
+                enabledSettings.lightGamma / 2.2F,
+                enabledSettings.pointLightMultiplier),
+            "enabled point-light residual model");
         if (!passed) {
             return 1;
         }
         std::cout <<
-            "Water Linear Lighting created all 17 transformed FO4VR shaders and passed disabled/enabled color-transform parity.\n";
+            "Water Linear Lighting created all 31 transformed FO4VR shaders and passed shallow/deep, sun, fog, and point-light transform parity.\n";
         return 0;
     }
 }

@@ -183,14 +183,27 @@ float3 LinearLightingEffectGeometryColor(float3 color)
         color;
 }
 
-// Some Effect techniques use PropertyColor.x as an encoded grayscale lookup
-// coordinate. Recover the original coordinate from the active producer space.
-float LinearLightingEffectGeometryCoordinate(float color)
+// FO4VR's membrane helper independently applies the native fixed 2.2 decode
+// to both its fill and rim RGB constants. Unlike the general per-geometry
+// Effect producer, that helper is not controlled by the runtime light
+// producer exponent.
+float3 LinearLightingEffectMembraneColor(float3 color)
 {
-    const float producerGamma = enableLinearLighting != 0u ?
-        max(asfloat(linearLightingPad0), 1e-5f) :
-        kLinearLightingVanillaProducerGamma;
-    return pow(abs(color), 1.0f / producerGamma);
+    return enableLinearLighting != 0u ?
+        pow(
+            abs(color),
+            effectGamma / kLinearLightingVanillaProducerGamma) :
+        color;
+}
+
+// Membrane grayscale coordinates originate in the same fixed-2.2 helper as
+// the membrane fill colour, so recover the authored coordinate from that
+// producer regardless of the general Effect producer's live exponent.
+float LinearLightingEffectMembraneCoordinate(float color)
+{
+    return pow(
+        abs(color),
+        1.0f / kLinearLightingVanillaProducerGamma);
 }
 
 float LinearLightingEffectAlpha(float alpha)

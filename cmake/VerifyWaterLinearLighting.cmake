@@ -30,7 +30,7 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "kWaterShaderContractCount = 17"
+    "kWaterShaderContractCount = 31"
     "matchingWaterShaderContractMask"
     "waterReplacementBinds")
   string(FIND "${runtimeHeader}" "${required}" found)
@@ -41,12 +41,26 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "float4 SunColor : packoffset(c2);"
     "float4 ShallowColor : packoffset(c0);"
     "float4 DeepColor : packoffset(c1);"
+    "float4 FogNearColor : packoffset(c6);"
+    "float4 FogFarColor : packoffset(c7);"
+    "float4 PointLightColor : packoffset(c20);"
     "uint EnableLinearLighting : packoffset(c0.x);"
+    "float LightGamma : packoffset(c0.w);"
+    "float FogGamma : packoffset(c2.x);"
     "float WaterGamma : packoffset(c3.y);"
+    "float DirectionalLightMultiplier : packoffset(c4.x);"
+    "float PointLightMultiplier : packoffset(c4.y);"
     "pow(abs(output.shallow.xyz), WaterGamma)"
-    "pow(abs(output.deep.xyz), WaterGamma)")
+    "pow(abs(output.deep.xyz), WaterGamma)"
+    "LightGamma / NativeProducerGamma"
+    "pow(abs(output.shallow.xyz), FogGamma)"
+    "pow(abs(output.deep.xyz), FogGamma)"
+    "float4 PSSunMain() : SV_Target0"
+    "TransformOutput PSFogMain()"
+    "float4 PSPointMain() : SV_Target0")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -64,9 +78,9 @@ string(REGEX MATCHALL
   "IDR_LINEAR_LIGHTING_WATER_[0-9A-F]+_PS RCDATA"
   waterResources "${resourceSource}")
 list(LENGTH waterResources waterResourceCount)
-if(NOT waterResourceCount EQUAL 17)
+if(NOT waterResourceCount EQUAL 31)
   message(FATAL_ERROR
-    "Water Linear Lighting regression: expected seventeen embedded shaders")
+    "Water Linear Lighting regression: expected thirty-one embedded shaders")
 endif()
 
 string(FIND "${runtimeSource}"

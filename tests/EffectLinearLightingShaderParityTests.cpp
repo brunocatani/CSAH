@@ -1634,11 +1634,11 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                 std::pow(std::abs(color), settings->effectGamma) :
                 color;
         };
-        const auto effectGeometryColor = [&](float color) {
+        const auto effectMembraneColor = [&](float color) {
             return enabled ?
                 std::pow(
                     std::abs(color),
-                    settings->effectGamma / settings->lightGamma) :
+                    settings->effectGamma / 2.2F) :
                 color;
         };
 
@@ -1678,7 +1678,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         for (std::size_t channel = 0; channel < 3; ++channel) {
             baseColor[channel] =
                 effectColor(kTextureColor[channel]) *
-                effectGeometryColor(kPropertyColor[channel]);
+                effectMembraneColor(kPropertyColor[channel]);
             if (contract.vertexColored()) {
                 baseColor[channel] *= enabled ?
                     effectColor(kVertexColor[channel]) :
@@ -1696,7 +1696,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             auto v =
                 std::pow(
                     kPropertyColor[0],
-                    1.0F / (enabled ? settings->lightGamma : 2.2F)) *
+                    1.0F / 2.2F) *
                 membraneGrayscaleScale;
             if (contract.vertexColored()) {
                 v *= kVertexColor[0];
@@ -1732,7 +1732,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         baseColor[3] += membraneAlpha;
         for (std::size_t channel = 0; channel < 3; ++channel) {
             baseColor[channel] +=
-                kMembraneRimColor[channel] *
+                effectMembraneColor(kMembraneRimColor[channel]) *
                 membraneFactor * membraneAlpha;
             if (enabled) {
                 baseColor[channel] *= settings->membraneEffectMultiplier;

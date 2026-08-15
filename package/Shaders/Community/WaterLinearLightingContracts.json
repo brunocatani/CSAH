@@ -12,10 +12,22 @@
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000001C_PS"
   },
   {
+    "name": "WaterColor_0000003C",
+    "descriptor": 60,
+    "aliases": [62],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000003C_PS"
+  },
+  {
     "name": "WaterColor_0000005E",
     "descriptor": 94,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000005E_PS"
+  },
+  {
+    "name": "WaterColor_0000007E",
+    "descriptor": 126,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000007E_PS"
   },
   {
     "name": "WaterColor_0000009F",
@@ -24,10 +36,22 @@
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000009F_PS"
   },
   {
+    "name": "WaterColor_000000BF",
+    "descriptor": 191,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_000000BF_PS"
+  },
+  {
     "name": "WaterColor_0000021C",
     "descriptor": 540,
     "aliases": [542, 543, 2590],
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000021C_PS"
+  },
+  {
+    "name": "WaterColor_0000023C",
+    "descriptor": 572,
+    "aliases": [574],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000023C_PS"
   },
   {
     "name": "WaterColor_0000025E",
@@ -36,10 +60,22 @@
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000025E_PS"
   },
   {
+    "name": "WaterColor_0000027E",
+    "descriptor": 638,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000027E_PS"
+  },
+  {
     "name": "WaterColor_0000029F",
     "descriptor": 671,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_WATER_0000029F_PS"
+  },
+  {
+    "name": "WaterColor_000002BF",
+    "descriptor": 703,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_000002BF_PS"
   },
   {
     "name": "WaterColor_00001002",
@@ -76,6 +112,54 @@
     "descriptor": 6799,
     "aliases": [],
     "resource": "IDR_LINEAR_LIGHTING_WATER_00001A8F_PS"
+  },
+  {
+    "name": "WaterColor_00002002",
+    "descriptor": 8194,
+    "aliases": [8195, 8734],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00002002_PS"
+  },
+  {
+    "name": "WaterColor_00003002",
+    "descriptor": 12290,
+    "aliases": [],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00003002_PS"
+  },
+  {
+    "name": "WaterColor_00004002",
+    "descriptor": 16386,
+    "aliases": [16387, 147456],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00004002_PS"
+  },
+  {
+    "name": "WaterColor_00006002",
+    "descriptor": 24578,
+    "aliases": [24579],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00006002_PS"
+  },
+  {
+    "name": "WaterColor_00008002",
+    "descriptor": 32770,
+    "aliases": [32780],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00008002_PS"
+  },
+  {
+    "name": "WaterColor_00009000",
+    "descriptor": 36864,
+    "aliases": [36868, 37380, 37892, 38404, 38912, 39428],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_00009000_PS"
+  },
+  {
+    "name": "WaterColor_0000A002",
+    "descriptor": 40962,
+    "aliases": [40976, 40977],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000A002_PS"
+  },
+  {
+    "name": "WaterColor_0000C002",
+    "descriptor": 49154,
+    "aliases": [49155],
+    "resource": "IDR_LINEAR_LIGHTING_WATER_0000C002_PS"
   },
   {
     "name": "WaterColor_00010000",

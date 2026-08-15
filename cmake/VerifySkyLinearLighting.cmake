@@ -87,9 +87,9 @@ string(REGEX MATCHALL
   "LinearLightingSkyCloudColor\\(input\\.color\\.xyz\\)"
   cloudColorPaths "${shaderSource}")
 list(LENGTH cloudColorPaths cloudColorPathCount)
-if(NOT cloudColorPathCount EQUAL 3)
+if(NOT cloudColorPathCount EQUAL 5)
   message(FATAL_ERROR
-    "Sky Linear Lighting regression: descriptors 4-6 must own exactly three cloud color decodes")
+    "Sky Linear Lighting regression: descriptors 4-8 must own exactly five cloud color decodes")
 endif()
 
 foreach(forbidden IN ITEMS

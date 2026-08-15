@@ -19,24 +19,38 @@ class ContractError(RuntimeError):
 
 EXPECTED_WATER_SLOT_COUNT = 92
 EXPECTED_WATER_IDENTITY_COUNT = 38
-EXPECTED_WATER_CONTRACT_COUNT = 17
+EXPECTED_WATER_CONTRACT_COUNT = 31
 EXPECTED_WATER_FXP_DIGEST = (
     "405cdadcd02ce28969c821872af9c36fb07627a554cdbd100e9397ef4c8d27c6"
 )
 EXPECTED_WATER_CONTRACT_DESCRIPTORS = {
     0x00000000,
     0x0000001C,
+    0x0000003C,
     0x0000005E,
+    0x0000007E,
     0x0000009F,
+    0x000000BF,
     0x0000021C,
+    0x0000023C,
     0x0000025E,
+    0x0000027E,
     0x0000029F,
+    0x000002BF,
     0x00001002,
     0x0000105E,
     0x0000109F,
     0x0000121E,
     0x0000125E,
     0x00001A8F,
+    0x00002002,
+    0x00003002,
+    0x00004002,
+    0x00006002,
+    0x00008002,
+    0x00009000,
+    0x0000A002,
+    0x0000C002,
     0x00010000,
     0x00010204,
     0x00018010,
@@ -72,6 +86,43 @@ class Operand:
     end: int
     operand_type: int
     immediate_indices: tuple[int | None, ...]
+    index_offsets: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class WaterDomainUsage:
+    shallow_references: int
+    deep_references: int
+    sun_references: int
+    fog_near_references: int
+    fog_far_references: int
+    point_light_references: int
+
+    @property
+    def shallow_deep(self) -> bool:
+        return self.shallow_references != 0 or self.deep_references != 0
+
+    @property
+    def sun(self) -> bool:
+        return self.sun_references != 0
+
+    @property
+    def fog(self) -> bool:
+        return self.fog_near_references != 0 or self.fog_far_references != 0
+
+    @property
+    def point_light(self) -> bool:
+        return self.point_light_references != 0
+
+    @property
+    def active(self) -> bool:
+        return self.shallow_deep or self.sun or self.fog or self.point_light
+
+
+@dataclass(frozen=True)
+class TransformTemplate:
+    temporary_count: int
+    instructions: tuple[tuple[int, ...], ...]
 
 
 def u32(data: bytes | bytearray, offset: int) -> int:
@@ -291,36 +342,48 @@ def parse_operand(words: list[int], start: int, end: int) -> Operand:
             cursor += 1 + count
         if cursor > end:
             raise ContractError("DXBC immediate operand escapes its instruction")
-        return Operand(start, cursor, operand_type, ())
+        return Operand(start, cursor, operand_type, (), ())
 
     indices: list[int | None] = []
+    offsets: list[int | None] = []
     for dimension in range(index_dimension):
         representation = (token >> (22 + dimension * 3)) & 0x7
         if representation == 0:
             if cursor >= end:
                 raise ContractError("DXBC immediate index is truncated")
             indices.append(words[cursor])
+            offsets.append(words[cursor])
             cursor += 1
         elif representation == 1:
             if cursor + 2 > end:
                 raise ContractError("DXBC 64-bit index is truncated")
             indices.append(None)
+            offsets.append(None)
             cursor += 2
         elif representation == 2:
             relative = parse_operand(words, cursor, end)
             indices.append(None)
+            offsets.append(0)
             cursor = relative.end
         elif representation in (3, 4):
             immediate_words = 1 if representation == 3 else 2
             if cursor + immediate_words > end:
                 raise ContractError("DXBC relative base index is truncated")
+            offset = words[cursor] if immediate_words == 1 else None
             cursor += immediate_words
             relative = parse_operand(words, cursor, end)
             indices.append(None)
+            offsets.append(offset)
             cursor = relative.end
         else:
             raise ContractError("DXBC operand uses an unsupported index representation")
-    return Operand(start, cursor, operand_type, tuple(indices))
+    return Operand(
+        start,
+        cursor,
+        operand_type,
+        tuple(indices),
+        tuple(offsets),
+    )
 
 
 def executable_operands(
@@ -358,38 +421,61 @@ def shader_declarations_and_body(
     return temp_declaration, executable_start, body
 
 
-def is_water_color_operand(operand: Operand) -> bool:
-    return (
-        operand.operand_type == OPERAND_CONSTANT_BUFFER
-        and len(operand.immediate_indices) == 2
-        and operand.immediate_indices[0] == 1
-        and operand.immediate_indices[1] in (0, 1)
-    )
+def constant_buffer_register(operand: Operand) -> tuple[int, int] | None:
+    if (
+        operand.operand_type != OPERAND_CONSTANT_BUFFER
+        or len(operand.immediate_indices) != 2
+        or operand.immediate_indices[0] is None
+        or len(operand.index_offsets) != 2
+        or operand.index_offsets[1] is None
+    ):
+        return None
+    return int(operand.immediate_indices[0]), int(operand.index_offsets[1])
 
 
-def water_color_reference_count(data: bytes) -> int:
+def water_operand_domain(operand: Operand) -> str | None:
+    register = constant_buffer_register(operand)
+    if register == (1, 0):
+        return "shallow"
+    if register == (1, 1):
+        return "deep"
+    if register == (0, 2):
+        return "sun"
+    if register == (1, 6):
+        return "fog_near"
+    if register == (1, 7):
+        return "fog_far"
+    if register == (2, 20):
+        return "point_light"
+    return None
+
+
+def water_domain_usage(data: bytes) -> WaterDomainUsage:
     _, _, _, words = shader_words(data)
-    has_material_buffer = False
+    counts = {
+        "shallow": 0,
+        "deep": 0,
+        "sun": 0,
+        "fog_near": 0,
+        "fog_far": 0,
+        "point_light": 0,
+    }
     for start, end in instructions(words):
-        if (words[start] & 0x7FF) != OPCODE_DCL_CONSTANT_BUFFER:
+        opcode = words[start] & 0x7FF
+        if opcode in (OPCODE_DCL_CONSTANT_BUFFER, OPCODE_DCL_TEMPS, OPCODE_RET):
             continue
-        instruction = words[start:end]
-        operands = executable_operands(instruction, 0, len(instruction))
-        if operands and operands[0].immediate_indices[:1] == (1,):
-            has_material_buffer = True
-            break
-    if not has_material_buffer:
-        return 0
-    _, _, body = shader_declarations_and_body(words)
-    count = 0
-    for start, end in body:
-        if (words[start] & 0x7FF) == OPCODE_RET:
-            continue
-        count += sum(
-            is_water_color_operand(operand)
-            for operand in executable_operands(words, start, end)
-        )
-    return count
+        for operand in executable_operands(words, start, end):
+            domain = water_operand_domain(operand)
+            if domain is not None:
+                counts[domain] += 1
+    return WaterDomainUsage(
+        counts["shallow"],
+        counts["deep"],
+        counts["sun"],
+        counts["fog_near"],
+        counts["fog_far"],
+        counts["point_light"],
+    )
 
 
 def replace_operand_with_temp(
@@ -412,19 +498,22 @@ def replace_operand_with_temp(
     return [token, *words[operand.start + 1 : cursor], register]
 
 
-def rewrite_instruction_water_colors(
-    instruction: list[int], shallow_register: int, deep_register: int
+def rewrite_instruction_water_domains(
+    instruction: list[int], domain_registers: dict[str, int]
 ) -> list[int]:
     operands = executable_operands(instruction, 0, len(instruction))
     replacements: dict[int, tuple[int, list[int]]] = {}
     for operand in operands:
-        if not is_water_color_operand(operand):
+        domain = water_operand_domain(operand)
+        if domain is None or domain not in domain_registers:
             continue
-        color_index = operand.immediate_indices[1]
-        register = shallow_register if color_index == 0 else deep_register
         replacements[operand.start] = (
             operand.end,
-            replace_operand_with_temp(instruction, operand, register),
+            replace_operand_with_temp(
+                instruction,
+                operand,
+                domain_registers[domain],
+            ),
         )
     if not replacements:
         return instruction
@@ -449,28 +538,89 @@ def rewrite_instruction_water_colors(
 def remap_template_operand(
     instruction: list[int],
     operand: Operand,
-    shallow_register: int,
-    deep_register: int,
+    output_registers: dict[int, int],
     scratch_register: int,
+    template_temporary_count: int,
+    point_source: tuple[list[int], Operand] | None,
 ) -> list[int] | None:
     if operand.operand_type == OPERAND_TEMP:
-        if operand.immediate_indices != (0,):
+        if (
+            len(operand.immediate_indices) != 1
+            or operand.immediate_indices[0] is None
+            or int(operand.immediate_indices[0]) >= template_temporary_count
+        ):
             raise ContractError("transform template uses an unexpected temporary")
-        return replace_operand_with_temp(instruction, operand, scratch_register)
+        return replace_operand_with_temp(
+            instruction,
+            operand,
+            scratch_register + int(operand.immediate_indices[0]),
+        )
     if operand.operand_type == OPERAND_OUTPUT:
-        if operand.immediate_indices == (0,):
-            return replace_operand_with_temp(instruction, operand, shallow_register)
-        if operand.immediate_indices == (1,):
-            return replace_operand_with_temp(instruction, operand, deep_register)
-        raise ContractError("transform template uses an unexpected output")
+        if (
+            len(operand.immediate_indices) != 1
+            or operand.immediate_indices[0] is None
+            or int(operand.immediate_indices[0]) not in output_registers
+        ):
+            raise ContractError("transform template uses an unexpected output")
+        return replace_operand_with_temp(
+            instruction,
+            operand,
+            output_registers[int(operand.immediate_indices[0])],
+        )
+    if point_source is not None and water_operand_domain(operand) == "point_light":
+        source_words, source_operand = point_source
+        return replace_operand_indices(
+            instruction,
+            operand,
+            source_words,
+            source_operand,
+        )
     return None
+
+
+def operand_index_start(words: list[int], operand: Operand) -> int:
+    cursor = operand.start + 1
+    extended = (words[operand.start] & 0x80000000) != 0
+    while extended:
+        if cursor >= operand.end:
+            raise ContractError("DXBC extended operand is truncated")
+        extended = (words[cursor] & 0x80000000) != 0
+        cursor += 1
+    return cursor
+
+
+def replace_operand_indices(
+    destination_words: list[int],
+    destination: Operand,
+    source_words: list[int],
+    source: Operand,
+) -> list[int]:
+    if (
+        destination.operand_type != source.operand_type
+        or destination.operand_type != OPERAND_CONSTANT_BUFFER
+    ):
+        raise ContractError("DXBC operand index transplant changed operand type")
+    destination_index_start = operand_index_start(destination_words, destination)
+    source_index_start = operand_index_start(source_words, source)
+    destination_token = destination_words[destination.start]
+    source_token = source_words[source.start]
+    index_bits = ((1 << 11) - 1) << 20
+    destination_token = (
+        (destination_token & ~index_bits) | (source_token & index_bits)
+    )
+    return [
+        destination_token,
+        *destination_words[destination.start + 1 : destination_index_start],
+        *source_words[source_index_start : source.end],
+    ]
 
 
 def remap_template_instruction(
     instruction: list[int],
-    shallow_register: int,
-    deep_register: int,
+    output_registers: dict[int, int],
     scratch_register: int,
+    template_temporary_count: int,
+    point_source: tuple[list[int], Operand] | None = None,
 ) -> list[int]:
     operands = executable_operands(instruction, 0, len(instruction))
     replacements: dict[int, tuple[int, list[int]]] = {}
@@ -478,9 +628,10 @@ def remap_template_instruction(
         replacement = remap_template_operand(
             instruction,
             operand,
-            shallow_register,
-            deep_register,
+            output_registers,
             scratch_register,
+            template_temporary_count,
+            point_source,
         )
         if replacement is not None:
             replacements[operand.start] = (operand.end, replacement)
@@ -495,12 +646,18 @@ def remap_template_instruction(
             end, replacement_words = replacement
             output.extend(replacement_words)
             cursor = end
-    if len(output) != len(instruction):
-        raise ContractError("template operand remap changed instruction length")
+    if len(output) > 0x7F:
+        raise ContractError("remapped transform instruction is too long")
+    output[0] = (output[0] & ~(0x7F << 24)) | (len(output) << 24)
     return output
 
 
-def extract_transform_template(data: bytes) -> tuple[list[int], list[list[int]]]:
+def extract_transform_template(
+    data: bytes,
+    expected_b5_size: int,
+    expected_output_count: int,
+    expected_instruction_count: int,
+) -> tuple[list[int], TransformTemplate]:
     _, _, _, words = shader_words(data)
     dcl_b5: list[list[int]] = []
     for start, end in instructions(words):
@@ -510,34 +667,91 @@ def extract_transform_template(data: bytes) -> tuple[list[int], list[list[int]]]
         operands = executable_operands(instruction, 0, len(instruction))
         if len(operands) != 1:
             raise ContractError("template constant-buffer declaration changed shape")
-        if operands[0].immediate_indices == (5, 4):
+        if operands[0].immediate_indices == (5, expected_b5_size):
             dcl_b5.append(instruction)
     if len(dcl_b5) != 1:
-        raise ContractError("template must declare exactly b5[4]")
+        raise ContractError(
+            f"template must declare exactly b5[{expected_b5_size}]"
+        )
 
-    _, _, body = shader_declarations_and_body(words)
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    temporary_count = words[temp_declaration[0] + 1]
+    if temporary_count == 0:
+        raise ContractError("transform template must own temporary registers")
     body_instructions = [words[start:end] for start, end in body]
     if not body_instructions or (body_instructions[-1][0] & 0x7FF) != OPCODE_RET:
         raise ContractError("transform template must end in ret")
     transform = body_instructions[:-1]
-    if len(transform) != 10:
-        raise ContractError("transform template must contain ten instructions")
-    return dcl_b5[0], transform
+    if len(transform) != expected_instruction_count:
+        raise ContractError(
+            "transform template instruction count changed: "
+            f"expected {expected_instruction_count}, found {len(transform)}"
+        )
+    seen_outputs: set[int] = set()
+    for instruction in transform:
+        for operand in executable_operands(instruction, 0, len(instruction)):
+            if operand.operand_type != OPERAND_OUTPUT:
+                continue
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] is None
+            ):
+                raise ContractError("template output is not immediate-indexed")
+            seen_outputs.add(int(operand.immediate_indices[0]))
+    if seen_outputs != set(range(expected_output_count)):
+        raise ContractError("transform template output matrix changed")
+    return dcl_b5[0], TransformTemplate(
+        temporary_count,
+        tuple(tuple(instruction) for instruction in transform),
+    )
 
 
 def patch_water_shader(
     original: bytes,
     b5_declaration: list[int],
-    transform_template: list[list[int]],
+    templates: dict[str, TransformTemplate],
+    usage: WaterDomainUsage,
 ) -> bytes:
     version, chunks, shader_index, words = shader_words(original)
     temp_declaration, executable_start, body = shader_declarations_and_body(words)
     original_temp_count = words[temp_declaration[0] + 1]
-    if original_temp_count == 0 or original_temp_count > 4093:
+    if original_temp_count == 0 or original_temp_count > 4080:
         raise ContractError("Water shader temporary-register count is invalid")
-    shallow_register = original_temp_count
-    deep_register = original_temp_count + 1
-    scratch_register = original_temp_count + 2
+
+    domain_registers: dict[str, int] = {}
+    next_register = original_temp_count
+    if usage.shallow_deep:
+        domain_registers["shallow"] = next_register
+        domain_registers["deep"] = next_register + 1
+        next_register += 2
+    if usage.sun:
+        domain_registers["sun"] = next_register
+        next_register += 1
+    if usage.fog:
+        domain_registers["fog_near"] = next_register
+        domain_registers["fog_far"] = next_register + 1
+        next_register += 2
+    if usage.point_light:
+        domain_registers["point_light"] = next_register
+        next_register += 1
+
+    active_templates = [
+        templates[name]
+        for name, active in (
+            ("shallow_deep", usage.shallow_deep),
+            ("sun", usage.sun),
+            ("fog", usage.fog),
+            ("point_light", usage.point_light),
+        )
+        if active
+    ]
+    if not active_templates:
+        raise ContractError("Water shader has no qualified colour domain")
+    scratch_register = next_register
+    scratch_count = max(template.temporary_count for template in active_templates)
+    replacement_temp_count = scratch_register + scratch_count
+    if replacement_temp_count > 4096:
+        raise ContractError("Water shader replacement temporary count overflows")
 
     for start, end in instructions(words):
         if (words[start] & 0x7FF) != OPCODE_DCL_CONSTANT_BUFFER:
@@ -547,35 +761,102 @@ def patch_water_shader(
         if operands and operands[0].immediate_indices and operands[0].immediate_indices[0] == 5:
             raise ContractError("Water shader already owns constant buffer b5")
 
+    prologue: list[int] = []
+
+    def append_template(
+        template_name: str,
+        output_registers: dict[int, int],
+        point_source: tuple[list[int], Operand] | None = None,
+    ) -> None:
+        template = templates[template_name]
+        for template_instruction in template.instructions:
+            prologue.extend(
+                remap_template_instruction(
+                    list(template_instruction),
+                    output_registers,
+                    scratch_register,
+                    template.temporary_count,
+                    point_source,
+                )
+            )
+
+    if usage.shallow_deep:
+        append_template(
+            "shallow_deep",
+            {
+                0: domain_registers["shallow"],
+                1: domain_registers["deep"],
+            },
+        )
+    if usage.sun:
+        append_template("sun", { 0: domain_registers["sun"] })
+    if usage.fog:
+        append_template(
+            "fog",
+            {
+                0: domain_registers["fog_near"],
+                1: domain_registers["fog_far"],
+            },
+        )
+
     rewritten_body: list[int] = []
-    rewritten_references = 0
+    rewritten_counts = {
+        "shallow": 0,
+        "deep": 0,
+        "sun": 0,
+        "fog_near": 0,
+        "fog_far": 0,
+        "point_light": 0,
+    }
     for start, end in body:
         instruction = words[start:end]
-        before = sum(
-            is_water_color_operand(operand)
-            for operand in executable_operands(instruction, 0, len(instruction))
-        ) if (instruction[0] & 0x7FF) != OPCODE_RET else 0
-        rewritten = rewrite_instruction_water_colors(
-            instruction, shallow_register, deep_register
+        operands = [] if (instruction[0] & 0x7FF) == OPCODE_RET else (
+            executable_operands(instruction, 0, len(instruction))
         )
-        rewritten_references += before
-        rewritten_body.extend(rewritten)
-    if rewritten_references == 0:
-        raise ContractError("Water shader does not read shallow/deep color")
-
-    prologue: list[int] = []
-    for instruction in transform_template:
-        prologue.extend(
-            remap_template_instruction(
-                instruction,
-                shallow_register,
-                deep_register,
-                scratch_register,
+        point_operands = [
+            operand
+            for operand in operands
+            if water_operand_domain(operand) == "point_light"
+        ]
+        if len(point_operands) > 1:
+            raise ContractError(
+                "Water point-light instruction reads multiple colour operands"
             )
+        if point_operands:
+            point_template = templates["point_light"]
+            for template_instruction in point_template.instructions:
+                rewritten_body.extend(
+                    remap_template_instruction(
+                        list(template_instruction),
+                        { 0: domain_registers["point_light"] },
+                        scratch_register,
+                        point_template.temporary_count,
+                        (instruction, point_operands[0]),
+                    )
+                )
+        for operand in operands:
+            domain = water_operand_domain(operand)
+            if domain is not None:
+                rewritten_counts[domain] += 1
+        rewritten = rewrite_instruction_water_domains(
+            instruction,
+            domain_registers,
         )
+        rewritten_body.extend(rewritten)
+
+    rewritten_usage = WaterDomainUsage(
+        rewritten_counts["shallow"],
+        rewritten_counts["deep"],
+        rewritten_counts["sun"],
+        rewritten_counts["fog_near"],
+        rewritten_counts["fog_far"],
+        rewritten_counts["point_light"],
+    )
+    if rewritten_usage != usage:
+        raise ContractError("Water colour-domain rewrite count changed")
 
     prefix = words[:executable_start]
-    prefix[temp_declaration[0] + 1] = original_temp_count + 3
+    prefix[temp_declaration[0] + 1] = replacement_temp_count
     prefix[temp_declaration[0] : temp_declaration[0]] = b5_declaration
     patched_words = [*prefix, *prologue, *rewritten_body]
     patched_words[1] = len(patched_words)
@@ -595,7 +876,11 @@ def run_fxc(arguments: list[str], label: str) -> None:
         raise ContractError(f"fxc failed for {label}: {detail}")
 
 
-def compile_template(root: Path, fxc: Path, output_directory: Path) -> bytes:
+def compile_templates(
+    root: Path,
+    fxc: Path,
+    output_directory: Path,
+) -> tuple[list[int], dict[str, TransformTemplate]]:
     source = (
         root
         / "package"
@@ -606,50 +891,125 @@ def compile_template(root: Path, fxc: Path, output_directory: Path) -> bytes:
     )
     source_text = source.read_text(encoding="utf-8")
     required = (
+        "float4 SunColor : packoffset(c2);",
         "float4 ShallowColor : packoffset(c0);",
         "float4 DeepColor : packoffset(c1);",
+        "float4 FogNearColor : packoffset(c6);",
+        "float4 FogFarColor : packoffset(c7);",
+        "float4 PointLightColor : packoffset(c20);",
         "uint EnableLinearLighting : packoffset(c0.x);",
+        "float LightGamma : packoffset(c0.w);",
+        "float FogGamma : packoffset(c2.x);",
         "float WaterGamma : packoffset(c3.y);",
+        "float DirectionalLightMultiplier : packoffset(c4.x);",
+        "float PointLightMultiplier : packoffset(c4.y);",
         "pow(abs(output.shallow.xyz), WaterGamma)",
         "pow(abs(output.deep.xyz), WaterGamma)",
+        "LightGamma / NativeProducerGamma",
+        "pow(abs(output.shallow.xyz), FogGamma)",
+        "pow(abs(output.deep.xyz), FogGamma)",
     )
     for text in required:
         if text not in source_text:
             raise ContractError(f"Water transform template is missing contract: {text}")
-    output = output_directory / "WaterColorTransformTemplate.dxbc"
-    assembly = output_directory / "WaterColorTransformTemplate.asm.txt"
-    run_fxc(
-        [
-            str(fxc),
-            "/nologo",
-            "/T",
-            "ps_5_0",
-            "/E",
+    specifications = {
+        "shallow_deep": (
             "PSMain",
-            "/O3",
-            "/Ges",
-            "/WX",
-            "/Fo",
-            str(output),
-            "/Fc",
-            str(assembly),
-            str(source),
-        ],
-        "Water color-transform template",
-    )
-    assembly_text = assembly.read_text(encoding="utf-8")
-    for required_assembly in (
-        "dcl_constantbuffer CB1[2], immediateIndexed",
-        "dcl_constantbuffer CB5[4], immediateIndexed",
-        "dcl_temps 1",
-        "movc o0.xyz, cb5[0].xxxx",
-        "movc o1.xyz, cb5[0].xxxx",
-    ):
-        if required_assembly not in assembly_text:
-            raise ContractError(
-                "Water transform template assembly changed: " + required_assembly
-            )
-    return output.read_bytes()
+            4,
+            2,
+            10,
+            (
+                "dcl_constantbuffer CB1[2], immediateIndexed",
+                "dcl_constantbuffer CB5[4], immediateIndexed",
+                "movc o0.xyz, cb5[0].xxxx",
+                "movc o1.xyz, cb5[0].xxxx",
+            ),
+        ),
+        "sun": (
+            "PSSunMain",
+            5,
+            1,
+            7,
+            (
+                "dcl_constantbuffer CB0[3], immediateIndexed",
+                "dcl_constantbuffer CB5[5], immediateIndexed",
+                "mul r0.x, l(0.454545), cb5[0].w",
+                "mul r0.xyz, r0.xyzx, cb5[4].xxxx",
+            ),
+        ),
+        "fog": (
+            "PSFogMain",
+            3,
+            2,
+            10,
+            (
+                "dcl_constantbuffer CB1[8], immediateIndexed",
+                "dcl_constantbuffer CB5[3], immediateIndexed",
+                "mul r0.xyz, r0.xyzx, cb5[2].xxxx",
+                "movc o1.xyz, cb5[0].xxxx",
+            ),
+        ),
+        "point_light": (
+            "PSPointMain",
+            5,
+            1,
+            7,
+            (
+                "dcl_constantbuffer CB2[21], immediateIndexed",
+                "dcl_constantbuffer CB5[5], immediateIndexed",
+                "mul r0.x, l(0.454545), cb5[0].w",
+                "mul r0.xyz, r0.xyzx, cb5[4].yyyy",
+            ),
+        ),
+    }
+    declarations: dict[str, list[int]] = {}
+    templates: dict[str, TransformTemplate] = {}
+    for name, (
+        entry_point,
+        b5_size,
+        output_count,
+        instruction_count,
+        assembly_contracts,
+    ) in specifications.items():
+        output = output_directory / f"WaterColorTransformTemplate.{name}.dxbc"
+        assembly = output_directory / f"WaterColorTransformTemplate.{name}.asm.txt"
+        run_fxc(
+            [
+                str(fxc),
+                "/nologo",
+                "/T",
+                "ps_5_0",
+                "/E",
+                entry_point,
+                "/O3",
+                "/Ges",
+                "/WX",
+                "/Fo",
+                str(output),
+                "/Fc",
+                str(assembly),
+                str(source),
+            ],
+            f"Water {name} transform template",
+        )
+        assembly_text = assembly.read_text(encoding="utf-8")
+        for required_assembly in ("dcl_temps 1", *assembly_contracts):
+            if required_assembly not in assembly_text:
+                raise ContractError(
+                    f"Water {name} transform template assembly changed: "
+                    + required_assembly
+                )
+        declaration, template = extract_transform_template(
+            output.read_bytes(),
+            b5_size,
+            output_count,
+            instruction_count,
+        )
+        declarations[name] = declaration
+        templates[name] = template
+    if declarations["sun"] != declarations["point_light"]:
+        raise ContractError("Water light templates disagree on b5[5] declaration")
+    return declarations["sun"], templates
 
 
 def signature_contract(assembly: str) -> str:
@@ -687,23 +1047,31 @@ def water_records(inventory: census.FxpInventory) -> list[census.DxbcContainer]:
 
 def expected_contracts(
     records: list[census.DxbcContainer],
-) -> dict[int, tuple[census.DxbcContainer, tuple[int, ...]]]:
+) -> dict[
+    int,
+    tuple[census.DxbcContainer, tuple[int, ...], WaterDomainUsage],
+]:
     by_identity: dict[tuple[int, str], list[census.DxbcContainer]] = {}
     for item in records:
         by_identity.setdefault(item.identity, []).append(item)
 
-    result: dict[int, tuple[census.DxbcContainer, tuple[int, ...]]] = {}
+    result: dict[
+        int,
+        tuple[census.DxbcContainer, tuple[int, ...], WaterDomainUsage],
+    ] = {}
     for identity_records in by_identity.values():
         ordered = sorted(identity_records, key=lambda item: int(item.key))
-        reference_counts = {water_color_reference_count(item.data) for item in ordered}
-        if len(reference_counts) != 1:
-            raise ContractError("aliased Water identity changed shallow/deep references")
-        if next(iter(reference_counts)) == 0:
+        usages = {water_domain_usage(item.data) for item in ordered}
+        if len(usages) != 1:
+            raise ContractError("aliased Water identity changed colour-domain references")
+        usage = next(iter(usages))
+        if not usage.active:
             continue
         descriptor = int(ordered[0].key)
         result[descriptor] = (
             ordered[0],
             tuple(int(item.key) for item in ordered[1:]),
+            usage,
         )
     if (
         len(result) != EXPECTED_WATER_CONTRACT_COUNT
@@ -713,12 +1081,47 @@ def expected_contracts(
         raise ContractError(
             "active FO4VR Water shallow/deep contract matrix changed: " + found
         )
+    slot_coverage = {
+        "shallow_deep": sum(
+            len(aliases) + 1
+            for _, aliases, usage in result.values()
+            if usage.shallow_deep
+        ),
+        "sun": sum(
+            len(aliases) + 1
+            for _, aliases, usage in result.values()
+            if usage.sun
+        ),
+        "fog": sum(
+            len(aliases) + 1
+            for _, aliases, usage in result.values()
+            if usage.fog
+        ),
+        "point_light": sum(
+            len(aliases) + 1
+            for _, aliases, usage in result.values()
+            if usage.point_light
+        ),
+    }
+    if slot_coverage != {
+        "shallow_deep": 48,
+        "sun": 33,
+        "fog": 25,
+        "point_light": 23,
+    }:
+        raise ContractError(
+            "active FO4VR Water colour-domain slot coverage changed: "
+            + repr(slot_coverage)
+        )
     return result
 
 
 def read_manifest(
     root: Path,
-    contracts: dict[int, tuple[census.DxbcContainer, tuple[int, ...]]],
+    contracts: dict[
+        int,
+        tuple[census.DxbcContainer, tuple[int, ...], WaterDomainUsage],
+    ],
 ) -> list[dict[str, object]]:
     path = (
         root
@@ -787,8 +1190,8 @@ def validate_candidate(
     candidate_declarations = census.parse_declarations(candidate_text)
     original_buffers = dict(original_declarations.constant_buffers)
     candidate_buffers = dict(candidate_declarations.constant_buffers)
-    if candidate_buffers.get(5) != 4:
-        raise ContractError(f"{name} does not consume frame-only b5[4]")
+    if candidate_buffers.get(5) != 5:
+        raise ContractError(f"{name} does not consume frame-only b5[5]")
     if 8 in candidate_buffers:
         raise ContractError(f"{name} unexpectedly consumes geometry b8")
     candidate_buffers.pop(5)
@@ -814,7 +1217,10 @@ def format_identity(data: bytes, indent: str) -> list[str]:
 
 def render_contracts(
     manifest: list[dict[str, object]],
-    contracts: dict[int, tuple[census.DxbcContainer, tuple[int, ...]]],
+    contracts: dict[
+        int,
+        tuple[census.DxbcContainer, tuple[int, ...], WaterDomainUsage],
+    ],
     candidates: dict[int, bytes],
 ) -> str:
     rows = [
@@ -859,14 +1265,22 @@ def main() -> int:
         fxc = census.find_fxc(None)
         with tempfile.TemporaryDirectory(prefix="fo4vr_water_linear_lighting_") as temporary:
             temporary_path = Path(temporary)
-            template = compile_template(root, fxc, temporary_path)
-            b5_declaration, transform = extract_transform_template(template)
+            b5_declaration, templates = compile_templates(
+                root,
+                fxc,
+                temporary_path,
+            )
             candidates: dict[int, bytes] = {}
             for entry in manifest:
                 descriptor = int(entry["descriptor"])
                 name = str(entry["name"])
                 original = contracts[descriptor][0].data
-                candidate = patch_water_shader(original, b5_declaration, transform)
+                candidate = patch_water_shader(
+                    original,
+                    b5_declaration,
+                    templates,
+                    contracts[descriptor][2],
+                )
                 validate_candidate(
                     fxc, name, original, candidate, temporary_path
                 )

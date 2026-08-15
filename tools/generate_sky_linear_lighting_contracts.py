@@ -140,10 +140,10 @@ def compile_candidates(
             raise ContractError(f"Sky HLSL contains forbidden color-domain path: {forbidden}")
 
     cloud_color_path = "LinearLightingSkyCloudColor(input.color.xyz)"
-    if source_text.count(cloud_color_path) != 3:
+    if source_text.count(cloud_color_path) != 5:
         raise ContractError(
             "Sky HLSL must apply the authored cloud tint exactly once in "
-            "each of descriptors 4-6"
+            "each of descriptors 4-8"
         )
 
     include_text = (

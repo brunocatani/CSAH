@@ -688,7 +688,8 @@ def compile_candidates(
         "LinearLightingEffectMaterialColor(EffectBaseColor.xyz)",
         "LinearLightingEffectMaterialColor(baseColor.xyz)",
         "LinearLightingEffectGeometryColor(",
-        "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x)",
+        "LinearLightingEffectMembraneColor(",
+        "LinearLightingEffectMembraneCoordinate(EffectPropertyColor.x)",
         "(EFFECT_TECHNIQUE & 0x1)",
         "(EFFECT_TECHNIQUE & 0x00006004)",
         "(EFFECT_TECHNIQUE & 0x20)",
@@ -757,6 +758,9 @@ def compile_candidates(
         "LinearLightingEffect(EffectBaseColor.xyz)",
         "LinearLightingEffect(EffectPropertyColor.xyz)",
         "pow(abs(EffectPropertyColor.x), 1.0f / 2.2f)",
+        "baseColor.xyz *= LinearLightingEffectGeometryColor(\n        EffectPropertyColor.xyz);",
+        "LinearLightingEffectGeometryCoordinate(EffectPropertyColor.x) *\n        membraneGrayscaleScale",
+        "EffectMembraneRimColor * membraneFactor",
     )
     for forbidden in forbidden_source:
         if forbidden in source_text:
@@ -852,10 +856,11 @@ def compile_candidates(
         original_declarations = census.parse_declarations(original_assembly)
         candidate_buffers = dict(candidate_declarations.constant_buffers)
         original_buffers = dict(original_declarations.constant_buffers)
-        # Membrane shaders now consume b5[6].w as the verified native
-        # Effect-property producer exponent; every Effect contract therefore
-        # owns the complete seven-register frame buffer and still no b8.
-        expected_frame_buffer_size = 7
+        # The independently fixed-2.2 membrane producer no longer consumes
+        # the general Effect producer exponent in b5[6].w. Membranes end at
+        # their multiplier in b5[5], while non-membrane contracts retain the
+        # complete seven-register general Effect frame contract.
+        expected_frame_buffer_size = 6 if descriptor & 0x00000200 else 7
         if candidate_buffers.get(5) != expected_frame_buffer_size:
             raise ContractError(
                 f"{name} does not consume frame-only "
