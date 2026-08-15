@@ -56,6 +56,24 @@ EXPECTED_WATER_CONTRACT_DESCRIPTORS = {
     0x00018010,
     0x00020204,
 }
+EXPECTED_WATER_ATMOSPHERIC_FOG_DESCRIPTORS = {
+    0x00000000,
+    0x0000001C,
+    0x0000003C,
+    0x0000005E,
+    0x0000007E,
+    0x0000009F,
+    0x000000BF,
+    0x0000021C,
+    0x0000023C,
+    0x0000025E,
+    0x0000027E,
+    0x0000029F,
+    0x000002BF,
+    0x00010000,
+    0x00010204,
+    0x00020204,
+}
 
 DXBC_HEADER_SIZE = 32
 DXBC_CHECKSUM_OFFSET = 4
@@ -66,6 +84,7 @@ DXBC_CHUNK_OFFSETS_OFFSET = 32
 
 OPCODE_DCL_CONSTANT_BUFFER = 0x59
 OPCODE_DCL_TEMPS = 0x68
+OPCODE_MAD = 0x32
 OPCODE_RET = 0x3E
 
 OPERAND_TEMP = 0
@@ -97,6 +116,7 @@ class WaterDomainUsage:
     fog_near_references: int
     fog_far_references: int
     point_light_references: int
+    atmospheric_fog: bool
 
     @property
     def shallow_deep(self) -> bool:
@@ -116,7 +136,18 @@ class WaterDomainUsage:
 
     @property
     def active(self) -> bool:
-        return self.shallow_deep or self.sun or self.fog or self.point_light
+        return (
+            self.shallow_deep
+            or self.sun
+            or self.fog
+            or self.point_light
+            or self.atmospheric_fog
+        )
+
+
+@dataclass(frozen=True)
+class AtmosphericFogBlend:
+    instruction_start: int
 
 
 @dataclass(frozen=True)
@@ -450,6 +481,111 @@ def water_operand_domain(operand: Operand) -> str | None:
     return None
 
 
+def operand_output_mask(words: list[int], operand: Operand) -> int | None:
+    if (
+        operand.operand_type != OPERAND_OUTPUT
+        or operand.immediate_indices != (0,)
+        or (words[operand.start] & 0x3) != 2
+        or ((words[operand.start] >> 2) & 0x3) != 0
+    ):
+        return None
+    return (words[operand.start] >> 4) & 0xF
+
+
+def operand_is_scalar_temp(words: list[int], operand: Operand) -> bool:
+    if (
+        operand.operand_type != OPERAND_TEMP
+        or len(operand.immediate_indices) != 1
+        or operand.immediate_indices[0] is None
+        or (words[operand.start] & 0x3) != 2
+    ):
+        return False
+    selection_mode = (words[operand.start] >> 2) & 0x3
+    if selection_mode == 2:
+        return True
+    if selection_mode != 1:
+        return False
+    swizzle = (words[operand.start] >> 4) & 0xFF
+    components = tuple((swizzle >> (index * 2)) & 0x3 for index in range(4))
+    return len(set(components)) == 1
+
+
+def operand_selects_only_component(
+    words: list[int], operand: Operand, component: int
+) -> bool:
+    if not 0 <= component <= 3 or (words[operand.start] & 0x3) != 2:
+        return False
+    selection_mode = (words[operand.start] >> 2) & 0x3
+    if selection_mode == 2:
+        return ((words[operand.start] >> 4) & 0x3) == component
+    if selection_mode != 1:
+        return False
+    swizzle = (words[operand.start] >> 4) & 0xFF
+    return all(
+        ((swizzle >> (index * 2)) & 0x3) == component
+        for index in range(4)
+    )
+
+
+def atmospheric_fog_blend(words: list[int]) -> AtmosphericFogBlend | None:
+    atmospheric_registers: set[int] = set()
+    last_atmospheric_reference = -1
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) in (
+            OPCODE_DCL_CONSTANT_BUFFER,
+            OPCODE_DCL_TEMPS,
+            OPCODE_RET,
+        ):
+            continue
+        for operand in executable_operands(words, start, end):
+            register = constant_buffer_register(operand)
+            if register is None or register[0] != 12:
+                continue
+            if 71 <= register[1] <= 76:
+                atmospheric_registers.add(register[1])
+                last_atmospheric_reference = start
+
+    if not atmospheric_registers:
+        return None
+    _, _, body = shader_declarations_and_body(words)
+    if atmospheric_registers != set(range(71, 77)):
+        raise ContractError(
+            "Water atmospheric-fog frame contract changed: "
+            + repr(sorted(atmospheric_registers))
+        )
+
+    candidates: list[int] = []
+    for start, end in body:
+        if (words[start] & 0x7FF) != OPCODE_MAD:
+            continue
+        operands = executable_operands(words, start, end)
+        if (
+            len(operands) == 4
+            and operand_output_mask(words, operands[0]) == 0x7
+            and operand_is_scalar_temp(words, operands[1])
+            and operands[2].operand_type == OPERAND_TEMP
+            and operands[3].operand_type == OPERAND_TEMP
+            and start > last_atmospheric_reference
+        ):
+            candidates.append(start)
+    if len(candidates) != 1:
+        raise ContractError(
+            "Water atmospheric-fog output blend changed shape: "
+            + repr(candidates)
+        )
+
+    blend_start = candidates[0]
+    for start, end in body:
+        if start <= blend_start or (words[start] & 0x7FF) == OPCODE_RET:
+            continue
+        operands = executable_operands(words, start, end)
+        if operands and operand_output_mask(words, operands[0]) in (1, 2, 3, 4, 5, 6, 7):
+            raise ContractError(
+                "Water atmospheric-fog blend is not the terminal RGB write"
+            )
+    return AtmosphericFogBlend(blend_start)
+
+
 def water_domain_usage(data: bytes) -> WaterDomainUsage:
     _, _, _, words = shader_words(data)
     counts = {
@@ -475,6 +611,7 @@ def water_domain_usage(data: bytes) -> WaterDomainUsage:
         counts["fog_near"],
         counts["fog_far"],
         counts["point_light"],
+        atmospheric_fog_blend(words) is not None,
     )
 
 
@@ -535,6 +672,21 @@ def rewrite_instruction_water_domains(
     return output
 
 
+def rewrite_instruction_operand_with_temp(
+    instruction: list[int], operand: Operand, register: int
+) -> list[int]:
+    replacement = replace_operand_with_temp(instruction, operand, register)
+    output = [
+        *instruction[: operand.start],
+        *replacement,
+        *instruction[operand.end :],
+    ]
+    if len(output) > 0x7F:
+        raise ContractError("rewritten DXBC instruction is too long")
+    output[0] = (output[0] & ~(0x7F << 24)) | (len(output) << 24)
+    return output
+
+
 def remap_template_operand(
     instruction: list[int],
     operand: Operand,
@@ -542,6 +694,7 @@ def remap_template_operand(
     scratch_register: int,
     template_temporary_count: int,
     point_source: tuple[list[int], Operand] | None,
+    fog_alpha_source: tuple[list[int], Operand] | None,
 ) -> list[int] | None:
     if operand.operand_type == OPERAND_TEMP:
         if (
@@ -575,6 +728,16 @@ def remap_template_operand(
             source_words,
             source_operand,
         )
+    if (
+        fog_alpha_source is not None
+        and constant_buffer_register(operand) == (4, 0)
+    ):
+        source_words, source_operand = fog_alpha_source
+        if not operand_is_scalar_temp(source_words, source_operand):
+            raise ContractError(
+                "Water atmospheric-fog source is not a scalar temporary"
+            )
+        return list(source_words[source_operand.start : source_operand.end])
     return None
 
 
@@ -621,6 +784,7 @@ def remap_template_instruction(
     scratch_register: int,
     template_temporary_count: int,
     point_source: tuple[list[int], Operand] | None = None,
+    fog_alpha_source: tuple[list[int], Operand] | None = None,
 ) -> list[int]:
     operands = executable_operands(instruction, 0, len(instruction))
     replacements: dict[int, tuple[int, list[int]]] = {}
@@ -632,6 +796,7 @@ def remap_template_instruction(
             scratch_register,
             template_temporary_count,
             point_source,
+            fog_alpha_source,
         )
         if replacement is not None:
             replacements[operand.start] = (operand.end, replacement)
@@ -714,6 +879,9 @@ def patch_water_shader(
 ) -> bytes:
     version, chunks, shader_index, words = shader_words(original)
     temp_declaration, executable_start, body = shader_declarations_and_body(words)
+    fog_blend = atmospheric_fog_blend(words)
+    if (fog_blend is not None) != usage.atmospheric_fog:
+        raise ContractError("Water atmospheric-fog qualification changed")
     original_temp_count = words[temp_declaration[0] + 1]
     if original_temp_count == 0 or original_temp_count > 4080:
         raise ContractError("Water shader temporary-register count is invalid")
@@ -734,6 +902,9 @@ def patch_water_shader(
     if usage.point_light:
         domain_registers["point_light"] = next_register
         next_register += 1
+    if usage.atmospheric_fog:
+        domain_registers["atmospheric_fog_alpha"] = next_register
+        next_register += 1
 
     active_templates = [
         templates[name]
@@ -742,6 +913,7 @@ def patch_water_shader(
             ("sun", usage.sun),
             ("fog", usage.fog),
             ("point_light", usage.point_light),
+            ("fog_alpha", usage.atmospheric_fog),
         )
         if active
     ]
@@ -834,6 +1006,30 @@ def patch_water_shader(
                         (instruction, point_operands[0]),
                     )
                 )
+        if fog_blend is not None and start == fog_blend.instruction_start:
+            if len(operands) != 4 or not operand_is_scalar_temp(
+                instruction, operands[1]
+            ):
+                raise ContractError(
+                    "Water atmospheric-fog output source changed shape"
+                )
+            fog_alpha_template = templates["fog_alpha"]
+            for template_instruction in fog_alpha_template.instructions:
+                rewritten_body.extend(
+                    remap_template_instruction(
+                        list(template_instruction),
+                        { 0: domain_registers["atmospheric_fog_alpha"] },
+                        scratch_register,
+                        fog_alpha_template.temporary_count,
+                        fog_alpha_source=(instruction, operands[1]),
+                    )
+                )
+            instruction = rewrite_instruction_operand_with_temp(
+                instruction,
+                operands[1],
+                domain_registers["atmospheric_fog_alpha"],
+            )
+            operands = executable_operands(instruction, 0, len(instruction))
         for operand in operands:
             domain = water_operand_domain(operand)
             if domain is not None:
@@ -851,6 +1047,7 @@ def patch_water_shader(
         rewritten_counts["fog_near"],
         rewritten_counts["fog_far"],
         rewritten_counts["point_light"],
+        usage.atmospheric_fog,
     )
     if rewritten_usage != usage:
         raise ContractError("Water colour-domain rewrite count changed")
@@ -897,9 +1094,11 @@ def compile_templates(
         "float4 FogNearColor : packoffset(c6);",
         "float4 FogFarColor : packoffset(c7);",
         "float4 PointLightColor : packoffset(c20);",
+        "float FogAlphaSource : packoffset(c0.x);",
         "uint EnableLinearLighting : packoffset(c0.x);",
         "float LightGamma : packoffset(c0.w);",
         "float FogGamma : packoffset(c2.x);",
+        "float FogAlphaGamma : packoffset(c2.y);",
         "float WaterGamma : packoffset(c3.y);",
         "float DirectionalLightMultiplier : packoffset(c4.x);",
         "float PointLightMultiplier : packoffset(c4.y);",
@@ -908,6 +1107,7 @@ def compile_templates(
         "LightGamma / NativeProducerGamma",
         "pow(abs(output.shallow.xyz), FogGamma)",
         "pow(abs(output.deep.xyz), FogGamma)",
+        "pow(abs(output), FogAlphaGamma)",
     )
     for text in required:
         if text not in source_text:
@@ -959,6 +1159,18 @@ def compile_templates(
                 "dcl_constantbuffer CB5[5], immediateIndexed",
                 "mul r0.x, l(0.454545), cb5[0].w",
                 "mul r0.xyz, r0.xyzx, cb5[4].yyyy",
+            ),
+        ),
+        "fog_alpha": (
+            "PSFogAlphaMain",
+            3,
+            1,
+            4,
+            (
+                "dcl_constantbuffer CB4[1], immediateIndexed",
+                "dcl_constantbuffer CB5[3], immediateIndexed",
+                "mul r0.x, r0.x, cb5[2].y",
+                "movc o0.xyzw, cb5[0].xxxx",
             ),
         ),
     }
@@ -1081,6 +1293,18 @@ def expected_contracts(
         raise ContractError(
             "active FO4VR Water shallow/deep contract matrix changed: " + found
         )
+    atmospheric_fog_descriptors = {
+        descriptor
+        for descriptor, (_, _, usage) in result.items()
+        if usage.atmospheric_fog
+    }
+    if atmospheric_fog_descriptors != EXPECTED_WATER_ATMOSPHERIC_FOG_DESCRIPTORS:
+        found = ", ".join(
+            f"0x{value:08X}" for value in sorted(atmospheric_fog_descriptors)
+        )
+        raise ContractError(
+            "active FO4VR Water atmospheric-fog matrix changed: " + found
+        )
     slot_coverage = {
         "shallow_deep": sum(
             len(aliases) + 1
@@ -1102,12 +1326,18 @@ def expected_contracts(
             for _, aliases, usage in result.values()
             if usage.point_light
         ),
+        "atmospheric_fog": sum(
+            len(aliases) + 1
+            for _, aliases, usage in result.values()
+            if usage.atmospheric_fog
+        ),
     }
     if slot_coverage != {
         "shallow_deep": 48,
         "sun": 33,
         "fog": 25,
         "point_light": 23,
+        "atmospheric_fog": 33,
     }:
         raise ContractError(
             "active FO4VR Water colour-domain slot coverage changed: "
@@ -1166,6 +1396,7 @@ def validate_candidate(
     name: str,
     original: bytes,
     candidate: bytes,
+    usage: WaterDomainUsage,
     output_directory: Path,
 ) -> None:
     original_path = output_directory / f"{name}.vanilla.dxbc"
@@ -1202,6 +1433,30 @@ def validate_candidate(
         or candidate_declarations.textures != original_declarations.textures
     ):
         raise ContractError(f"{name} changed texture/sampler bindings")
+
+    _, _, _, candidate_words = shader_words(candidate)
+    fog_alpha_gamma_references = 0
+    for start, end in instructions(candidate_words):
+        if (candidate_words[start] & 0x7FF) in (
+            OPCODE_DCL_CONSTANT_BUFFER,
+            OPCODE_DCL_TEMPS,
+            OPCODE_RET,
+        ):
+            continue
+        for operand in executable_operands(candidate_words, start, end):
+            if (
+                constant_buffer_register(operand) == (5, 2)
+                and operand_selects_only_component(
+                    candidate_words, operand, 1
+                )
+            ):
+                fog_alpha_gamma_references += 1
+    expected_fog_alpha_references = 1 if usage.atmospheric_fog else 0
+    if fog_alpha_gamma_references != expected_fog_alpha_references:
+        raise ContractError(
+            f"{name} atmospheric-fog gamma reference count changed: "
+            f"{fog_alpha_gamma_references}"
+        )
 
 
 def format_identity(data: bytes, indent: str) -> list[str]:
@@ -1282,7 +1537,12 @@ def main() -> int:
                     contracts[descriptor][2],
                 )
                 validate_candidate(
-                    fxc, name, original, candidate, temporary_path
+                    fxc,
+                    name,
+                    original,
+                    candidate,
+                    contracts[descriptor][2],
+                    temporary_path,
                 )
                 candidates[descriptor] = candidate
 

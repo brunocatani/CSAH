@@ -26,6 +26,15 @@ cbuffer WaterPerLights : register(b2)
     float4 PointLightColor : packoffset(c20);
 };
 
+// Offline placeholder for the scalar atmospheric-fog coverage recovered from
+// each qualified FO4VR Water shader. The contract generator replaces every
+// read with that shader's original temporary operand, so b4 is never declared
+// by a packaged replacement.
+cbuffer WaterFogAlphaSource : register(b4)
+{
+    float FogAlphaSource : packoffset(c0.x);
+};
+
 cbuffer LinearLightingFrame : register(b5)
 {
     uint EnableLinearLighting : packoffset(c0.x);
@@ -33,7 +42,8 @@ cbuffer LinearLightingFrame : register(b5)
     float LightGamma : packoffset(c0.w);
     float4 LinearLightingFramePad1 : packoffset(c1);
     float FogGamma : packoffset(c2.x);
-    float3 LinearLightingFramePad2 : packoffset(c2.y);
+    float FogAlphaGamma : packoffset(c2.y);
+    float2 LinearLightingFramePad2 : packoffset(c2.z);
     float LinearLightingFramePad3 : packoffset(c3.x);
     float WaterGamma : packoffset(c3.y);
     float2 LinearLightingFramePad4 : packoffset(c3.z);
@@ -96,4 +106,13 @@ float4 PSPointMain() : SV_Target0
             PointLightMultiplier;
     }
     return output;
+}
+
+float4 PSFogAlphaMain() : SV_Target0
+{
+    float output = FogAlphaSource;
+    if (EnableLinearLighting != 0u) {
+        output = pow(abs(output), FogAlphaGamma);
+    }
+    return output.xxxx;
 }

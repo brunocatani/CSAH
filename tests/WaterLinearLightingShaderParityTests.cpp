@@ -34,6 +34,7 @@ namespace
     constexpr Pixel kFogNearColor{ 0.31F, -0.52F, 0.68F, 0.23F };
     constexpr Pixel kFogFarColor{ 0.77F, 0.44F, -0.19F, 0.81F };
     constexpr Pixel kPointLightColor{ 0.61F, -0.37F, 0.24F, 0.93F };
+    constexpr Pixel kFogAlphaSource{ 0.41F, 0.0F, 0.0F, 0.0F };
     constexpr std::array<const char*, 31> kContracts{
         "WaterColor_00000000",
         "WaterColor_0000001C",
@@ -294,6 +295,7 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         ID3D11Buffer* waterFrameBuffer,
         ID3D11Buffer* materialBuffer,
         ID3D11Buffer* lightBuffer,
+        ID3D11Buffer* fogAlphaBuffer,
         ID3D11Buffer* frameBuffer)
     {
         std::array<RenderTarget, 2> targets{
@@ -317,6 +319,7 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         context->PSSetConstantBuffers(0, 1, &waterFrameBuffer);
         context->PSSetConstantBuffers(1, 1, &materialBuffer);
         context->PSSetConstantBuffers(2, 1, &lightBuffer);
+        context->PSSetConstantBuffers(4, 1, &fogAlphaBuffer);
         context->PSSetConstantBuffers(5, 1, &frameBuffer);
         context->Draw(3, 0);
 
@@ -413,6 +416,8 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
             device.Get(), transformSource, "PSFogMain");
         const auto pointLightShader = compileTransformShader(
             device.Get(), transformSource, "PSPointMain");
+        const auto fogAlphaShader = compileTransformShader(
+            device.Get(), transformSource, "PSFogAlphaMain");
         const WaterPerFrame waterFrame{ {}, {}, kSunColor };
         const WaterPerMaterial material{
             kShallowColor,
@@ -426,6 +431,8 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
             createConstantBuffer(device.Get(), waterFrame);
         const auto materialBuffer = createConstantBuffer(device.Get(), material);
         const auto lightBuffer = createConstantBuffer(device.Get(), lights);
+        const auto fogAlphaBuffer =
+            createConstantBuffer(device.Get(), kFogAlphaSource);
 
         Settings disabledSettings{};
         disabledSettings.enabled = false;
@@ -434,6 +441,7 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
         enabledSettings.preserveNativeDarkness = false;
         enabledSettings.lightGamma = 1.65F;
         enabledSettings.fogGamma = 1.93F;
+        enabledSettings.fogAlphaGamma = 1.47F;
         enabledSettings.waterGamma = 1.75F;
         enabledSettings.directionalLightMultiplier = 1.17F;
         enabledSettings.pointLightMultiplier = 0.83F;
@@ -457,6 +465,7 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
                 waterFrameBuffer.Get(),
                 materialBuffer.Get(),
                 lightBuffer.Get(),
+                fogAlphaBuffer.Get(),
                 frameBuffer);
         };
         const auto disabledShallowDeep = renderWith(
@@ -475,6 +484,10 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
             pointLightShader.Get(), disabledFrameBuffer.Get());
         const auto enabledPointLight = renderWith(
             pointLightShader.Get(), enabledFrameBuffer.Get());
+        const auto disabledFogAlpha = renderWith(
+            fogAlphaShader.Get(), disabledFrameBuffer.Get());
+        const auto enabledFogAlpha = renderWith(
+            fogAlphaShader.Get(), enabledFrameBuffer.Get());
 
         bool passed = true;
         passed &= compare(
@@ -520,11 +533,33 @@ float4 VSMain(uint vertexId : SV_VertexID) : SV_POSITION0
                 enabledSettings.lightGamma / 2.2F,
                 enabledSettings.pointLightMultiplier),
             "enabled point-light residual model");
+        const Pixel disabledFogAlphaExpected{
+            kFogAlphaSource[0],
+            kFogAlphaSource[0],
+            kFogAlphaSource[0],
+            kFogAlphaSource[0],
+        };
+        const float transformedFogAlpha = std::pow(
+            std::abs(kFogAlphaSource[0]), enabledSettings.fogAlphaGamma);
+        const Pixel enabledFogAlphaExpected{
+            transformedFogAlpha,
+            transformedFogAlpha,
+            transformedFogAlpha,
+            transformedFogAlpha,
+        };
+        passed &= compare(
+            disabledFogAlpha[0],
+            disabledFogAlphaExpected,
+            "disabled atmospheric-fog coverage parity");
+        passed &= compare(
+            enabledFogAlpha[0],
+            enabledFogAlphaExpected,
+            "enabled atmospheric-fog coverage model");
         if (!passed) {
             return 1;
         }
         std::cout <<
-            "Water Linear Lighting created all 31 transformed FO4VR shaders and passed shallow/deep, sun, fog, and point-light transform parity.\n";
+            "Water Linear Lighting created all 31 transformed FO4VR shaders and passed shallow/deep, sun, fog RGB, atmospheric-fog coverage, and point-light transform parity.\n";
         return 0;
     }
 }

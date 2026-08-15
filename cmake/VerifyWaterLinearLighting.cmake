@@ -47,9 +47,11 @@ foreach(required IN ITEMS
     "float4 FogNearColor : packoffset(c6);"
     "float4 FogFarColor : packoffset(c7);"
     "float4 PointLightColor : packoffset(c20);"
+    "float FogAlphaSource : packoffset(c0.x);"
     "uint EnableLinearLighting : packoffset(c0.x);"
     "float LightGamma : packoffset(c0.w);"
     "float FogGamma : packoffset(c2.x);"
+    "float FogAlphaGamma : packoffset(c2.y);"
     "float WaterGamma : packoffset(c3.y);"
     "float DirectionalLightMultiplier : packoffset(c4.x);"
     "float PointLightMultiplier : packoffset(c4.y);"
@@ -58,9 +60,11 @@ foreach(required IN ITEMS
     "LightGamma / NativeProducerGamma"
     "pow(abs(output.shallow.xyz), FogGamma)"
     "pow(abs(output.deep.xyz), FogGamma)"
+    "pow(abs(output), FogAlphaGamma)"
     "float4 PSSunMain() : SV_Target0"
     "TransformOutput PSFogMain()"
-    "float4 PSPointMain() : SV_Target0")
+    "float4 PSPointMain() : SV_Target0"
+    "float4 PSFogAlphaMain() : SV_Target0")
   string(FIND "${shaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
