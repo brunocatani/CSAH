@@ -1,0 +1,51 @@
+foreach(variable IN ITEMS
+    DLAA_VALIDATOR
+    DLAA_ENGINE_SOURCE
+    DLAA_D3D_SOURCE
+    DLAA_RUNTIME_SOURCE
+    DLAA_FRAME_HEADER
+    DLAA_STREAMLINE_SOURCE
+    DLAA_SETTINGS_SOURCE
+    UPSCALING_COMPOSE_SHADER_SOURCE
+    UPSCALING_MOTION_SHADER_SOURCE
+    UPSCALING_REACTIVE_SHADER_SOURCE
+    PLUGIN_SOURCE
+    RENDERER_D3D_SOURCE)
+  if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
+    message(FATAL_ERROR "DLAA negative-fixture input '${variable}' is missing")
+  endif()
+endforeach()
+
+file(READ "${DLAA_ENGINE_SOURCE}" engine)
+string(REPLACE
+  "kPreRenderCallsiteRva = 0x0284EBC4"
+  "kPreRenderCallsiteRva = 0x0284EBC5"
+  mutated "${engine}")
+if(mutated STREQUAL engine)
+  message(FATAL_ERROR "DLAA negative fixture could not mutate the engine RVA")
+endif()
+
+set(fixture "${CMAKE_CURRENT_BINARY_DIR}/DlaaEngineHooks.negative.cpp")
+file(WRITE "${fixture}" "${mutated}")
+execute_process(
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDLAA_ENGINE_SOURCE=${fixture}"
+    "-DDLAA_D3D_SOURCE=${DLAA_D3D_SOURCE}"
+    "-DDLAA_RUNTIME_SOURCE=${DLAA_RUNTIME_SOURCE}"
+    "-DDLAA_FRAME_HEADER=${DLAA_FRAME_HEADER}"
+    "-DDLAA_STREAMLINE_SOURCE=${DLAA_STREAMLINE_SOURCE}"
+    "-DDLAA_SETTINGS_SOURCE=${DLAA_SETTINGS_SOURCE}"
+    "-DUPSCALING_COMPOSE_SHADER_SOURCE=${UPSCALING_COMPOSE_SHADER_SOURCE}"
+    "-DUPSCALING_MOTION_SHADER_SOURCE=${UPSCALING_MOTION_SHADER_SOURCE}"
+    "-DUPSCALING_REACTIVE_SHADER_SOURCE=${UPSCALING_REACTIVE_SHADER_SOURCE}"
+    "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    "-DRENDERER_D3D_SOURCE=${RENDERER_D3D_SOURCE}"
+    -P "${DLAA_VALIDATOR}"
+  RESULT_VARIABLE result
+  OUTPUT_QUIET
+  ERROR_QUIET)
+file(REMOVE "${fixture}")
+if(result EQUAL 0)
+  message(FATAL_ERROR
+    "DLAA source verifier accepted a corrupted FO4VR engine callsite RVA")
+endif()

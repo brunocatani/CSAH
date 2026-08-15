@@ -10,6 +10,8 @@
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
+#include "Features/dlaa/DlaaRuntime.h"
+#include "Features/dlaa/DlaaSettingsStore.h"
 #include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
@@ -610,6 +612,7 @@ namespace community_shaders::ui
         [[nodiscard]] std::uint64_t diagnosticsRevision() noexcept
         {
             const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const auto dlaaRuntime = dlaa::Runtime::get().snapshot();
             const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto contactRuntime =
                 contact_shadows::Runtime::get().snapshot();
@@ -636,6 +639,13 @@ namespace community_shaders::ui
             const auto qualification =
                 diagnostics::linearLightingQualificationSnapshot();
             return runtime.replacementBinds ^
+                (static_cast<std::uint64_t>(dlaaRuntime.settings.enabled)
+                    << 31) ^
+                (static_cast<std::uint64_t>(dlaaRuntime.operational) << 32) ^
+                (static_cast<std::uint64_t>(dlaaRuntime.settings.mode) << 33) ^
+                (static_cast<std::uint64_t>(
+                     dlaaRuntime.settings.modelPreset) << 36) ^
+                (dlaaRuntime.committedFrames * 0xD6E8FEB86659FD93ull) ^
                 (runtime.skyReplacementBinds << 1) ^
                 (runtime.geometryUpdates << 2) ^
                 (geometry.calls << 3) ^ (d3d.pixelShaderBindCalls << 4) ^
@@ -705,6 +715,7 @@ namespace community_shaders::ui
                 complexSettings = uiComplexParallaxSettings;
             }
             const auto runtime = linear_lighting::Runtime::get().snapshot();
+            const auto dlaaRuntime = dlaa::Runtime::get().snapshot();
             const auto iblRuntime = ibl::Runtime::get().snapshot();
             const auto contactRuntime =
                 contact_shadows::Runtime::get().snapshot();
@@ -733,6 +744,61 @@ namespace community_shaders::ui
             nlohmann::json model{
                 { "revision", uiRevision.load(std::memory_order_acquire) },
                 { "settings", settingsJson(settings) },
+                { "dlaa",
+                    {
+                        { "enabled", dlaaRuntime.settings.enabled },
+                        { "mode", static_cast<std::uint32_t>(
+                            dlaaRuntime.settings.mode) },
+                        { "modeName", dlaa::modeName(
+                            dlaaRuntime.settings.mode) },
+                        { "modelPreset", static_cast<std::uint32_t>(
+                            dlaaRuntime.settings.modelPreset) },
+                        { "motionVectorRepair",
+                            dlaaRuntime.settings.motionVectorRepair },
+                        { "sharpening",
+                            dlaaRuntime.settings.sharpening },
+                        { "sharpness", dlaaRuntime.settings.sharpness },
+                        { "centerWidth",
+                            dlaaRuntime.settings.centerWidth },
+                        { "centerHeight",
+                            dlaaRuntime.settings.centerHeight },
+                        { "centerFeatherPixels",
+                            dlaaRuntime.settings.centerFeatherPixels },
+                        { "visualizeCenter",
+                            dlaaRuntime.settings.visualizeCenter },
+                        { "hardResetOnLoad",
+                            dlaaRuntime.settings.hardResetOnLoad },
+                        { "verboseDiagnostics",
+                            dlaaRuntime.settings.verboseDiagnostics },
+                        { "operational", dlaaRuntime.operational },
+                        { "contractRejected",
+                            dlaaRuntime.contractRejected },
+                        { "deviceReady", dlaaRuntime.deviceReady },
+                        { "cameraQualified",
+                            dlaaRuntime.cameraBufferQualified },
+                        { "resourcesQualified",
+                            dlaaRuntime.renderResourcesQualified },
+                        { "supported",
+                            dlaaRuntime.streamline.featureSupported &&
+                                dlaaRuntime.streamline.
+                                    featureFunctionsBound },
+                        { "stereoEvaluations",
+                            dlaaRuntime.stereoEvaluations },
+                        { "evaluationFailures",
+                            dlaaRuntime.stereoEvaluationFailures },
+                        { "committedFrames", dlaaRuntime.committedFrames },
+                        { "hardResets", dlaaRuntime.hardResets },
+                        { "inputWidth", dlaaRuntime.inputWidth },
+                        { "inputHeight", dlaaRuntime.inputHeight },
+                        { "outputWidth", dlaaRuntime.outputWidth },
+                        { "outputHeight", dlaaRuntime.outputHeight },
+                        { "centerLeft", dlaaRuntime.centerLeft },
+                        { "centerTop", dlaaRuntime.centerTop },
+                        { "gpuLeftMs", dlaaRuntime.gpuLeftMilliseconds },
+                        { "gpuRightMs", dlaaRuntime.gpuRightMilliseconds },
+                        { "gpuCommitMs", dlaaRuntime.gpuCommitMilliseconds },
+                        { "gpuTotalMs", dlaaRuntime.gpuTotalMilliseconds },
+                    } },
                 { "ibl",
                     {
                         { "enabled", iblRuntime.enabled },
@@ -1546,6 +1612,87 @@ namespace community_shaders::ui
                     schedulePush();
                     return;
                 }
+                if (type == "dlaaEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    const auto enabled = action["value"].get<bool>();
+                    auto next = dlaa::Runtime::get().snapshot().settings;
+                    next.enabled = enabled;
+                    dlaa::Runtime::get().applySettings(next);
+                    const auto saved = dlaa::saveSettings(next);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "DLAA wrist action accepted; enabled={}, settings save={}; render-thread transition pending.",
+                        enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "upscalingSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value")) {
+                    auto next = dlaa::Runtime::get().snapshot().settings;
+                    const auto key = action["key"].get<std::string>();
+                    if (key == "mode" && action["value"].is_number_unsigned()) {
+                        next.mode = static_cast<dlaa::Mode>(
+                            action["value"].get<std::uint32_t>());
+                    } else if (key == "modelPreset" &&
+                               action["value"].is_number_unsigned()) {
+                        next.modelPreset = static_cast<dlaa::ModelPreset>(
+                            action["value"].get<std::uint32_t>());
+                    } else if (key == "sharpening" &&
+                               action["value"].is_boolean()) {
+                        next.sharpening = action["value"].get<bool>();
+                    } else if (key == "motionVectorRepair" &&
+                               action["value"].is_boolean()) {
+                        next.motionVectorRepair =
+                            action["value"].get<bool>();
+                    } else if (key == "sharpness" &&
+                               action["value"].is_number()) {
+                        next.sharpness = action["value"].get<float>();
+                    } else if (key == "centerWidth" &&
+                               action["value"].is_number()) {
+                        next.centerWidth = action["value"].get<float>();
+                    } else if (key == "centerHeight" &&
+                               action["value"].is_number()) {
+                        next.centerHeight = action["value"].get<float>();
+                    } else if (key == "centerFeatherPixels" &&
+                               action["value"].is_number()) {
+                        next.centerFeatherPixels =
+                            action["value"].get<float>();
+                    } else if (key == "visualizeCenter" &&
+                               action["value"].is_boolean()) {
+                        next.visualizeCenter = action["value"].get<bool>();
+                    } else if (key == "hardResetOnLoad" &&
+                               action["value"].is_boolean()) {
+                        next.hardResetOnLoad = action["value"].get<bool>();
+                    } else if (key == "verboseDiagnostics" &&
+                               action["value"].is_boolean()) {
+                        next.verboseDiagnostics =
+                            action["value"].get<bool>();
+                    } else {
+                        return;
+                    }
+                    next = dlaa::sanitize(next);
+                    dlaa::Runtime::get().applySettings(next);
+                    const auto saved = dlaa::saveSettings(next);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Upscaling wrist action accepted; key={}, mode={}, save={}; hard render-thread transition pending.",
+                        key,
+                        dlaa::modeName(next.mode),
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "upscalingRefresh") {
+                    dlaa::Runtime::get().requestRefresh();
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Upscaling wrist action requested a hard two-eye Streamline refresh.");
+                    schedulePush();
+                    return;
+                }
                 if (type == "vanillaFixesSet" &&
                     action.contains("key") && action["key"].is_string() &&
                     action.contains("value") &&
@@ -1964,6 +2111,9 @@ namespace community_shaders::ui
                 auto changed = false;
                 if (type == "reset") {
                     next = {};
+                    const dlaa::Settings nextDlaa{};
+                    dlaa::Runtime::get().applySettings(nextDlaa);
+                    (void)dlaa::saveSettings(nextDlaa);
                     const vanilla_fixes::Settings nextVanillaFixes{};
                     vanilla_fixes::applySettings(nextVanillaFixes);
                     (void)vanilla_fixes::saveSettings(nextVanillaFixes);

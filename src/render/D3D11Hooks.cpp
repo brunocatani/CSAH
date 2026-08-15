@@ -3,6 +3,9 @@
 #include "Features/basic_wetness/BasicWetnessRuntime.h"
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
+#include "Features/dlaa/DlaaD3D11Hooks.h"
+#include "Features/dlaa/DlaaRuntime.h"
+#include "Features/dlaa/StreamlineBackend.h"
 #include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
@@ -1686,6 +1689,13 @@ namespace community_shaders::render
             vanilla_fixes::reportShaderCreationResult(
                 selection,
                 replacementAccepted);
+            if (SUCCEEDED(result) && shader && *shader) {
+                community_shaders::dlaa::Runtime::get().onPixelShaderCreated(
+                    *shader,
+                    identity.bytecodeSize,
+                    identity.hash,
+                    identity.checksum);
+            }
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 SUCCEEDED(result) && shader && *shader) {
                 if (focusShadow) {
@@ -2885,6 +2895,10 @@ namespace community_shaders::render
                 logging::warn(
                     "D3D11 qualification draw detours remain unavailable; shader replacement stays active, but the automated report will fail closed at draw proof.");
             }
+            if (!dlaa::installD3D11Hooks(context)) {
+                logging::warn(
+                    "DLAA native Map/Unmap qualification hooks remain unavailable; DLAA stays disabled while every existing shader path remains active.");
+            }
             if (!vanilla_fixes::installFocusShadowNativeHooks()) {
                 logging::warn(
                     "Vanilla Fixes focus-shadow map ownership is unavailable; other Vanilla Fixes remain active.");
@@ -2919,6 +2933,14 @@ namespace community_shaders::render
             if (!originalCreateDeviceAndSwapChain) {
                 return E_UNEXPECTED;
             }
+            // Streamline's production bootstrap loads and authenticates its
+            // feature DLLs. Keep that nested loader work out of
+            // F4SEPlugin_Load, but still complete it before Fallout invokes
+            // its first D3D11 creation API as required by manual-hooking mode.
+            if (!dlaa::initializeStreamlineBeforeDevice()) {
+                logging::warn(
+                    "DLAA Streamline bootstrap failed at the pre-D3D11 boundary; native device creation continues and vanilla TAA remains active.");
+            }
             const auto result = originalCreateDeviceAndSwapChain(
                 adapter,
                 driverType,
@@ -2945,6 +2967,13 @@ namespace community_shaders::render
                 logging::info(
                     "Ignored additional Fallout4VR D3D11 device creation; the first captured device retains shader-hook ownership.");
                 return result;
+            }
+            if (!dlaa::bindStreamlineDeviceAndSwapChain(
+                    adapter,
+                    *device,
+                    swapChain)) {
+                logging::warn(
+                    "DLAA Streamline device/swapchain binding was rejected; vanilla TAA remains active.");
             }
             if (!installDeviceMethodDetours(*device, *immediateContext)) {
                 shaderHookInstallFailures.fetch_add(1, std::memory_order_relaxed);
@@ -3005,6 +3034,7 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            dlaa::Runtime::get().onDeviceCreated(*device, *immediateContext);
             shaderInterceptionActive.store(true, std::memory_order_release);
             deviceHooksInstalled.store(true, std::memory_order_release);
             logging::info(

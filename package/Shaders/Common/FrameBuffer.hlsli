@@ -18,7 +18,7 @@ cbuffer PerFrameCamera : register(b12) {
     float4x4 CB12_Unknown2C0;                     // 0x2C0
     float4   CB12_ProjParams;                     // 0x300 — x=near, y=far, z=fov?, w=aspect?
     float4   CB12_TimeParams;                     // 0x310 — x=gameTime, y=?, z=?, w=?
-    float4   CB12_ScreenParams;                   // 0x320 — x=width, y=height, z=1/w, w=1/h
+    float4   CB12_ScreenParams;                   // 0x320 — zero in the live FO4VR image-space path; derive extent from resources
     float4x4 CB12_PrevViewProjUnjitteredEye0;    // 0x330
     float4x4 CB12_PrevViewProjUnjitteredEye1;    // 0x370
     float4   CB12_PosAdjustEye0;                  // 0x3B0

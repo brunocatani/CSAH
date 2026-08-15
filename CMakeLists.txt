@@ -73,8 +73,52 @@ if(NOT EXISTS
     "PrismaUI FO4VR public API not found in '${PRISMA_F4VR_API_PATH_SELECTED}'")
 endif()
 
+set_from_environment(STREAMLINE_SDK_ROOT)
+if(NOT DEFINED STREAMLINE_SDK_ROOT OR STREAMLINE_SDK_ROOT STREQUAL "")
+  set(STREAMLINE_SDK_ROOT
+    "${WORKSPACE_ROOT}/../devtools/streamline-sdk-v2.12.0"
+    CACHE PATH "NVIDIA Streamline 2.12 SDK root")
+endif()
+set(STREAMLINE_INCLUDE_DIR "${STREAMLINE_SDK_ROOT}/include")
+set(STREAMLINE_RUNTIME_DIR "${STREAMLINE_SDK_ROOT}/bin/x64")
+set(STREAMLINE_RUNTIME_FILES
+  "${STREAMLINE_RUNTIME_DIR}/sl.interposer.dll"
+  "${STREAMLINE_RUNTIME_DIR}/sl.common.dll"
+  "${STREAMLINE_RUNTIME_DIR}/sl.dlss.dll"
+  "${STREAMLINE_RUNTIME_DIR}/nvngx_dlss.dll")
+set(STREAMLINE_LICENSE_FILES
+  "${STREAMLINE_SDK_ROOT}/license.txt"
+  "${STREAMLINE_SDK_ROOT}/3rd-party-licenses.md"
+  "${STREAMLINE_RUNTIME_DIR}/nvngx_dlss.license.txt")
+foreach(required IN ITEMS
+    "${STREAMLINE_INCLUDE_DIR}/sl.h"
+    ${STREAMLINE_RUNTIME_FILES}
+    ${STREAMLINE_LICENSE_FILES})
+  if(NOT EXISTS "${required}")
+    message(FATAL_ERROR
+      "Required Streamline 2.12 file not found: '${required}'")
+  endif()
+endforeach()
+
+list(GET STREAMLINE_RUNTIME_FILES 0 STREAMLINE_INTERPOSER_FILE)
+list(GET STREAMLINE_RUNTIME_FILES 1 STREAMLINE_COMMON_FILE)
+list(GET STREAMLINE_RUNTIME_FILES 2 STREAMLINE_DLSS_FILE)
+list(GET STREAMLINE_RUNTIME_FILES 3 STREAMLINE_NGX_FILE)
+file(SHA256 "${STREAMLINE_INTERPOSER_FILE}" STREAMLINE_INTERPOSER_SHA256)
+file(SHA256 "${STREAMLINE_COMMON_FILE}" STREAMLINE_COMMON_SHA256)
+file(SHA256 "${STREAMLINE_DLSS_FILE}" STREAMLINE_DLSS_SHA256)
+file(SHA256 "${STREAMLINE_NGX_FILE}" STREAMLINE_NGX_SHA256)
+
 project(${NAME} VERSION ${VERSION} LANGUAGES CXX)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+
+set(DLAA_GENERATED_DIR "${BUILD_DIR}/generated/dlaa")
+file(MAKE_DIRECTORY "${DLAA_GENERATED_DIR}")
+configure_file(
+  "${ROOT_DIR}/cmake/StreamlinePayloadHashes.in.h"
+  "${DLAA_GENERATED_DIR}/GeneratedStreamlinePayloadHashes.h"
+  @ONLY)
 
 include("${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake")
 fo4vr_cs_verify_fo4vr_loader("${SOURCE_DIR}/XSEPlugin.cpp")
@@ -94,6 +138,43 @@ set(SETTINGS_PATH_HEADER "${SOURCE_DIR}/support/SettingsPath.h")
 set(WRIST_PANEL_VIEW_SOURCE
   "${ROOT_DIR}/view/index.html")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
+set(DLAA_SOURCE_DIR "${SOURCE_DIR}/Features/dlaa")
+set(DLAA_RUNTIME_SOURCE "${DLAA_SOURCE_DIR}/DlaaRuntime.cpp")
+set(DLAA_FRAME_HEADER "${DLAA_SOURCE_DIR}/Fo4VrFrameBuffer.h")
+set(DLAA_ENGINE_HOOK_SOURCE "${DLAA_SOURCE_DIR}/DlaaEngineHooks.cpp")
+set(DLAA_D3D11_HOOK_SOURCE "${DLAA_SOURCE_DIR}/DlaaD3D11Hooks.cpp")
+set(DLAA_STREAMLINE_SOURCE "${DLAA_SOURCE_DIR}/StreamlineBackend.cpp")
+set(DLAA_SETTINGS_STORE_SOURCE "${DLAA_SOURCE_DIR}/DlaaSettingsStore.cpp")
+set(UPSCALING_COMPOSE_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/Upscaling/ComposeUpscalingCS.hlsl")
+set(UPSCALING_COMPOSE_SHADER_BINARY
+  "${DLAA_GENERATED_DIR}/ComposeUpscalingCS.dxbc")
+set(UPSCALING_COMPOSE_SHADER_HEADER
+  "${DLAA_GENERATED_DIR}/GeneratedUpscalingComposeShader.h")
+set(UPSCALING_MOTION_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/Upscaling/RepairMotionVectorsCS.hlsl")
+set(UPSCALING_MOTION_SHADER_BINARY
+  "${DLAA_GENERATED_DIR}/RepairMotionVectorsCS.dxbc")
+set(UPSCALING_MOTION_SHADER_HEADER
+  "${DLAA_GENERATED_DIR}/GeneratedUpscalingMotionRepairShader.h")
+set(UPSCALING_REACTIVE_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/Upscaling/BuildReactiveMaskCS.hlsl")
+set(UPSCALING_REACTIVE_SHADER_BINARY
+  "${DLAA_GENERATED_DIR}/BuildReactiveMaskCS.dxbc")
+set(UPSCALING_REACTIVE_SHADER_HEADER
+  "${DLAA_GENERATED_DIR}/GeneratedUpscalingReactiveMaskShader.h")
+set_source_files_properties(
+  "${UPSCALING_COMPOSE_SHADER_SOURCE}"
+  "${UPSCALING_MOTION_SHADER_SOURCE}"
+  "${UPSCALING_REACTIVE_SHADER_SOURCE}"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
+set(DLAA_VERIFY_SCRIPT "${ROOT_DIR}/cmake/VerifyDlaa.cmake")
+set(DLAA_ENGINE_SOURCE "${DLAA_ENGINE_HOOK_SOURCE}")
+set(DLAA_D3D_SOURCE "${DLAA_D3D11_HOOK_SOURCE}")
+set(DLAA_SETTINGS_SOURCE "${DLAA_SETTINGS_STORE_SOURCE}")
+set(RENDERER_D3D_SOURCE "${D3D11_HOOK_SOURCE}")
+set_source_files_properties("${DLAA_STREAMLINE_SOURCE}" PROPERTIES
+  SKIP_PRECOMPILE_HEADERS ON)
 set(VANILLA_FIXES_SOURCE_DIR
   "${SOURCE_DIR}/Features/vanilla_fixes")
 set(VANILLA_REFLECTION_PATCH_TOOL_SOURCE
@@ -428,6 +509,7 @@ set(IBL_PROJECTION_SHADER_VERIFIER
   "${ROOT_DIR}/tools/verify_ibl_projection_shader.py")
 set(GEOMETRY_HOOK_SOURCE "${RENDERER_HOOK_SOURCE}")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
+include("${DLAA_VERIFY_SCRIPT}")
 include("${VANILLA_VERIFY_SCRIPT}")
 include("${ROOT_DIR}/cmake/VerifyIblFoundation.cmake")
 include("${CONTACT_SHADOW_VERIFY_SCRIPT}")
@@ -460,6 +542,25 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
+  "${DLAA_RUNTIME_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaRuntime.h"
+  "${DLAA_SOURCE_DIR}/DlaaSettings.h"
+  "${DLAA_SETTINGS_STORE_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaSettingsStore.h"
+  "${DLAA_SOURCE_DIR}/Fo4VrFrameBuffer.h"
+  "${DLAA_ENGINE_HOOK_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaEngineHooks.h"
+  "${DLAA_D3D11_HOOK_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaD3D11Hooks.h"
+  "${DLAA_STREAMLINE_SOURCE}"
+  "${DLAA_SOURCE_DIR}/StreamlineBackend.h"
+  "${UPSCALING_COMPOSE_SHADER_SOURCE}"
+  "${UPSCALING_MOTION_SHADER_SOURCE}"
+  "${UPSCALING_REACTIVE_SHADER_SOURCE}"
+  "${DLAA_VERIFY_SCRIPT}"
+  "${ROOT_DIR}/cmake/TestVerifyDlaaNegative.cmake"
+  "${ROOT_DIR}/cmake/StreamlinePayloadHashes.in.h"
+  "${ROOT_DIR}/cmake/VerifyStreamlinePayload.ps1"
   "${VANILLA_VERIFY_SCRIPT}"
   "${VANILLA_SHADER_RUNTIME_SOURCE}"
   "${VANILLA_FOCUS_RUNTIME_SOURCE}"
@@ -628,6 +729,47 @@ add_custom_target(VerifyD3D11Hooks ALL
     "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
   COMMENT "Verifying D3D11 method-detour ownership contract"
+  VERBATIM)
+
+add_custom_target(VerifyDlaa ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDLAA_ENGINE_SOURCE=${DLAA_ENGINE_HOOK_SOURCE}"
+    "-DDLAA_D3D_SOURCE=${DLAA_D3D11_HOOK_SOURCE}"
+    "-DDLAA_RUNTIME_SOURCE=${DLAA_RUNTIME_SOURCE}"
+    "-DDLAA_FRAME_HEADER=${DLAA_SOURCE_DIR}/Fo4VrFrameBuffer.h"
+    "-DDLAA_STREAMLINE_SOURCE=${DLAA_STREAMLINE_SOURCE}"
+    "-DDLAA_SETTINGS_SOURCE=${DLAA_SETTINGS_STORE_SOURCE}"
+    "-DUPSCALING_COMPOSE_SHADER_SOURCE=${UPSCALING_COMPOSE_SHADER_SOURCE}"
+    "-DUPSCALING_MOTION_SHADER_SOURCE=${UPSCALING_MOTION_SHADER_SOURCE}"
+    "-DUPSCALING_REACTIVE_SHADER_SOURCE=${UPSCALING_REACTIVE_SHADER_SOURCE}"
+    "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    "-DRENDERER_D3D_SOURCE=${D3D11_HOOK_SOURCE}"
+    -P "${DLAA_VERIFY_SCRIPT}"
+  COMMAND "${CMAKE_COMMAND}"
+    "-DDLAA_VALIDATOR=${DLAA_VERIFY_SCRIPT}"
+    "-DDLAA_ENGINE_SOURCE=${DLAA_ENGINE_HOOK_SOURCE}"
+    "-DDLAA_D3D_SOURCE=${DLAA_D3D11_HOOK_SOURCE}"
+    "-DDLAA_RUNTIME_SOURCE=${DLAA_RUNTIME_SOURCE}"
+    "-DDLAA_FRAME_HEADER=${DLAA_SOURCE_DIR}/Fo4VrFrameBuffer.h"
+    "-DDLAA_STREAMLINE_SOURCE=${DLAA_STREAMLINE_SOURCE}"
+    "-DDLAA_SETTINGS_SOURCE=${DLAA_SETTINGS_STORE_SOURCE}"
+    "-DUPSCALING_COMPOSE_SHADER_SOURCE=${UPSCALING_COMPOSE_SHADER_SOURCE}"
+    "-DUPSCALING_MOTION_SHADER_SOURCE=${UPSCALING_MOTION_SHADER_SOURCE}"
+    "-DUPSCALING_REACTIVE_SHADER_SOURCE=${UPSCALING_REACTIVE_SHADER_SOURCE}"
+    "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    "-DRENDERER_D3D_SOURCE=${D3D11_HOOK_SOURCE}"
+    -P "${ROOT_DIR}/cmake/TestVerifyDlaaNegative.cmake"
+  COMMENT "Verifying FO4VR-native DLAA ownership and negative fixtures"
+  VERBATIM)
+
+add_custom_target(VerifyStreamlinePayload ALL
+  COMMAND "${POWERSHELL_EXECUTABLE}"
+    -NoProfile
+    -NonInteractive
+    -ExecutionPolicy Bypass
+    -File "${ROOT_DIR}/cmake/VerifyStreamlinePayload.ps1"
+    -RuntimeDirectory "${STREAMLINE_RUNTIME_DIR}"
+  COMMENT "Verifying NVIDIA signatures and hashes for Streamline DLAA payload"
   VERBATIM)
 
 add_executable(VanillaReflectionPatchTool
@@ -987,6 +1129,56 @@ add_custom_target(VanillaFixesShaders
     "${VANILLA_SAO_RAW_BINARY}" "${VANILLA_SAO_RAW_HEADER}"
     "${VANILLA_SSLR_BLUR_BINARY}" "${VANILLA_SSLR_BLUR_HEADER}"
     "${VANILLA_SSLR_PREPASS_BINARY}" "${VANILLA_SSLR_PREPASS_HEADER}")
+add_custom_command(
+  OUTPUT
+    "${UPSCALING_COMPOSE_SHADER_BINARY}"
+    "${UPSCALING_COMPOSE_SHADER_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges
+    "/Fo${UPSCALING_COMPOSE_SHADER_BINARY}"
+    "/Fh${UPSCALING_COMPOSE_SHADER_HEADER}"
+    /Vnfo4vr_cs_upscaling_compose_cs
+    "${UPSCALING_COMPOSE_SHADER_SOURCE}"
+  DEPENDS "${UPSCALING_COMPOSE_SHADER_SOURCE}"
+  COMMENT "Compiling stereo upscaling compositor"
+  VERBATIM)
+add_custom_command(
+  OUTPUT
+    "${UPSCALING_MOTION_SHADER_BINARY}"
+    "${UPSCALING_MOTION_SHADER_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges /WX
+    "/Fo${UPSCALING_MOTION_SHADER_BINARY}"
+    "/Fh${UPSCALING_MOTION_SHADER_HEADER}"
+    /Vnfo4vr_cs_upscaling_motion_repair_cs
+    "${UPSCALING_MOTION_SHADER_SOURCE}"
+  DEPENDS "${UPSCALING_MOTION_SHADER_SOURCE}"
+  COMMENT "Compiling per-eye FO4VR motion-vector repair"
+  VERBATIM)
+add_custom_command(
+  OUTPUT
+    "${UPSCALING_REACTIVE_SHADER_BINARY}"
+    "${UPSCALING_REACTIVE_SHADER_HEADER}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges /WX
+    "/Fo${UPSCALING_REACTIVE_SHADER_BINARY}"
+    "/Fh${UPSCALING_REACTIVE_SHADER_HEADER}"
+    /Vnfo4vr_cs_upscaling_reactive_mask_cs
+    "${UPSCALING_REACTIVE_SHADER_SOURCE}"
+  DEPENDS "${UPSCALING_REACTIVE_SHADER_SOURCE}"
+  COMMENT "Compiling FO4VR TAA-derived DLSS reactive mask"
+  VERBATIM)
+add_custom_target(UpscalingShaders
+  DEPENDS
+    "${UPSCALING_COMPOSE_SHADER_BINARY}"
+    "${UPSCALING_COMPOSE_SHADER_HEADER}"
+    "${UPSCALING_MOTION_SHADER_BINARY}"
+    "${UPSCALING_MOTION_SHADER_HEADER}"
+    "${UPSCALING_REACTIVE_SHADER_BINARY}"
+    "${UPSCALING_REACTIVE_SHADER_HEADER}")
 add_custom_target(VerifyVanillaFixes ALL
   COMMAND "${CMAKE_COMMAND}"
     "-DVANILLA_SHADER_RUNTIME_SOURCE=${VANILLA_SHADER_RUNTIME_SOURCE}"
@@ -1416,6 +1608,25 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/render/BSDFPrePassShaderHook.h"
   "${D3D11_HOOK_SOURCE}"
   "${SOURCE_DIR}/render/D3D11Hooks.h"
+  "${DLAA_RUNTIME_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaRuntime.h"
+  "${DLAA_SOURCE_DIR}/DlaaSettings.h"
+  "${DLAA_SETTINGS_STORE_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaSettingsStore.h"
+  "${DLAA_SOURCE_DIR}/Fo4VrFrameBuffer.h"
+  "${DLAA_ENGINE_HOOK_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaEngineHooks.h"
+  "${DLAA_D3D11_HOOK_SOURCE}"
+  "${DLAA_SOURCE_DIR}/DlaaD3D11Hooks.h"
+  "${DLAA_STREAMLINE_SOURCE}"
+  "${DLAA_SOURCE_DIR}/StreamlineBackend.h"
+  "${DLAA_GENERATED_DIR}/GeneratedStreamlinePayloadHashes.h"
+  "${UPSCALING_COMPOSE_SHADER_SOURCE}"
+  "${UPSCALING_COMPOSE_SHADER_HEADER}"
+  "${UPSCALING_MOTION_SHADER_SOURCE}"
+  "${UPSCALING_MOTION_SHADER_HEADER}"
+  "${UPSCALING_REACTIVE_SHADER_SOURCE}"
+  "${UPSCALING_REACTIVE_SHADER_HEADER}"
   "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.cpp"
   "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.h"
   "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.cpp"
@@ -1450,6 +1661,7 @@ add_library(${PROJECT_NAME} SHARED
 )
 add_dependencies(${PROJECT_NAME}
   VanillaFixesShaders
+  UpscalingShaders
   VanillaReflectionPatchTool
   ContactShadowShader
   SubsurfaceScatteringShader
@@ -1459,6 +1671,8 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrRendererHook
   VerifyBSDFPrePassHook
   VerifyD3D11Hooks
+  VerifyDlaa
+  VerifyStreamlinePayload
   VerifyVanillaFixes
   VerifyIblFoundation
   VerifyIblCaptureProbeContracts
@@ -1491,6 +1705,7 @@ add_dependencies(${PROJECT_NAME}
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE
+  "${DLAA_GENERATED_DIR}"
   "${COMPLEX_PARALLAX_GENERATED_DIR}"
   "${CONTACT_SHADOW_GENERATED_DIR}"
   "${SUBSURFACE_SCATTERING_GENERATED_DIR}"
@@ -1504,6 +1719,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
   "${SOURCE_DIR}"
+  "${STREAMLINE_INCLUDE_DIR}"
   "${ROCK_SDK_PATH_SELECTED}"
   "${PRISMA_F4VR_API_PATH_SELECTED}"
 )
@@ -1517,6 +1733,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   minhook::minhook
   nlohmann_json::nlohmann_json
   spdlog::spdlog
+  bcrypt
+  dxguid
   shell32
 )
 
@@ -1543,12 +1761,22 @@ string(REPLACE "/Ob2" "/Ob3" CMAKE_CXX_FLAGS_RELEASE
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${ROOT_DIR}/package/F4SE/Plugins"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${ROOT_DIR}/package/F4SE/Plugins/Streamline"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${ROOT_DIR}/package/F4SE/Plugins/Streamline/Licenses"
   COMMAND "${CMAKE_COMMAND}" -E copy
     "$<TARGET_FILE:${PROJECT_NAME}>"
     "${ROOT_DIR}/package/F4SE/Plugins/"
   COMMAND "${CMAKE_COMMAND}" -E copy
     "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
     "${ROOT_DIR}/package/F4SE/Plugins/"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+    ${STREAMLINE_RUNTIME_FILES}
+    "${ROOT_DIR}/package/F4SE/Plugins/Streamline/"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+    ${STREAMLINE_LICENSE_FILES}
+    "${ROOT_DIR}/package/F4SE/Plugins/Streamline/Licenses/"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${ROOT_DIR}/package/PrismaUI_F4/views/FO4VR-Community-Shaders"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory
@@ -1570,12 +1798,22 @@ if(POST_BUILD_COPY_PLUGIN)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
       COMMAND "${CMAKE_COMMAND}" -E make_directory
         "${copy_path}/F4SE/Plugins"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${copy_path}/F4SE/Plugins/Streamline"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${copy_path}/F4SE/Plugins/Streamline/Licenses"
       COMMAND "${CMAKE_COMMAND}" -E copy
         "$<TARGET_FILE:${PROJECT_NAME}>"
         "${copy_path}/F4SE/Plugins/"
       COMMAND "${CMAKE_COMMAND}" -E copy
         "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
         "${copy_path}/F4SE/Plugins/"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        ${STREAMLINE_RUNTIME_FILES}
+        "${copy_path}/F4SE/Plugins/Streamline/"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        ${STREAMLINE_LICENSE_FILES}
+        "${copy_path}/F4SE/Plugins/Streamline/Licenses/"
       COMMAND "${CMAKE_COMMAND}" -E make_directory
         "${copy_path}/PrismaUI_F4/views/FO4VR-Community-Shaders"
       COMMAND "${CMAKE_COMMAND}" -E copy_directory
@@ -1591,6 +1829,18 @@ option(BUILD_FO4VR_CS_TESTS
 if(BUILD_FO4VR_CS_TESTS)
   enable_testing()
   find_program(PWSH_EXECUTABLE NAMES pwsh REQUIRED)
+
+  add_executable(FO4VRCommunityShadersUpscalingSettingsTests
+    "${ROOT_DIR}/tests/UpscalingSettingsTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.UpscalingSettings
+    COMMAND FO4VRCommunityShadersUpscalingSettingsTests)
 
   add_executable(FO4VRCommunityShadersLinearLightingSettingsTests
     "${ROOT_DIR}/tests/LinearLightingSettingsTests.cpp")

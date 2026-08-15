@@ -5,6 +5,10 @@
 #include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
+#include "Features/dlaa/DlaaD3D11Hooks.h"
+#include "Features/dlaa/DlaaEngineHooks.h"
+#include "Features/dlaa/DlaaRuntime.h"
+#include "Features/dlaa/DlaaSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
@@ -68,12 +72,15 @@ namespace
         case F4SE::MessagingInterface::kPostPostLoad:
         {
             const auto d3d = community_shaders::render::d3d11HookSnapshot();
+            const auto dlaa = community_shaders::dlaa::Runtime::get().snapshot();
             community_shaders::logging::info(
-                "F4SE PostPostLoad: D3D importHook={}, deviceCaptured={}, deviceHooks={}, createCalls={}.",
+                "F4SE PostPostLoad: D3D importHook={}, deviceCaptured={}, deviceHooks={}, createCalls={}; DLAA requested={}, Streamline initialized={}.",
                 d3d.deviceCreationImportInstalled,
                 d3d.deviceCaptured,
                 d3d.deviceHooksInstalled,
-                d3d.deviceCreationCalls);
+                d3d.deviceCreationCalls,
+                dlaa.settings.enabled,
+                dlaa.streamline.initialized);
             break;
         }
         case F4SE::MessagingInterface::kGameDataReady:
@@ -85,6 +92,10 @@ namespace
                 validateBSDFPrePassShaderHook("GameDataReady");
             (void)community_shaders::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
+            (void)community_shaders::dlaa::validateEngineHooks(
+                "GameDataReady");
+            (void)community_shaders::dlaa::validateD3D11Hooks(
+                "GameDataReady");
             const auto linearLighting =
                 community_shaders::linear_lighting::Runtime::get().snapshot();
             const auto geometry =
@@ -93,6 +104,12 @@ namespace
                 community_shaders::render::d3d11HookSnapshot();
             const auto pointLight = community_shaders::linear_lighting::
                 dFTiledPointLightHookSnapshot();
+            const auto dlaa =
+                community_shaders::dlaa::Runtime::get().snapshot();
+            const auto dlaaEngine =
+                community_shaders::dlaa::engineHookSnapshot();
+            const auto dlaaD3d =
+                community_shaders::dlaa::d3d11HookSnapshot();
             community_shaders::logging::info(
                 "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, grassVsMask=0x{:02X}, grassVsCreated={}, grassVsTracked={}, grassClassSelections={}, ambientContractMask=0x{:010X}, ambientReadyMask=0x{:010X}, ambientShaders={}, ambientTracked={}, ambientBuilds={}, ambientBuildFailures={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, ambientReplacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightProducerOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientTransformPrepared={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
@@ -133,6 +150,30 @@ namespace
                 pointLight.modifiedCalls,
                 pointLight.activeGamma,
                 pointLight.activeColorMultiplier);
+            community_shaders::logging::info(
+                "F4SE GameDataReady: DLAA requested={}, operational={}, engineHooksOwned={}, mapUnmapOwned={}, cameraQualified={}, cameraBinding={}, renderResourcesQualified={}, Streamline initialized={}, deviceBound={}, swapchainUpgraded={}, DLSS loaded={}, supported={}, functionsBound={}, cameraFrames={}, containingMaps={}, identityMatches={}, validationFailures={}, preCalls={}, postCalls={}, stereoEvaluations={}, evaluationFailures={}, committedFrames={}.",
+                dlaa.settings.enabled,
+                dlaa.operational,
+                dlaaEngine.owned,
+                dlaaD3d.owned,
+                dlaa.cameraBufferQualified,
+                dlaa.cameraBindingObserved,
+                dlaa.renderResourcesQualified,
+                dlaa.streamline.initialized,
+                dlaa.streamline.deviceBound,
+                dlaa.streamline.swapChainUpgraded,
+                dlaa.streamline.featureLoaded,
+                dlaa.streamline.featureSupported,
+                dlaa.streamline.featureFunctionsBound,
+                dlaa.mappedCameraFrames,
+                dlaa.cameraMapCandidates,
+                dlaa.cameraIdentityMatches,
+                dlaa.cameraValidationFailures,
+                dlaa.preRenderCalls,
+                dlaa.postRenderCalls,
+                dlaa.stereoEvaluations,
+                dlaa.stereoEvaluationFailures,
+                dlaa.committedFrames);
             break;
         }
         case F4SE::MessagingInterface::kPostLoadGame:
@@ -141,6 +182,8 @@ namespace
                 .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("PostLoadGame");
+            community_shaders::dlaa::Runtime::get().beginQualificationSession(
+                "PostLoadGame");
             break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::ui::onGameSessionReady();
@@ -148,6 +191,8 @@ namespace
                 .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("NewGame");
+            community_shaders::dlaa::Runtime::get().beginQualificationSession(
+                "NewGame");
             break;
         default:
             break;
@@ -228,6 +273,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
 
         const auto settings =
             community_shaders::linear_lighting::loadSettings();
+        const auto dlaaSettings = community_shaders::dlaa::loadSettings();
         const auto iblSettings = community_shaders::ibl::loadSettings();
         const auto contactShadowSettings =
             community_shaders::contact_shadows::loadSettings();
@@ -247,6 +293,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::vanilla_fixes::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
+        community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
         community_shaders::linear_lighting::Runtime::get().
             applyComplexParallaxSettings(complexMaterialSettings);
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);
@@ -279,6 +326,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::logging::warn(
                 "Verified D3D11 bootstrap was not installed; plugin remains loaded but all rendering stays vanilla.");
         }
+        if (!community_shaders::dlaa::installEngineHooks()) {
+            community_shaders::logging::warn(
+                "Verified FO4VR DLAA engine boundaries were not installed; vanilla TAA remains active.");
+        }
         if (!community_shaders::render::installBSLightingGeometryHook()) {
             community_shaders::logging::warn(
                 "Verified BSDF lighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
@@ -298,7 +349,12 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            dlaaSettings.enabled,
+            community_shaders::dlaa::modeName(dlaaSettings.mode),
+            static_cast<std::uint32_t>(dlaaSettings.modelPreset),
+            dlaaSettings.sharpening,
+            dlaaSettings.sharpness,
             settings.enabled,
             iblSettings.enabled,
             iblSettings.diffuseEnabled,

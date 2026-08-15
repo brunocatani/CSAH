@@ -94,6 +94,16 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "type == \"dlaaEnabled\""
+    "dlaa::Runtime::get().applySettings(next)"
+    "dlaa::saveSettings(next)"
+    "DLAA wrist action accepted"
+    "type == \"upscalingSet\""
+    "type == \"upscalingRefresh\""
+    "dlaa::Runtime::get().requestRefresh()"
+    "key == \"centerFeatherPixels\""
+    "key == \"motionVectorRepair\""
+    "key == \"hardResetOnLoad\""
     "type == \"iblEnabled\""
     "type == \"iblDiffuseEnabled\""
     "type == \"iblDiffuseLevel\""
@@ -156,6 +166,20 @@ foreach(required IN ITEMS
     "ALL SWITCHES · IMMEDIATE SAVE"
     "FO4VRCommunityShaders_Config\\FO4VRCommunityShaders.ini"
     "Image Based Lighting"
+    "id=\"dlaaSwitch\""
+    "toggleDlaaEnabled"
+    "type: \"dlaaEnabled\""
+    "id=\"upscalingPage\""
+    "id=\"pageUpscalingButton\""
+    "id=\"upscalingMasterSwitch\""
+    "id=\"upscalingMotionRepairSwitch\""
+    "data-upscaling-mode=\"5\""
+    "data-upscaling-model=\"4\""
+    "type: \"upscalingSet\""
+    "type: \"upscalingRefresh\""
+    "Center DLAA keeps the complete vanilla-TAA image"
+    "Full DLAA is never silently reduced"
+    "metric(\"GPU neural\""
     "id=\"iblSwitch\""
     "Diffuse IBL"
     "id=\"iblDiffuseSwitch\""
@@ -249,7 +273,7 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "ROCK_Configurator"
-    "Runtime::get().applySettings(next)"
+    "linear_lighting::Runtime::get().applySettings(next)"
     "NetworkAccessPolicy::Unrestricted")
   string(FIND "${source}" "${forbidden}" found)
   if(NOT found EQUAL -1)

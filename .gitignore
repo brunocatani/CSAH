@@ -2,11 +2,13 @@ build/
 build-*/
 .vs/
 *.user
+*.obj
 CMakeUserPresets.json
 package/Data/F4SE/Plugins/*.dll
 package/Data/F4SE/Plugins/*.pdb
 package/F4SE/Plugins/*.dll
 package/F4SE/Plugins/*.pdb
+package/F4SE/Plugins/Streamline/
 package/PrismaUI_F4/
 
 # Local runtime diagnostics and generated package metadata

@@ -99,7 +99,7 @@
 
     .page-nav {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 8px;
       align-items: center;
       padding: 20px 16px;
@@ -440,6 +440,53 @@
       color: var(--muted);
       font: 12px/1.55 Consolas, monospace;
     }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .mode-grid button {
+      min-width: 0;
+      min-height: 58px;
+      padding: 8px 10px;
+      line-height: 1.25;
+    }
+
+    .mode-grid.models {
+      grid-template-columns: repeat(5, 1fr);
+    }
+
+    .upscaling-switches {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    .upscaling-switches .master {
+      min-height: 98px;
+      padding: 14px;
+    }
+
+    .upscaling-switches .master-copy strong { font-size: 13px; }
+    .upscaling-switches .switch { width: 86px; height: 44px; }
+    .upscaling-switches .switch::after { inset: 5px 42px 5px 5px; }
+    .upscaling-switches .switch.on::after { inset: 5px 5px 5px 42px; }
+
+    #upscalingPage .control { min-height: 130px; }
+
+    .neural-contract {
+      margin-bottom: 14px;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--cyan);
+      background: rgba(17, 37, 42, .78);
+      color: var(--muted);
+      font: 11px/1.45 Consolas, monospace;
+    }
   </style>
 </head>
 <body>
@@ -456,6 +503,7 @@
         <button id="pageResponseButton" type="button">03 · Response</button>
         <button id="pageShadowsButton" type="button">04 · Shadows</button>
         <button id="pageVanillaFixesButton" type="button">05 · Vanilla Fixes</button>
+        <button id="pageUpscalingButton" type="button">06 · Upscale</button>
       </nav>
     </header>
 
@@ -473,6 +521,13 @@
                 <span id="masterState">VANILLA PASS-THROUGH</span>
               </div>
               <div id="masterSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>DLAA</strong>
+                <span id="dlaaState">VANILLA TAA</span>
+              </div>
+              <div id="dlaaSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
             </div>
             <div class="master">
               <div class="master-copy">
@@ -736,6 +791,114 @@
           <button id="resetButton" class="reset" type="button">Restore upstream defaults</button>
         </aside>
       </section>
+
+      <section id="upscalingPage" class="page" aria-label="NVIDIA upscaling controls">
+        <section class="controls">
+          <div class="section-heading">
+            <h2>Stereo neural reconstruction</h2>
+            <span>STREAMLINE 2.12 · TWO EYES · LIVE A/B</span>
+          </div>
+
+          <div class="master">
+            <div class="master-copy">
+              <strong>Upscaling pipeline</strong>
+              <span id="upscalingState">VANILLA TAA / BASELINE</span>
+            </div>
+            <div id="upscalingMasterSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+          </div>
+
+          <div class="neural-contract">
+            DLAA preserves native render resolution. DLSS reduces engine render resolution and reconstructs each eye to the headset target. Center DLAA keeps the complete vanilla-TAA image and feathers neural output only into the selected central rectangle.
+          </div>
+
+          <div class="section-heading">
+            <h2>Execution mode</h2>
+            <span>HARD HISTORY RESET ON CHANGE</span>
+          </div>
+          <div id="upscalingModeGrid" class="mode-grid">
+            <button type="button" data-upscaling-mode="0">DLAA<br>Native</button>
+            <button type="button" data-upscaling-mode="1">DLSS<br>Quality</button>
+            <button type="button" data-upscaling-mode="2">DLSS<br>Balanced</button>
+            <button type="button" data-upscaling-mode="3">DLSS<br>Performance</button>
+            <button type="button" data-upscaling-mode="4">DLSS<br>Ultra Perf</button>
+            <button type="button" data-upscaling-mode="5">Center DLAA<br>TAA Periphery</button>
+          </div>
+
+          <div class="section-heading">
+            <h2>Transformer model</h2>
+            <span>DRIVER OVERRIDES MUST BE REMOVED</span>
+          </div>
+          <div id="upscalingModelGrid" class="mode-grid models">
+            <button type="button" data-upscaling-model="0">Auto</button>
+            <button type="button" data-upscaling-model="1">J<br>Less ghost</button>
+            <button type="button" data-upscaling-model="2">K<br>Quality</button>
+            <button type="button" data-upscaling-model="3">L<br>Stable</button>
+            <button type="button" data-upscaling-model="4">M<br>Faster</button>
+          </div>
+
+          <div class="upscaling-switches">
+            <div class="master">
+              <div class="master-copy"><strong>Motion repair</strong><span>FAR FIELD · PER EYE</span></div>
+              <div id="upscalingMotionRepairSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy"><strong>CAS sharpen</strong><span>CONTRAST ADAPTIVE</span></div>
+              <div id="upscalingSharpenSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy"><strong>Show center</strong><span>CYAN PROOF TINT</span></div>
+              <div id="upscalingVisualizeSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy"><strong>Reset after loads</strong><span>FREE BOTH VIEWPORTS</span></div>
+              <div id="upscalingLoadResetSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy"><strong>Verbose trace</strong><span>30-FRAME TELEMETRY</span></div>
+              <div id="upscalingVerboseSwitch" class="switch" role="switch" tabindex="0" aria-checked="false"></div>
+            </div>
+          </div>
+
+          <div id="upscalingControlGrid" class="control-grid">
+            <div class="control">
+              <label for="upscalingSharpness">Sharpness<output id="upscalingSharpnessValue">—</output></label>
+              <p>Contrast-adaptive sharpening applied after neural reconstruction.</p>
+              <input id="upscalingSharpness" type="range" min="0" max="1" step=".01">
+            </div>
+            <div class="control">
+              <label for="upscalingCenterWidth">Center width<output id="upscalingCenterWidthValue">—</output></label>
+              <p>Horizontal fraction of each eye evaluated by center DLAA.</p>
+              <input id="upscalingCenterWidth" type="range" min=".25" max="1" step=".01">
+            </div>
+            <div class="control">
+              <label for="upscalingCenterHeight">Center height<output id="upscalingCenterHeightValue">—</output></label>
+              <p>Vertical fraction of each eye evaluated by center DLAA.</p>
+              <input id="upscalingCenterHeight" type="range" min=".25" max="1" step=".01">
+            </div>
+            <div class="control">
+              <label for="upscalingCenterFeather">Edge feather<output id="upscalingCenterFeatherValue">—</output></label>
+              <p>Smooth transition width between center DLAA and vanilla TAA.</p>
+              <input id="upscalingCenterFeather" type="range" min="0" max="128" step="1">
+            </div>
+          </div>
+        </section>
+
+        <aside>
+          <div class="plate">
+            <h3>Live neural contract</h3>
+            <div id="upscalingStatusGrid" class="status-grid"></div>
+          </div>
+          <div class="plate">
+            <h3>Fidelity contract</h3>
+            <p class="page-note">Full DLAA is never silently reduced. Center DLAA is a separate opt-in mode; every pixel outside its feather rectangle remains the engine's native TAA result.</p>
+          </div>
+          <div class="plate">
+            <h3>Resource lifecycle</h3>
+            <p class="page-note">Mode, model, size, and enable changes free both Streamline viewport histories and require one private stereo proof before publication.</p>
+          </div>
+          <button id="upscalingRefreshButton" class="reset" type="button">Hard refresh both eyes</button>
+        </aside>
+      </section>
     </main>
 
     <footer>
@@ -849,6 +1012,24 @@
           }, 180));
         });
       }
+
+      const upscalingRanges = [
+        { id: "upscalingSharpness", key: "sharpness", digits: 2 },
+        { id: "upscalingCenterWidth", key: "centerWidth", digits: 2 },
+        { id: "upscalingCenterHeight", key: "centerHeight", digits: 2 },
+        { id: "upscalingCenterFeather", key: "centerFeatherPixels", digits: 0 }
+      ];
+      for (const control of upscalingRanges) {
+        const input = document.getElementById(control.id);
+        const output = document.getElementById(`${control.id}Value`);
+        input.addEventListener("input", () => {
+          output.textContent = Number(input.value).toFixed(control.digits);
+          clearTimeout(state.timers.get(control.id));
+          state.timers.set(control.id, setTimeout(() => {
+            bridge({ type: "upscalingSet", key: control.key, value: Number(input.value) });
+          }, 180));
+        });
+      }
     }
 
     function truth(value, yes, no) {
@@ -860,27 +1041,31 @@
     }
 
     function setPage(page) {
-      state.page = page === "surfaces" || page === "response" || page === "shadows" || page === "vanillaFixes" ? page : "features";
+      state.page = page === "surfaces" || page === "response" || page === "shadows" || page === "vanillaFixes" || page === "upscaling" ? page : "features";
       const featuresActive = state.page === "features";
       const surfacesActive = state.page === "surfaces";
       const responseActive = state.page === "response";
       const shadowsActive = state.page === "shadows";
       const vanillaFixesActive = state.page === "vanillaFixes";
+      const upscalingActive = state.page === "upscaling";
       document.getElementById("featuresPage").classList.toggle("active", featuresActive);
       document.getElementById("surfacesPage").classList.toggle("active", surfacesActive);
       document.getElementById("responsePage").classList.toggle("active", responseActive);
       document.getElementById("shadowsPage").classList.toggle("active", shadowsActive);
       document.getElementById("vanillaFixesPage").classList.toggle("active", vanillaFixesActive);
+      document.getElementById("upscalingPage").classList.toggle("active", upscalingActive);
       document.getElementById("pageFeaturesButton").classList.toggle("active", featuresActive);
       document.getElementById("pageSurfacesButton").classList.toggle("active", surfacesActive);
       document.getElementById("pageResponseButton").classList.toggle("active", responseActive);
       document.getElementById("pageShadowsButton").classList.toggle("active", shadowsActive);
       document.getElementById("pageVanillaFixesButton").classList.toggle("active", vanillaFixesActive);
+      document.getElementById("pageUpscalingButton").classList.toggle("active", upscalingActive);
     }
 
     function render() {
       const model = state.model || {};
       const settings = model.settings || {};
+      const dlaa = model.dlaa || {};
       const runtime = model.runtime || {};
       const hooks = model.hooks || {};
       const wrist = model.wrist || {};
@@ -902,6 +1087,69 @@
       master.classList.toggle("on", enabled);
       master.setAttribute("aria-checked", String(enabled));
       document.getElementById("masterState").textContent = enabled ? "FULL LINEAR LIGHTING ARMED" : "VANILLA PASS-THROUGH";
+
+      const dlaaEnabled = !!dlaa.enabled;
+      const dlaaSwitch = document.getElementById("dlaaSwitch");
+      dlaaSwitch.classList.toggle("on", dlaaEnabled);
+      dlaaSwitch.setAttribute("aria-checked", String(dlaaEnabled));
+      document.getElementById("dlaaState").textContent = !dlaaEnabled ?
+        "VANILLA TAA / BASELINE" :
+        (dlaa.operational ? `${String(dlaa.modeName || "DLAA").toUpperCase()} ACTIVE` :
+          (dlaa.supported ? "QUALIFYING / PRIVATE PROOF" : "STREAMLINE UNAVAILABLE"));
+
+      const upscalingMaster = document.getElementById("upscalingMasterSwitch");
+      upscalingMaster.classList.toggle("on", dlaaEnabled);
+      upscalingMaster.setAttribute("aria-checked", String(dlaaEnabled));
+      document.getElementById("upscalingState").textContent = !dlaaEnabled ?
+        "VANILLA TAA / BASELINE" :
+        (dlaa.operational ? `${String(dlaa.modeName || "DLAA").toUpperCase()} ACTIVE` :
+          (dlaa.supported ? "PRIVATE STEREO PROOF / RESET" : "STREAMLINE UNAVAILABLE"));
+
+      for (const button of document.querySelectorAll("[data-upscaling-mode]")) {
+        button.classList.toggle("active", Number(button.dataset.upscalingMode) === Number(dlaa.mode || 0));
+      }
+      for (const button of document.querySelectorAll("[data-upscaling-model]")) {
+        button.classList.toggle("active", Number(button.dataset.upscalingModel) === Number(dlaa.modelPreset || 0));
+      }
+
+      const upscalingSwitches = [
+        ["upscalingMotionRepairSwitch", dlaa.motionVectorRepair !== false],
+        ["upscalingSharpenSwitch", !!dlaa.sharpening],
+        ["upscalingVisualizeSwitch", !!dlaa.visualizeCenter],
+        ["upscalingLoadResetSwitch", dlaa.hardResetOnLoad !== false],
+        ["upscalingVerboseSwitch", !!dlaa.verboseDiagnostics]
+      ];
+      for (const [id, value] of upscalingSwitches) {
+        const element = document.getElementById(id);
+        element.classList.toggle("on", value);
+        element.setAttribute("aria-checked", String(value));
+      }
+
+      const upscalingValues = [
+        ["upscalingSharpness", Number(dlaa.sharpness), 2],
+        ["upscalingCenterWidth", Number(dlaa.centerWidth), 2],
+        ["upscalingCenterHeight", Number(dlaa.centerHeight), 2],
+        ["upscalingCenterFeather", Number(dlaa.centerFeatherPixels), 0]
+      ];
+      for (const [id, value, digits] of upscalingValues) {
+        const input = document.getElementById(id);
+        if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
+        document.getElementById(`${id}Value`).textContent = Number.isFinite(value) ? value.toFixed(digits) : "—";
+      }
+      document.getElementById("upscalingStatusGrid").innerHTML = [
+        metric("Mode", dlaa.modeName || "DLAA", dlaa.operational ? "good" : "wait"),
+        metric("Streamline", dlaa.supported ? "SUPPORTED" : "CLOSED", dlaa.supported ? "good" : "bad"),
+        metric("Stereo state", dlaa.contractRejected ? "CONTRACT CLOSED" : (dlaa.operational ? "PUBLISHING" : (dlaa.enabled ? "PRIVATE PROOF" : "BYPASS")), dlaa.contractRejected ? "bad" : (dlaa.operational ? "good" : "wait")),
+        metric("Input / eye", dlaa.inputWidth ? `${dlaa.inputWidth}×${dlaa.inputHeight}` : "WAIT", dlaa.inputWidth ? "good" : "wait"),
+        metric("Output / eye", dlaa.outputWidth ? `${dlaa.outputWidth}×${dlaa.outputHeight}` : "WAIT", dlaa.outputWidth ? "good" : "wait"),
+        metric("GPU neural", Number(dlaa.gpuTotalMs || 0) > 0 ? `${Number(dlaa.gpuTotalMs).toFixed(2)} ms` : "SAMPLING", Number(dlaa.gpuTotalMs || 0) > 0 ? "good" : "wait"),
+        metric("Left / right", Number(dlaa.gpuLeftMs || 0) > 0 ? `${Number(dlaa.gpuLeftMs).toFixed(2)} / ${Number(dlaa.gpuRightMs).toFixed(2)} ms` : "SAMPLING", "wait"),
+        metric("Commit", Number(dlaa.gpuCommitMs || 0) > 0 ? `${Number(dlaa.gpuCommitMs).toFixed(2)} ms` : "SAMPLING", "wait"),
+        metric("Evaluations", String(dlaa.stereoEvaluations || 0), dlaa.stereoEvaluations ? "good" : "wait"),
+        metric("Failures", String(dlaa.evaluationFailures || 0), dlaa.evaluationFailures ? "bad" : "good"),
+        metric("Published", String(dlaa.committedFrames || 0), dlaa.committedFrames ? "good" : "wait"),
+        metric("Hard resets", String(dlaa.hardResets || 0), "wait")
+      ].join("");
 
       const preserveNativeDarkness = settings.preserveNativeDarkness !== false;
       const nativeDarknessSwitch = document.getElementById("nativeDarknessSwitch");
@@ -1114,6 +1362,28 @@
       render();
     }
 
+    function toggleDlaaEnabled() {
+      const dlaa = (state.model || {}).dlaa || {};
+      const enabled = !dlaa.enabled;
+      bridge({ type: "dlaaEnabled", value: enabled });
+      if (state.model) state.model.dlaa = { ...dlaa, enabled, operational: false };
+      render();
+    }
+
+    function setUpscalingValue(key, value) {
+      bridge({ type: "upscalingSet", key, value });
+      if (state.model) {
+        const current = state.model.dlaa || {};
+        state.model.dlaa = { ...current, [key]: value, operational: false };
+      }
+      render();
+    }
+
+    function toggleUpscalingBoolean(key) {
+      const current = (state.model || {}).dlaa || {};
+      setUpscalingValue(key, !current[key]);
+    }
+
     function toggleIblEnabled() {
       const ibl = (state.model || {}).ibl || {};
       const enabled = !ibl.enabled;
@@ -1232,10 +1502,37 @@
     document.getElementById("pageResponseButton").addEventListener("click", () => setPage("response"));
     document.getElementById("pageShadowsButton").addEventListener("click", () => setPage("shadows"));
     document.getElementById("pageVanillaFixesButton").addEventListener("click", () => setPage("vanillaFixes"));
+    document.getElementById("pageUpscalingButton").addEventListener("click", () => setPage("upscaling"));
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
     });
+    document.getElementById("dlaaSwitch").addEventListener("click", toggleDlaaEnabled);
+    document.getElementById("dlaaSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleDlaaEnabled();
+    });
+    document.getElementById("upscalingMasterSwitch").addEventListener("click", toggleDlaaEnabled);
+    document.getElementById("upscalingMasterSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleDlaaEnabled();
+    });
+    for (const button of document.querySelectorAll("[data-upscaling-mode]")) {
+      button.addEventListener("click", () => setUpscalingValue("mode", Number(button.dataset.upscalingMode)));
+    }
+    for (const button of document.querySelectorAll("[data-upscaling-model]")) {
+      button.addEventListener("click", () => setUpscalingValue("modelPreset", Number(button.dataset.upscalingModel)));
+    }
+    const bindUpscalingSwitch = (id, key) => {
+      const element = document.getElementById(id);
+      element.addEventListener("click", () => toggleUpscalingBoolean(key));
+      element.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") toggleUpscalingBoolean(key);
+      });
+    };
+    bindUpscalingSwitch("upscalingSharpenSwitch", "sharpening");
+    bindUpscalingSwitch("upscalingMotionRepairSwitch", "motionVectorRepair");
+    bindUpscalingSwitch("upscalingVisualizeSwitch", "visualizeCenter");
+    bindUpscalingSwitch("upscalingLoadResetSwitch", "hardResetOnLoad");
+    bindUpscalingSwitch("upscalingVerboseSwitch", "verboseDiagnostics");
     document.getElementById("nativeDarknessSwitch").addEventListener("click", toggleNativeDarkness);
     document.getElementById("nativeDarknessSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleNativeDarkness();
@@ -1296,6 +1593,7 @@
       bridge({ type: "diagnostics", enabled: !wrist.overlayEnabled });
     });
     document.getElementById("resetButton").addEventListener("click", () => bridge({ type: "reset" }));
+    document.getElementById("upscalingRefreshButton").addEventListener("click", () => bridge({ type: "upscalingRefresh" }));
 
     window.communityShadersUpdate = function communityShadersUpdate(payload) {
       try {
