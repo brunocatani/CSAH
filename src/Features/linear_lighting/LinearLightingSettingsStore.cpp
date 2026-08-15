@@ -104,6 +104,10 @@ namespace community_shaders::linear_lighting
         }
 
         result.enabled = readBool(path, L"bEnabled", defaults.enabled);
+        result.preserveNativeDarkness = readBool(
+            path,
+            L"bPreserveNativeDarkness",
+            defaults.preserveNativeDarkness);
         result.lightGamma = readFloat(path, L"fLightGamma", defaults.lightGamma);
         result.colorGamma = readFloat(path, L"fColorGamma", defaults.colorGamma);
         result.emitColorGamma = readFloat(path, L"fEmitColorGamma", defaults.emitColorGamma);
@@ -175,6 +179,11 @@ namespace community_shaders::linear_lighting
         }
         const auto safe = sanitize(settings);
         bool success = writeValue(path, L"bEnabled", safe.enabled ? L"1" : L"0");
+        success = writeValue(
+                      path,
+                      L"bPreserveNativeDarkness",
+                      safe.preserveNativeDarkness ? L"1" : L"0") &&
+            success;
 #define WRITE_SETTING(KEY, FIELD) \
         success = writeFloat(path, KEY, safe.FIELD) && success
         WRITE_SETTING(L"fLightGamma", lightGamma);

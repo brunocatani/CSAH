@@ -26,7 +26,8 @@ foreach(required IN ITEMS
     "replacement->AddRef()"
     "ReplacementShaderFamily::dFLightAmbient"
     "ReplacementPixelConstants_None"
-    "rebuildDFLightAmbientReplacements(next.ambientGamma)")
+    "const auto nextAmbientGamma = calibratedLightingResponseGamma("
+    "rebuildDFLightAmbientReplacements(nextAmbientGamma)")
   string(FIND "${runtimeSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR

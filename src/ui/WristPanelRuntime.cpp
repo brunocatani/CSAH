@@ -579,6 +579,8 @@ namespace community_shaders::ui
         {
             return {
                 { "enabled", settings.enabled },
+                { "preserveNativeDarkness",
+                    settings.preserveNativeDarkness },
                 { "lightGamma", settings.lightGamma },
                 { "colorGamma", settings.colorGamma },
                 { "emitColorGamma", settings.emitColorGamma },
@@ -2005,6 +2007,12 @@ namespace community_shaders::ui
                 } else if (type == "enabled" && action.contains("value") &&
                            action["value"].is_boolean()) {
                     next.enabled = action["value"].get<bool>();
+                    changed = true;
+                } else if (type == "preserveNativeDarkness" &&
+                           action.contains("value") &&
+                           action["value"].is_boolean()) {
+                    next.preserveNativeDarkness =
+                        action["value"].get<bool>();
                     changed = true;
                 } else if (type == "set" && action.contains("key") &&
                            action["key"].is_string() &&

@@ -4,7 +4,7 @@
 
 namespace community_shaders::linear_lighting
 {
-    constexpr float kVanillaPointLightGamma = 2.2f;
+    constexpr float kVanillaPointLightGamma = kNativeLightingResponseGamma;
 
     struct DFTiledPointLightProducerState
     {
@@ -22,7 +22,9 @@ namespace community_shaders::linear_lighting
         }
         return {
             .enabled = true,
-            .gamma = safe.lightGamma,
+            .gamma = calibratedLightingResponseGamma(
+                safe.preserveNativeDarkness,
+                safe.lightGamma),
             // FO4VR's tiled-light compute shaders consume record color at
             // engine scale and contain no reciprocal-PI normalization.
             .colorMultiplier = safe.pointLightMultiplier,

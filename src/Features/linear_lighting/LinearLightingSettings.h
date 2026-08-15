@@ -8,9 +8,16 @@
 
 namespace community_shaders::linear_lighting
 {
+    constexpr float kNativeLightingResponseGamma = 2.2f;
+
     struct Settings
     {
         bool enabled{ false };
+        // Skyrim's 1.8 response is retained for authored material colours.
+        // Fallout's native light, ambient, fog, and sky producers use 2.2;
+        // preserving that floor prevents low encoded values from being
+        // amplified several times more than their daytime counterparts.
+        bool preserveNativeDarkness{ true };
 
         float lightGamma{ 1.8f };
         float colorGamma{ 1.8f };
@@ -93,6 +100,15 @@ namespace community_shaders::linear_lighting
     static_assert(offsetof(FrameData, complexParallax) == 112);
 
     [[nodiscard]] Settings sanitize(const Settings& settings) noexcept;
+
+    [[nodiscard]] constexpr float calibratedLightingResponseGamma(
+        bool preserveNativeDarkness,
+        float configuredGamma) noexcept
+    {
+        return preserveNativeDarkness &&
+                configuredGamma < kNativeLightingResponseGamma ?
+            kNativeLightingResponseGamma : configuredGamma;
+    }
 
     [[nodiscard]] FrameData makeFrameData(
         const Settings& settings,

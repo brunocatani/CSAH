@@ -499,6 +499,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         disabledSettings.skyGamma = kSkyGamma;
         Settings enabledSettings = disabledSettings;
         enabledSettings.enabled = true;
+        enabledSettings.preserveNativeDarkness = false;
         const FrameData disabledFrame = makeFrameData(
             disabledSettings, true, false, 1.0F);
         const FrameData enabledFrame = makeFrameData(

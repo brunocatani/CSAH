@@ -44,17 +44,26 @@ int main()
     enabled.pointLightMultiplier = 0.5f;
     const auto linear = makeDFTiledPointLightProducerState(enabled);
     passed &= expect(linear.enabled, "enabled state was lost");
-    passed &= expect(near(linear.gamma, 1.8f), "configured gamma was lost");
+    passed &= expect(
+        near(linear.gamma, kVanillaPointLightGamma),
+        "point-light producer did not preserve Fallout's darkness response");
     passed &= expect(
         near(linear.colorMultiplier, 0.5f),
         "FO4VR point-light multiplier was not retained at engine scale");
 
+    enabled.preserveNativeDarkness = false;
+    const auto artistic = makeDFTiledPointLightProducerState(enabled);
+    passed &= expect(
+        near(artistic.gamma, 1.8f),
+        "disabled darkness calibration did not restore custom point gamma");
+
+    enabled.preserveNativeDarkness = true;
     enabled.lightGamma = std::numeric_limits<float>::infinity();
     enabled.pointLightMultiplier = -4.0f;
     const auto sanitized = makeDFTiledPointLightProducerState(enabled);
     passed &= expect(
-        near(sanitized.gamma, Settings{}.lightGamma),
-        "non-finite gamma was not sanitized");
+        near(sanitized.gamma, kVanillaPointLightGamma),
+        "non-finite point gamma was not sanitized and calibrated");
     passed &= expect(
         near(sanitized.colorMultiplier, 0.0f),
         "negative point multiplier was not sanitized");

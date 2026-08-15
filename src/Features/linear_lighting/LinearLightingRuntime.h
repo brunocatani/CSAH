@@ -530,7 +530,7 @@ namespace community_shaders::linear_lighting
         std::atomic_uint64_t matchingDFLightAmbientContractMask_{};
         std::atomic_uint64_t readyDFLightAmbientContractMask_{};
         std::atomic_uint32_t dFLightAmbientGammaBits_{
-            std::bit_cast<std::uint32_t>(Settings{}.ambientGamma) };
+            std::bit_cast<std::uint32_t>(kNativeLightingResponseGamma) };
         std::atomic_uint32_t matchingDFLightAmbientShaders_{};
         std::atomic_uint32_t trackedDFLightAmbientShaders_{};
         std::atomic_uint64_t dFLightAmbientReplacementBinds_{};

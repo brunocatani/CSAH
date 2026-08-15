@@ -100,16 +100,24 @@ namespace community_shaders::linear_lighting
             1.0f,
             0.0f,
             100.0f);
-        data.lightGamma = safe.lightGamma;
+        data.lightGamma = calibratedLightingResponseGamma(
+            safe.preserveNativeDarkness,
+            safe.lightGamma);
         data.colorGamma = safe.colorGamma;
         data.emitColorGamma = safe.emitColorGamma;
         data.glowmapGamma = safe.glowmapGamma;
-        data.ambientGamma = safe.ambientGamma;
-        data.fogGamma = safe.fogGamma;
+        data.ambientGamma = calibratedLightingResponseGamma(
+            safe.preserveNativeDarkness,
+            safe.ambientGamma);
+        data.fogGamma = calibratedLightingResponseGamma(
+            safe.preserveNativeDarkness,
+            safe.fogGamma);
         data.fogAlphaGamma = safe.fogAlphaGamma;
         data.effectGamma = safe.effectGamma;
         data.effectAlphaGamma = safe.effectAlphaGamma;
-        data.skyGamma = safe.skyGamma;
+        data.skyGamma = calibratedLightingResponseGamma(
+            safe.preserveNativeDarkness,
+            safe.skyGamma);
         data.waterGamma = safe.waterGamma;
         data.volumetricLightingGamma = safe.volumetricLightingGamma;
         data.vanillaDiffuseColorMultiplier = safe.vanillaDiffuseColorMultiplier;

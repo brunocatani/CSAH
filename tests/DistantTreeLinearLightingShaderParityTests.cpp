@@ -353,6 +353,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         disabledSettings.enabled = false;
         Settings enabledSettings = disabledSettings;
         enabledSettings.enabled = true;
+        enabledSettings.preserveNativeDarkness = false;
         enabledSettings.vanillaDiffuseColorMultiplier = 1.1F;
         enabledSettings.directionalLightMultiplier = 0.9F;
         enabledSettings.ambientMultiplier = 1.2F;

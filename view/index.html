@@ -476,6 +476,13 @@
             </div>
             <div class="master">
               <div class="master-copy">
+                <strong>Native Night Response</strong>
+                <span id="nativeDarknessState">FALLOUT 2.2 FLOOR</span>
+              </div>
+              <div id="nativeDarknessSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
                 <strong>Image Based Lighting</strong>
                 <span id="iblState">VANILLA ENVIRONMENT</span>
               </div>
@@ -741,7 +748,7 @@
     "use strict";
 
     const controls = [
-      { key: "lightGamma", label: "Light gamma", hint: "Converts accumulated light response.", min: 1, max: 3, step: .01 },
+      { key: "lightGamma", label: "Light gamma", hint: "Converts accumulated light response; Native Night Response floors light producers at Fallout's 2.2 response.", min: 1, max: 3, step: .01 },
       { key: "colorGamma", label: "Encoded colour gamma", hint: "Linearizes colour sources not already decoded by FO4VR's sRGB views.", min: 1, max: 3, step: .01 },
       { key: "emitColorGamma", label: "Emission gamma", hint: "Linearizes authored emissive colour.", min: 1, max: 3, step: .01 },
       { key: "vanillaDiffuseColorMultiplier", label: "Diffuse level", hint: "Preserves calibrated vanilla diffuse energy.", min: 0, max: 3, step: .01 },
@@ -895,6 +902,13 @@
       master.classList.toggle("on", enabled);
       master.setAttribute("aria-checked", String(enabled));
       document.getElementById("masterState").textContent = enabled ? "FULL LINEAR LIGHTING ARMED" : "VANILLA PASS-THROUGH";
+
+      const preserveNativeDarkness = settings.preserveNativeDarkness !== false;
+      const nativeDarknessSwitch = document.getElementById("nativeDarknessSwitch");
+      nativeDarknessSwitch.classList.toggle("on", preserveNativeDarkness);
+      nativeDarknessSwitch.setAttribute("aria-checked", String(preserveNativeDarkness));
+      document.getElementById("nativeDarknessState").textContent = preserveNativeDarkness ?
+        "FALLOUT 2.2 PRODUCER FLOOR" : "CUSTOM GAMMA RESPONSE";
 
       const iblEnabled = !!ibl.enabled;
       const iblSwitch = document.getElementById("iblSwitch");
@@ -1110,6 +1124,14 @@
       render();
     }
 
+    function toggleNativeDarkness() {
+      const settings = (state.model || {}).settings || {};
+      const preserveNativeDarkness = settings.preserveNativeDarkness === false;
+      bridge({ type: "preserveNativeDarkness", value: preserveNativeDarkness });
+      if (state.model) state.model.settings = { ...settings, preserveNativeDarkness };
+      render();
+    }
+
     function toggleIblDiffuseEnabled() {
       const ibl = (state.model || {}).ibl || {};
       const diffuseEnabled = !ibl.diffuseEnabled;
@@ -1213,6 +1235,10 @@
     document.getElementById("masterSwitch").addEventListener("click", toggleEnabled);
     document.getElementById("masterSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleEnabled();
+    });
+    document.getElementById("nativeDarknessSwitch").addEventListener("click", toggleNativeDarkness);
+    document.getElementById("nativeDarknessSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleNativeDarkness();
     });
     document.getElementById("iblSwitch").addEventListener("click", toggleIblEnabled);
     document.getElementById("iblSwitch").addEventListener("keydown", event => {

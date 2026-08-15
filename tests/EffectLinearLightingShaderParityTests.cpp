@@ -2208,6 +2208,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
         disabledSettings.enabled = false;
         Settings enabledSettings = disabledSettings;
         enabledSettings.enabled = true;
+        enabledSettings.preserveNativeDarkness = false;
         enabledSettings.effectGamma = 1.65F;
         enabledSettings.effectAlphaGamma = 1.3F;
         enabledSettings.lightGamma = 1.7F;

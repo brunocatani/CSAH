@@ -6,7 +6,7 @@
 
 namespace community_shaders::linear_lighting
 {
-    constexpr float kVanillaDFLightGamma = 2.2f;
+    constexpr float kVanillaDFLightGamma = kNativeLightingResponseGamma;
     constexpr std::uint32_t kDFLightDirectionalDescriptorMask = 0x00000003u;
     constexpr std::uint32_t kDFLightAmbientDescriptorMask = 0x00020000u;
     constexpr std::uint32_t kDFLightCharacterDescriptorMask = 0x04000000u;
@@ -51,13 +51,17 @@ namespace community_shaders::linear_lighting
         }
         return {
             .enabled = true,
-            .directionalGamma = safe.lightGamma,
+            .directionalGamma = calibratedLightingResponseGamma(
+                safe.preserveNativeDarkness,
+                safe.lightGamma),
             // FO4VR's DFLight shaders consume the produced RGB directly for
             // diffuse lighting. Their PI literal belongs to the specular
             // branch; unlike Skyrim's PBR path, there is no reciprocal-PI
             // normalization for this producer to compensate.
             .directionalMultiplier = safe.directionalLightMultiplier,
-            .ambientGamma = safe.ambientGamma,
+            .ambientGamma = calibratedLightingResponseGamma(
+                safe.preserveNativeDarkness,
+                safe.ambientGamma),
             .ambientMultiplier = safe.ambientMultiplier,
         };
     }
