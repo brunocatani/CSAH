@@ -9,6 +9,17 @@ set(SOURCE_DIR "${ROOT_DIR}/src")
 set(BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(WORKSPACE_ROOT "${ROOT_DIR}/../.." ABSOLUTE)
 
+set(DEVMENU_PACKAGE_ID "fo4vr-community-shaders")
+set(DEVMENU_MANIFEST_SOURCE
+  "${ROOT_DIR}/devmenu/${DEVMENU_PACKAGE_ID}/menu.json")
+if(NOT EXISTS "${DEVMENU_MANIFEST_SOURCE}")
+  message(FATAL_ERROR
+    "Community Shaders owns its DevMenu manifest, but it is missing: "
+    "'${DEVMENU_MANIFEST_SOURCE}'")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${DEVMENU_MANIFEST_SOURCE}")
+
 if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
   message(FATAL_ERROR "In-source builds are not allowed")
 endif()
@@ -135,6 +146,10 @@ set(WRIST_PANEL_SETTINGS_HEADER
   "${SOURCE_DIR}/ui/WristPanelSettings.h")
 set(SETTINGS_PATH_SOURCE "${SOURCE_DIR}/support/SettingsPath.cpp")
 set(SETTINGS_PATH_HEADER "${SOURCE_DIR}/support/SettingsPath.h")
+set(SHARED_SETTINGS_RUNTIME_SOURCE
+  "${SOURCE_DIR}/settings/SharedSettingsRuntime.cpp")
+set(SHARED_SETTINGS_RUNTIME_HEADER
+  "${SOURCE_DIR}/settings/SharedSettingsRuntime.h")
 set(WRIST_PANEL_VIEW_SOURCE
   "${ROOT_DIR}/view/index.html")
 set(D3D11_HOOK_SOURCE "${SOURCE_DIR}/render/D3D11Hooks.cpp")
@@ -555,6 +570,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${WRIST_PANEL_SETTINGS_HEADER}"
   "${SETTINGS_PATH_SOURCE}"
   "${SETTINGS_PATH_HEADER}"
+  "${SHARED_SETTINGS_RUNTIME_SOURCE}"
+  "${SHARED_SETTINGS_RUNTIME_HEADER}"
   "${WRIST_PANEL_VIEW_SOURCE}"
   "${D3D11_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake"
@@ -1628,6 +1645,8 @@ add_library(${PROJECT_NAME} SHARED
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettingsStore.h"
   "${SETTINGS_PATH_SOURCE}"
   "${SETTINGS_PATH_HEADER}"
+  "${SHARED_SETTINGS_RUNTIME_SOURCE}"
+  "${SHARED_SETTINGS_RUNTIME_HEADER}"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp"
   "${SOURCE_DIR}/render/BSLightingGeometryHook.h"
   "${DFPREPASS_HOOK_SOURCE}"
@@ -1812,9 +1831,14 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     "${ROOT_DIR}/package/F4SE/Plugins/Streamline/Licenses/"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${ROOT_DIR}/package/PrismaUI_F4/views/FO4VR-Community-Shaders"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+    "${ROOT_DIR}/package/DevMenu/Mods/${DEVMENU_PACKAGE_ID}"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory
     "${ROOT_DIR}/view"
     "${ROOT_DIR}/package/PrismaUI_F4/views/FO4VR-Community-Shaders"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+    "${DEVMENU_MANIFEST_SOURCE}"
+    "${ROOT_DIR}/package/DevMenu/Mods/${DEVMENU_PACKAGE_ID}/menu.json"
   COMMENT "Staging ${PROJECT_NAME} in the local package"
 )
 
@@ -1849,9 +1873,14 @@ if(POST_BUILD_COPY_PLUGIN)
         "${copy_path}/F4SE/Plugins/Streamline/Licenses/"
       COMMAND "${CMAKE_COMMAND}" -E make_directory
         "${copy_path}/PrismaUI_F4/views/FO4VR-Community-Shaders"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${copy_path}/DevMenu/Mods/${DEVMENU_PACKAGE_ID}"
       COMMAND "${CMAKE_COMMAND}" -E copy_directory
         "${ROOT_DIR}/view"
         "${copy_path}/PrismaUI_F4/views/FO4VR-Community-Shaders"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${DEVMENU_MANIFEST_SOURCE}"
+        "${copy_path}/DevMenu/Mods/${DEVMENU_PACKAGE_ID}/menu.json"
       COMMENT "Deploying ${PROJECT_NAME} to '${copy_path}'"
     )
   endforeach()
@@ -1912,6 +1941,19 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersSettingsPathTests PRIVATE shell32)
   add_test(NAME FO4VRCommunityShaders.SettingsPath
     COMMAND FO4VRCommunityShadersSettingsPathTests)
+
+  add_executable(FO4VRCommunityShadersSharedSettingsRuntimeTests
+    "${ROOT_DIR}/tests/SharedSettingsRuntimeTests.cpp"
+    "${SHARED_SETTINGS_RUNTIME_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.SharedSettingsRuntime
+    COMMAND FO4VRCommunityShadersSharedSettingsRuntimeTests)
 
   add_executable(FO4VRCommunityShadersFixedShaderBindingLookupTests
     "${ROOT_DIR}/tests/FixedShaderBindingLookupTests.cpp")

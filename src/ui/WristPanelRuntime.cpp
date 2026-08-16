@@ -204,6 +204,7 @@ namespace community_shaders::ui
         std::atomic_bool prismaPanelEnabled{
             wrist_panel_settings::kDefaultPrismaPanelEnabled };
         std::atomic_bool prismaPanelSettingLoaded{};
+        std::atomic_bool prismaPanelReloadScheduled{};
         RockProviderDebugOverlayTextV1 overlayText{};
 
         std::mutex frameMutex;
@@ -2803,6 +2804,42 @@ namespace community_shaders::ui
     {
         vanilla_fixes::applySettings(settings);
         uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void notifyExternalSettingsReload() noexcept
+    {
+        uiRevision.fetch_add(1, std::memory_order_release);
+        schedulePush();
+    }
+
+    void schedulePrismaPanelSettingReload() noexcept
+    {
+        auto expected = false;
+        if (!prismaPanelReloadScheduled.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel)) {
+            return;
+        }
+        const auto* tasks = F4SE::GetTaskInterface();
+        if (!tasks || tasks->Version() < F4SE::TaskInterface::kVersion) {
+            prismaPanelReloadScheduled.store(
+                false,
+                std::memory_order_release);
+            logging::warn(
+                "Prisma panel INI change was saved but could not be scheduled; the next world-session event will refresh it.");
+            return;
+        }
+        tasks->AddTask([]() {
+            prismaPanelReloadScheduled.store(
+                false,
+                std::memory_order_release);
+            refreshPrismaPanelSetting("SharedIniMonitor");
+            if (prismaPanelEnabled.load(std::memory_order_acquire)) {
+                startRockDiscovery();
+                attemptPrismaInitialization("SharedIniMonitor");
+            }
+        });
     }
 
     void onGameDataReady() noexcept

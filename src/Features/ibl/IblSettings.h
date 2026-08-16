@@ -13,6 +13,8 @@ namespace community_shaders::ibl
         bool enabled{ true };
         bool diffuseEnabled{ true };
         float diffuseLevel{ 1.0f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

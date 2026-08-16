@@ -99,16 +99,13 @@ namespace community_shaders::complex_materials
         }
     }
 
-    Settings loadSettings() noexcept
+    Settings loadSettings(const std::filesystem::path& path) noexcept
     {
         const Settings defaults{};
         auto result = defaults;
-        const auto path = settings_path::resolveIniPath();
         std::error_code error;
         if (path.empty() || !std::filesystem::is_regular_file(path, error) ||
             error) {
-            logging::info(
-                "Complex Materials settings file is absent; using fail-closed environment response and parallax-enabled defaults.");
             return result;
         }
 
@@ -129,6 +126,20 @@ namespace community_shaders::complex_materials
         result.fadeEnd = readFloat(
             path, L"fParallaxFadeEnd", defaults.fadeEnd);
         result = sanitize(result);
+        return result;
+    }
+
+    Settings loadSettings() noexcept
+    {
+        const auto path = settings_path::resolveIniPath();
+        std::error_code error;
+        if (path.empty() || !std::filesystem::is_regular_file(path, error) ||
+            error) {
+            logging::info(
+                "Complex Materials settings file is absent; using fail-closed environment response and parallax-enabled defaults.");
+            return {};
+        }
+        const auto result = loadSettings(path);
         logging::info(
             "Complex Materials settings loaded from '{}'; environment response enabled={}, parallax enabled={}, quality={}.",
             path.string(),

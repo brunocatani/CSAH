@@ -89,17 +89,14 @@ namespace community_shaders::linear_lighting
         }
     }
 
-    Settings loadSettings() noexcept
+    Settings loadSettings(const std::filesystem::path& path) noexcept
     {
         const Settings defaults{};
         auto result = defaults;
-        const auto path = settings_path::resolveIniPath();
         std::error_code pathError;
         if (path.empty() ||
             !std::filesystem::is_regular_file(path, pathError) ||
             pathError) {
-            logging::info(
-                "Linear Lighting settings file is absent; using disabled defaults.");
             return result;
         }
 
@@ -161,6 +158,21 @@ namespace community_shaders::linear_lighting
             defaults.otherEffectMultiplier);
 
         result = sanitize(result);
+        return result;
+    }
+
+    Settings loadSettings() noexcept
+    {
+        const auto path = settings_path::resolveIniPath();
+        std::error_code pathError;
+        if (path.empty() ||
+            !std::filesystem::is_regular_file(path, pathError) ||
+            pathError) {
+            logging::info(
+                "Linear Lighting settings file is absent; using disabled defaults.");
+            return {};
+        }
+        const auto result = loadSettings(path);
         logging::info(
             "Linear Lighting settings loaded from '{}'; enabled={}.",
             path.string(),

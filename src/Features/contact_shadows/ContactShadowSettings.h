@@ -15,6 +15,8 @@ namespace community_shaders::contact_shadows
         float fadeDistance{ 2048.0f };
         float thickness{ 0.012f };
         std::uint32_t sampleCount{ 8 };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

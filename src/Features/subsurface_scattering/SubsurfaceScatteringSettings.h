@@ -11,6 +11,8 @@ namespace community_shaders::subsurface_scattering
         float strength{ 0.55f };
         float radiusPixels{ 2.0f };
         float depthRejection{ 0.003f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

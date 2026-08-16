@@ -28,6 +28,7 @@
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
+#include "settings/SharedSettingsRuntime.h"
 #include "ui/WristPanelRuntime.h"
 
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
@@ -359,6 +360,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
         community_shaders::diagnostics::
             startLinearLightingQualificationReporter();
+        if (!community_shaders::shared_settings::startMonitor()) {
+            community_shaders::logging::warn(
+                "Shared Community Shaders INI monitor did not start; startup settings and the original wrist controls remain operational.");
+        }
 
         community_shaders::logging::info(
             "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",

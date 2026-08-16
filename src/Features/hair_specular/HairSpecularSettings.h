@@ -9,6 +9,8 @@ namespace community_shaders::hair_specular
     {
         bool enabled{ true };
         float specularMultiplier{ 1.6f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

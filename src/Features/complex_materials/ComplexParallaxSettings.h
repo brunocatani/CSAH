@@ -16,6 +16,8 @@ namespace community_shaders::complex_materials
         float grazingClamp{ 0.18f };
         float fadeStart{ 2048.0f };
         float fadeEnd{ 8192.0f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

@@ -9,6 +9,8 @@ namespace community_shaders::wrapped_grass
     {
         bool enabled{ true };
         float wrapAmount{ 0.5f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

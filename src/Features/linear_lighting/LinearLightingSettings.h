@@ -42,6 +42,8 @@ namespace community_shaders::linear_lighting
         float effectLightingMultiplier{ 0.32f };
         float membraneEffectMultiplier{ 1.0f };
         float otherEffectMultiplier{ 1.0f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     struct alignas(16) FrameData

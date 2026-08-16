@@ -12,6 +12,8 @@ namespace community_shaders::basic_wetness
         float diffuseDarkening{ 0.18f };
         float specularMultiplier{ 1.6f };
         float roughnessScale{ 0.35f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept

@@ -47,6 +47,8 @@ namespace community_shaders::dlaa
         bool visualizeCenter{};
         bool hardResetOnLoad{ true };
         bool verboseDiagnostics{};
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline bool isDlssMode(Mode mode) noexcept

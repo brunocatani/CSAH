@@ -10,6 +10,7 @@ package/F4SE/Plugins/*.dll
 package/F4SE/Plugins/*.pdb
 package/F4SE/Plugins/Streamline/
 package/PrismaUI_F4/
+package/DevMenu/
 
 # Local runtime diagnostics and generated package metadata
 Data/CommunityShaders/Diagnostics/

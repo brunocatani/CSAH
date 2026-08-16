@@ -29,6 +29,11 @@ namespace community_shaders::ui
     void setInitialVanillaFixesSettings(
         const vanilla_fixes::Settings& settings) noexcept;
 
+    // Called by the shared-INI controller after an external writer changes
+    // runtime state. Prisma work is always marshalled onto the game task queue.
+    void notifyExternalSettingsReload() noexcept;
+    void schedulePrismaPanelSettingReload() noexcept;
+
     // Optional initialization. Missing PrismaUI_F4 or ROCK leaves the renderer
     // and INI owner fully operational without a compatibility fallback.
     void onGameDataReady() noexcept;

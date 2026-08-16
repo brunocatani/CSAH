@@ -9,6 +9,8 @@ namespace community_shaders::cloud_shadows
     {
         bool enabled{ true };
         float opacity{ 0.55f };
+
+        [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
     };
 
     [[nodiscard]] inline Settings sanitize(const Settings& settings) noexcept
