@@ -205,6 +205,22 @@ set(VANILLA_IBL_GENERATOR_SOURCE
   "${ROOT_DIR}/tools/generate_ibl_material_contracts.py")
 set(VANILLA_VERIFY_SCRIPT
   "${ROOT_DIR}/cmake/VerifyVanillaFixes.cmake")
+set(NATIVE_SHADOW_SOURCE_DIR
+  "${SOURCE_DIR}/Features/native_shadows")
+set(NATIVE_SHADOW_RUNTIME_SOURCE
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowRuntime.cpp")
+set(NATIVE_SHADOW_RUNTIME_HEADER
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowRuntime.h")
+set(NATIVE_SHADOW_SETTINGS_HEADER
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowSettings.h")
+set(NATIVE_SHADOW_SETTINGS_STORE_SOURCE
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowSettingsStore.cpp")
+set(NATIVE_SHADOW_SETTINGS_STORE_HEADER
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowSettingsStore.h")
+set(NATIVE_SHADOW_PATCH_MODEL
+  "${NATIVE_SHADOW_SOURCE_DIR}/NativeShadowPatchModel.h")
+set(NATIVE_SHADOW_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifyNativeShadows.cmake")
 set_source_files_properties(
   "${VANILLA_SAO_BLUR_SOURCE}"
   "${VANILLA_SAO_RAW_SOURCE}"
@@ -1205,6 +1221,16 @@ add_custom_target(VerifyVanillaFixes ALL
   DEPENDS VanillaFixesShaders
   COMMENT "Verifying Vanilla Fixes native, shader, settings, and Prisma contracts"
   VERBATIM)
+add_custom_target(VerifyNativeShadows ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DNATIVE_SHADOW_RUNTIME_SOURCE=${NATIVE_SHADOW_RUNTIME_SOURCE}"
+    "-DNATIVE_SHADOW_SETTINGS_HEADER=${NATIVE_SHADOW_SETTINGS_HEADER}"
+    "-DNATIVE_SHADOW_SETTINGS_STORE_SOURCE=${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
+    "-DNATIVE_SHADOW_PATCH_MODEL=${NATIVE_SHADOW_PATCH_MODEL}"
+    "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+    -P "${NATIVE_SHADOW_VERIFY_SCRIPT}"
+  COMMENT "Verifying fixed native shadow contracts"
+  VERBATIM)
 add_custom_target(VerifySurfaceClassification ALL
   COMMAND "${Python3_EXECUTABLE}"
     "${SURFACE_CLASSIFICATION_GENERATOR}"
@@ -1640,6 +1666,12 @@ add_library(${PROJECT_NAME} SHARED
   "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.h"
   "${VANILLA_FIXES_SOURCE_DIR}/VanillaShaderFixes.cpp"
   "${VANILLA_FIXES_SOURCE_DIR}/VanillaShaderFixes.h"
+  "${NATIVE_SHADOW_RUNTIME_SOURCE}"
+  "${NATIVE_SHADOW_RUNTIME_HEADER}"
+  "${NATIVE_SHADOW_SETTINGS_HEADER}"
+  "${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
+  "${NATIVE_SHADOW_SETTINGS_STORE_HEADER}"
+  "${NATIVE_SHADOW_PATCH_MODEL}"
   "${VANILLA_SAO_BLUR_SOURCE}"
   "${VANILLA_SAO_RAW_SOURCE}"
   "${VANILLA_SSLR_BLUR_SOURCE}"
@@ -1674,6 +1706,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyDlaa
   VerifyStreamlinePayload
   VerifyVanillaFixes
+  VerifyNativeShadows
   VerifyIblFoundation
   VerifyIblCaptureProbeContracts
   VerifyIblMaterialContracts
@@ -2025,6 +2058,40 @@ if(BUILD_FO4VR_CS_TESTS)
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.VanillaFixesSettings
     COMMAND FO4VRCommunityShadersVanillaFixesSettingsTests)
+
+  add_executable(FO4VRCommunityShadersNativeShadowSettingsTests
+    "${ROOT_DIR}/tests/NativeShadowSettingsTests.cpp"
+    "${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
+    "${NATIVE_SHADOW_SETTINGS_STORE_HEADER}"
+    "${NATIVE_SHADOW_SETTINGS_HEADER}"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+  target_link_libraries(
+    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
+  add_test(NAME FO4VRCommunityShaders.NativeShadowSettings
+    COMMAND FO4VRCommunityShadersNativeShadowSettingsTests)
+
+  add_test(NAME FO4VRCommunityShaders.NativeShadowsSource
+    COMMAND "${CMAKE_COMMAND}"
+      "-DNATIVE_SHADOW_RUNTIME_SOURCE=${NATIVE_SHADOW_RUNTIME_SOURCE}"
+      "-DNATIVE_SHADOW_SETTINGS_HEADER=${NATIVE_SHADOW_SETTINGS_HEADER}"
+      "-DNATIVE_SHADOW_SETTINGS_STORE_SOURCE=${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
+      "-DNATIVE_SHADOW_PATCH_MODEL=${NATIVE_SHADOW_PATCH_MODEL}"
+      "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
+      -P "${NATIVE_SHADOW_VERIFY_SCRIPT}")
 
   add_executable(FO4VRCommunityShadersContactShadowShaderBytecodeTests
     "${ROOT_DIR}/tests/ContactShadowShaderBytecodeTests.cpp")

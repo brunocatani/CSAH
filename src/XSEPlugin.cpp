@@ -16,6 +16,8 @@
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
+#include "Features/native_shadows/NativeShadowRuntime.h"
+#include "Features/native_shadows/NativeShadowSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
@@ -85,6 +87,7 @@ namespace
         }
         case F4SE::MessagingInterface::kGameDataReady:
         {
+            community_shaders::native_shadows::onGameDataReady();
             community_shaders::ui::onGameDataReady();
             (void)community_shaders::render::
                 validateBSLightingGeometryHook("GameDataReady");
@@ -177,6 +180,7 @@ namespace
             break;
         }
         case F4SE::MessagingInterface::kPostLoadGame:
+            community_shaders::native_shadows::onWorldReady("PostLoadGame");
             community_shaders::ui::onGameSessionReady();
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
@@ -186,6 +190,7 @@ namespace
                 "PostLoadGame");
             break;
         case F4SE::MessagingInterface::kNewGame:
+            community_shaders::native_shadows::onWorldReady("NewGame");
             community_shaders::ui::onGameSessionReady();
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
@@ -291,6 +296,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::cloud_shadows::loadSettings();
         const auto vanillaFixesSettings =
             community_shaders::vanilla_fixes::loadSettings();
+        const auto nativeShadowSettings =
+            community_shaders::native_shadows::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
@@ -301,6 +308,11 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             contactShadowSettings);
         community_shaders::cloud_shadows::Runtime::get().applySettings(
             cloudShadowSettings);
+        if (!community_shaders::native_shadows::startRuntime(
+                nativeShadowSettings)) {
+            community_shaders::logging::warn(
+                "Native Shadows rejected one or more FO4VR engine contracts; unknown boundaries remain vanilla and extended-cascade masks remain fail-closed.");
+        }
         if (!community_shaders::vanilla_fixes::startRuntime(
                 vanillaFixesSettings)) {
             community_shaders::logging::warn(
@@ -349,7 +361,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             community_shaders::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
@@ -373,6 +385,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             cloudShadowSettings.opacity,
             complexMaterialSettings.parallaxEnabled,
             complexMaterialSettings.parallaxQuality,
+            nativeShadowSettings.enabled,
+            nativeShadowSettings.extendedDirectionalCascades,
+            nativeShadowSettings.tiledDeferredLighting,
+            nativeShadowSettings.directionalShadowDistance,
             vanillaFixesSettings.enabled,
             vanillaFixesSettings.focusShadows);
         return true;
