@@ -19,6 +19,9 @@ namespace community_shaders::native_shadows::patch_model
     constexpr std::uintptr_t kCascadeDistanceRva = 0x03924808;
     constexpr std::uintptr_t kRendererDistanceRva = 0x068788F0;
     constexpr std::uintptr_t kShadowResolutionRva = 0x039266F0;
+    constexpr std::uintptr_t kShadowRendererStateRva = 0x068787F0;
+    constexpr std::size_t kCachedCascadeBlendOffset = 0x114;
+    constexpr std::size_t kCachedOrthoShadowFilterOffset = 0x190;
     constexpr std::uint32_t kExtendedCascadeCount = 4;
 
     constexpr std::array<std::uintptr_t, 4> kCascadeCountReadRvas{

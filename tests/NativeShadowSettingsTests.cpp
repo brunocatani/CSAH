@@ -66,7 +66,9 @@ int main()
         "bEnabled=off\n"
         "bExtendedDirectionalCascades=no\n"
         "bTiledDeferredLighting=false\n"
-        "fDirectionalShadowDistance=24000\n");
+        "fDirectionalShadowDistance=24000\n"
+        "fCascadeBlendDistance=48\n"
+        "iOrthographicShadowFilter=4\n");
     const auto disabled = loadSettings(ini.path());
     require(!disabled.enabled, "master key");
     require(
@@ -76,32 +78,54 @@ int main()
     require(
         disabled.directionalShadowDistance == 24000.0f,
         "fixed-distance key");
+    require(
+        disabled.cascadeBlendDistance == 48.0f,
+        "cascade-blend key");
+    require(
+        disabled.orthographicShadowFilter == 4,
+        "orthographic-filter key");
 
     ini.write(
         "[NativeShadows]\n"
         "bEnabled=garbage\n"
-        "fDirectionalShadowDistance=nan\n");
+        "fDirectionalShadowDistance=nan\n"
+        "fCascadeBlendDistance=nan\n"
+        "iOrthographicShadowFilter=-1\n");
     require(loadSettings(ini.path()) == Settings{}, "invalid-value fallback");
 
     ini.write(
         "[NativeShadows]\n"
-        "fDirectionalShadowDistance=100\n");
+        "fDirectionalShadowDistance=100\n"
+        "fCascadeBlendDistance=-20\n");
     require(
         loadSettings(ini.path()).directionalShadowDistance == 3000.0f,
         "minimum clamp");
+    require(
+        loadSettings(ini.path()).cascadeBlendDistance == 0.0f,
+        "cascade-blend minimum clamp");
 
     ini.write(
         "[NativeShadows]\n"
-        "fDirectionalShadowDistance=90000\n");
+        "fDirectionalShadowDistance=90000\n"
+        "fCascadeBlendDistance=9000\n"
+        "iOrthographicShadowFilter=99\n");
     require(
         loadSettings(ini.path()).directionalShadowDistance == 50000.0f,
         "maximum clamp");
+    require(
+        loadSettings(ini.path()).cascadeBlendDistance == 5000.0f,
+        "cascade-blend maximum clamp");
+    require(
+        loadSettings(ini.path()).orthographicShadowFilter == 5,
+        "orthographic-filter maximum clamp");
 
     const Settings custom{
         .enabled = true,
         .extendedDirectionalCascades = false,
         .tiledDeferredLighting = true,
         .directionalShadowDistance = 18000.0f,
+        .cascadeBlendDistance = 72.0f,
+        .orthographicShadowFilter = 3,
     };
     require(saveSettings(ini.path(), custom), "temporary INI save");
     require(loadSettings(ini.path()) == custom, "save/load round trip");

@@ -20,6 +20,9 @@ foreach(required IN ITEMS
     "kCascadeDistanceRva = 0x03924808"
     "kRendererDistanceRva = 0x068788F0"
     "kShadowResolutionRva = 0x039266F0"
+    "kShadowRendererStateRva = 0x068787F0"
+    "kCachedCascadeBlendOffset = 0x114"
+    "kCachedOrthoShadowFilterOffset = 0x190"
     "0x027E929A"
     "0x0290DC03"
     "0x028A57A0"
@@ -54,6 +57,9 @@ foreach(required IN ITEMS
     "safe two-cascade masks remain active"
     "all four cascades render every frame"
     "no FPS controller or adaptive-quality path exists"
+    "forceFixedShadowQuality(moduleBase())"
+    "cached cascade blend distance"
+    "cached orthographic shadow filter"
     "REL::Module::IsVR()"
     "F4SE::RUNTIME_VR_1_2_72")
   string(FIND "${runtime}" "${required}" found)
@@ -67,6 +73,8 @@ foreach(required IN ITEMS
     "bExtendedDirectionalCascades"
     "bTiledDeferredLighting"
     "fDirectionalShadowDistance"
+    "fCascadeBlendDistance"
+    "iOrthographicShadowFilter"
     "std::clamp(result.directionalShadowDistance, 3000.0f, 50000.0f)")
   string(FIND "${settings}${store}" "${required}" found)
   if(found EQUAL -1)
@@ -106,4 +114,4 @@ foreach(forbidden IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified fixed Native Shadows contracts: four cascades, tiled lighting, fixed distance, deterministic lifecycle, no FPS controller, and no disproven stereo patches")
+  "Verified fixed Native Shadows contracts: four cascades, tiled lighting, fixed distance and close-shadow quality, deterministic lifecycle, no FPS controller, and no disproven stereo patches")

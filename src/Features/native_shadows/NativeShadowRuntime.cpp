@@ -50,6 +50,7 @@ namespace community_shaders::native_shadows
             bool lateCascadeStateReady{};
             bool fullCascadeMaskOwned{};
             bool tiledSettingForced{};
+            bool fixedQualityForced{};
             std::uint32_t lateAttempts{};
             std::uint32_t failures{};
             void* cavePage{};
@@ -801,6 +802,107 @@ namespace community_shaders::native_shadows
             return g_state.tiledSettingForced;
         }
 
+        [[nodiscard]] bool forceFixedShadowQuality(
+            const std::uintptr_t base) noexcept
+        {
+            if (!g_state.settings.enabled) {
+                return true;
+            }
+
+            auto* blendSetting =
+                RE::GetINISetting("fBlendSplitDirShadow:Display");
+            auto* filterSetting =
+                RE::GetINISetting("uiOrthoShadowFilter:Display");
+            if (!blendSetting || !filterSetting) {
+                logging::error(
+                    "Native Shadows could not resolve the directional cascade blend or orthographic filter settings after GameDataReady.");
+                return false;
+            }
+
+            const auto state = base + patch_model::kShadowRendererStateRva;
+            const auto blendAddress =
+                state + patch_model::kCachedCascadeBlendOffset;
+            const auto filterAddress =
+                state + patch_model::kCachedOrthoShadowFilterOffset;
+            float previousBlend{};
+            std::uint32_t previousFilter{};
+            if (!readValue(blendAddress, previousBlend) ||
+                !readValue(filterAddress, previousFilter) ||
+                !std::isfinite(previousBlend) || previousBlend < 0.0f ||
+                previousFilter > 5) {
+                logging::error(
+                    "Native Shadows rejected the cached close-shadow quality state because its verified FO4VR fields were inaccessible or outside engine bounds.");
+                return false;
+            }
+
+            const auto previousSettingBlend = blendSetting->GetFloat();
+            const auto previousSettingFilter = filterSetting->GetUInt();
+            const auto restore = [&]() noexcept {
+                blendSetting->SetFloat(previousSettingBlend);
+                filterSetting->SetUInt(previousSettingFilter);
+                const auto blendRestored = writeValue(
+                    blendAddress,
+                    previousBlend,
+                    "restored cached cascade blend distance");
+                const auto filterRestored = writeValue(
+                    filterAddress,
+                    previousFilter,
+                    "restored cached orthographic shadow filter");
+                if (!blendRestored || !filterRestored) {
+                    logging::critical(
+                        "Native Shadows could not fully restore cached close-shadow quality state after a rejected transaction.");
+                }
+            };
+
+            if (!writeValue(
+                    blendAddress,
+                    g_state.settings.cascadeBlendDistance,
+                    "cached cascade blend distance")) {
+                restore();
+                return false;
+            }
+            if (!writeValue(
+                    filterAddress,
+                    g_state.settings.orthographicShadowFilter,
+                    "cached orthographic shadow filter")) {
+                restore();
+                return false;
+            }
+            blendSetting->SetFloat(g_state.settings.cascadeBlendDistance);
+            filterSetting->SetUInt(
+                g_state.settings.orthographicShadowFilter);
+
+            float observedBlend{};
+            std::uint32_t observedFilter{};
+            const auto applied =
+                blendSetting->GetFloat() ==
+                    g_state.settings.cascadeBlendDistance &&
+                filterSetting->GetUInt() ==
+                    g_state.settings.orthographicShadowFilter &&
+                readValue(blendAddress, observedBlend) &&
+                readValue(filterAddress, observedFilter) &&
+                observedBlend == g_state.settings.cascadeBlendDistance &&
+                observedFilter ==
+                    g_state.settings.orthographicShadowFilter;
+            if (!applied) {
+                restore();
+                logging::error(
+                    "Native Shadows could not verify the fixed close-shadow quality values after writing both engine settings and cached renderer state.");
+                return false;
+            }
+
+            if (!g_state.fixedQualityForced) {
+                logging::info(
+                    "Native Shadows corrected close-shadow quality parity: cascade blend {:.1f}->{:.1f}, orthographic filter {}->{}; fixed startup values only.",
+                    previousBlend,
+                    observedBlend,
+                    previousFilter,
+                    observedFilter);
+            }
+            g_state.fixedQualityForced = true;
+            return true;
+        }
+
         [[nodiscard]] bool prepareVrArray(
             const std::uintptr_t base) noexcept
         {
@@ -1081,6 +1183,7 @@ namespace community_shaders::native_shadows
                 .lateCascadeStateReady = g_state.lateCascadeStateReady,
                 .fullCascadeMaskOwned = g_state.fullCascadeMaskOwned,
                 .tiledSettingForced = g_state.tiledSettingForced,
+                .fixedQualityForced = g_state.fixedQualityForced,
                 .lateAttempts = g_state.lateAttempts,
                 .failures = g_state.failures,
             };
@@ -1100,6 +1203,14 @@ namespace community_shaders::native_shadows
             (void)readValue(
                 base + patch_model::kRendererDistanceRva,
                 result.observedRendererDistance);
+            const auto shadowState =
+                base + patch_model::kShadowRendererStateRva;
+            (void)readValue(
+                shadowState + patch_model::kCachedCascadeBlendOffset,
+                result.observedCascadeBlendDistance);
+            (void)readValue(
+                shadowState + patch_model::kCachedOrthoShadowFilterOffset,
+                result.observedOrthographicShadowFilter);
             return result;
         }
     }
@@ -1154,19 +1265,25 @@ namespace community_shaders::native_shadows
         if (!forceTiledSetting()) {
             ++g_state.failures;
         }
+        if (!forceFixedShadowQuality(moduleBase())) {
+            ++g_state.failures;
+        }
         if (!forceFixedDistance(moduleBase())) {
             ++g_state.failures;
         }
         attemptLateCascadeInitialization("GameDataReady");
         const auto current = snapshotLocked();
         logging::info(
-            "Native Shadows GameDataReady audit: resolution={}x{}, cascades={}, cascadeDistance={:.1f}, rendererDistance={:.1f}, tiledSetting={}, lateReady={}, failures={}.",
+            "Native Shadows GameDataReady audit: resolution={}x{}, cascades={}, cascadeDistance={:.1f}, rendererDistance={:.1f}, cascadeBlend={:.1f}, orthoFilter={}, tiledSetting={}, fixedQuality={}, lateReady={}, failures={}.",
             current.observedShadowResolution,
             current.observedShadowResolution,
             current.observedCascadeCount,
             current.observedCascadeDistance,
             current.observedRendererDistance,
+            current.observedCascadeBlendDistance,
+            current.observedOrthographicShadowFilter,
             current.tiledSettingForced,
+            current.fixedQualityForced,
             current.lateCascadeStateReady,
             current.failures);
     }
@@ -1178,6 +1295,9 @@ namespace community_shaders::native_shadows
             return;
         }
         if (!forceFixedDistance(moduleBase())) {
+            ++g_state.failures;
+        }
+        if (!forceFixedShadowQuality(moduleBase())) {
             ++g_state.failures;
         }
         attemptLateCascadeInitialization(boundary ? boundary : "WorldReady");

@@ -16,10 +16,13 @@ namespace community_shaders::native_shadows
         bool lateCascadeStateReady{};
         bool fullCascadeMaskOwned{};
         bool tiledSettingForced{};
+        bool fixedQualityForced{};
         std::uint32_t observedCascadeCount{};
         std::uint32_t observedShadowResolution{};
+        std::uint32_t observedOrthographicShadowFilter{};
         float observedCascadeDistance{};
         float observedRendererDistance{};
+        float observedCascadeBlendDistance{};
         std::uint32_t lateAttempts{};
         std::uint32_t failures{};
     };

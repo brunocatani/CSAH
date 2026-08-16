@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cwchar>
 #include <cwctype>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -88,6 +89,32 @@ namespace community_shaders::native_shadows
                 parsed : fallback;
         }
 
+        [[nodiscard]] std::uint32_t readUnsigned(
+            const std::filesystem::path& path,
+            const wchar_t* key,
+            const std::uint32_t fallback) noexcept
+        {
+            std::array<wchar_t, 64> value{};
+            const auto count = GetPrivateProfileStringW(
+                kSection,
+                key,
+                L"",
+                value.data(),
+                static_cast<DWORD>(value.size()),
+                path.c_str());
+            if (count == 0 || value[0] == L'-') {
+                return fallback;
+            }
+            wchar_t* end{};
+            errno = 0;
+            const auto parsed = std::wcstoul(value.data(), &end, 10);
+            return errno != ERANGE && end != value.data() &&
+                    end == value.data() + count &&
+                    parsed <=
+                        (std::numeric_limits<std::uint32_t>::max)() ?
+                static_cast<std::uint32_t>(parsed) : fallback;
+        }
+
         [[nodiscard]] bool writeBoolean(
             const std::filesystem::path& path,
             const wchar_t* key,
@@ -115,6 +142,18 @@ namespace community_shaders::native_shadows
             return WritePrivateProfileStringW(
                        kSection, key, text.data(), path.c_str()) != FALSE;
         }
+
+        [[nodiscard]] bool writeUnsigned(
+            const std::filesystem::path& path,
+            const wchar_t* key,
+            const std::uint32_t value) noexcept
+        {
+            std::array<wchar_t, 64> text{};
+            _snwprintf_s(
+                text.data(), text.size(), _TRUNCATE, L"%u", value);
+            return WritePrivateProfileStringW(
+                       kSection, key, text.data(), path.c_str()) != FALSE;
+        }
     }
 
     Settings loadSettings(const std::filesystem::path& path) noexcept
@@ -139,6 +178,14 @@ namespace community_shaders::native_shadows
                 path,
                 L"fDirectionalShadowDistance",
                 defaults.directionalShadowDistance),
+            .cascadeBlendDistance = readFloat(
+                path,
+                L"fCascadeBlendDistance",
+                defaults.cascadeBlendDistance),
+            .orthographicShadowFilter = readUnsigned(
+                path,
+                L"iOrthographicShadowFilter",
+                defaults.orthographicShadowFilter),
         });
     }
 
@@ -147,12 +194,14 @@ namespace community_shaders::native_shadows
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Native Shadows settings loaded from '{}'; enabled={}, fourCascades={}, tiledDeferredLighting={}, fixedDistance={}. No FPS or adaptive-quality controller is present.",
+            "Native Shadows settings loaded from '{}'; enabled={}, fourCascades={}, tiledDeferredLighting={}, fixedDistance={}, cascadeBlend={}, orthoFilter={}. No FPS or adaptive-quality controller is present.",
             path.string(),
             result.enabled,
             result.extendedDirectionalCascades,
             result.tiledDeferredLighting,
-            result.directionalShadowDistance);
+            result.directionalShadowDistance,
+            result.cascadeBlendDistance,
+            result.orthographicShadowFilter);
         return result;
     }
 
@@ -182,6 +231,16 @@ namespace community_shaders::native_shadows
                       path,
                       L"fDirectionalShadowDistance",
                       safe.directionalShadowDistance) &&
+            success;
+        success = writeFloat(
+                      path,
+                      L"fCascadeBlendDistance",
+                      safe.cascadeBlendDistance) &&
+            success;
+        success = writeUnsigned(
+                      path,
+                      L"iOrthographicShadowFilter",
+                      safe.orthographicShadowFilter) &&
             success;
         return success;
     }
