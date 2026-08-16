@@ -8,8 +8,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_MASK_SHADER_SOURCE
     CONTACT_SHADOW_SHADER_GENERATOR
     D3D11_HOOK_SOURCE
-    WRIST_PANEL_SOURCE
-    WRIST_PANEL_VIEW_SOURCE
+    DEVMENU_MANIFEST_SOURCE
     PLUGIN_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
     message(FATAL_ERROR "${variable} is missing")
@@ -25,8 +24,7 @@ file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
 file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
-file(READ "${WRIST_PANEL_SOURCE}" wristSource)
-file(READ "${WRIST_PANEL_VIEW_SOURCE}" wristView)
+file(READ "${DEVMENU_MANIFEST_SOURCE}" devMenuManifest)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 
 foreach(required IN ITEMS
@@ -277,30 +275,20 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "contactShadowsEnabled"
-    "contactShadowsFoveated"
-    "contactShadowsSet"
-    "contact_shadows::saveSettings"
-    "fadeDistance")
-  string(FIND "${wristSource}" "${required}" found)
+    "\"id\": \"contact-shadows\""
+    "\"id\": \"contact-foveated\""
+    "\"section\": \"ContactShadows\""
+    "\"key\": \"bEnabled\""
+    "\"key\": \"bFoveated\""
+    "\"key\": \"fStrength\""
+    "\"key\": \"fMaxDistance\""
+    "\"key\": \"fFadeDistance\""
+    "\"key\": \"fThickness\""
+    "\"key\": \"iSampleCount\"")
+  string(FIND "${devMenuManifest}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "Contact Shadows wrist runtime regression: missing '${required}'")
-  endif()
-endforeach()
-
-foreach(required IN ITEMS
-    "id=\"contactShadowsSwitch\""
-    "id=\"contactFoveatedSwitch\""
-    "id=\"shadowsPage\""
-    "type: \"contactShadowsEnabled\""
-    "type: \"contactShadowsFoveated\""
-    "type: \"contactShadowsSet\""
-    "fadeDistance")
-  string(FIND "${wristView}" "${required}" found)
-  if(found EQUAL -1)
-    message(FATAL_ERROR
-      "Contact Shadows wrist view regression: missing '${required}'")
+      "Contact Shadows DevMenu regression: missing '${required}'")
   endif()
 endforeach()
 

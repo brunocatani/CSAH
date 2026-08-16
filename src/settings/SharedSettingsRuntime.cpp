@@ -1,6 +1,8 @@
 #include "settings/SharedSettingsRuntime.h"
 
+#include "Features/basic_wetness/BasicWetnessRuntime.h"
 #include "Features/basic_wetness/BasicWetnessSettingsStore.h"
+#include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
@@ -9,19 +11,21 @@
 #include "Features/dlaa/DlaaSettingsStore.h"
 #include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
 #include "Features/filmic_tonemapping/FilmicTonemappingSettingsStore.h"
+#include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
+#include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
+#include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
-#include "ui/WristPanelRuntime.h"
-#include "ui/WristPanelSettings.h"
 
 #include <atomic>
 #include <chrono>
@@ -74,10 +78,9 @@ namespace community_shaders::shared_settings
         }
 
         [[nodiscard]] Snapshot loadSnapshot(
-            const std::filesystem::path& path,
-            const Snapshot& fallback) noexcept
+            const std::filesystem::path& path) noexcept
         {
-            Snapshot result{
+            return {
                 .linearLighting = linear_lighting::loadSettings(path),
                 .dlaa = dlaa::loadSettings(path),
                 .filmicTonemapping =
@@ -94,13 +97,7 @@ namespace community_shaders::shared_settings
                 .cloudShadows = cloud_shadows::loadSettings(path),
                 .vanillaFixes = vanilla_fixes::loadSettings(path),
                 .nativeShadows = native_shadows::loadSettings(path),
-                .prismaPanelEnabled = fallback.prismaPanelEnabled,
             };
-            const auto panel = ui::wrist_panel_settings::load(path);
-            if (panel.valueValid) {
-                result.prismaPanelEnabled = panel.enabled;
-            }
-            return result;
         }
 
         void applyLiveChanges(
@@ -110,15 +107,12 @@ namespace community_shaders::shared_settings
             if (changes.linearLighting) {
                 linear_lighting::Runtime::get().queueSettings(
                     next.linearLighting);
-                ui::setInitialSettings(next.linearLighting);
             }
             if (changes.dlaa) {
                 dlaa::Runtime::get().applySettings(next.dlaa);
             }
             if (changes.filmicTonemapping) {
                 filmic_tonemapping::Runtime::get().applySettings(
-                    next.filmicTonemapping);
-                ui::setInitialFilmicTonemappingSettings(
                     next.filmicTonemapping);
             }
             if (changes.ibl) {
@@ -127,37 +121,33 @@ namespace community_shaders::shared_settings
             if (changes.complexMaterials) {
                 linear_lighting::Runtime::get().queueComplexParallaxSettings(
                     next.complexMaterials);
-                ui::setInitialComplexParallaxSettings(
-                    next.complexMaterials);
             }
             if (changes.contactShadows) {
                 contact_shadows::Runtime::get().applySettings(
                     next.contactShadows);
             }
             if (changes.wrappedGrass) {
-                ui::setInitialWrappedGrassSettings(next.wrappedGrass);
+                wrapped_grass::Runtime::get().applySettings(
+                    next.wrappedGrass);
             }
             if (changes.hairSpecular) {
-                ui::setInitialHairSpecularSettings(next.hairSpecular);
+                hair_specular::Runtime::get().applySettings(
+                    next.hairSpecular);
             }
             if (changes.subsurfaceScattering) {
-                ui::setInitialSubsurfaceScatteringSettings(
+                subsurface_scattering::Runtime::get().applySettings(
                     next.subsurfaceScattering);
             }
             if (changes.basicWetness) {
-                ui::setInitialBasicWetnessSettings(next.basicWetness);
+                basic_wetness::Runtime::get().applySettings(
+                    next.basicWetness);
             }
             if (changes.cloudShadows) {
-                ui::setInitialCloudShadowSettings(next.cloudShadows);
+                cloud_shadows::Runtime::get().applySettings(
+                    next.cloudShadows);
             }
             if (changes.vanillaFixes) {
-                ui::setInitialVanillaFixesSettings(next.vanillaFixes);
-            }
-            if (changes.prismaPanel) {
-                ui::schedulePrismaPanelSettingReload();
-            }
-            if (changes.liveFeatureCount() != 0) {
-                ui::notifyExternalSettingsReload();
+                vanilla_fixes::applySettings(next.vanillaFixes);
             }
         }
 
@@ -185,7 +175,7 @@ namespace community_shaders::shared_settings
                     started_.store(false, std::memory_order_release);
                     return false;
                 }
-                active_ = loadSnapshot(configPath_, Snapshot{});
+                active_ = loadSnapshot(configPath_);
                 accepted_ = readSignature(configPath_);
 
                 try {
@@ -257,7 +247,7 @@ namespace community_shaders::shared_settings
                         return;
                     }
 
-                    const auto next = loadSnapshot(configPath_, active_);
+                    const auto next = loadSnapshot(configPath_);
                     const auto stable = readSignature(configPath_);
                     if (!stable || *stable != *observed) {
                         pending_ = stable;
@@ -281,11 +271,10 @@ namespace community_shaders::shared_settings
                             std::memory_order_relaxed) +
                         1;
                     logging::info(
-                        "Shared Community Shaders INI reload #{} accepted: live feature groups={}, Native Shadows restart pending={}, original Prisma panel changed={}.",
+                        "Shared Community Shaders INI reload #{} accepted: live feature groups={}, Native Shadows restart pending={}.",
                         reloadNumber,
                         changes.liveFeatureCount(),
-                        changes.nativeShadows,
-                        changes.prismaPanel);
+                        changes.nativeShadows);
                 } catch (const std::exception& error) {
                     logging::warn(
                         "Shared settings monitor rejected an INI reload: {}.",

@@ -30,7 +30,6 @@ int main()
         require(changes.any(), message);
         require(changes.liveFeatureCount() == 1, message);
         require(!changes.nativeShadows, message);
-        require(!changes.prismaPanel, message);
     };
 
     verifyLive(
@@ -79,15 +78,6 @@ int main()
     require(
         nativeChanges.liveFeatureCount() == 0,
         "Native Shadows incorrectly classified as live");
-
-    auto panel = baseline;
-    panel.prismaPanelEnabled = false;
-    const auto panelChanges = diff(baseline, panel);
-    require(panelChanges.any(), "Prisma panel diff");
-    require(panelChanges.prismaPanel, "Prisma panel classification");
-    require(
-        panelChanges.liveFeatureCount() == 0,
-        "Prisma panel incorrectly classified as shader feature");
 
     std::cout << "Shared settings runtime tests passed.\n";
     return EXIT_SUCCESS;

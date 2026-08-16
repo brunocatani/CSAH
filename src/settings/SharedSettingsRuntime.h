@@ -33,7 +33,6 @@ namespace community_shaders::shared_settings
         cloud_shadows::Settings cloudShadows{};
         vanilla_fixes::Settings vanillaFixes{};
         native_shadows::Settings nativeShadows{};
-        bool prismaPanelEnabled{ true };
 
         [[nodiscard]] bool operator==(const Snapshot&) const noexcept = default;
     };
@@ -53,11 +52,10 @@ namespace community_shaders::shared_settings
         bool cloudShadows{};
         bool vanillaFixes{};
         bool nativeShadows{};
-        bool prismaPanel{};
 
         [[nodiscard]] bool any() const noexcept
         {
-            return liveFeatureCount() != 0 || nativeShadows || prismaPanel;
+            return liveFeatureCount() != 0 || nativeShadows;
         }
 
         [[nodiscard]] std::size_t liveFeatureCount() const noexcept
@@ -100,8 +98,6 @@ namespace community_shaders::shared_settings
             .cloudShadows = previous.cloudShadows != next.cloudShadows,
             .vanillaFixes = previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
-            .prismaPanel =
-                previous.prismaPanelEnabled != next.prismaPanelEnabled,
         };
     }
 

@@ -23,8 +23,8 @@ foreach(input IN ITEMS
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_RAYTRACE_PATCH_SOURCE
     VANILLA_D3D11_HOOK_SOURCE
-    VANILLA_WRIST_PANEL_SOURCE
-    VANILLA_WRIST_PANEL_VIEW_SOURCE
+    VANILLA_DEVMENU_MANIFEST_SOURCE
+    VANILLA_SHARED_SETTINGS_SOURCE
     VANILLA_PLUGIN_SOURCE
     VANILLA_IBL_GENERATOR_SOURCE
     VANILLA_SAO_BLUR_SOURCE
@@ -169,30 +169,27 @@ if(NOT focus_draw_binding_count EQUAL 4)
     "Vanilla Fixes focus resource must bind at all four draw boundaries")
 endif()
 
-file(READ "${VANILLA_WRIST_PANEL_SOURCE}" wrist)
-vanilla_fixes_require_text("${wrist}" "Prisma action/model"
-  "{ \"vanillaFixes\""
-  "type == \"vanillaFixesSet\""
-  "vanilla_fixes::applySettings(next)"
-  "vanilla_fixes::saveSettings(next)"
-  "focusShadows.nativeHooksInstalled"
-  "focusShadows.fullArrayViewsCreated"
-  "focusShadows.bindingsApplied")
-file(READ "${VANILLA_WRIST_PANEL_VIEW_SOURCE}" view)
-vanilla_fixes_require_text("${view}" "Prisma page"
-  "id=\"pageVanillaFixesButton\""
-  "id=\"vanillaFixesPage\""
-  "const vanillaFixControls"
-  "type: \"vanillaFixesSet\""
-  "function toggleVanillaFix(key)"
-  "FO4VR ENGINE GATES · LIVE INI OWNERSHIP"
-  "Focus array views")
+file(READ "${VANILLA_DEVMENU_MANIFEST_SOURCE}" devmenu)
+vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
+  "\"id\": \"vanilla-fixes\""
+  "\"section\": \"VanillaFixes\""
+  "\"key\": \"bEnabled\""
+  "\"key\": \"bPrecipitationOcclusion\""
+  "\"key\": \"bAllowImageSpaceModifiers\""
+  "\"key\": \"bVrAllowSAO\""
+  "\"key\": \"bVrAllowScreenSpaceReflections\""
+  "\"key\": \"bVrAllowScreenSpaceSubsurfaceScattering\""
+  "\"key\": \"bLensFlareVr\""
+  "\"key\": \"bVrAllowFocusShadows\""
+  "\"key\": \"bUseSunbeams\"")
+file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
+vanilla_fixes_require_text("${shared_settings}" "live settings publication"
+  "vanilla_fixes::applySettings(next.vanillaFixes)")
 
 file(READ "${VANILLA_PLUGIN_SOURCE}" plugin)
 vanilla_fixes_require_text("${plugin}" "startup"
   "vanilla_fixes::loadSettings()"
   "vanilla_fixes::startRuntime("
-  "ui::setInitialVanillaFixesSettings("
   "render::installEarlyD3D11Hooks()")
 string(FIND "${plugin}" "vanilla_fixes::startRuntime(" runtime_start)
 string(FIND "${plugin}" "render::installEarlyD3D11Hooks()" d3d_start)
@@ -284,4 +281,4 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
   endforeach()
 endif()
 
-message(STATUS "Verified Vanilla Fixes native, shader, settings, and Prisma contracts")
+message(STATUS "Verified Vanilla Fixes native, shader, settings, and DevMenu contracts")

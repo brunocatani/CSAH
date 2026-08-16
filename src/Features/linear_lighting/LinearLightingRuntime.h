@@ -295,7 +295,7 @@ namespace community_shaders::linear_lighting
         [[nodiscard]] bool updateGeometryEmissive(
             float emissiveMultiplier) noexcept;
 
-        // UI/Prisma threads only publish immutable settings here. The render
+        // Settings publishers only publish immutable settings here. The render
         // boundary consumes the latest revision before selecting a shader or
         // touching the immediate context.
         void queueSettings(const Settings& settings) noexcept;
@@ -304,7 +304,7 @@ namespace community_shaders::linear_lighting
 
         void setGeometryProviderReady(bool ready) noexcept;
 
-        // Must be called on the render thread. Prisma commands are queued and
+        // Must be called on the render thread. Settings changes are queued and
         // applied at that boundary rather than mutating GPU state in callbacks.
         void applySettings(const Settings& settings) noexcept;
         void applyComplexParallaxSettings(

@@ -4,7 +4,7 @@
   "id": "fo4vr.community-shaders",
   "name": "FO4VR Community Shaders",
   "version": "0.2.0",
-  "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack. The original Community Shaders wrist panel remains independent and can be disabled separately.",
+  "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack.",
   "accent": "#F0A04B",
   "tabs": [
     {
@@ -308,20 +308,6 @@
                 { "id": "visualize-center", "type": "toggle", "label": "Visualize Center Region", "default": false, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DLAA", "key": "bVisualizeCenter" } },
                 { "id": "hard-reset", "type": "toggle", "label": "Hard Reset On Load", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DLAA", "key": "bHardResetOnLoad" } },
                 { "id": "verbose-diagnostics", "type": "toggle", "label": "Verbose Diagnostics", "default": false, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DLAA", "key": "bVerboseDiagnostics" } }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "integration",
-          "label": "Integration",
-          "groups": [
-            {
-              "id": "legacy-panel",
-              "label": "Legacy Community Shaders panel",
-              "description": "The original wrist panel remains available as an independent fallback.",
-              "controls": [
-                { "id": "legacy-panel-enabled", "type": "toggle", "label": "Original Prisma Wrist Panel", "help": "The setting is refreshed when a world session becomes ready. It does not affect shaders or DevMenu.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PrismaPanel", "key": "bEnabled" } }
               ]
             }
           ]

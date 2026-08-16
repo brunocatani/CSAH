@@ -122,10 +122,9 @@ namespace community_shaders::surface_classification
             D3D11_TEXTURE2D_DESC description{};
             texture->GetDesc(&description);
             // The FO4VR world G-buffer is a side-by-side stereo surface. The
-            // wrist panel and other capture passes can reuse the same six
-            // formats at square resolutions, but they are independent render
-            // domains and must never replace or clear the world classification
-            // target.
+            // other capture passes can reuse the same six formats at square
+            // resolutions, but they are independent render domains and must
+            // never replace or clear the world classification target.
             if (description.Width < 2 || description.Height == 0 ||
                 description.Width <= description.Height ||
                 (description.Width & 1u) != 0 ||

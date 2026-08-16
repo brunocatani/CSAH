@@ -818,7 +818,7 @@ namespace community_shaders::dlaa
             1;
         applyPendingSettings();
         if (refreshRequested_.exchange(false, std::memory_order_acq_rel)) {
-            hardResetTemporalState("wrist-panel refresh");
+            hardResetTemporalState("explicit refresh");
         }
         const auto requestedNow = requested_.load(std::memory_order_acquire);
         if (requestedNow != renderThreadRequested_) {

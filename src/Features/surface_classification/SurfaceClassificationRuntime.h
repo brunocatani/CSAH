@@ -94,8 +94,8 @@ namespace community_shaders::surface_classification
             ID3D11RenderTargetView* const* renderTargets) noexcept;
         // Called after the exact directional-light consumer and any dependent
         // post-light pass finish sampling the class texture. The next accepted
-        // world G-buffer bind clears exactly once; unrelated wrist/capture
-        // target transitions do not affect this lifetime.
+        // world G-buffer bind clears exactly once; unrelated capture-target
+        // transitions do not affect this lifetime.
         void markWorldFrameConsumed() noexcept;
 
         // Render-thread only. The returned view remains owned by this

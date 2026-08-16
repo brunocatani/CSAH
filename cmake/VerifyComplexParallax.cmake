@@ -88,9 +88,12 @@ if(CMAKE_SCRIPT_MODE_FILE)
   cs_require_text("${RUNTIME_SOURCE}"
     "queueComplexParallaxSettings"
     "render-boundary parallax settings")
-  cs_require_text("${WRIST_SOURCE}"
-    "parallaxEnabled"
-    "wrist parallax control")
+  cs_require_text("${DEVMENU_MANIFEST_SOURCE}"
+    "\"id\": \"complex-parallax\""
+    "DevMenu parallax control")
+  cs_require_text("${DEVMENU_MANIFEST_SOURCE}"
+    "\"key\": \"bEnableParallax\""
+    "DevMenu parallax binding")
   cs_verify_compiled_parallax(
     "${BASE_BINARY}" "base landscape complex parallax" FALSE)
   cs_verify_compiled_parallax(

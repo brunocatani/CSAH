@@ -11,8 +11,6 @@ foreach(required IN ITEMS
     SHARED_SETTINGS_SOURCE
     SHARED_SETTINGS_HEADER
     PLUGIN_SOURCE
-    WRIST_PANEL_SOURCE
-    WRIST_PANEL_VIEW_SOURCE
     DEVMENU_MANIFEST_SOURCE)
   if(NOT DEFINED ${required} OR NOT EXISTS "${${required}}")
     message(FATAL_ERROR
@@ -74,12 +72,14 @@ require_token("${SHARED_SETTINGS_SOURCE}"
   "live settings publication")
 require_token("${PLUGIN_SOURCE}"
   "filmic_tonemapping::loadSettings" "startup settings load")
-require_token("${WRIST_PANEL_SOURCE}"
-  "filmicTonemappingEnabled" "fallback wrist-panel toggle")
-require_token("${WRIST_PANEL_VIEW_SOURCE}"
-  "filmicTonemappingSwitch" "fallback wrist-panel control")
 require_token("${DEVMENU_MANIFEST_SOURCE}"
   "Filmic Tonemapping" "DevMenu control")
+require_token("${DEVMENU_MANIFEST_SOURCE}"
+  "fExposureCompensationEV" "DevMenu exposure control")
+require_token("${DEVMENU_MANIFEST_SOURCE}"
+  "fFilmicStrength" "DevMenu filmic-strength control")
+require_token("${DEVMENU_MANIFEST_SOURCE}"
+  "fWhitePointScale" "DevMenu white-point control")
 
 message(STATUS
-  "Filmic Tonemapping contract verified: unique FO4VR HDR blend replacement, native adaptation, scoped CB12, and both UI paths")
+  "Filmic Tonemapping contract verified: unique FO4VR HDR blend replacement, native adaptation, scoped CB12, and DevMenu controls")

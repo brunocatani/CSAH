@@ -1,0 +1,205 @@
+foreach(variable IN ITEMS
+    DEVMENU_MANIFEST_SOURCE
+    PROJECT_CMAKE_SOURCE
+    PLUGIN_SOURCE
+    SHARED_SETTINGS_SOURCE
+    SHARED_SETTINGS_HEADER
+    SOURCE_ROOT)
+  if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
+    message(FATAL_ERROR "DevMenu verification input is missing: ${variable}")
+  endif()
+endforeach()
+
+file(READ "${DEVMENU_MANIFEST_SOURCE}" manifest)
+file(READ "${PROJECT_CMAKE_SOURCE}" projectCmake)
+file(READ "${PLUGIN_SOURCE}" pluginSource)
+file(READ "${SHARED_SETTINGS_SOURCE}" sharedSettingsSource)
+file(READ "${SHARED_SETTINGS_HEADER}" sharedSettingsHeader)
+
+string(JSON schemaVersion ERROR_VARIABLE jsonError
+  GET "${manifest}" schemaVersion)
+if(NOT jsonError STREQUAL "NOTFOUND" OR NOT schemaVersion EQUAL 1)
+  message(FATAL_ERROR
+    "Community Shaders DevMenu manifest is invalid: ${jsonError}")
+endif()
+string(JSON packageId GET "${manifest}" id)
+if(NOT packageId STREQUAL "fo4vr.community-shaders")
+  message(FATAL_ERROR
+    "Community Shaders DevMenu package id changed: '${packageId}'")
+endif()
+
+set(controlIds)
+set(controlCount 0)
+string(JSON tabCount LENGTH "${manifest}" tabs)
+math(EXPR lastTab "${tabCount} - 1")
+foreach(tabIndex RANGE 0 ${lastTab})
+  string(JSON pageCount LENGTH "${manifest}" tabs ${tabIndex} pages)
+  math(EXPR lastPage "${pageCount} - 1")
+  foreach(pageIndex RANGE 0 ${lastPage})
+    string(JSON groupCount LENGTH "${manifest}"
+      tabs ${tabIndex} pages ${pageIndex} groups)
+    math(EXPR lastGroup "${groupCount} - 1")
+    foreach(groupIndex RANGE 0 ${lastGroup})
+      string(JSON groupControlCount LENGTH "${manifest}"
+        tabs ${tabIndex} pages ${pageIndex} groups ${groupIndex} controls)
+      math(EXPR lastControl "${groupControlCount} - 1")
+      foreach(controlIndex RANGE 0 ${lastControl})
+        set(controlPath
+          tabs ${tabIndex} pages ${pageIndex} groups ${groupIndex}
+          controls ${controlIndex})
+        string(JSON controlId GET "${manifest}" ${controlPath} id)
+        list(FIND controlIds "${controlId}" duplicateIndex)
+        if(NOT duplicateIndex EQUAL -1)
+          message(FATAL_ERROR
+            "Community Shaders DevMenu control id is duplicated: '${controlId}'")
+        endif()
+        list(APPEND controlIds "${controlId}")
+        math(EXPR controlCount "${controlCount} + 1")
+
+        string(JSON bindingType GET "${manifest}" ${controlPath} binding type)
+        string(JSON bindingRoot GET "${manifest}" ${controlPath} binding root)
+        string(JSON bindingPath GET "${manifest}" ${controlPath} binding path)
+        string(JSON bindingSection GET "${manifest}" ${controlPath} binding section)
+        string(JSON bindingKey GET "${manifest}" ${controlPath} binding key)
+        if(NOT bindingType STREQUAL "ini" OR
+           NOT bindingRoot STREQUAL "documents" OR
+           NOT bindingPath STREQUAL
+             "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini" OR
+           bindingSection STREQUAL "" OR bindingKey STREQUAL "")
+          message(FATAL_ERROR
+            "DevMenu control '${controlId}' lost its shared-INI ownership contract")
+        endif()
+      endforeach()
+    endforeach()
+  endforeach()
+endforeach()
+
+if(NOT controlCount EQUAL 87)
+  message(FATAL_ERROR
+    "Community Shaders DevMenu coverage changed: expected 87 controls, found ${controlCount}")
+endif()
+
+foreach(required IN ITEMS
+    linear-lighting native-darkness ibl diffuse-ibl filmic-tonemapping
+    cloud-shadows complex-environment complex-parallax wrapped-grass
+    hair-specular subsurface-scattering basic-wetness contact-shadows
+    contact-foveated dlaa vanilla-fixes native-auto-exposure exposure-ev
+    filmic-strength white-point-scale diffuse-ibl-level grass-wrap
+    hair-highlight skin-strength wetness-amount cloud-opacity strength
+    quality precipitation native-shadows-enabled shadow-distance mode
+    center-width)
+  list(FIND controlIds "${required}" controlIndex)
+  if(controlIndex EQUAL -1)
+    message(FATAL_ERROR
+      "Community Shaders DevMenu lost required control '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "PrismaPanel"
+    "Prisma"
+    "legacy-panel"
+    "wrist panel"
+    "wrist-panel")
+  string(FIND "${manifest}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Community Shaders DevMenu retains obsolete wrist token '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "validateD3D11ShaderHooks(\"GameDataReady\")"
+    "validateD3D11ShaderHooks(\"GameSessionReady\")"
+    "wrapped_grass::Runtime::get().applySettings"
+    "hair_specular::Runtime::get().applySettings"
+    "subsurface_scattering::Runtime::get().applySettings"
+    "basic_wetness::Runtime::get().applySettings")
+  string(FIND "${pluginSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "DevMenu-only bootstrap lost runtime ownership '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "linear_lighting::Runtime::get().queueSettings"
+    "dlaa::Runtime::get().applySettings"
+    "filmic_tonemapping::Runtime::get().applySettings"
+    "ibl::Runtime::get().applySettings"
+    "queueComplexParallaxSettings"
+    "contact_shadows::Runtime::get().applySettings"
+    "wrapped_grass::Runtime::get().applySettings"
+    "hair_specular::Runtime::get().applySettings"
+    "subsurface_scattering::Runtime::get().applySettings"
+    "basic_wetness::Runtime::get().applySettings"
+    "cloud_shadows::Runtime::get().applySettings"
+    "vanilla_fixes::applySettings")
+  string(FIND "${sharedSettingsSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "DevMenu shared-INI publication lost '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "ui/WristPanelRuntime.h"
+    "community_shaders::ui::")
+  string(FIND "${pluginSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Plugin bootstrap retains obsolete wrist ownership '${forbidden}'")
+  endif()
+endforeach()
+foreach(forbidden IN ITEMS "ui::" "prismaPanel" "Prisma panel")
+  string(FIND "${sharedSettingsSource}${sharedSettingsHeader}"
+    "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Shared settings retain obsolete wrist ownership '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "PRISMA_F4VR_API_PATH_SELECTED"
+    "ROCK_SDK_PATH_SELECTED"
+    "WristPanelRuntime"
+    "VerifyWristPanel"
+    "WRIST_PANEL_"
+    "\${ROOT_DIR}/view")
+  string(FIND "${projectCmake}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Build graph retains obsolete wrist dependency '${forbidden}'")
+  endif()
+endforeach()
+foreach(required IN ITEMS
+    "remove_directory"
+    "package/PrismaUI_F4/views/FO4VR-Community-Shaders"
+    "DevMenu/Mods/\${DEVMENU_PACKAGE_ID}")
+  string(FIND "${projectCmake}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Build graph lost DevMenu staging/legacy cleanup '${required}'")
+  endif()
+endforeach()
+
+foreach(relativePath IN ITEMS
+    "src/ui/LinearLightingTelemetryGate.h"
+    "src/ui/PointerClickGate.h"
+    "src/ui/WristPanelPose.h"
+    "src/ui/WristPanelRuntime.cpp"
+    "src/ui/WristPanelRuntime.h"
+    "src/ui/WristPanelSettings.cpp"
+    "src/ui/WristPanelSettings.h"
+    "src/ui/WristProviderRetry.h"
+    "view/index.html"
+    "cmake/VerifyWristPanel.cmake")
+  if(EXISTS "${SOURCE_ROOT}/${relativePath}")
+    message(FATAL_ERROR
+      "Obsolete Community Shaders wrist artifact remains: ${relativePath}")
+  endif()
+endforeach()
+
+message(STATUS
+  "Verified DevMenu-only ownership: 87 shared-INI controls, direct runtime publication, no wrist provider or assets")

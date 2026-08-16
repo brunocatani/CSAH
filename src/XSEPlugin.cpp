@@ -1,5 +1,6 @@
 #include "PCH.h"
 
+#include "Features/basic_wetness/BasicWetnessRuntime.h"
 #include "Features/basic_wetness/BasicWetnessSettingsStore.h"
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/cloud_shadows/CloudShadowSettingsStore.h"
@@ -11,15 +12,17 @@
 #include "Features/dlaa/DlaaSettingsStore.h"
 #include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
 #include "Features/filmic_tonemapping/FilmicTonemappingSettingsStore.h"
+#include "Features/hair_specular/HairSpecularRuntime.h"
+#include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
-#include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/native_shadows/NativeShadowRuntime.h"
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
+#include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
@@ -31,7 +34,6 @@
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
 #include "settings/SharedSettingsRuntime.h"
-#include "ui/WristPanelRuntime.h"
 
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
@@ -91,7 +93,8 @@ namespace
         case F4SE::MessagingInterface::kGameDataReady:
         {
             community_shaders::native_shadows::onGameDataReady();
-            community_shaders::ui::onGameDataReady();
+            (void)community_shaders::render::
+                validateD3D11ShaderHooks("GameDataReady");
             (void)community_shaders::render::
                 validateBSLightingGeometryHook("GameDataReady");
             (void)community_shaders::render::
@@ -184,7 +187,8 @@ namespace
         }
         case F4SE::MessagingInterface::kPostLoadGame:
             community_shaders::native_shadows::onWorldReady("PostLoadGame");
-            community_shaders::ui::onGameSessionReady();
+            (void)community_shaders::render::
+                validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
@@ -194,7 +198,8 @@ namespace
             break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::native_shadows::onWorldReady("NewGame");
-            community_shaders::ui::onGameSessionReady();
+            (void)community_shaders::render::
+                validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
             community_shaders::diagnostics::
@@ -315,6 +320,14 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             contactShadowSettings);
         community_shaders::cloud_shadows::Runtime::get().applySettings(
             cloudShadowSettings);
+        community_shaders::wrapped_grass::Runtime::get().applySettings(
+            wrappedGrassSettings);
+        community_shaders::hair_specular::Runtime::get().applySettings(
+            hairSpecularSettings);
+        community_shaders::subsurface_scattering::Runtime::get().applySettings(
+            subsurfaceScatteringSettings);
+        community_shaders::basic_wetness::Runtime::get().applySettings(
+            basicWetnessSettings);
         if (!community_shaders::native_shadows::startRuntime(
                 nativeShadowSettings)) {
             community_shaders::logging::warn(
@@ -325,24 +338,6 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::logging::warn(
                 "Vanilla Fixes engine-gate contract was rejected; shader fixes remain available, but engine-gate ownership stays fail-closed.");
         }
-        community_shaders::ui::setInitialSettings(settings);
-        community_shaders::ui::setInitialFilmicTonemappingSettings(
-            filmicTonemappingSettings);
-        community_shaders::ui::setInitialComplexParallaxSettings(
-            complexMaterialSettings);
-        community_shaders::ui::setInitialWrappedGrassSettings(
-            wrappedGrassSettings);
-        community_shaders::ui::setInitialHairSpecularSettings(
-            hairSpecularSettings);
-        community_shaders::ui::setInitialSubsurfaceScatteringSettings(
-            subsurfaceScatteringSettings);
-        community_shaders::ui::setInitialBasicWetnessSettings(
-            basicWetnessSettings);
-        community_shaders::ui::setInitialCloudShadowSettings(
-            cloudShadowSettings);
-        community_shaders::ui::setInitialVanillaFixesSettings(
-            vanillaFixesSettings);
-
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
             community_shaders::logging::warn(
                 "Verified D3D11 bootstrap was not installed; plugin remains loaded but all rendering stays vanilla.");
@@ -370,7 +365,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
         if (!community_shaders::shared_settings::startMonitor()) {
             community_shaders::logging::warn(
-                "Shared Community Shaders INI monitor did not start; startup settings and the original wrist controls remain operational.");
+                "Shared Community Shaders INI monitor did not start; startup settings remain active, but DevMenu changes require the next launch.");
         }
 
         community_shaders::logging::info(

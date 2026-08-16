@@ -1290,8 +1290,8 @@ namespace community_shaders::render
     {
         const auto hookInstalled = installed.load(std::memory_order_acquire);
         // Ownership is refreshed only at explicit lifecycle/qualification
-        // validation points. Wrist telemetry can request snapshots every
-        // frame, so it must not perform VirtualQuery or scan six callsites.
+        // validation points. Snapshot readers can run every frame, so this
+        // path must not perform VirtualQuery or scan six callsites.
         const auto producerOwned = hookInstalled &&
             producerOwnershipReady.load(std::memory_order_acquire);
         const auto producerActive = producerOwned &&
