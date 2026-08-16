@@ -155,6 +155,8 @@ foreach(required IN ITEMS
     "biasCurrentColorUav"
     "kMaximumQualificationProbeAttempts = 5"
     "kQualificationProbeFrameCadence = 60"
+    "Qualification is passive resource discovery"
+    "Upscaling re-armed passive TAA resource qualification"
     "DLAA.Compare.InputPacked"
     "DLAA.Compare.VanillaPacked"
     "DLAA.Compare.OutputLeft"
@@ -177,6 +179,23 @@ foreach(required IN ITEMS
       "DLAA fail-closed qualification regression: missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${runtime}"
+  "const auto requestedNow = requested_.load" requested_state_pos)
+string(FIND "${runtime}"
+  "consumeQualificationProbes();" qualification_consume_pos)
+string(FIND "${runtime}"
+  "captureQualificationResources();" qualification_capture_pos)
+string(FIND "${runtime}"
+  "if (!requestedNow) {\n            return;" disabled_return_pos)
+if(requested_state_pos EQUAL -1 OR qualification_consume_pos EQUAL -1 OR
+   qualification_capture_pos EQUAL -1 OR disabled_return_pos EQUAL -1 OR
+   NOT requested_state_pos LESS qualification_consume_pos OR
+   NOT qualification_consume_pos LESS qualification_capture_pos OR
+   NOT qualification_capture_pos LESS disabled_return_pos)
+  message(FATAL_ERROR
+    "DLAA disabled-start regression: passive qualification must complete before the disabled evaluation return")
+endif()
 
 string(FIND "${runtime}"
   "CreateUnorderedAccessView(\n                qualifiedResources_.outputColor.Get()"

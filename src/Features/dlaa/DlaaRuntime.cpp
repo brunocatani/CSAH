@@ -831,10 +831,17 @@ namespace community_shaders::dlaa
                     "both eye histories will reset through one private proof before publication" :
                     "evaluation stopped and vanilla TAA owns the published image");
         }
-        if (!requestedNow ||
-            !deviceReady_.load(std::memory_order_acquire)) {
+        if (!deviceReady_.load(std::memory_order_acquire)) {
             operational_.store(false, std::memory_order_release);
             return;
+        }
+
+        // Qualification is passive resource discovery. Run it even while the
+        // user-facing feature is disabled so the exact TAA shader/resource
+        // tuple is pinned during the deterministic post-load render window.
+        // Evaluation and publication remain gated by requestedNow below.
+        if (!requestedNow) {
+            operational_.store(false, std::memory_order_release);
         }
         if (!cameraBufferQualified_.load(std::memory_order_acquire)) {
             captureCameraBinding();
@@ -852,6 +859,9 @@ namespace community_shaders::dlaa
                 false,
                 std::memory_order_acq_rel)) {
             captureQualificationResources();
+        }
+        if (!requestedNow) {
+            return;
         }
         if (!renderResourcesQualified_.load(std::memory_order_acquire)) {
             return;
@@ -1559,10 +1569,24 @@ namespace community_shaders::dlaa
             acceptedRevision = pendingSettingsRevision_.load(
                 std::memory_order_relaxed);
         }
+        const auto wasEnabled = settings_.enabled;
         settings_ = sanitize(next);
         renderThreadSettingsRevision_ = acceptedRevision;
         renderThreadRequested_ = settings_.enabled;
         hardResetTemporalState("settings transition");
+        if (!wasEnabled && settings_.enabled &&
+            !renderResourcesQualified_.load(std::memory_order_acquire)) {
+            // A disabled startup now qualifies passively. Re-arm the bounded
+            // search as a recovery path when enable races that first proof or
+            // a session invalidated the previously pinned resource tuple.
+            qualificationProbes_ = {};
+            qualificationProbeAttempts_.store(0, std::memory_order_relaxed);
+            qualificationCaptureRequested_.store(
+                true,
+                std::memory_order_release);
+            logging::info(
+                "Upscaling re-armed passive TAA resource qualification for an off-to-on transition.");
+        }
         logging::info(
             "Upscaling render-thread settings applied: revision={}, enabled={}, mode={}, modelPreset={}, motionVectorRepair={}, CAS={} at {}, center={}x{}, feather={}px, visualizeCenter={}.",
             acceptedRevision,
