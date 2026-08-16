@@ -3,6 +3,7 @@
 #include "Features/basic_wetness/BasicWetnessSettings.h"
 #include "Features/cloud_shadows/CloudShadowSettings.h"
 #include "Features/complex_materials/ComplexParallaxSettings.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingSettings.h"
 #include "Features/hair_specular/HairSpecularSettings.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
@@ -14,6 +15,8 @@ namespace community_shaders::ui
     // Stores the startup settings before the optional provider/UI layer exists.
     void setInitialSettings(
         const linear_lighting::Settings& settings) noexcept;
+    void setInitialFilmicTonemappingSettings(
+        const filmic_tonemapping::Settings& settings) noexcept;
     void setInitialComplexParallaxSettings(
         const complex_materials::Settings& settings) noexcept;
     void setInitialWrappedGrassSettings(

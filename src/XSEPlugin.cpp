@@ -9,6 +9,8 @@
 #include "Features/dlaa/DlaaEngineHooks.h"
 #include "Features/dlaa/DlaaRuntime.h"
 #include "Features/dlaa/DlaaSettingsStore.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
@@ -280,6 +282,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         const auto settings =
             community_shaders::linear_lighting::loadSettings();
         const auto dlaaSettings = community_shaders::dlaa::loadSettings();
+        const auto filmicTonemappingSettings =
+            community_shaders::filmic_tonemapping::loadSettings();
         const auto iblSettings = community_shaders::ibl::loadSettings();
         const auto contactShadowSettings =
             community_shaders::contact_shadows::loadSettings();
@@ -302,6 +306,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
+        community_shaders::filmic_tonemapping::Runtime::get().applySettings(
+            filmicTonemappingSettings);
         community_shaders::linear_lighting::Runtime::get().
             applyComplexParallaxSettings(complexMaterialSettings);
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);
@@ -320,6 +326,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
                 "Vanilla Fixes engine-gate contract was rejected; shader fixes remain available, but engine-gate ownership stays fail-closed.");
         }
         community_shaders::ui::setInitialSettings(settings);
+        community_shaders::ui::setInitialFilmicTonemappingSettings(
+            filmicTonemappingSettings);
         community_shaders::ui::setInitialComplexParallaxSettings(
             complexMaterialSettings);
         community_shaders::ui::setInitialWrappedGrassSettings(

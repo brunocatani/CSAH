@@ -12,6 +12,8 @@
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
 #include "Features/dlaa/DlaaRuntime.h"
 #include "Features/dlaa/DlaaSettingsStore.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingSettingsStore.h"
 #include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
@@ -627,6 +629,8 @@ namespace community_shaders::ui
                 basic_wetness::Runtime::get().snapshot();
             const auto cloudShadowRuntime =
                 cloud_shadows::Runtime::get().snapshot();
+            const auto filmicTonemappingRuntime =
+                filmic_tonemapping::Runtime::get().snapshot();
             const auto surfaceRuntime =
                 surface_classification::Runtime::get().snapshot();
             const auto vanillaFixes =
@@ -697,6 +701,10 @@ namespace community_shaders::ui
                     0x165667B19E3779F9ull) ^
                 static_cast<std::uint64_t>(
                     cloudShadowRuntime.settings.enabled) ^
+                (filmicTonemappingRuntime.replacementBinds *
+                    0xA24BAED4963EE407ull) ^
+                static_cast<std::uint64_t>(
+                    filmicTonemappingRuntime.settings.enabled) ^
                 (surfaceRuntime.acceptedGBufferBinds *
                     0x27D4EB2F165667C5ull) ^
                 surfaceRuntime.rejectedGBufferBinds ^
@@ -730,6 +738,8 @@ namespace community_shaders::ui
                 basic_wetness::Runtime::get().snapshot();
             const auto cloudShadowRuntime =
                 cloud_shadows::Runtime::get().snapshot();
+            const auto filmicTonemappingRuntime =
+                filmic_tonemapping::Runtime::get().snapshot();
             const auto surfaceRuntime =
                 surface_classification::Runtime::get().snapshot();
             const auto vanillaFixes =
@@ -943,6 +953,31 @@ namespace community_shaders::ui
                         { "lightingRejects",
                             cloudShadowRuntime.lightingRejects },
                         { "failures", cloudShadowRuntime.failures },
+                    } },
+                { "filmicTonemapping",
+                    {
+                        { "enabled",
+                            filmicTonemappingRuntime.settings.enabled },
+                        { "useNativeAutoExposure",
+                            filmicTonemappingRuntime.settings.
+                                useNativeAutoExposure },
+                        { "exposureCompensationEV",
+                            filmicTonemappingRuntime.settings.
+                                exposureCompensationEV },
+                        { "filmicStrength",
+                            filmicTonemappingRuntime.settings.
+                                filmicStrength },
+                        { "whitePointScale",
+                            filmicTonemappingRuntime.settings.
+                                whitePointScale },
+                        { "gpuReady", filmicTonemappingRuntime.gpuReady },
+                        { "matchingShaders",
+                            filmicTonemappingRuntime.matchingShaders },
+                        { "replacementBinds",
+                            filmicTonemappingRuntime.replacementBinds },
+                        { "drawScopes",
+                            filmicTonemappingRuntime.drawScopes },
+                        { "failures", filmicTonemappingRuntime.failures },
                     } },
                 { "vanillaFixes",
                     {
@@ -1765,6 +1800,67 @@ namespace community_shaders::ui
                         "Contact Shadows wrist action accepted; enabled={}, settings save={}.",
                         accepted.enabled,
                         saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "filmicTonemappingEnabled" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = filmic_tonemapping::Runtime::get()
+                                    .snapshot()
+                                    .settings;
+                    next.enabled = action["value"].get<bool>();
+                    const auto accepted = filmic_tonemapping::sanitize(next);
+                    filmic_tonemapping::Runtime::get().applySettings(accepted);
+                    const auto saved =
+                        filmic_tonemapping::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    logging::info(
+                        "Filmic Tonemapping wrist action accepted; enabled={}, settings save={}.",
+                        accepted.enabled,
+                        saved);
+                    schedulePush();
+                    return;
+                }
+                if (type == "filmicTonemappingNativeExposure" &&
+                    action.contains("value") &&
+                    action["value"].is_boolean()) {
+                    auto next = filmic_tonemapping::Runtime::get()
+                                    .snapshot()
+                                    .settings;
+                    next.useNativeAutoExposure =
+                        action["value"].get<bool>();
+                    const auto accepted = filmic_tonemapping::sanitize(next);
+                    filmic_tonemapping::Runtime::get().applySettings(accepted);
+                    (void)filmic_tonemapping::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
+                    schedulePush();
+                    return;
+                }
+                if (type == "filmicTonemappingSet" &&
+                    action.contains("key") && action["key"].is_string() &&
+                    action.contains("value") && action["value"].is_number()) {
+                    const auto value = action["value"].get<float>();
+                    if (!std::isfinite(value)) {
+                        return;
+                    }
+                    auto next = filmic_tonemapping::Runtime::get()
+                                    .snapshot()
+                                    .settings;
+                    const auto key = action["key"].get<std::string>();
+                    if (key == "exposureCompensationEV") {
+                        next.exposureCompensationEV = value;
+                    } else if (key == "filmicStrength") {
+                        next.filmicStrength = value;
+                    } else if (key == "whitePointScale") {
+                        next.whitePointScale = value;
+                    } else {
+                        return;
+                    }
+                    const auto accepted = filmic_tonemapping::sanitize(next);
+                    filmic_tonemapping::Runtime::get().applySettings(accepted);
+                    (void)filmic_tonemapping::saveSettings(accepted);
+                    uiRevision.fetch_add(1, std::memory_order_release);
                     schedulePush();
                     return;
                 }
@@ -2753,6 +2849,13 @@ namespace community_shaders::ui
     {
         std::scoped_lock lock(settingsMutex);
         uiSettings = linear_lighting::sanitize(settings);
+        uiRevision.fetch_add(1, std::memory_order_release);
+    }
+
+    void setInitialFilmicTonemappingSettings(
+        const filmic_tonemapping::Settings& settings) noexcept
+    {
+        (void)settings;
         uiRevision.fetch_add(1, std::memory_order_release);
     }
 

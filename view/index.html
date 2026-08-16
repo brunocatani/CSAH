@@ -552,6 +552,20 @@
             </div>
             <div class="master">
               <div class="master-copy">
+                <strong>Filmic Tonemapping</strong>
+                <span id="filmicTonemappingState">WAITING FOR HDR BLEND</span>
+              </div>
+              <div id="filmicTonemappingSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
+                <strong>Native Auto Exposure</strong>
+                <span id="filmicNativeExposureState">ENGINE ADAPTATION</span>
+              </div>
+              <div id="filmicNativeExposureSwitch" class="switch" role="switch" tabindex="0" aria-checked="true"></div>
+            </div>
+            <div class="master">
+              <div class="master-copy">
                 <strong>Landscape Parallax</strong>
                 <span id="parallaxState">WAITING FOR SHADERS</span>
               </div>
@@ -927,7 +941,10 @@
       { key: "wetnessDarkening", settingKey: "diffuseDarkening", source: "basicWetness", label: "Wet diffuse darkening", hint: "Reduces diffuse energy while retaining the existing material colour.", min: 0, max: .75, step: .01 },
       { key: "wetnessSpecular", settingKey: "specularMultiplier", source: "basicWetness", label: "Wet highlight", hint: "Strengthens the existing direct and environment highlights on wettable surfaces.", min: 0, max: 4, step: .01 },
       { key: "wetnessRoughness", settingKey: "roughnessScale", source: "basicWetness", label: "Wet reflection sharpness", hint: "Reduces the IBL mip level without introducing a separate reflection system.", min: .05, max: 1, step: .01 },
-      { key: "cloudOpacity", settingKey: "opacity", source: "cloudShadows", label: "Cloud shadow opacity", hint: "Scales the captured cloud cover projected along the directional light.", min: 0, max: 1, step: .01 }
+      { key: "cloudOpacity", settingKey: "opacity", source: "cloudShadows", label: "Cloud shadow opacity", hint: "Scales the captured cloud cover projected along the directional light.", min: 0, max: 1, step: .01 },
+      { key: "filmicExposureEV", settingKey: "exposureCompensationEV", source: "filmicTonemapping", label: "Exposure compensation", hint: "Offsets the native or locked exposure baseline in photographic stops.", min: -3, max: 3, step: .05 },
+      { key: "filmicStrength", settingKey: "filmicStrength", source: "filmicTonemapping", label: "Filmic strength", hint: "Blends from native per-channel tonemapping to hue-preserving luminance rolloff.", min: 0, max: 1, step: .01 },
+      { key: "filmicWhitePoint", settingKey: "whitePointScale", source: "filmicTonemapping", label: "White point scale", hint: "Lower values compress highlights sooner; 1.0 retains FO4VR's native 5.6 white point.", min: .5, max: 2, step: .01 }
     ];
     const contactControls = [
       { key: "strength", label: "Shadow strength", hint: "Blends the directional contact term without changing ambient or IBL.", min: 0, max: 1, step: .01 },
@@ -975,19 +992,16 @@
           output.textContent = Number(input.value).toFixed(2);
           clearTimeout(state.timers.get(control.key));
           state.timers.set(control.key, setTimeout(() => {
-            bridge(control.source === "ibl"
-              ? { type: "iblDiffuseLevel", value: Number(input.value) }
-              : (control.source === "wrappedGrass"
-                ? { type: "wrappedGrassSet", value: Number(input.value) }
-                : (control.source === "hairSpecular"
-                  ? { type: "hairSpecularSet", value: Number(input.value) }
-                  : (control.source === "subsurfaceScattering"
-                    ? { type: "subsurfaceScatteringSet", key: control.settingKey, value: Number(input.value) }
-                    : (control.source === "basicWetness"
-                      ? { type: "basicWetnessSet", key: control.settingKey, value: Number(input.value) }
-                      : (control.source === "cloudShadows"
-                        ? { type: "cloudShadowsSet", key: control.settingKey, value: Number(input.value) }
-                        : { type: "set", key: control.key, value: Number(input.value) }))))));
+            const value = Number(input.value);
+            let action = { type: "set", key: control.key, value };
+            if (control.source === "ibl") action = { type: "iblDiffuseLevel", value };
+            else if (control.source === "wrappedGrass") action = { type: "wrappedGrassSet", value };
+            else if (control.source === "hairSpecular") action = { type: "hairSpecularSet", value };
+            else if (control.source === "subsurfaceScattering") action = { type: "subsurfaceScatteringSet", key: control.settingKey, value };
+            else if (control.source === "basicWetness") action = { type: "basicWetnessSet", key: control.settingKey, value };
+            else if (control.source === "cloudShadows") action = { type: "cloudShadowsSet", key: control.settingKey, value };
+            else if (control.source === "filmicTonemapping") action = { type: "filmicTonemappingSet", key: control.settingKey, value };
+            bridge(action);
           }, 180));
         });
       }
@@ -1079,6 +1093,7 @@
       const subsurfaceScattering = model.subsurfaceScattering || {};
       const basicWetness = model.basicWetness || {};
       const cloudShadows = model.cloudShadows || {};
+      const filmicTonemapping = model.filmicTonemapping || {};
       const surfaceClassification = model.surfaceClassification || {};
       const vanillaFixes = model.vanillaFixes || {};
 
@@ -1176,6 +1191,22 @@
           (Number(ibl.diffuseAmbientPrepared || 0) > 0 ?
             "DYNAMIC AMBIENT ACTIVE" :
             (ibl.diffuseSHUsable ? "DYNAMIC AMBIENT ARMED" : "WAITING FOR SH FIT")));
+
+      const filmicEnabled = !!filmicTonemapping.enabled;
+      const filmicSwitch = document.getElementById("filmicTonemappingSwitch");
+      filmicSwitch.classList.toggle("on", filmicEnabled);
+      filmicSwitch.setAttribute("aria-checked", String(filmicEnabled));
+      document.getElementById("filmicTonemappingState").textContent = !filmicEnabled ?
+        "NATIVE HDR TONEMAP" :
+        (filmicTonemapping.gpuReady ?
+          (filmicTonemapping.matchingShaders ? "FILMIC OUTPUT ACTIVE" : "WAITING FOR HDR BLEND") :
+          "SHADER INTERLOCK CLOSED");
+      const nativeExposure = filmicTonemapping.useNativeAutoExposure !== false;
+      const nativeExposureSwitch = document.getElementById("filmicNativeExposureSwitch");
+      nativeExposureSwitch.classList.toggle("on", nativeExposure);
+      nativeExposureSwitch.setAttribute("aria-checked", String(nativeExposure));
+      document.getElementById("filmicNativeExposureState").textContent = nativeExposure ?
+        "ENGINE ADAPTATION" : "LOCKED EXPOSURE";
 
       const parallaxEnabled = !!complexMaterials.parallaxEnabled;
       const parallaxSwitch = document.getElementById("parallaxSwitch");
@@ -1286,7 +1317,8 @@
               hairSpecular.specularMultiplier : (control.source === "subsurfaceScattering" ?
                 subsurfaceScattering[control.settingKey] : (control.source === "basicWetness" ?
                   basicWetness[control.settingKey] : (control.source === "cloudShadows" ?
-                    cloudShadows[control.settingKey] : settings[control.key]))))));
+                  cloudShadows[control.settingKey] : (control.source === "filmicTonemapping" ?
+                    filmicTonemapping[control.settingKey] : settings[control.key])))))));
         if (Number.isFinite(value) && document.activeElement !== input) input.value = String(value);
         output.textContent = Number.isFinite(value) ? value.toFixed(2) : "—";
       }
@@ -1343,6 +1375,8 @@
         metric("Wetness draws", String(basicWetness.drawScopes || 0), basicWetness.drawScopes ? "good" : "wait"),
         metric("Cloud cube", cloudShadows.cubeReady ? "READY" : "WAIT", cloudShadows.cubeReady ? "good" : "wait"),
         metric("Cloud captures", String(cloudShadows.capturedDraws || 0), cloudShadows.capturedDraws ? "good" : "wait"),
+        metric("Filmic output", filmicTonemapping.gpuReady ? "READY" : "CLOSED", filmicTonemapping.gpuReady ? "good" : "bad"),
+        metric("Filmic binds", String(filmicTonemapping.replacementBinds || 0), filmicTonemapping.replacementBinds ? "good" : "wait"),
         metric("Binding lookup", runtime.shaderBindingLookupFailures ? `FAIL ${runtime.shaderBindingLookupFailures}` : "CLEAN", runtime.shaderBindingLookupFailures ? "bad" : "good"),
         metric("Geometry calls", String(hooks.geometryCalls || 0), hooks.geometryCalls ? "good" : "wait"),
         metric("Emissive source", `${hooks.deepestGeometrySourceStage || 0} / 2`, hooks.deepestGeometrySourceStage === 2 ? "good" : "wait")
@@ -1409,6 +1443,22 @@
       if (state.model) {
         state.model.ibl = { ...ibl, diffuseEnabled };
       }
+      render();
+    }
+
+    function toggleFilmicTonemappingEnabled() {
+      const filmicTonemapping = (state.model || {}).filmicTonemapping || {};
+      const enabled = !filmicTonemapping.enabled;
+      bridge({ type: "filmicTonemappingEnabled", value: enabled });
+      if (state.model) state.model.filmicTonemapping = { ...filmicTonemapping, enabled };
+      render();
+    }
+
+    function toggleFilmicNativeExposure() {
+      const filmicTonemapping = (state.model || {}).filmicTonemapping || {};
+      const useNativeAutoExposure = filmicTonemapping.useNativeAutoExposure === false;
+      bridge({ type: "filmicTonemappingNativeExposure", value: useNativeAutoExposure });
+      if (state.model) state.model.filmicTonemapping = { ...filmicTonemapping, useNativeAutoExposure };
       render();
     }
 
@@ -1544,6 +1594,14 @@
     document.getElementById("iblDiffuseSwitch").addEventListener("click", toggleIblDiffuseEnabled);
     document.getElementById("iblDiffuseSwitch").addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") toggleIblDiffuseEnabled();
+    });
+    document.getElementById("filmicTonemappingSwitch").addEventListener("click", toggleFilmicTonemappingEnabled);
+    document.getElementById("filmicTonemappingSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleFilmicTonemappingEnabled();
+    });
+    document.getElementById("filmicNativeExposureSwitch").addEventListener("click", toggleFilmicNativeExposure);
+    document.getElementById("filmicNativeExposureSwitch").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") toggleFilmicNativeExposure();
     });
     document.getElementById("parallaxSwitch").addEventListener("click", toggleParallaxEnabled);
     document.getElementById("parallaxSwitch").addEventListener("keydown", event => {

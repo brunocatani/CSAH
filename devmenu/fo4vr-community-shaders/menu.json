@@ -24,6 +24,7 @@
                 { "id": "native-darkness", "type": "toggle", "label": "Preserve Native Darkness", "help": "Keeps native light, ambient, fog, and sky producers at Fallout's darker response floor.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "LinearLighting", "key": "bPreserveNativeDarkness" } },
                 { "id": "ibl", "type": "toggle", "label": "Image Based Lighting", "help": "Enables validated environment lighting and material reflections.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bEnabled" } },
                 { "id": "diffuse-ibl", "type": "toggle", "label": "Diffuse IBL", "help": "Adds environment-derived diffuse bounce lighting.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bDiffuseEnabled" } },
+                { "id": "filmic-tonemapping", "type": "toggle", "label": "Filmic Tonemapping", "help": "Replaces the exact native HDR blend with hue-preserving highlight compression while retaining bloom, cinematic state, fade, and engine adaptation.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "bEnabled" } },
                 { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CloudShadows", "key": "bEnabled" } }
               ]
             }
@@ -87,6 +88,23 @@
       "id": "linear",
       "label": "Linear",
       "pages": [
+        {
+          "id": "tonemapping",
+          "label": "Tonemapping",
+          "groups": [
+            {
+              "id": "filmic-output",
+              "label": "Filmic output",
+              "description": "One output-stage pass shared by both eyes. Zero EV retains engine exposure; lower white point values compress highlights sooner.",
+              "controls": [
+                { "id": "native-auto-exposure", "type": "toggle", "label": "Use Native Auto Exposure", "help": "Consumes FO4VR's shared adapted-luminance texture and weather/image-space exposure limits. Disable only for a locked-exposure comparison.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "bUseNativeAutoExposure" } },
+                { "id": "exposure-ev", "type": "slider", "label": "Exposure Compensation (EV)", "help": "Applies a photographic stop offset after the selected exposure baseline.", "default": 0.0, "min": -3.0, "max": 3.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "fExposureCompensationEV" } },
+                { "id": "filmic-strength", "type": "slider", "label": "Hue-Preserving Filmic Strength", "help": "Blends from FO4VR's native per-channel curve to luminance-based highlight rolloff without changing the native curve family.", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "fFilmicStrength" } },
+                { "id": "white-point-scale", "type": "slider", "label": "White Point Scale", "help": "Lower values roll highlights off earlier; 1.0 retains FO4VR's verified 5.6 white point.", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "fWhitePointScale" } }
+              ]
+            }
+          ]
+        },
         {
           "id": "response",
           "label": "Response",

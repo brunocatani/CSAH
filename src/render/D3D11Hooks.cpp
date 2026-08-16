@@ -6,6 +6,7 @@
 #include "Features/dlaa/DlaaD3D11Hooks.h"
 #include "Features/dlaa/DlaaRuntime.h"
 #include "Features/dlaa/StreamlineBackend.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
 #include "Features/hair_specular/HairSpecularRuntime.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
@@ -289,6 +290,8 @@ namespace community_shaders::render
         std::atomic_bool firstGrassVertexDrawRebindLogged{};
         thread_local contact_shadows::ShaderBinding
             activeContactShadowBinding{};
+        thread_local filmic_tonemapping::ShaderBinding
+            activeFilmicTonemappingBinding{};
         thread_local bool activeContactShadowsEnabled{};
         thread_local bool activeWrappedGrassEnabled{};
         thread_local bool activeHairSpecularEnabled{};
@@ -1174,6 +1177,18 @@ namespace community_shaders::render
                 activeBasicWetnessEnabled = false;
                 activeCloudShadowsEnabled = false;
             }
+            if (activeFilmicTonemappingBinding &&
+                !filmic_tonemapping::Runtime::get().bindingActive(
+                    activeFilmicTonemappingBinding)) {
+                if (originalPSSetShader) {
+                    originalPSSetShader(
+                        context,
+                        activeFilmicTonemappingBinding.original,
+                        nullptr,
+                        0);
+                }
+                activeFilmicTonemappingBinding = {};
+            }
         }
 
         void recordDFPrePassDescriptorConsumed(
@@ -1328,6 +1343,7 @@ namespace community_shaders::render
                     linear_lighting::ReplacementShaderFamily::none ||
                 activeIblMaterialBinding ||
                 activeContactShadowBinding ||
+                activeFilmicTonemappingBinding ||
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne != 0 ||
                 qualificationSessionActive.load(std::memory_order_acquire);
         }
@@ -1714,6 +1730,10 @@ namespace community_shaders::render
                     bytecode,
                     bytecodeLength,
                     *shader);
+                filmic_tonemapping::Runtime::get().onPixelShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
             }
             return result;
         }
@@ -1887,6 +1907,7 @@ namespace community_shaders::render
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
                 activeWrappedGrassEnabled = false;
                 activeHairSpecularEnabled = false;
@@ -1906,6 +1927,7 @@ namespace community_shaders::render
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
                 activeWrappedGrassEnabled = false;
                 activeHairSpecularEnabled = false;
@@ -1929,6 +1951,8 @@ namespace community_shaders::render
                 subsurface_scattering::Runtime::get();
             auto& basicWetnessRuntime = basic_wetness::Runtime::get();
             auto& cloudShadowRuntime = cloud_shadows::Runtime::get();
+            auto& filmicTonemappingRuntime =
+                filmic_tonemapping::Runtime::get();
             const auto qualificationActive =
                 qualificationSessionActive.load(std::memory_order_acquire);
             const auto replacementFeaturesActive =
@@ -1951,6 +1975,8 @@ namespace community_shaders::render
             const auto cloudShadowFeatureActive =
                 cloudShadowRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
+            const auto filmicTonemappingFeatureActive =
+                filmicTonemappingRuntime.featureEnabled();
             const auto dflightCompositorActive =
                 contactShadowRuntime.compositorReady(
                     wrappedGrassFeatureActive || hairSpecularFeatureActive ||
@@ -1967,6 +1993,7 @@ namespace community_shaders::render
             }
             if (!replacementFeaturesActive && !iblFeatureActive &&
                 !dflightCompositorActive &&
+                !filmicTonemappingFeatureActive &&
                 !qualificationActive) {
                 activeReplacementBinding = {};
                 activeSurfaceClassCode = 0;
@@ -1974,6 +2001,7 @@ namespace community_shaders::render
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
                 activeContactShadowBinding = {};
+                activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
                 activeWrappedGrassEnabled = false;
                 activeHairSpecularEnabled = false;
@@ -2072,9 +2100,22 @@ namespace community_shaders::render
                 linear_lighting::ReplacementShaderFamily::dFLightAmbient) {
                 ibl::Runtime::get().onDFLightAmbientBind(context);
             }
+            auto filmicSelection = filmic_tonemapping::PixelShaderSelection{
+                iblSelection.shader,
+                {},
+            };
+            if (filmicTonemappingFeatureActive &&
+                classInstanceCount == 0 && iblSelection.shader == shader &&
+                !iblSelection.binding && !contactShadowSelection.binding &&
+                selection.binding.family ==
+                    linear_lighting::ReplacementShaderFamily::none) {
+                filmicSelection = filmicTonemappingRuntime.selectPixelShader(
+                    context,
+                    shader);
+            }
             original(
                 context,
-                iblSelection.shader,
+                filmicSelection.shader,
                 classInstances,
                 classInstanceCount);
             if (selection.retainedForBind && selection.shader) {
@@ -2089,6 +2130,7 @@ namespace community_shaders::render
                 activeReplacementOriginal && classInstanceCount == 0 ?
                 context : nullptr;
             activeContactShadowBinding = contactShadowSelection.binding;
+            activeFilmicTonemappingBinding = filmicSelection.binding;
             activeContactShadowsEnabled =
                 contactShadowSelection.binding &&
                 contactShadowFeatureActive;
@@ -2150,6 +2192,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto filmicConstants =
+                filmic_tonemapping::Runtime::get().scopeDraw(
+                    context,
+                    activeFilmicTonemappingBinding);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedCalls.fetch_add(
@@ -2194,6 +2240,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto filmicConstants =
+                filmic_tonemapping::Runtime::get().scopeDraw(
+                    context,
+                    activeFilmicTonemappingBinding);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawCalls.fetch_add(1, std::memory_order_relaxed);
@@ -2242,6 +2292,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto filmicConstants =
+                filmic_tonemapping::Runtime::get().scopeDraw(
+                    context,
+                    activeFilmicTonemappingBinding);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawIndexedInstancedCalls.fetch_add(
@@ -2295,6 +2349,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto filmicConstants =
+                filmic_tonemapping::Runtime::get().scopeDraw(
+                    context,
+                    activeFilmicTonemappingBinding);
             recordActiveIblCaptureProbe(context);
             if (qualificationSessionActive.load(std::memory_order_acquire)) {
                 qualificationDrawInstancedCalls.fetch_add(
@@ -3031,6 +3089,10 @@ namespace community_shaders::render
             activeDFPrePassTechniques = {};
             pendingDFPrePassDescriptor = {};
             contact_shadows::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext,
+                originalCreatePixelShader);
+            filmic_tonemapping::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);

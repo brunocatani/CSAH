@@ -5,6 +5,7 @@
 #include "Features/complex_materials/ComplexParallaxSettings.h"
 #include "Features/contact_shadows/ContactShadowSettings.h"
 #include "Features/dlaa/DlaaSettings.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingSettings.h"
 #include "Features/hair_specular/HairSpecularSettings.h"
 #include "Features/ibl/IblSettings.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
@@ -21,6 +22,7 @@ namespace community_shaders::shared_settings
     {
         linear_lighting::Settings linearLighting{};
         dlaa::Settings dlaa{};
+        filmic_tonemapping::Settings filmicTonemapping{};
         ibl::Settings ibl{};
         complex_materials::Settings complexMaterials{};
         contact_shadows::Settings contactShadows{};
@@ -40,6 +42,7 @@ namespace community_shaders::shared_settings
     {
         bool linearLighting{};
         bool dlaa{};
+        bool filmicTonemapping{};
         bool ibl{};
         bool complexMaterials{};
         bool contactShadows{};
@@ -61,6 +64,7 @@ namespace community_shaders::shared_settings
         {
             return static_cast<std::size_t>(linearLighting) +
                 static_cast<std::size_t>(dlaa) +
+                static_cast<std::size_t>(filmicTonemapping) +
                 static_cast<std::size_t>(ibl) +
                 static_cast<std::size_t>(complexMaterials) +
                 static_cast<std::size_t>(contactShadows) +
@@ -81,6 +85,8 @@ namespace community_shaders::shared_settings
             .linearLighting =
                 previous.linearLighting != next.linearLighting,
             .dlaa = previous.dlaa != next.dlaa,
+            .filmicTonemapping = previous.filmicTonemapping !=
+                next.filmicTonemapping,
             .ibl = previous.ibl != next.ibl,
             .complexMaterials =
                 previous.complexMaterials != next.complexMaterials,

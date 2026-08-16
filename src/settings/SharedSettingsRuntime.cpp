@@ -7,6 +7,8 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "Features/dlaa/DlaaRuntime.h"
 #include "Features/dlaa/DlaaSettingsStore.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingRuntime.h"
+#include "Features/filmic_tonemapping/FilmicTonemappingSettingsStore.h"
 #include "Features/ibl/IblRuntime.h"
 #include "Features/ibl/IblSettingsStore.h"
 #include "Features/hair_specular/HairSpecularSettingsStore.h"
@@ -78,6 +80,8 @@ namespace community_shaders::shared_settings
             Snapshot result{
                 .linearLighting = linear_lighting::loadSettings(path),
                 .dlaa = dlaa::loadSettings(path),
+                .filmicTonemapping =
+                    filmic_tonemapping::loadSettings(path),
                 .ibl = ibl::loadSettings(path),
                 .complexMaterials =
                     complex_materials::loadSettings(path),
@@ -110,6 +114,12 @@ namespace community_shaders::shared_settings
             }
             if (changes.dlaa) {
                 dlaa::Runtime::get().applySettings(next.dlaa);
+            }
+            if (changes.filmicTonemapping) {
+                filmic_tonemapping::Runtime::get().applySettings(
+                    next.filmicTonemapping);
+                ui::setInitialFilmicTonemappingSettings(
+                    next.filmicTonemapping);
             }
             if (changes.ibl) {
                 ibl::Runtime::get().applySettings(next.ibl);
