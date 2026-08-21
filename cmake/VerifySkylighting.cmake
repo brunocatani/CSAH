@@ -49,9 +49,12 @@ foreach(required IN ITEMS
     "kWrapperFirstCallTargetRva = 0x0012FB50"
     "kPrecipitationManagerOffset = 0xA0"
     "kLightingPropertyVtableRva = 0x030A5C18"
-    "kLightingPassBuilderRva = 0x027A3250"
-    "kLightingPassBuilderSlot = 0x2D"
-    "kOcclusionPassListOffset = 0x198"
+    "kLightingPassBuilderRva = 0x027A48B0"
+    "kLightingPassBuilderSlot = 0x2E"
+    "kLightingPassListResolverRva = 0x027A51E0"
+    "kAccumulatorPassIndexOffset = 0xF6B0"
+    "kAccumulatorPassKeyOffset = 0xF6B8"
+    "kAccumulatorPassListCount = 4"
     "kPassListClearRva = 0x0278E3E0"
     "kPassListEmplaceRva = 0x0278E610"
     "kUtilityShaderSingletonRva = 0x0689B4F0"
@@ -67,6 +70,7 @@ foreach(required IN ITEMS
     "std::array<std::byte, 27> kRenderDepthTargetSetupSignature"
     "std::array<std::byte, 17> kDepthTargetMapperSignature"
     "kLightingPassBuilderSignature"
+    "kLightingPassListResolverSignature"
     "kPassListClearSignature"
     "kPassListEmplaceSignature"
     "std::byte{ 0x40 }, std::byte{ 0x53 }"
@@ -96,6 +100,17 @@ if(NOT skylightingThreadLocal EQUAL -1)
   message(FATAL_ERROR
     "Skylighting capture scope must be visible to FO4VR render workers")
 endif()
+
+foreach(forbidden IN ITEMS
+    "kOcclusionPassListOffset"
+    "kLightingPassBuilderRva = 0x027A3250"
+    "kLightingPassBuilderSlot = 0x2D")
+  string(FIND "${nativeHook}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Skylighting retained disproven pass-dispatch contract '${forbidden}'")
+  endif()
+endforeach()
 
 foreach(required IN ITEMS
     "return { 64, 64, 32 }"
