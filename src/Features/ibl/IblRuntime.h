@@ -276,6 +276,9 @@ namespace community_shaders::ibl
             std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
         [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
+        void handleEnvironmentUpdateResult(
+            EnvironmentUpdateConsumeResult result,
+            std::uint64_t tickMilliseconds) noexcept;
         void resetCaptureProbes() noexcept;
         void resetResources() noexcept;
 
@@ -309,6 +312,7 @@ namespace community_shaders::ibl
         bool captureProbeSessionComplete_{ true };
         bool reflectionFreeCaptureDiagnosticReserved_{};
         bool reflectionFreeCaptureProductionReserved_{};
+        std::uint64_t nextEnvironmentWorkTickMilliseconds_{};
         std::uint64_t nextCadenceTickMilliseconds_{};
         bool loggedFirstUsableDiffuseFit_{};
         bool loggedFirstDiffuseApplication_{};

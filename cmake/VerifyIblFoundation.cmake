@@ -178,6 +178,24 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+foreach(required IN ITEMS
+    "kEnvironmentWorkCadenceMilliseconds = 8"
+    "nextEnvironmentWorkTickMilliseconds_"
+    "UpdatePhase::filtering"
+    "dispatchNextFilterMip"
+    "nextMipLevel_"
+    "consumeValidationFace"
+    "nextValidationFace_"
+    "handleEnvironmentUpdateResult")
+  string(FIND
+    "${runtimeSource}${runtimeHeader}${environmentUpdaterSource}${environmentUpdaterHeader}"
+    "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "IBL bounded-work regression: missing '${required}'")
+  endif()
+endforeach()
+
 string(FIND "${runtimeSource}"
   "bool Runtime::tryGetDiffuseAmbient(" diffuseReadFunction)
 if(diffuseReadFunction EQUAL -1)

@@ -125,6 +125,30 @@ namespace community_shaders::ibl
 
         static_assert(sizeof(FilterConstants) == 16);
 
+        enum class UpdatePhase : std::uint8_t
+        {
+            idle,
+            filtering,
+            waitingForReadback,
+            validating,
+        };
+
+        struct ValidationAccumulator
+        {
+            double red{};
+            double green{};
+            double blue{};
+            double validityTotal{};
+            std::array<double, kEnvironmentCubeFaceCount> faceLuminance{};
+            std::array<double, kEnvironmentCubeFaceCount> faceValidity{};
+            std::array<double, kEnvironmentCubeFaceCount> faceSolidAngle{};
+            DiffuseSHFit diffuseFit{};
+            float peak{};
+            std::uint32_t nonBlack{};
+            std::uint32_t covered{};
+            bool valid{ true };
+        };
+
         [[nodiscard]] bool validateInputs(
             ID3D11DeviceContext* context,
             const EnvironmentProvider& provider,
@@ -133,9 +157,26 @@ namespace community_shaders::ibl
             ID3D11Buffer* sceneConstants,
             bool usePublishedHistory,
             D3D11_TEXTURE2D_DESC& radianceDescription) const noexcept;
+        [[nodiscard]] bool dispatchNextFilterMip(
+            ID3D11DeviceContext* context,
+            EnvironmentProvider& provider) noexcept;
+        [[nodiscard]] bool stageValidationReadback(
+            ID3D11DeviceContext* context,
+            EnvironmentProvider& provider) noexcept;
+        [[nodiscard]] bool consumeValidationFace(
+            ID3D11DeviceContext* context,
+            std::uint32_t face) noexcept;
+        [[nodiscard]] EnvironmentUpdateConsumeResult completeValidation(
+            EnvironmentProvider& provider) noexcept;
+        [[nodiscard]] EnvironmentUpdateConsumeResult abortPendingUpdate(
+            EnvironmentProvider& provider) noexcept;
         void recordFailure() noexcept;
 
         Resources resources_{};
         EnvironmentUpdateSummary summary_{};
+        ValidationAccumulator validation_{};
+        UpdatePhase phase_{ UpdatePhase::idle };
+        std::uint32_t nextMipLevel_{};
+        std::uint32_t nextValidationFace_{};
     };
 }

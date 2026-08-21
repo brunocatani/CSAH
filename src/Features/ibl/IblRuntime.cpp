@@ -56,6 +56,7 @@ namespace community_shaders::ibl
             "generated IBL material replacements must match the capture set");
 
         constexpr std::uint64_t kRuntimePollCadenceMilliseconds = 250;
+        constexpr std::uint64_t kEnvironmentWorkCadenceMilliseconds = 8;
         constexpr std::uint64_t kEnvironmentCaptureCadenceMilliseconds = 1000;
         constexpr std::uint64_t kWorldCaptureProbeSettleMilliseconds = 5000;
         constexpr UINT kCaptureShaderResourceCount = 16;
@@ -1759,36 +1760,11 @@ namespace community_shaders::ibl
         }
     }
 
-    void Runtime::onDFLightAmbientBind(ID3D11DeviceContext* context) noexcept
+    void Runtime::handleEnvironmentUpdateResult(
+        EnvironmentUpdateConsumeResult result,
+        std::uint64_t tickMilliseconds) noexcept
     {
-        if (!context || context != context_.Get() ||
-            !resourcesReady_.load(std::memory_order_acquire)) {
-            return;
-        }
-
-        ID3D11ShaderResourceView* albedoRaw{};
-        context->PSGetShaderResources(0, 1, &albedoRaw);
-        ComPtr<ID3D11ShaderResourceView> albedo;
-        albedo.Attach(albedoRaw);
-        if (albedo) {
-            D3D11_SHADER_RESOURCE_VIEW_DESC description{};
-            albedo->GetDesc(&description);
-            if (description.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D) {
-                materialAlbedo_ = std::move(albedo);
-            }
-        }
-
-        const auto now = GetTickCount64();
-        if (now < nextCadenceTickMilliseconds_) {
-            return;
-        }
-        nextCadenceTickMilliseconds_ = now + kRuntimePollCadenceMilliseconds;
-        cadenceTicks_.fetch_add(1, std::memory_order_relaxed);
-        consumeSceneRadianceProbeReadbacks();
-        const auto environmentReadback =
-            environmentUpdater_.consumeUpdate(context, environmentProvider_);
-        if (environmentReadback ==
-            EnvironmentUpdateConsumeResult::completed) {
+        if (result == EnvironmentUpdateConsumeResult::completed) {
             const auto update = environmentUpdater_.snapshot();
             publishedEnvironmentSessionId_ =
                 pendingEnvironmentUpdateSessionId_;
@@ -1806,7 +1782,7 @@ namespace community_shaders::ibl
                     update.diffuseSHCoverage,
                     update.generation,
                     publishedEnvironmentSessionId_,
-                    now);
+                    tickMilliseconds);
                 diffuseFitsPublished_.fetch_add(
                     1,
                     std::memory_order_relaxed);
@@ -1833,7 +1809,7 @@ namespace community_shaders::ibl
                     update.diffuseSHCoverage,
                     update.generation,
                     publishedEnvironmentSessionId_,
-                    now);
+                    tickMilliseconds);
                 diffuseFitsRejected_.fetch_add(
                     1,
                     std::memory_order_relaxed);
@@ -1846,8 +1822,7 @@ namespace community_shaders::ibl
             if (lastLoggedEnvironmentUpdateGeneration_ == 0 ||
                 update.generation >=
                     lastLoggedEnvironmentUpdateGeneration_ + 30) {
-                lastLoggedEnvironmentUpdateGeneration_ =
-                    update.generation;
+                lastLoggedEnvironmentUpdateGeneration_ = update.generation;
                 logging::info(
                     "IBL stereo environment generation {} atomically published for world session {} as a radiance/validity pair: history={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled consumers may now sample it with per-direction vanilla fallback.",
                     update.generation,
@@ -1877,8 +1852,7 @@ namespace community_shaders::ibl
                     update.faceAverageLuminance[4],
                     update.faceAverageLuminance[5]);
             }
-        } else if (environmentReadback ==
-            EnvironmentUpdateConsumeResult::failed) {
+        } else if (result == EnvironmentUpdateConsumeResult::failed) {
             pendingEnvironmentUpdateSessionId_ = 0;
             if (!loggedEnvironmentUpdateFailure_) {
                 loggedEnvironmentUpdateFailure_ = true;
@@ -1886,6 +1860,43 @@ namespace community_shaders::ibl
                     "IBL stereo environment validation failed; the private generation was aborted and the previous validated pair remains published.");
             }
         }
+    }
+
+    void Runtime::onDFLightAmbientBind(ID3D11DeviceContext* context) noexcept
+    {
+        if (!context || context != context_.Get() ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
+            return;
+        }
+
+        ID3D11ShaderResourceView* albedoRaw{};
+        context->PSGetShaderResources(0, 1, &albedoRaw);
+        ComPtr<ID3D11ShaderResourceView> albedo;
+        albedo.Attach(albedoRaw);
+        if (albedo) {
+            D3D11_SHADER_RESOURCE_VIEW_DESC description{};
+            albedo->GetDesc(&description);
+            if (description.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D) {
+                materialAlbedo_ = std::move(albedo);
+            }
+        }
+
+        const auto now = GetTickCount64();
+        if (now >= nextEnvironmentWorkTickMilliseconds_) {
+            nextEnvironmentWorkTickMilliseconds_ =
+                now + kEnvironmentWorkCadenceMilliseconds;
+            handleEnvironmentUpdateResult(
+                environmentUpdater_.consumeUpdate(
+                    context,
+                    environmentProvider_),
+                now);
+        }
+        if (now < nextCadenceTickMilliseconds_) {
+            return;
+        }
+        nextCadenceTickMilliseconds_ = now + kRuntimePollCadenceMilliseconds;
+        cadenceTicks_.fetch_add(1, std::memory_order_relaxed);
+        consumeSceneRadianceProbeReadbacks();
         if (!loggedFirstDiffuseApplication_) {
             const auto geometry = render::geometryHookSnapshot();
             if (geometry.diffuseAmbientPrepared >
@@ -2096,6 +2107,7 @@ namespace community_shaders::ibl
         materialAlbedo_.Reset();
         context_.Reset();
         device_.Reset();
+        nextEnvironmentWorkTickMilliseconds_ = 0;
         nextCadenceTickMilliseconds_ = 0;
         loggedFirstUsableDiffuseFit_ = false;
         loggedFirstDiffuseApplication_ = false;
