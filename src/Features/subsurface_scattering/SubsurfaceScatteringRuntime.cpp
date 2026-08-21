@@ -54,6 +54,7 @@ namespace community_shaders::subsurface_scattering
         ID3D11DeviceContext* context) noexcept
     {
         resourcesReady_.store(false, std::memory_order_release);
+        gpuTiming_.reset();
         device_ = device;
         context_ = context;
         shader_.Reset();
@@ -95,6 +96,15 @@ namespace community_shaders::subsurface_scattering
                 static_cast<std::uint32_t>(shaderResult),
                 static_cast<std::uint32_t>(bufferResult));
             return;
+        }
+        if (!gpuTiming_.initialize(
+                device,
+                context,
+                "Subsurface Scattering",
+                { "copy in", "horizontal", "vertical", "copy back" },
+                4)) {
+            logging::warn(
+                "Subsurface Scattering could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
         }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
@@ -294,10 +304,12 @@ namespace community_shaders::subsurface_scattering
         if (!albedo || !depth) {
             return false;
         }
+        auto timing = gpuTiming_.begin();
         D3D11_BOX sourceBox{ 0, 0, 0, width_, height_, 1 };
         context->CopySubresourceRegion(
             scratchA_.Get(), 0, 0, 0, 0, source.Get(), sourceSubresource,
             &sourceBox);
+        timing.mark();
 
         render::ScopedComputeState restore(
             context,
@@ -345,8 +357,10 @@ namespace community_shaders::subsurface_scattering
         };
         const auto horizontal = dispatch(
             scratchAView_.Get(), scratchBOutput_.Get(), 1.0f, 0.0f);
+        timing.mark();
         const auto vertical = horizontal && dispatch(
             scratchBView_.Get(), scratchAOutput_.Get(), 0.0f, 1.0f);
+        timing.mark();
         const auto restored = restore.restore();
         if (!vertical || !restored) {
             failures_.fetch_add(1, std::memory_order_relaxed);

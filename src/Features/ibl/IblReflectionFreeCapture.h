@@ -1,5 +1,7 @@
 #pragma once
 
+#include "render/GpuTimingProfiler.h"
+
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -137,7 +139,8 @@ namespace community_shaders::ibl
         ScopedReflectionFreeCapture() noexcept = default;
         ScopedReflectionFreeCapture(
             ID3D11DeviceContext* context,
-            ReflectionFreeCaptureResources& resources) noexcept;
+            ReflectionFreeCaptureResources& resources,
+            render::GpuTimingProfiler* drawTiming = nullptr) noexcept;
         ~ScopedReflectionFreeCapture();
 
         ScopedReflectionFreeCapture(const ScopedReflectionFreeCapture&) =
@@ -185,6 +188,7 @@ namespace community_shaders::ibl
             captureDepthStencilState_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> environment_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> screenReflection_;
+        render::GpuTimingProfiler::Scope drawTiming_;
         UINT renderTargetCount_{};
         UINT stencilReference_{};
         bool stateCaptured_{};

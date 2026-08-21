@@ -334,6 +334,10 @@ set(IBL_COMPUTE_STATE_SCOPE_SOURCE
   "${SOURCE_DIR}/render/ComputeStateScope.cpp")
 set(IBL_COMPUTE_STATE_SCOPE_HEADER
   "${SOURCE_DIR}/render/ComputeStateScope.h")
+set(GPU_TIMING_PROFILER_SOURCE
+  "${SOURCE_DIR}/render/GpuTimingProfiler.cpp")
+set(GPU_TIMING_PROFILER_HEADER
+  "${SOURCE_DIR}/render/GpuTimingProfiler.h")
 set(IBL_PROJECTION_MODEL
   "${SOURCE_DIR}/Features/ibl/IblProjectionModel.h")
 set(IBL_CAPTURE_PROBE_MODEL
@@ -639,6 +643,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${IBL_ENVIRONMENT_UPDATER_HEADER}"
   "${IBL_COMPUTE_STATE_SCOPE_SOURCE}"
   "${IBL_COMPUTE_STATE_SCOPE_HEADER}"
+  "${GPU_TIMING_PROFILER_SOURCE}"
+  "${GPU_TIMING_PROFILER_HEADER}"
   "${IBL_PROJECTION_MODEL}"
   "${IBL_CAPTURE_PROBE_MODEL}"
   "${IBL_SCENE_RADIANCE_PROBE_MODEL}"
@@ -1714,6 +1720,8 @@ add_library(${PROJECT_NAME} SHARED
   "${IBL_ENVIRONMENT_UPDATER_HEADER}"
   "${IBL_COMPUTE_STATE_SCOPE_SOURCE}"
   "${IBL_COMPUTE_STATE_SCOPE_HEADER}"
+  "${GPU_TIMING_PROFILER_SOURCE}"
+  "${GPU_TIMING_PROFILER_HEADER}"
   "${IBL_PROJECTION_MODEL}"
   "${IBL_CAPTURE_PROBE_MODEL}"
   "${IBL_SCENE_RADIANCE_PROBE_MODEL}"
@@ -2459,7 +2467,9 @@ if(BUILD_FO4VR_CS_TESTS)
   add_executable(FO4VRCommunityShadersIblReflectionFreeCaptureTests
     "${ROOT_DIR}/tests/IblReflectionFreeCaptureTests.cpp"
     "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}"
-    "${IBL_REFLECTION_FREE_CAPTURE_HEADER}")
+    "${IBL_REFLECTION_FREE_CAPTURE_HEADER}"
+    "${GPU_TIMING_PROFILER_SOURCE}"
+    "${GPU_TIMING_PROFILER_HEADER}")
   target_compile_features(
     FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE cxx_std_23)
   target_compile_definitions(
@@ -2473,7 +2483,7 @@ if(BUILD_FO4VR_CS_TESTS)
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
     FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE
-    d3d11 d3dcompiler)
+    d3d11 d3dcompiler spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.IblReflectionFreeCapture
     COMMAND FO4VRCommunityShadersIblReflectionFreeCaptureTests)
 
@@ -2543,7 +2553,9 @@ if(BUILD_FO4VR_CS_TESTS)
     "${IBL_ENVIRONMENT_UPDATER_SOURCE}"
     "${IBL_ENVIRONMENT_UPDATER_HEADER}"
     "${IBL_COMPUTE_STATE_SCOPE_SOURCE}"
-    "${IBL_COMPUTE_STATE_SCOPE_HEADER}")
+    "${IBL_COMPUTE_STATE_SCOPE_HEADER}"
+    "${GPU_TIMING_PROFILER_SOURCE}"
+    "${GPU_TIMING_PROFILER_HEADER}")
   target_compile_features(
     FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE cxx_std_23)
   target_compile_definitions(
@@ -2555,7 +2567,8 @@ if(BUILD_FO4VR_CS_TESTS)
     FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE d3d11)
+    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
+    d3d11 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.IblEnvironmentUpdater
     COMMAND FO4VRCommunityShadersIblEnvironmentUpdaterTests "${ROOT_DIR}")
 

@@ -82,8 +82,12 @@ namespace community_shaders::contact_shadows
         ID3D11DeviceContext* context,
         ID3D11Buffer* constants,
         ID3D11ShaderResourceView* mask,
+        render::GpuTimingProfiler* drawTiming,
         std::atomic_uint64_t* restoreCounter) noexcept :
-        context_(context), restoreCounter_(restoreCounter)
+        context_(context),
+        drawTiming_(drawTiming ? drawTiming->begin() :
+                                 render::GpuTimingProfiler::Scope{}),
+        restoreCounter_(restoreCounter)
     {
         if (!context_ || !constants) {
             context_ = nullptr;
@@ -129,6 +133,8 @@ namespace community_shaders::contact_shadows
             ID3D11PixelShader**)) noexcept
     {
         resourcesReady_.store(false, std::memory_order_release);
+        gpuTiming_.reset();
+        drawGpuTiming_.reset();
         device_ = device;
         context_ = context;
         for (auto& replacement : replacements_) {
@@ -365,6 +371,28 @@ namespace community_shaders::contact_shadows
                 static_cast<std::uint32_t>(argumentBufferResult),
                 static_cast<std::uint32_t>(argumentOutputResult));
             return;
+        }
+        if (!gpuTiming_.initialize(
+                device,
+                context,
+                "Contact Shadows",
+                { "wavefront setup", "raymarch", "resolve", nullptr },
+                3,
+                120,
+                10)) {
+            logging::warn(
+                "Contact Shadows could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
+        }
+        if (!drawGpuTiming_.initialize(
+                device,
+                context,
+                "Contact Shadows draw",
+                { "DFLight replacement draw", nullptr, nullptr, nullptr },
+                1,
+                120,
+                31)) {
+            logging::warn(
+                "Contact Shadows could not allocate replacement-draw GPU timing queries; rendering remains active without performance telemetry.");
         }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
@@ -692,6 +720,7 @@ namespace community_shaders::contact_shadows
             }
             return false;
         }
+        auto timing = gpuTiming_.begin();
 
         auto* depthView = depth.Get();
         auto* rawOutput = rawMaskOutput_.Get();
@@ -742,6 +771,7 @@ namespace community_shaders::contact_shadows
                 setupOutputs.data(),
                 nullptr);
             context->Dispatch(1, 1, 1);
+            timing.mark();
 
             const std::array<ID3D11UnorderedAccessView*, 2> noSetupOutputs{};
             context->CSSetUnorderedAccessViews(
@@ -788,6 +818,10 @@ namespace community_shaders::contact_shadows
                 indexedSettings.data(),
                 0,
                 0);
+            timing.mark();
+        } else {
+            timing.mark();
+            timing.mark();
         }
 
         const std::array<ID3D11UnorderedAccessView*, 2> noOutputs{};
@@ -869,6 +903,7 @@ namespace community_shaders::contact_shadows
             context,
             constants_.Get(),
             maskActive ? maskView_.Get() : nullptr,
+            &drawGpuTiming_,
             &drawRestores_);
     }
 

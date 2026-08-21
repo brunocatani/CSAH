@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
+#include "render/GpuTimingProfiler.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -55,6 +56,7 @@ namespace community_shaders::subsurface_scattering
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> scratchBView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> scratchAOutput_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> scratchBOutput_;
+        render::GpuTimingProfiler gpuTiming_;
         UINT width_{};
         UINT height_{};
         DXGI_FORMAT format_{ DXGI_FORMAT_UNKNOWN };

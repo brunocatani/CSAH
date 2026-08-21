@@ -284,6 +284,7 @@ namespace community_shaders::ibl
         EnvironmentProvider environmentProvider_;
         EnvironmentUpdater environmentUpdater_;
         ReflectionFreeCaptureResources reflectionFreeCaptureResources_;
+        render::GpuTimingProfiler reflectionFreeDrawTiming_;
         std::array<
             Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kCaptureProbeContracts.size()>

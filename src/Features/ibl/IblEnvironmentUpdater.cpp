@@ -2,10 +2,12 @@
 
 #include "render/ComputeStateScope.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
+#include "support/Logger.h"
 
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <utility>
@@ -235,6 +237,11 @@ namespace community_shaders::ibl
         resources_ = std::move(candidate);
         summary_ = {};
         summary_.initialized = true;
+        gpuTiming_.reset();
+        gpuTimingInitializationAttempted_ = false;
+        validationCpuMilliseconds_ = 0.0;
+        validationCpuSamples_ = 0;
+        firstValidationTimingLogged_ = false;
         return true;
     }
 
@@ -242,6 +249,11 @@ namespace community_shaders::ibl
     {
         resources_ = {};
         summary_ = {};
+        gpuTiming_.reset();
+        gpuTimingInitializationAttempted_ = false;
+        validationCpuMilliseconds_ = 0.0;
+        validationCpuSamples_ = 0;
+        firstValidationTimingLogged_ = false;
     }
 
     bool EnvironmentUpdater::validateInputs(
@@ -360,6 +372,21 @@ namespace community_shaders::ibl
             recordFailure();
             return false;
         }
+        if (!gpuTimingInitializationAttempted_) {
+            gpuTimingInitializationAttempted_ = true;
+            if (!gpuTiming_.initialize(
+                    resources_.device.Get(),
+                    context,
+                    "Image Based Lighting",
+                    { "capture projection", "GGX filtering",
+                        "readback staging", nullptr },
+                    3,
+                    5)) {
+                logging::warn(
+                    "IBL could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
+            }
+        }
+        auto timing = gpuTiming_.begin();
 
         std::array<ID3D11ShaderResourceView*, 4> captureSources{
             reflectionFreeRadiance,
@@ -425,6 +452,7 @@ namespace community_shaders::ibl
             0,
             static_cast<UINT>(nullSources.size()),
             nullSources.data());
+        timing.mark();
 
         std::array<ID3D11ShaderResourceView*, 2> filterSources{
             resources_.capturedRadianceView.Get(),
@@ -500,6 +528,7 @@ namespace community_shaders::ibl
             0,
             static_cast<UINT>(nullSources.size()),
             nullSources.data());
+        timing.mark();
         if (!completed || !restore.restore()) {
             provider.abortUpdate();
             recordFailure();
@@ -580,6 +609,7 @@ namespace community_shaders::ibl
             recordFailure();
             return EnvironmentUpdateConsumeResult::failed;
         }
+        const auto validationStart = std::chrono::steady_clock::now();
 
         double red{};
         double green{};
@@ -705,6 +735,22 @@ namespace community_shaders::ibl
 
         const auto totalSamples = faceSampleCount * kEnvironmentCubeFaceCount;
         validGeneration = validGeneration && covered > 0;
+        validationCpuMilliseconds_ +=
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - validationStart)
+                .count();
+        ++validationCpuSamples_;
+        if (!firstValidationTimingLogged_ ||
+            validationCpuSamples_ >= 30) {
+            logging::info(
+                "Feature timing Image Based Lighting validation: CPU map, cube validation, and diffuse SH fit={:.3f} ms over {} samples.",
+                validationCpuMilliseconds_ /
+                    static_cast<double>(validationCpuSamples_),
+                validationCpuSamples_);
+            firstValidationTimingLogged_ = true;
+            validationCpuMilliseconds_ = 0.0;
+            validationCpuSamples_ = 0;
+        }
         if (!validGeneration || !provider.publishUpdate()) {
             provider.abortUpdate();
             summary_.pending = false;

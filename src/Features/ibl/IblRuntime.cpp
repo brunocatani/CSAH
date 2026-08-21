@@ -548,6 +548,17 @@ namespace community_shaders::ibl
             resetResources();
             return;
         }
+        if (!reflectionFreeDrawTiming_.initialize(
+                device,
+                immediateContext,
+                "Image Based Lighting duplicate draw",
+                { "reflection-free DFComposite", nullptr, nullptr,
+                    nullptr },
+                1,
+                5)) {
+            logging::warn(
+                "IBL could not allocate duplicate-draw GPU timing queries; rendering remains active without performance telemetry.");
+        }
         resourcesReady_.store(true, std::memory_order_release);
         const auto environment = environmentProvider_.snapshot();
         logging::info(
@@ -1098,7 +1109,8 @@ namespace community_shaders::ibl
             clearColor.data());
         ScopedReflectionFreeCapture capture(
             context,
-            reflectionFreeCaptureResources_);
+            reflectionFreeCaptureResources_,
+            &reflectionFreeDrawTiming_);
         if (!capture.active()) {
             const auto rejection = capture.rejection();
             if (diagnosticRequested) {
@@ -2088,6 +2100,7 @@ namespace community_shaders::ibl
         environmentProvider_.reset();
         environmentUpdater_.reset();
         reflectionFreeCaptureResources_.reset();
+        reflectionFreeDrawTiming_.reset();
         for (auto& replacement : materialReplacementShaders_) {
             replacement.Reset();
         }

@@ -278,8 +278,12 @@ namespace community_shaders::skylighting
         ID3D11ShaderResourceView* farProbe,
         ID3D11Buffer* constants,
         ID3D11UnorderedAccessView* diagnostic,
+        render::GpuTimingProfiler* drawTiming,
         Runtime* owner) noexcept :
-        context_(context), owner_(owner)
+        context_(context),
+        drawTiming_(drawTiming ? drawTiming->begin() :
+                                 render::GpuTimingProfiler::Scope{}),
+        owner_(owner)
     {
         if (!context_) {
             return;
@@ -330,6 +334,7 @@ namespace community_shaders::skylighting
         previousProbes_(other.previousProbes_),
         previousConstants_(other.previousConstants_),
         previousDiagnostic_(other.previousDiagnostic_),
+        drawTiming_(std::move(other.drawTiming_)),
         owner_(other.owner_),
         diagnosticCaptured_(other.diagnosticCaptured_),
         captured_(other.captured_)
@@ -352,6 +357,7 @@ namespace community_shaders::skylighting
             previousProbes_ = other.previousProbes_;
             previousConstants_ = other.previousConstants_;
             previousDiagnostic_ = other.previousDiagnostic_;
+            drawTiming_ = std::move(other.drawTiming_);
             owner_ = other.owner_;
             diagnosticCaptured_ = other.diagnosticCaptured_;
             captured_ = other.captured_;
@@ -470,6 +476,8 @@ namespace community_shaders::skylighting
         ID3D11DeviceContext* immediateContext) noexcept
     {
         gpuResourcesReady_.store(false, std::memory_order_release);
+        gpuTiming_.reset();
+        ambientDrawGpuTiming_.reset();
         if (!device || !immediateContext) {
             logging::error(
                 "Skylighting rejected a missing D3D11 device or immediate context.");
@@ -514,6 +522,27 @@ namespace community_shaders::skylighting
             return;
         }
         clearProbeResources();
+        if (!gpuTiming_.initialize(
+                device,
+                immediateContext,
+                "Skylighting",
+                { "native capture", "probe update", nullptr, nullptr },
+                2)) {
+            logging::warn(
+                "Skylighting could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
+        }
+        if (!ambientDrawGpuTiming_.initialize(
+                device,
+                immediateContext,
+                "Skylighting ambient draw",
+                { "DFLight ambient replacement", nullptr, nullptr,
+                    nullptr },
+                1,
+                120,
+                30)) {
+            logging::warn(
+                "Skylighting could not allocate ambient-draw GPU timing queries; rendering remains active without performance telemetry.");
+        }
         gpuResourcesReady_.store(true, std::memory_order_release);
         logging::info(
             "Skylighting GPU resources are ready at {} quality (near={}x{}x{} over {:.0f} units, far={}x{}x{} over {:.0f} units, shared stereo world-space clipmap).",
@@ -1562,6 +1591,7 @@ namespace community_shaders::skylighting
                 "Skylighting entered its first verified exterior private-render transaction with logical depth target 9 mapped to FO4VR target {} and scoped to the private resource.",
                 mappedDepthTarget);
         }
+        auto timing = gpuTiming_.begin();
         context_->ClearDepthStencilView(
             privateDepthView_.Get(),
             D3D11_CLEAR_DEPTH,
@@ -1589,6 +1619,7 @@ namespace community_shaders::skylighting
             }
         }
         const auto privateRenderEnd = std::chrono::steady_clock::now();
+        timing.mark();
         if (!firstPassProducerSummaryLogged_.exchange(
                 true,
                 std::memory_order_relaxed)) {
@@ -1737,6 +1768,7 @@ namespace community_shaders::skylighting
             constantsBuffer_.Get(),
             collectAmbientDiagnostic ? ambientDiagnosticOutput_.Get() :
                                        nullptr,
+            &ambientDrawGpuTiming_,
             collectAmbientDiagnostic ? this : nullptr);
     }
 

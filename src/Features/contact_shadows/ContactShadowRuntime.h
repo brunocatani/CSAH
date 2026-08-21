@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/contact_shadows/ContactShadowSettings.h"
+#include "render/GpuTimingProfiler.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -62,11 +63,13 @@ namespace community_shaders::contact_shadows
             ID3D11DeviceContext* context,
             ID3D11Buffer* constants,
             ID3D11ShaderResourceView* mask,
+            render::GpuTimingProfiler* drawTiming,
             std::atomic_uint64_t* restoreCounter) noexcept;
 
         ID3D11DeviceContext* context_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousConstants_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> previousMask_;
+        render::GpuTimingProfiler::Scope drawTiming_;
         std::atomic_uint64_t* restoreCounter_{};
     };
 
@@ -148,6 +151,8 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11Texture2D> maskTexture_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> maskView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> maskOutput_;
+        render::GpuTimingProfiler gpuTiming_;
+        render::GpuTimingProfiler drawGpuTiming_;
         UINT maskWidth_{};
         UINT maskHeight_{};
         std::array<TrackedShader, kMaximumTrackedShaders> originals_{};

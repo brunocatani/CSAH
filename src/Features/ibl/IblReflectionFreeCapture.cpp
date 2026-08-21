@@ -241,7 +241,8 @@ namespace community_shaders::ibl
 
     ScopedReflectionFreeCapture::ScopedReflectionFreeCapture(
         ID3D11DeviceContext* context,
-        ReflectionFreeCaptureResources& resources) noexcept :
+        ReflectionFreeCaptureResources& resources,
+        render::GpuTimingProfiler* drawTiming) noexcept :
         context_(context)
     {
         if (!context_ || !resources.device() ||
@@ -439,6 +440,9 @@ namespace community_shaders::ibl
             (void)restore();
         } else {
             rejection_ = ReflectionFreeCaptureRejection::none;
+            if (drawTiming) {
+                drawTiming_ = drawTiming->begin();
+            }
         }
     }
 
@@ -457,6 +461,7 @@ namespace community_shaders::ibl
             std::move(other.captureDepthStencilState_)),
         environment_(std::move(other.environment_)),
         screenReflection_(std::move(other.screenReflection_)),
+        drawTiming_(std::move(other.drawTiming_)),
         renderTargetCount_(other.renderTargetCount_),
         stencilReference_(other.stencilReference_),
         stateCaptured_(other.stateCaptured_),
@@ -525,6 +530,7 @@ namespace community_shaders::ibl
     {
         if (!stateCaptured_ || !context_) {
             active_ = false;
+            drawTiming_.finish();
             return true;
         }
 
@@ -565,6 +571,7 @@ namespace community_shaders::ibl
             environment_.Get(),
             screenReflection_.Get());
         stateCaptured_ = false;
+        drawTiming_.finish();
         return restored;
     }
 }

@@ -3,6 +3,7 @@
 #include "Features/ibl/IblEnvironmentProvider.h"
 #include "Features/ibl/IblProjectionModel.h"
 #include "Features/ibl/IblProviderModel.h"
+#include "render/GpuTimingProfiler.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -137,5 +138,10 @@ namespace community_shaders::ibl
 
         Resources resources_{};
         EnvironmentUpdateSummary summary_{};
+        render::GpuTimingProfiler gpuTiming_;
+        bool gpuTimingInitializationAttempted_{};
+        double validationCpuMilliseconds_{};
+        std::uint64_t validationCpuSamples_{};
+        bool firstValidationTimingLogged_{};
     };
 }

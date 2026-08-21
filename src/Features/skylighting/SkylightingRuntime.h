@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/skylighting/SkylightingSettings.h"
+#include "render/GpuTimingProfiler.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -49,6 +50,7 @@ namespace community_shaders::skylighting
             ID3D11ShaderResourceView* farProbe,
             ID3D11Buffer* constants,
             ID3D11UnorderedAccessView* diagnostic,
+            render::GpuTimingProfiler* drawTiming,
             Runtime* owner) noexcept;
         ~ScopedAmbientBindings();
 
@@ -66,6 +68,7 @@ namespace community_shaders::skylighting
         std::array<ID3D11ShaderResourceView*, 2> previousProbes_{};
         ID3D11Buffer* previousConstants_{};
         ID3D11UnorderedAccessView* previousDiagnostic_{};
+        render::GpuTimingProfiler::Scope drawTiming_;
         Runtime* owner_{};
         bool diagnosticCaptured_{};
         bool captured_{};
@@ -224,6 +227,8 @@ namespace community_shaders::skylighting
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> updateShader_;
         Microsoft::WRL::ComPtr<ID3D11SamplerState> comparisonSampler_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constantsBuffer_;
+        render::GpuTimingProfiler gpuTiming_;
+        render::GpuTimingProfiler ambientDrawGpuTiming_;
         D3D11_TEXTURE2D_DESC privateDepthDescription_{};
         D3D11_DEPTH_STENCIL_VIEW_DESC privateDepthViewDescription_{};
         Constants constants_{};
