@@ -55,6 +55,10 @@ foreach(required IN ITEMS
     "kPassListClearRva = 0x0278E3E0"
     "kPassListEmplaceRva = 0x0278E610"
     "kUtilityShaderSingletonRva = 0x0689B4F0"
+    "kUtilityShaderSecondaryVtableRva"
+    "kUtilityShaderSecondaryVtableOffset = 0x10"
+    "kUtilityShaderKindOffset = 0x18"
+    "kUtilityShaderKind = 1"
     "kUtilityRenderDepthDescriptor = 1u << 13"
     "kUtilityTreeAnimDescriptor = 1u << 26"
     "kUtilityDepthPassCategory = 0x1E"
@@ -75,6 +79,7 @@ foreach(required IN ITEMS
     "ReadPointerAcquire("
     "patchPointerCell("
     "hookLightingPassBuilder"
+    "inspectUtilityShader("
     "captureDetourIdentity("
     "Runtime::get().setNativeHookOwned(true)")
   string(FIND "${nativeHook}" "${required}" found)

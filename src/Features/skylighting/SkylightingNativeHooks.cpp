@@ -50,6 +50,8 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kPassListEmplaceRva = 0x0278E610;
         constexpr std::uintptr_t kUtilityShaderSingletonRva = 0x0689B4F0;
         constexpr std::uintptr_t kUtilityShaderVtableRva = 0x030BD988;
+        constexpr std::uintptr_t kUtilityShaderSecondaryVtableRva =
+            0x030BD9F8;
         constexpr std::uintptr_t kBsxFlagsVtableRva = 0x02E72CB8;
         constexpr std::size_t kRenderDepthTargetSetupOffset = 0x1CC;
         constexpr std::size_t kDepthTargetMapperSignatureOffset = 0x1A;
@@ -58,6 +60,10 @@ namespace community_shaders::skylighting
         constexpr std::size_t kPrecipitationManagerReadableSize = 0x98;
         constexpr std::size_t kOcclusionPassListOffset = 0x198;
         constexpr std::size_t kBsxValueOffset = 0x18;
+        constexpr std::size_t kUtilityShaderSecondaryVtableOffset = 0x10;
+        constexpr std::size_t kUtilityShaderKindOffset = 0x18;
+        constexpr std::uint32_t kUtilityShaderKind = 1;
+        constexpr std::size_t kUtilityShaderIdentitySize = 0x1C;
         constexpr std::size_t kMaximumParentTraversal = 64;
         constexpr float kMinimumOccluderRadius = 32.0f;
         constexpr std::uint32_t kUtilityVertexColorDescriptor = 1u << 0;
@@ -194,6 +200,22 @@ namespace community_shaders::skylighting
             bool rolledBack{};
         };
 
+        struct UtilityShaderIdentity
+        {
+            void* primaryVtable{};
+            void* secondaryVtable{};
+            std::uint32_t kind{};
+            bool primaryExact{};
+            bool primaryCallable{};
+            bool secondaryExact{};
+
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return primaryCallable && secondaryExact &&
+                    kind == kUtilityShaderKind;
+            }
+        };
+
         enum class BsxFilterResult
         {
             include,
@@ -211,6 +233,7 @@ namespace community_shaders::skylighting
         void** lightingPassBuilderCell{};
         void* utilityShader{};
         const void* utilityShaderVtable{};
+        const void* utilityShaderSecondaryVtable{};
         const void* bsxFlagsVtable{};
         std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
@@ -289,6 +312,38 @@ namespace community_shaders::skylighting
             return cell ? ReadPointerAcquire(
                               reinterpret_cast<void* const volatile*>(cell)) :
                           nullptr;
+        }
+
+        [[nodiscard]] UtilityShaderIdentity inspectUtilityShader(
+            void* instance,
+            const void* expectedPrimaryVtable,
+            const void* expectedSecondaryVtable) noexcept
+        {
+            UtilityShaderIdentity identity;
+            if (!isReadableRange(instance, kUtilityShaderIdentitySize)) {
+                return identity;
+            }
+            auto* bytes = static_cast<std::byte*>(instance);
+            identity.primaryVtable = readPointerCell(
+                reinterpret_cast<void**>(bytes));
+            identity.secondaryVtable = readPointerCell(
+                reinterpret_cast<void**>(
+                    bytes + kUtilityShaderSecondaryVtableOffset));
+            std::memcpy(
+                &identity.kind,
+                bytes + kUtilityShaderKindOffset,
+                sizeof(identity.kind));
+            identity.primaryExact =
+                identity.primaryVtable == expectedPrimaryVtable;
+            identity.secondaryExact =
+                identity.secondaryVtable == expectedSecondaryVtable;
+            if (isReadableRange(identity.primaryVtable, sizeof(void*))) {
+                auto* firstMethod = readPointerCell(
+                    reinterpret_cast<void**>(identity.primaryVtable));
+                identity.primaryCallable =
+                    isExecutableRange(firstMethod, 1);
+            }
+            return identity;
         }
 
         [[nodiscard]] PointerPatchOutcome patchPointerCell(
@@ -757,6 +812,7 @@ namespace community_shaders::skylighting
                 kPassListEmplaceSignature.size()) ||
             !inImage(kUtilityShaderSingletonRva, sizeof(void*)) ||
             !inImage(kUtilityShaderVtableRva, sizeof(void*)) ||
+            !inImage(kUtilityShaderSecondaryVtableRva, sizeof(void*)) ||
             !inImage(kBsxFlagsVtableRva, sizeof(void*))) {
             logging::error(
                 "Skylighting native world-occlusion producer contract is outside the FO4VR image.");
@@ -778,6 +834,8 @@ namespace community_shaders::skylighting
         auto** utilityShaderCell = reinterpret_cast<void**>(
             image + kUtilityShaderSingletonRva);
         auto* expectedUtilityVtable = image + kUtilityShaderVtableRva;
+        auto* expectedUtilitySecondaryVtable =
+            image + kUtilityShaderSecondaryVtableRva;
         auto* expectedBsxVtable = image + kBsxFlagsVtableRva;
         if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5)) {
             logging::error(
@@ -909,12 +967,25 @@ namespace community_shaders::skylighting
             return false;
         }
         auto* resolvedUtilityShader = readPointerCell(utilityShaderCell);
-        if (!isReadableRange(resolvedUtilityShader, sizeof(void*)) ||
-            readPointerCell(reinterpret_cast<void**>(resolvedUtilityShader)) !=
-                expectedUtilityVtable) {
+        const auto utilityIdentity = inspectUtilityShader(
+            resolvedUtilityShader,
+            expectedUtilityVtable,
+            expectedUtilitySecondaryVtable);
+        if (!utilityIdentity.valid()) {
             logging::error(
-                "Skylighting rejected the FO4VR utility-shader singleton: its verified vtable RVA 0x030BD988 is not installed.");
+                "Skylighting rejected the FO4VR utility-shader singleton (primary={}, expectedPrimary={}, callable={}, secondary={}, expectedSecondary={}, kind={}).",
+                fmt::ptr(utilityIdentity.primaryVtable),
+                fmt::ptr(expectedUtilityVtable),
+                utilityIdentity.primaryCallable,
+                fmt::ptr(utilityIdentity.secondaryVtable),
+                fmt::ptr(expectedUtilitySecondaryVtable),
+                utilityIdentity.kind);
             return false;
+        }
+        if (!utilityIdentity.primaryExact) {
+            logging::warn(
+                "Skylighting accepted a runtime-replaced utility-shader primary vtable {} through the exact secondary vtable RVA 0x030BD9F8 and shader-kind contract.",
+                fmt::ptr(utilityIdentity.primaryVtable));
         }
 
         try {
@@ -931,6 +1002,7 @@ namespace community_shaders::skylighting
         lightingPassBuilderCell = lightingPassCell;
         utilityShader = resolvedUtilityShader;
         utilityShaderVtable = expectedUtilityVtable;
+        utilityShaderSecondaryVtable = expectedUtilitySecondaryVtable;
         bsxFlagsVtable = expectedBsxVtable;
 
         void* trampoline{};
@@ -952,6 +1024,7 @@ namespace community_shaders::skylighting
             lightingPassBuilderCell = nullptr;
             utilityShader = nullptr;
             utilityShaderVtable = nullptr;
+            utilityShaderSecondaryVtable = nullptr;
             bsxFlagsVtable = nullptr;
             bsxKey.reset();
             return false;
@@ -981,6 +1054,7 @@ namespace community_shaders::skylighting
                 lightingPassBuilderCell = nullptr;
                 utilityShader = nullptr;
                 utilityShaderVtable = nullptr;
+                utilityShaderSecondaryVtable = nullptr;
                 bsxFlagsVtable = nullptr;
                 bsxKey.reset();
             }
@@ -1013,6 +1087,7 @@ namespace community_shaders::skylighting
                 lightingPassBuilderCell = nullptr;
                 utilityShader = nullptr;
                 utilityShaderVtable = nullptr;
+                utilityShaderSecondaryVtable = nullptr;
                 bsxFlagsVtable = nullptr;
                 bsxKey.reset();
             }
@@ -1047,10 +1122,11 @@ namespace community_shaders::skylighting
         const auto passBuilderOwned = lightingPassBuilderCell &&
             readPointerCell(lightingPassBuilderCell) ==
                 reinterpret_cast<void*>(&hookLightingPassBuilder);
-        const auto utilityShaderOwned = utilityShader &&
-            isReadableRange(utilityShader, sizeof(void*)) &&
-            readPointerCell(reinterpret_cast<void**>(utilityShader)) ==
-                utilityShaderVtable;
+        const auto utilityIdentity = inspectUtilityShader(
+            utilityShader,
+            utilityShaderVtable,
+            utilityShaderSecondaryVtable);
+        const auto utilityShaderOwned = utilityIdentity.valid();
         const auto owned = wrapperOwned && passBuilderOwned &&
             utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
