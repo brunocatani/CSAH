@@ -94,6 +94,8 @@ namespace community_shaders::skylighting
         [[nodiscard]] ScopedAmbientBindings scopeAmbientDraw(
             ID3D11DeviceContext* context,
             bool ambientReplacementActive) noexcept;
+        void observePrivateCaptureDraw(
+            ID3D11DeviceContext* context) noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
@@ -218,6 +220,8 @@ namespace community_shaders::skylighting
         std::atomic_bool privateDepthReady_{};
         std::atomic_bool probeDataValid_{};
         std::atomic_bool resetRequested_{ true };
+        std::atomic_bool privateRenderActive_{};
+        std::atomic_bool privateCaptureDrawStateLogged_{};
         std::atomic_uint64_t frameIndex_{};
         std::atomic_uint64_t captureCalls_{};
         std::atomic_uint64_t privateDepthBinds_{};

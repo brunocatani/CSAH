@@ -476,6 +476,10 @@ namespace community_shaders::skylighting
         ambientDiagnosticSubmitted_ = false;
         ambientDiagnosticPending_ = false;
         ambientDiagnosticLogged_ = false;
+        privateRenderActive_.store(false, std::memory_order_relaxed);
+        privateCaptureDrawStateLogged_.store(
+            false,
+            std::memory_order_relaxed);
 
         if (!createProbeResources()) {
             logging::error(
@@ -1435,7 +1439,13 @@ namespace community_shaders::skylighting
             ScopedOcclusionPassProduction passProduction;
             if (privateTarget.active() && passProduction.active()) {
                 privateDepthBinds_.fetch_add(1, std::memory_order_relaxed);
+                privateRenderActive_.store(
+                    true,
+                    std::memory_order_release);
                 render(precipitation, nativeOutput_.data());
+                privateRenderActive_.store(
+                    false,
+                    std::memory_order_release);
                 privateRenderCompleted = true;
             }
         }
@@ -1561,6 +1571,66 @@ namespace community_shaders::skylighting
             collectAmbientDiagnostic ? ambientDiagnosticOutput_.Get() :
                                        nullptr,
             collectAmbientDiagnostic ? this : nullptr);
+    }
+
+    void Runtime::observePrivateCaptureDraw(
+        ID3D11DeviceContext* context) noexcept
+    {
+        if (!context || context != context_.Get() ||
+            !privateRenderActive_.load(std::memory_order_acquire) ||
+            privateCaptureDrawStateLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            return;
+        }
+
+        ComPtr<ID3D11DepthStencilView> boundDepth;
+        context->OMGetRenderTargets(
+            0,
+            nullptr,
+            boundDepth.GetAddressOf());
+        D3D11_DEPTH_STENCIL_VIEW_DESC viewDescription{};
+        if (boundDepth) {
+            boundDepth->GetDesc(&viewDescription);
+        }
+
+        ComPtr<ID3D11DepthStencilState> depthState;
+        UINT stencilReference{};
+        context->OMGetDepthStencilState(
+            depthState.GetAddressOf(),
+            &stencilReference);
+        D3D11_DEPTH_STENCIL_DESC depthDescription{};
+        if (depthState) {
+            depthState->GetDesc(&depthDescription);
+        } else {
+            depthDescription.DepthEnable = TRUE;
+            depthDescription.DepthWriteMask =
+                D3D11_DEPTH_WRITE_MASK_ALL;
+            depthDescription.DepthFunc = D3D11_COMPARISON_LESS;
+        }
+
+        D3D11_VIEWPORT viewport{};
+        UINT viewportCount = 1;
+        context->RSGetViewports(&viewportCount, &viewport);
+        logging::info(
+            "Skylighting first private draw state: privateDsvBound={}, boundDsv={}, expectedDsv={}, dsvFormat={}, dsvDimension={}, depthEnabled={}, depthWriteMask={}, depthFunc={}, stencilRef={}, viewportCount={}, viewport=({:.3f},{:.3f},{:.3f},{:.3f},{:.6f},{:.6f}).",
+            boundDepth.Get() == privateDepthView_.Get(),
+            static_cast<void*>(boundDepth.Get()),
+            static_cast<void*>(privateDepthView_.Get()),
+            static_cast<std::uint32_t>(viewDescription.Format),
+            static_cast<std::uint32_t>(viewDescription.ViewDimension),
+            depthDescription.DepthEnable != FALSE,
+            static_cast<std::uint32_t>(
+                depthDescription.DepthWriteMask),
+            static_cast<std::uint32_t>(depthDescription.DepthFunc),
+            stencilReference,
+            viewportCount,
+            viewport.TopLeftX,
+            viewport.TopLeftY,
+            viewport.Width,
+            viewport.Height,
+            viewport.MinDepth,
+            viewport.MaxDepth);
     }
 
     RuntimeSnapshot Runtime::snapshot() const noexcept

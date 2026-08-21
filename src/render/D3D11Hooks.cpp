@@ -2198,6 +2198,7 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
                 activeFocusShadowPixel &&
@@ -2256,6 +2257,7 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
                 activeFocusShadowPixel &&
@@ -2308,6 +2310,7 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
                 activeFocusShadowPixel &&
@@ -2372,6 +2375,7 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
                 activeFocusShadowPixel &&

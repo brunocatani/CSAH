@@ -162,6 +162,8 @@ foreach(required IN ITEMS
     "submitAmbientDiagnostic()"
     "consumeAmbientDiagnosticReadback()"
     "Skylighting ambient-consumer trace:"
+    "observePrivateCaptureDraw("
+    "Skylighting first private draw state:"
     "nativeOutput_.data() + kNativeProjectionOffset"
     "PSSetShaderResources(50"
     "PSSetConstantBuffers(13"
@@ -174,6 +176,12 @@ foreach(required IN ITEMS
       "Skylighting runtime contract is missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${d3dHook}" "observePrivateCaptureDraw(context)" privateDrawObservation)
+if(privateDrawObservation EQUAL -1)
+  message(FATAL_ERROR
+    "Skylighting private draw-state observation is not connected to D3D11 draws")
+endif()
 
 foreach(required IN ITEMS
     "Quality quality{ Quality::high }"
