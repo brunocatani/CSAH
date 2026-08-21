@@ -429,17 +429,9 @@ namespace community_shaders::skylighting
         return { 256, 256, 128 };
     }
 
-    Runtime::Dimensions Runtime::farDimensionsFor(Quality quality) noexcept
+    Runtime::Dimensions Runtime::farDimensionsFor() noexcept
     {
-        switch (quality) {
-        case Quality::low:
-            return { 32, 32, 16 };
-        case Quality::medium:
-            return { 64, 64, 32 };
-        case Quality::high:
-            return { 128, 128, 64 };
-        }
-        return { 128, 128, 64 };
+        return { 32, 32, 60 };
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept
@@ -487,7 +479,7 @@ namespace community_shaders::skylighting
         activeQuality_ = sanitizeQuality(
             requestedQuality_.load(std::memory_order_relaxed));
         nearProbes_.dimensions = dimensionsFor(activeQuality_);
-        farProbes_.dimensions = farDimensionsFor(activeQuality_);
+        farProbes_.dimensions = farDimensionsFor();
         qualityRestartWarningLogged_.store(false, std::memory_order_relaxed);
         firstPrerequisiteRejectionLogged_.store(
             false,
@@ -638,7 +630,7 @@ namespace community_shaders::skylighting
             !createProbeLevelResources(
                 nearProbes_, dimensionsFor(activeQuality_)) ||
             !createProbeLevelResources(
-                farProbes_, farDimensionsFor(activeQuality_))) {
+                farProbes_, farDimensionsFor())) {
             return false;
         }
 

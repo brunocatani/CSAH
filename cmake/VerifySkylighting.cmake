@@ -142,8 +142,8 @@ foreach(required IN ITEMS
     "return { 64, 64, 32 }"
     "return { 128, 128, 64 }"
     "return { 256, 256, 128 }"
-    "return { 32, 32, 16 }"
-    "return { 64, 64, 32 }"
+    "Runtime::Dimensions Runtime::farDimensionsFor() noexcept"
+    "return { 32, 32, 60 }"
     "kFarCaptureDistance = 32768.0f"
     "kFarCaptureInterval = 8"
     "farProbes_"
@@ -183,6 +183,11 @@ foreach(required IN ITEMS
       "Skylighting runtime contract is missing '${required}'")
   endif()
 endforeach()
+
+if(runtime MATCHES "farDimensionsFor\\(activeQuality_\\)")
+  message(FATAL_ERROR
+    "Skylighting far-grid dimensions must remain independent of the near quality tier")
+endif()
 
 string(FIND "${d3dHook}" "observePrivateCaptureDraw(context)" privateDrawObservation)
 if(privateDrawObservation EQUAL -1)

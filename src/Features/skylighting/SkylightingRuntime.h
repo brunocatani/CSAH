@@ -175,8 +175,7 @@ namespace community_shaders::skylighting
         };
 
         [[nodiscard]] static Dimensions dimensionsFor(Quality quality) noexcept;
-        [[nodiscard]] static Dimensions farDimensionsFor(
-            Quality quality) noexcept;
+        [[nodiscard]] static Dimensions farDimensionsFor() noexcept;
         [[nodiscard]] bool createProbeLevelResources(
             ProbeResources& level,
             Dimensions dimensions) noexcept;
