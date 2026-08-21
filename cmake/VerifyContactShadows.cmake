@@ -7,7 +7,6 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
     CONTACT_SHADOW_DISPATCH_SHADER_SOURCE
-    CONTACT_SHADOW_REPROJECT_SHADER_SOURCE
     CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
     CONTACT_SHADOW_SHADER_GENERATOR
     D3D11_HOOK_SOURCE
@@ -26,7 +25,6 @@ file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
 file(READ "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}" dispatchShaderSource)
-file(READ "${CONTACT_SHADOW_REPROJECT_SHADER_SOURCE}" reprojectShaderSource)
 file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
 file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
@@ -48,7 +46,6 @@ foreach(required IN ITEMS
     "PSSetShaderResources(kMaskSlot"
     "dispatchMask"
     "dispatchCompute_"
-    "reprojectCompute_"
     "resolveCompute_"
     "dispatchRecords_"
     "dispatchRecordsView_"
@@ -56,16 +53,8 @@ foreach(required IN ITEMS
     "dispatchArguments_"
     "dispatchArgumentsOutput_"
     "DispatchIndirect"
-    "CopySubresourceRegion"
-    "stereoReprojection_"
     "kDispatchRecordCount = 16"
     "uploadedGpuSettings_"
-    "observeDepthTargetBinding"
-    "maskDepthResource_"
-    "maskDirty_"
-    "maskValid_"
-    "contactShadowsActive ? maskOutput_.Get()"
-    "maskValid_.load(std::memory_order_acquire)"
     "rawMaskTexture_"
     "rawMaskView_"
     "rawMaskOutput_"
@@ -87,24 +76,13 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-foreach(required IN ITEMS
-    "Texture2D<float> SceneDepth : register(t0)"
-    "Texture2D<float> LeftEyeShadow : register(t1)"
-    "RWTexture2D<unorm float> StereoShadow : register(u0)"
-    "NativeDFLight : register(b2)"
-    "NativeStereo : register(b8)"
-    "NativeCamera : register(b12)"
-    "ReconstructRelativeWorldPosition"
-    "ProjectRelativeWorldPosition"
-    "const uint2 rightPixel"
-    "matchingDepthDomain"
-    "relativeDisagreement <= 0.02f"
-    "StereoShadow[rightPixel] = result"
-    "[numthreads(8, 8, 1)]")
-  string(FIND "${reprojectShaderSource}" "${required}" found)
-  if(found EQUAL -1)
+foreach(forbidden IN ITEMS
+    "TextureCube<float> CloudOcclusion"
+    "CloudVisibility(")
+  string(FIND "${maskShaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
     message(FATAL_ERROR
-      "Contact Shadows stereo reprojection regression: missing '${required}'")
+      "Contact Shadows raw mask must not consume cloud visibility '${forbidden}'")
   endif()
 endforeach()
 
@@ -166,9 +144,7 @@ endforeach()
 foreach(required IN ITEMS
     "Texture2D<float> SceneDepth : register(t0)"
     "StructuredBuffer<DispatchRecord> DispatchRecords : register(t1)"
-    "TextureCube<float> CloudOcclusion : register(t2)"
     "RWTexture2D<unorm float> ContactShadowMask : register(u0)"
-    "SamplerState CloudSampler : register(s0)"
     "ContactShadowSettings : register(b13)"
     "NativeDFLight : register(b2)"
     "NativeStereo : register(b8)"
@@ -179,20 +155,15 @@ foreach(required IN ITEMS
     "static const float kNearDepthValue = 0.0f"
     "groupshared float SharedDepth"
     "groupshared uint SharedDepthDomain"
-    "groupshared uint SharedMaximumSampleCount"
     "ComputeWavefrontExtents"
     "LoadNativeDepth"
     "ReconstructViewPosition"
     "ProjectViewPosition"
-    "CloudVisibility"
     "rawDepth * 100.0f"
     "rawDepth * 1.01f - 0.01f"
     "neighborDomain != baseDomain"
     "abs(kFarDepthValue - baseDepth)"
     "GroupMemoryBarrierWithGroupSync"
-    "InterlockedMax("
-    "const uint activeReadCount"
-    "readIndex < activeReadCount"
     "const float surfaceThickness = max(ContactParams0.z"
     "activeSampleCount = min"
     "const float2 rayPixelDelta"
@@ -201,9 +172,7 @@ foreach(required IN ITEMS
     "clamp(ContactParams0.w, 2.0f, 8.0f)"
     "SharedDepthDomain[sharedIndex] != sampleDomain[0]"
     "shadowValue = saturate(shadowValue * 4.0f - 3.0f)"
-    "const float rawVisibility = dot(shadowValue, 0.25f)"
-    "saturate(ContactParams0.x) * distanceScale"
-    "contactVisibility * CloudVisibility(surface, towardLight)"
+    "const float visibility = dot(shadowValue, 0.25f)"
     "record.eye * eyeWidth"
     "[numthreads(64, 1, 1)]")
   string(FIND "${maskShaderSource}" "${required}" found)
@@ -283,8 +252,6 @@ foreach(required IN ITEMS
     "compile_resolve_shader"
     "compile_dispatch_shader"
     "fo4vr_cs_contact_shadow_dispatch"
-    "compile_reproject_shader"
-    "fo4vr_cs_contact_shadow_reproject"
     "contact-shadow resolve assembly changed"
     "fo4vr_cs_contact_shadow_resolve"
     "multiply_rgb(1, visibility_scratch)"
@@ -307,7 +274,6 @@ foreach(required IN ITEMS
     "if (dflightCompositorActive && classInstanceCount == 0)"
     "issueDrawWithContactShadows(context"
     "activeContactShadowsEnabled"
-    "observeDepthTargetBinding"
     "wrappedRuntime.scopeDraw("
     "activeContactShadowBinding.original")
   string(FIND "${hookSource}" "${required}" found)
@@ -361,7 +327,6 @@ endif()
 foreach(required IN ITEMS
     "bEnabled"
     "bFoveated"
-    "bStereoReprojection"
     "fStrength"
     "fMaxDistance"
     "fFadeDistance"
@@ -383,7 +348,6 @@ foreach(required IN ITEMS
     "\"section\": \"ContactShadows\""
     "\"key\": \"bEnabled\""
     "\"key\": \"bFoveated\""
-    "\"key\": \"bStereoReprojection\""
     "\"key\": \"fStrength\""
     "\"key\": \"fMaxDistance\""
     "\"key\": \"fFadeDistance\""

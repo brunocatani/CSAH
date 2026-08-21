@@ -15,8 +15,6 @@
 // Adapted for FO4VR from the Bend screen-space shadow wavefront algorithm.
 
 Texture2D<float> SceneDepth : register(t0);
-TextureCube<float> CloudOcclusion : register(t2);
-SamplerState CloudSampler : register(s0);
 
 struct DispatchRecord
 {
@@ -66,7 +64,6 @@ static const float kNearDepthValue = 0.0f;
 
 groupshared float SharedDepth[kReadCount * kWaveSize];
 groupshared uint SharedDepthDomain[kReadCount * kWaveSize];
-groupshared uint SharedMaximumSampleCount;
 
 float4 NativeClip(float2 packedUv, float depth, uint eye)
 {
@@ -104,32 +101,6 @@ float4 ProjectViewPosition(float3 position, uint eye)
         dot(Camera[row + 1u], homogeneousPoint),
         dot(Camera[row + 2u], homogeneousPoint),
         dot(Camera[row + 3u], homogeneousPoint));
-}
-
-float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
-{
-    if (CloudParams.x <= 0.5f) {
-        return 1.0f;
-    }
-    const float cloudHeight = max(CloudParams.z, 1.0f);
-    const float planetRadius = max(CloudParams.w, cloudHeight);
-    const float shellRadius = planetRadius + cloudHeight;
-    const float3 p =
-        (relativeWorldPosition + float3(0.0f, 0.0f, planetRadius)) /
-        shellRadius;
-    const float projected = dot(p, towardLight);
-    const float discriminant = max(
-        projected * projected - dot(p, p) + 1.0f,
-        0.0f);
-    const float travel = -projected + sqrt(discriminant);
-    const float3 sampleDirection =
-        (p + towardLight * travel) * shellRadius -
-        float3(0.0f, 0.0f, planetRadius);
-    const float cloud = CloudOcclusion.SampleLevel(
-        CloudSampler,
-        sampleDirection,
-        0.0f);
-    return saturate(1.0f - cloud * saturate(CloudParams.y));
 }
 
 void ComputeWavefrontExtents(
@@ -243,6 +214,7 @@ void CSMain(
         pixelDistance,
         majorAxisX);
 
+    float samplingRawDepth[kReadCount];
     float samplingDepth[kReadCount];
     float shadowingDepth[kReadCount];
     float depthThicknessScale[kReadCount];
@@ -253,87 +225,6 @@ void CSMain(
     const float depthSign =
         kNearDepthValue > kFarDepthValue ? -1.0f : 1.0f;
     const int2 writePixel = (int2)floor(pixelXY);
-    float receiverRawDepth;
-    float receiverDepth;
-    uint receiverDomain;
-    const bool receiverValid = LoadNativeDepth(
-        writePixel,
-        record.eye,
-        eyeWidth,
-        height,
-        receiverRawDepth,
-        receiverDepth,
-        receiverDomain);
-    const uint2 packedWritePixel = uint2(
-        (uint)max(writePixel.x, 0) + record.eye * eyeWidth,
-        (uint)max(writePixel.y, 0));
-    const float2 dimensions = float2(width, height);
-    float3 surface = 0.0f;
-    float3 towardLight = 0.0f;
-    uint activeSampleCount = 0u;
-    if (receiverValid) {
-        const float2 packedUv =
-            ((float2)packedWritePixel + 0.5f) / dimensions;
-        surface = ReconstructViewPosition(
-            packedUv,
-            receiverRawDepth,
-            record.eye);
-        towardLight = normalize(DFLight[record.eye + 1u].xyz);
-        const float4 startClip = ProjectViewPosition(surface, record.eye);
-        const float4 endClip = ProjectViewPosition(
-            surface + towardLight * ContactParams0.y,
-            record.eye);
-        const float2 startNdc = startClip.xy /
-            max(abs(startClip.w), 1.0e-7f);
-        const float2 endNdc = endClip.xy /
-            max(abs(endClip.w), 1.0e-7f);
-        const float2 rayPixelDelta = float2(
-            (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
-            (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
-        const uint requiredPixelReach = (uint)ceil(clamp(
-            max(abs(rayPixelDelta.x), abs(rayPixelDelta.y)),
-            8.0f,
-            (float)kMaximumSampleCount));
-        const uint qualityPixelBudget =
-            (uint)round(clamp(ContactParams0.w, 2.0f, 8.0f)) * 32u;
-        activeSampleCount = min(
-            requiredPixelReach,
-            qualityPixelBudget);
-        if (ContactParams1.w > 0.5f) {
-            const float2 eyeUv =
-                ((float2)writePixel + 0.5f) /
-                float2(max(eyeWidth, 1u), max(height, 1u));
-            const float2 radial =
-                (eyeUv - 0.5f) * float2(1.0f, 0.78f);
-            const float outer = smoothstep(
-                0.30f,
-                0.62f,
-                length(radial));
-            const uint foveatedBudget = max(
-                64u,
-                (uint)round((float)activeSampleCount * lerp(
-                    1.0f,
-                    ContactParams1.z,
-                    outer)));
-            activeSampleCount = min(
-                activeSampleCount,
-                foveatedBudget);
-        }
-    }
-
-    if (groupThreadID == 0u) {
-        SharedMaximumSampleCount = 0u;
-    }
-    GroupMemoryBarrierWithGroupSync();
-    if (receiverValid) {
-        InterlockedMax(
-            SharedMaximumSampleCount,
-            activeSampleCount);
-    }
-    GroupMemoryBarrierWithGroupSync();
-    const uint activeReadCount = min(
-        kReadCount,
-        (SharedMaximumSampleCount + kWaveSize - 1u) / kWaveSize + 2u);
 
     [unroll]
     for (uint readIndex = 0u; readIndex < kReadCount; ++readIndex) {
@@ -344,42 +235,32 @@ void CSMain(
         const int2 neighborOffset = majorAxisX ?
             int2(0, bias) : int2(bias, 0);
 
-        float baseRawDepth = 0.0f;
-        float baseDepth = kFarDepthValue;
-        float neighborRawDepth = 0.0f;
-        float neighborDepth = kFarDepthValue;
-        uint baseDomain = kInvalidDepthDomain;
-        uint neighborDomain = kInvalidDepthDomain;
-        bool baseValid = false;
-        bool neighborValid = false;
-        if (readIndex < activeReadCount) {
-            if (readIndex == 0u) {
-                baseRawDepth = receiverRawDepth;
-                baseDepth = receiverDepth;
-                baseDomain = receiverDomain;
-                baseValid = receiverValid;
-            } else {
-                baseValid = LoadNativeDepth(
-                    basePixel,
-                    record.eye,
-                    eyeWidth,
-                    height,
-                    baseRawDepth,
-                    baseDepth,
-                    baseDomain);
-            }
-            neighborValid = LoadNativeDepth(
-                basePixel + neighborOffset,
-                record.eye,
-                eyeWidth,
-                height,
-                neighborRawDepth,
-                neighborDepth,
-                neighborDomain);
-        }
+        float baseRawDepth;
+        float baseDepth;
+        float neighborRawDepth;
+        float neighborDepth;
+        uint baseDomain;
+        uint neighborDomain;
+        const bool baseValid = LoadNativeDepth(
+            basePixel,
+            record.eye,
+            eyeWidth,
+            height,
+            baseRawDepth,
+            baseDepth,
+            baseDomain);
+        const bool neighborValid = LoadNativeDepth(
+            basePixel + neighborOffset,
+            record.eye,
+            eyeWidth,
+            height,
+            neighborRawDepth,
+            neighborDepth,
+            neighborDomain);
 
         sampleValid[readIndex] = baseValid;
         sampleDomain[readIndex] = baseDomain;
+        samplingRawDepth[readIndex] = baseRawDepth;
         samplingDepth[readIndex] = baseDepth;
         depthThicknessScale[readIndex] = max(
             abs(kFarDepthValue - baseDepth),
@@ -393,9 +274,7 @@ void CSMain(
             baseDepth : baseDepth + abs(baseDepth - neighborDepth) * depthSign;
         sampleDistance[readIndex] =
             pixelDistance + (float)(kWaveSize * readIndex) * direction;
-        if (readIndex < activeReadCount) {
-            pixelXY += rayDelta * direction;
-        }
+        pixelXY += rayDelta * direction;
     }
 
     [unroll]
@@ -438,6 +317,52 @@ void CSMain(
         pixelDistance / depthThicknessScale[0];
     startDepth = startDepth * depthScale - depthSign;
 
+    const uint2 packedWritePixel = uint2(
+        (uint)writePixel.x + record.eye * eyeWidth,
+        (uint)writePixel.y);
+    const float2 dimensions = float2(width, height);
+    const float2 packedUv =
+        ((float2)packedWritePixel + 0.5f) / dimensions;
+    const float3 surface = ReconstructViewPosition(
+        packedUv,
+        samplingRawDepth[0],
+        record.eye);
+    const float3 towardLight = normalize(DFLight[record.eye + 1u].xyz);
+    const float4 startClip = ProjectViewPosition(surface, record.eye);
+    const float4 endClip = ProjectViewPosition(
+        surface + towardLight * ContactParams0.y,
+        record.eye);
+    const float2 startNdc = startClip.xy /
+        max(abs(startClip.w), 1.0e-7f);
+    const float2 endNdc = endClip.xy /
+        max(abs(endClip.w), 1.0e-7f);
+    const float2 rayPixelDelta = float2(
+        (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
+        (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
+    const uint requiredPixelReach = (uint)ceil(clamp(
+        max(abs(rayPixelDelta.x), abs(rayPixelDelta.y)),
+        8.0f,
+        (float)kMaximumSampleCount));
+    const uint qualityPixelBudget =
+        (uint)round(clamp(ContactParams0.w, 2.0f, 8.0f)) * 32u;
+    uint activeSampleCount = min(
+        requiredPixelReach,
+        qualityPixelBudget);
+    if (ContactParams1.w > 0.5f) {
+        const float2 eyeUv =
+            ((float2)writePixel + 0.5f) /
+            float2(max(eyeWidth, 1u), max(height, 1u));
+        const float2 radial = (eyeUv - 0.5f) * float2(1.0f, 0.78f);
+        const float outer = smoothstep(0.30f, 0.62f, length(radial));
+        const uint foveatedBudget = max(
+            64u,
+            (uint)round((float)activeSampleCount * lerp(
+                1.0f,
+                ContactParams1.z,
+                outer)));
+        activeSampleCount = min(activeSampleCount, foveatedBudget);
+    }
+
     const uint firstSharedSample = groupThreadID + 1u;
     float4 shadowValue = 1.0f;
     [loop]
@@ -469,15 +394,6 @@ void CSMain(
     // four interleaved minima to suppress one-pixel depth noise without a
     // detached screen-space dilation pass.
     shadowValue = saturate(shadowValue * 4.0f - 3.0f);
-    const float rawVisibility = dot(shadowValue, 0.25f);
-    const float viewDepth = abs(surface.z);
-    const float fadeDistance = max(ContactParams2.x, 1.0f);
-    const float distanceScale =
-        1.0f - smoothstep(0.0f, fadeDistance, viewDepth);
-    const float contactVisibility = lerp(
-        1.0f,
-        rawVisibility,
-        saturate(ContactParams0.x) * distanceScale);
-    ContactShadowMask[packedWritePixel] =
-        contactVisibility * CloudVisibility(surface, towardLight);
+    const float visibility = dot(shadowValue, 0.25f);
+    ContactShadowMask[packedWritePixel] = visibility;
 }

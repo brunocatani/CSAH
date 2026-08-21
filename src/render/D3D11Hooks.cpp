@@ -1812,8 +1812,6 @@ namespace community_shaders::render
                 return;
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
-            contact_shadows::Runtime::get().observeDepthTargetBinding(
-                depthStencil);
 
             auto& surfaceRuntime = surface_classification::Runtime::get();
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
@@ -1858,8 +1856,6 @@ namespace community_shaders::render
                 return;
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
-            contact_shadows::Runtime::get().observeDepthTargetBinding(
-                depthStencil);
 
             auto& surfaceRuntime = surface_classification::Runtime::get();
             const auto appendDoesNotOverlapUavs =

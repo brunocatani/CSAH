@@ -47,7 +47,6 @@ namespace community_shaders::subsurface_scattering
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
-        Microsoft::WRL::ComPtr<ID3D11ComputeShader> classifyShader_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> shader_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> scratchA_;
@@ -56,16 +55,6 @@ namespace community_shaders::subsurface_scattering
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> scratchBView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> scratchAOutput_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> scratchBOutput_;
-        Microsoft::WRL::ComPtr<ID3D11Resource> sourceResource_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> sourceOutput_;
-        Microsoft::WRL::ComPtr<ID3D11Buffer> activeTiles_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> activeTilesView_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> activeTilesOutput_;
-        Microsoft::WRL::ComPtr<ID3D11Buffer> tileDispatchArguments_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
-            tileDispatchArgumentsOutput_;
-        UINT sourceSubresource_{};
-        UINT tileCapacity_{};
         UINT width_{};
         UINT height_{};
         DXGI_FORMAT format_{ DXGI_FORMAT_UNKNOWN };

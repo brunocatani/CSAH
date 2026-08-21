@@ -2,7 +2,6 @@ Texture2D<float4> SourceLighting : register(t0);
 Texture2D<float> SceneDepth : register(t1);
 Texture2D<float> SurfaceClass : register(t2);
 Texture2D<float4> GBufferMaterial : register(t3);
-StructuredBuffer<uint2> ActiveTiles : register(t4);
 RWTexture2D<float4> OutputLighting : register(u0);
 
 cbuffer SubsurfaceScatteringConstants : register(b0)
@@ -21,14 +20,10 @@ bool IsSkin(float surfaceClass)
         ClassificationParameters.x;
 }
 
-[numthreads(16, 16, 1)]
-void CSMain(
-    uint3 groupID : SV_GroupID,
-    uint3 groupThreadID : SV_GroupThreadID)
+[numthreads(8, 8, 1)]
+void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
     const uint2 dimensions = uint2(TargetAndDirection.xy);
-    const uint2 dispatchThread =
-        ActiveTiles[groupID.x] * 16u + groupThreadID.xy;
     if (any(dispatchThread.xy >= dimensions))
     {
         return;

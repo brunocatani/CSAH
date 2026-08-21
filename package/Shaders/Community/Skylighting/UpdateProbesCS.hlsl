@@ -11,8 +11,7 @@ struct ProbeLevelSettings
     float4 PositionOffset;
     uint4 ArrayDimensions;
     uint4 ArrayOrigin;
-    // xyz=logical update extent, w=reset accumulation for exposed cells.
-    int4 UpdateRegion;
+    int4 ValidMargin;
 };
 
 cbuffer SkylightingSettings : register(b13)
@@ -21,7 +20,7 @@ cbuffer SkylightingSettings : register(b13)
     float4 OcclusionDirection;
     ProbeLevelSettings NearLevel;
     ProbeLevelSettings FarLevel;
-    // x=level (0 near, 1 far), yzw=logical update origin.
+    // x=level (0 near, 1 far), y=first Z slice, z=slice count.
     uint4 UpdateControl;
     // x=minimum diffuse visibility, y=minimum specular visibility,
     // z=feature active, w=one-shot diagnostic collection.
@@ -51,17 +50,25 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         level = FarLevel;
     }
     const uint3 dimensions = level.ArrayDimensions.xyz;
-    const uint3 regionExtent = uint3(max(level.UpdateRegion.xyz, 0));
-    if (any(dispatchThread >= regionExtent)) {
+    const uint probeSlice = UpdateControl.y + dispatchThread.z;
+    if (dispatchThread.x >= dimensions.x ||
+        dispatchThread.y >= dimensions.y ||
+        dispatchThread.z >= UpdateControl.z ||
+        probeSlice >= dimensions.z) {
         return;
     }
-    const uint3 logicalCell = UpdateControl.yzw + dispatchThread;
-    if (any(logicalCell >= dimensions)) {
-        return;
-    }
-    const uint3 probeTexel =
-        (logicalCell + level.ArrayOrigin.xyz) % dimensions;
-    const bool resetAccumulation = level.UpdateRegion.w != 0;
+    const uint3 probeTexel = uint3(
+        dispatchThread.xy,
+        probeSlice);
+
+    const int3 logicalCell = int3(
+        (probeTexel + dimensions - level.ArrayOrigin.xyz) % dimensions);
+    const int3 validMinimum = max(level.ValidMargin.xyz, 0);
+    const int3 validMaximum =
+        int3(dimensions) - 1 + min(level.ValidMargin.xyz, 0);
+    const bool previouslyValid =
+        all(logicalCell >= validMinimum) &&
+        all(logicalCell <= validMaximum);
 
     const float3 cellCentre =
         (float3(logicalCell) + 0.5f - float3(dimensions) * 0.5f) *
@@ -113,7 +120,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 asuint(sampledDepth),
                 ignored);
         }
-        const uint previousFrames = !resetAccumulation ?
+        const uint previousFrames = previouslyValid ?
             AccumulationFrames[probeTexel] : 0u;
         const uint accumulation = min(previousFrames + 1u, 255u);
         const float visibility = OcclusionDepth.SampleCmpLevelZero(
@@ -158,7 +165,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 DiagnosticStats.InterlockedAdd(28u, 1u, ignored);
             }
         }
-    } else if (resetAccumulation) {
+    } else if (!previouslyValid) {
         ProbeArray[probeTexel] = kUnitVisibilitySh;
         AccumulationFrames[probeTexel] = 0u;
     }

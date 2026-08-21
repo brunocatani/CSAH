@@ -13,8 +13,7 @@ struct ProbeLevelSettings
     float4 PositionOffset;
     uint4 ArrayDimensions;
     uint4 ArrayOrigin;
-    // Update-only metadata. Retained here to keep the shared b13 layout exact.
-    int4 UpdateRegion;
+    int4 ValidMargin;
 };
 
 cbuffer NativeStereo : register(b8)
@@ -33,7 +32,6 @@ cbuffer SkylightingSettings : register(b13)
     float4 OcclusionDirection;
     ProbeLevelSettings NearLevel;
     ProbeLevelSettings FarLevel;
-    // x=level (0 near, 1 far), yzw=logical update origin.
     uint4 UpdateControl;
     // x=minimum diffuse visibility, y=minimum specular visibility,
     // z=feature active, w=reserved.

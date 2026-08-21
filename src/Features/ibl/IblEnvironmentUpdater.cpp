@@ -235,10 +235,6 @@ namespace community_shaders::ibl
         resources_ = std::move(candidate);
         summary_ = {};
         summary_.initialized = true;
-        validation_ = {};
-        phase_ = UpdatePhase::idle;
-        nextMipLevel_ = 0;
-        nextValidationFace_ = 0;
         return true;
     }
 
@@ -246,10 +242,6 @@ namespace community_shaders::ibl
     {
         resources_ = {};
         summary_ = {};
-        validation_ = {};
-        phase_ = UpdatePhase::idle;
-        nextMipLevel_ = 0;
-        nextValidationFace_ = 0;
     }
 
     bool EnvironmentUpdater::validateInputs(
@@ -433,129 +425,92 @@ namespace community_shaders::ibl
             0,
             static_cast<UINT>(nullSources.size()),
             nullSources.data());
-        if (!restore.restore()) {
+
+        std::array<ID3D11ShaderResourceView*, 2> filterSources{
+            resources_.capturedRadianceView.Get(),
+            resources_.capturedValidityView.Get(),
+        };
+        context->CSSetShader(resources_.filterShader.Get(), nullptr, 0);
+        context->CSSetShaderResources(
+            0,
+            static_cast<UINT>(filterSources.size()),
+            filterSources.data());
+        auto* filterConstants = resources_.filterConstants.Get();
+        context->CSSetConstantBuffers(11, 1, &filterConstants);
+
+        const auto providerSnapshot = provider.snapshot();
+        bool completed = true;
+        for (std::uint32_t mipLevel = 0;
+             mipLevel < providerSnapshot.mipCount;
+             ++mipLevel) {
+            const auto targetExtent = std::max(
+                1U,
+                providerSnapshot.extent >> mipLevel);
+            const FilterConstants constants{
+                targetExtent,
+                mipLevel,
+                providerSnapshot.mipCount,
+                providerSnapshot.mipCount > 1 ?
+                    static_cast<float>(mipLevel) /
+                        static_cast<float>(providerSnapshot.mipCount - 1) :
+                    0.0f,
+            };
+            context->UpdateSubresource(
+                resources_.filterConstants.Get(),
+                0,
+                nullptr,
+                &constants,
+                0,
+                0);
+            std::array<ID3D11UnorderedAccessView*, 2> destinations{
+                provider.writableMip(mipLevel),
+                provider.writableValidityMip(mipLevel),
+            };
+            if (!destinations[0] || !destinations[1]) {
+                completed = false;
+                break;
+            }
+            context->CSSetUnorderedAccessViews(
+                0,
+                static_cast<UINT>(destinations.size()),
+                destinations.data(),
+                nullptr);
+            context->Dispatch(
+                (targetExtent + kThreadGroupExtent - 1) /
+                    kThreadGroupExtent,
+                (targetExtent + kThreadGroupExtent - 1) /
+                    kThreadGroupExtent,
+                kEnvironmentCubeFaceCount);
+            for (std::uint32_t face = 0;
+                 face < kEnvironmentCubeFaceCount;
+                 ++face) {
+                completed = provider.markSubresourceComplete(
+                                static_cast<EnvironmentCubeFace>(face),
+                                mipLevel) &&
+                    completed;
+            }
+        }
+
+        context->CSSetUnorderedAccessViews(
+            0,
+            static_cast<UINT>(nullDestinations.size()),
+            nullDestinations.data(),
+            nullptr);
+        context->CSSetShaderResources(
+            0,
+            static_cast<UINT>(nullSources.size()),
+            nullSources.data());
+        if (!completed || !restore.restore()) {
             provider.abortUpdate();
             recordFailure();
             return false;
         }
 
-        summary_.pending = true;
-        summary_.historyUsed = usePublishedHistory;
-        summary_.generation = provider.snapshot().activeUpdateGeneration;
-        ++summary_.dispatches;
-        validation_ = {};
-        phase_ = UpdatePhase::filtering;
-        nextMipLevel_ = 0;
-        nextValidationFace_ = 0;
-        return true;
-    }
-
-    bool EnvironmentUpdater::dispatchNextFilterMip(
-        ID3D11DeviceContext* context,
-        EnvironmentProvider& provider) noexcept
-    {
-        const auto providerSnapshot = provider.snapshot();
-        if (!context || phase_ != UpdatePhase::filtering ||
-            nextMipLevel_ >= providerSnapshot.mipCount) {
-            return false;
-        }
-        render::ScopedComputeState restore(
-            context,
-            {
-                .firstShaderResource = 0,
-                .shaderResourceCount = 2,
-                .firstUnorderedAccess = 0,
-                .unorderedAccessCount = 2,
-                .firstSampler = 0,
-                .samplerCount = 1,
-                .firstConstantBuffer = 11,
-                .constantBufferCount = 1,
-            });
-        if (!restore.captured()) {
-            return false;
-        }
-
-        const auto targetExtent = std::max(
-            1U,
-            providerSnapshot.extent >> nextMipLevel_);
-        const FilterConstants constants{
-            targetExtent,
-            nextMipLevel_,
-            providerSnapshot.mipCount,
-            providerSnapshot.mipCount > 1 ?
-                static_cast<float>(nextMipLevel_) /
-                    static_cast<float>(providerSnapshot.mipCount - 1) :
-                0.0f,
-        };
-        context->UpdateSubresource(
-            resources_.filterConstants.Get(),
-            0,
-            nullptr,
-            &constants,
-            0,
-            0);
-        std::array<ID3D11ShaderResourceView*, 2> sources{
-            resources_.capturedRadianceView.Get(),
-            resources_.capturedValidityView.Get(),
-        };
-        std::array<ID3D11UnorderedAccessView*, 2> destinations{
-            provider.writableMip(nextMipLevel_),
-            provider.writableValidityMip(nextMipLevel_),
-        };
-        if (!sources[0] || !sources[1] || !destinations[0] ||
-            !destinations[1]) {
-            (void)restore.restore();
-            return false;
-        }
-        auto* sampler = resources_.sampler.Get();
-        auto* filterConstants = resources_.filterConstants.Get();
-        context->CSSetShader(resources_.filterShader.Get(), nullptr, 0);
-        context->CSSetShaderResources(
-            0,
-            static_cast<UINT>(sources.size()),
-            sources.data());
-        context->CSSetUnorderedAccessViews(
-            0,
-            static_cast<UINT>(destinations.size()),
-            destinations.data(),
-            nullptr);
-        context->CSSetSamplers(0, 1, &sampler);
-        context->CSSetConstantBuffers(11, 1, &filterConstants);
-        context->Dispatch(
-            (targetExtent + kThreadGroupExtent - 1) / kThreadGroupExtent,
-            (targetExtent + kThreadGroupExtent - 1) / kThreadGroupExtent,
-            kEnvironmentCubeFaceCount);
-        if (!restore.restore()) {
-            return false;
-        }
-        for (std::uint32_t face = 0;
-             face < kEnvironmentCubeFaceCount;
-             ++face) {
-            if (!provider.markSubresourceComplete(
-                    static_cast<EnvironmentCubeFace>(face),
-                    nextMipLevel_)) {
-                return false;
-            }
-        }
-        ++nextMipLevel_;
-        if (nextMipLevel_ == providerSnapshot.mipCount) {
-            if (!stageValidationReadback(context, provider)) {
-                return false;
-            }
-            phase_ = UpdatePhase::waitingForReadback;
-        }
-        return true;
-    }
-
-    bool EnvironmentUpdater::stageValidationReadback(
-        ID3D11DeviceContext* context,
-        EnvironmentProvider& provider) noexcept
-    {
-        const auto providerSnapshot = provider.snapshot();
         auto* writableRadiance = provider.writableTexture();
         auto* writableValidity = provider.writableValidityTexture();
-        if (!context || !writableRadiance || !writableValidity ||
-            providerSnapshot.mipCount == 0) {
+        if (!writableRadiance || !writableValidity) {
+            provider.abortUpdate();
+            recordFailure();
             return false;
         }
         for (UINT face = 0; face < kEnvironmentCubeFaceCount; ++face) {
@@ -584,180 +539,12 @@ namespace community_shaders::ibl
                 nullptr);
         }
         context->End(resources_.completionEvent.Get());
-        validation_ = {};
-        nextValidationFace_ = 0;
+
+        summary_.pending = true;
+        summary_.historyUsed = usePublishedHistory;
+        summary_.generation = provider.snapshot().activeUpdateGeneration;
+        ++summary_.dispatches;
         return true;
-    }
-
-    bool EnvironmentUpdater::consumeValidationFace(
-        ID3D11DeviceContext* context,
-        std::uint32_t face) noexcept
-    {
-        if (!context || face >= kEnvironmentCubeFaceCount) {
-            return false;
-        }
-        const auto subresource = D3D11CalcSubresource(0, face, 1);
-        D3D11_MAPPED_SUBRESOURCE mappedRadiance{};
-        D3D11_MAPPED_SUBRESOURCE mappedValidity{};
-        if (FAILED(context->Map(
-                resources_.stagingRadiance.Get(),
-                subresource,
-                D3D11_MAP_READ,
-                0,
-                &mappedRadiance)) ||
-            !mappedRadiance.pData ||
-            mappedRadiance.RowPitch <
-                resources_.extent * sizeof(std::uint32_t)) {
-            if (mappedRadiance.pData) {
-                context->Unmap(resources_.stagingRadiance.Get(), subresource);
-            }
-            return false;
-        }
-        if (FAILED(context->Map(
-                resources_.stagingValidity.Get(),
-                subresource,
-                D3D11_MAP_READ,
-                0,
-                &mappedValidity)) ||
-            !mappedValidity.pData ||
-            mappedValidity.RowPitch < resources_.extent * sizeof(float)) {
-            context->Unmap(resources_.stagingRadiance.Get(), subresource);
-            if (mappedValidity.pData) {
-                context->Unmap(resources_.stagingValidity.Get(), subresource);
-            }
-            return false;
-        }
-
-        for (std::uint32_t y = 0; y < resources_.extent; ++y) {
-            const auto* radianceRow =
-                reinterpret_cast<const std::uint32_t*>(
-                    static_cast<const std::byte*>(mappedRadiance.pData) +
-                    static_cast<std::size_t>(y) * mappedRadiance.RowPitch);
-            const auto* validityRow = reinterpret_cast<const float*>(
-                static_cast<const std::byte*>(mappedValidity.pData) +
-                static_cast<std::size_t>(y) * mappedValidity.RowPitch);
-            for (std::uint32_t x = 0; x < resources_.extent; ++x) {
-                const auto validity = validityRow[x];
-                const auto sample = decodeR11G11B10Float(radianceRow[x]);
-                if (!std::isfinite(validity) || validity < 0.0f ||
-                    validity > 1.0001f || !std::isfinite(sample.red) ||
-                    !std::isfinite(sample.green) ||
-                    !std::isfinite(sample.blue) || sample.red < 0.0f ||
-                    sample.green < 0.0f || sample.blue < 0.0f) {
-                    validation_.valid = false;
-                    continue;
-                }
-                validation_.red += sample.red;
-                validation_.green += sample.green;
-                validation_.blue += sample.blue;
-                validation_.validityTotal += validity;
-                const auto luminance = sample.red * 0.2126f +
-                    sample.green * 0.7152f + sample.blue * 0.0722f;
-                validation_.faceLuminance[face] += luminance;
-                const auto samplePeak = std::max(
-                    sample.red,
-                    std::max(sample.green, sample.blue));
-                validation_.peak = std::max(validation_.peak, samplePeak);
-                if (samplePeak > kNonBlackThreshold) {
-                    ++validation_.nonBlack;
-                }
-                if (validity > kCoveredThreshold) {
-                    ++validation_.covered;
-                }
-                const auto horizontal =
-                    ((static_cast<float>(x) + 0.5f) /
-                        static_cast<float>(resources_.extent)) *
-                        2.0f -
-                    1.0f;
-                const auto vertical =
-                    ((static_cast<float>(y) + 0.5f) /
-                        static_cast<float>(resources_.extent)) *
-                        2.0f -
-                    1.0f;
-                const auto solidAngleWeight =
-                    cubeTexelSolidAngleWeight(horizontal, vertical);
-                validation_.faceValidity[face] +=
-                    static_cast<double>(validity) * solidAngleWeight;
-                validation_.faceSolidAngle[face] += solidAngleWeight;
-                accumulateDiffuseSHFit(
-                    validation_.diffuseFit,
-                    environmentCubeDirection(
-                        static_cast<EnvironmentCubeFace>(face),
-                        horizontal,
-                        vertical),
-                    { sample.red, sample.green, sample.blue },
-                    validity,
-                    solidAngleWeight);
-            }
-        }
-        context->Unmap(resources_.stagingValidity.Get(), subresource);
-        context->Unmap(resources_.stagingRadiance.Get(), subresource);
-        return true;
-    }
-
-    EnvironmentUpdateConsumeResult EnvironmentUpdater::completeValidation(
-        EnvironmentProvider& provider) noexcept
-    {
-        const auto faceSampleCount = resources_.extent * resources_.extent;
-        const auto totalSamples = faceSampleCount * kEnvironmentCubeFaceCount;
-        validation_.valid = validation_.valid && validation_.covered > 0;
-        if (!validation_.valid || !provider.publishUpdate()) {
-            return abortPendingUpdate(provider);
-        }
-
-        const auto inverseTotal = 1.0 / static_cast<double>(totalSamples);
-        summary_.average = {
-            static_cast<float>(validation_.red * inverseTotal),
-            static_cast<float>(validation_.green * inverseTotal),
-            static_cast<float>(validation_.blue * inverseTotal),
-        };
-        for (std::uint32_t face = 0; face < kEnvironmentCubeFaceCount;
-             ++face) {
-            summary_.faceAverageLuminance[face] = static_cast<float>(
-                validation_.faceLuminance[face] /
-                static_cast<double>(faceSampleCount));
-            summary_.faceAverageValidity[face] =
-                validation_.faceSolidAngle[face] > 0.0 ?
-                static_cast<float>(
-                    validation_.faceValidity[face] /
-                    validation_.faceSolidAngle[face]) :
-                0.0f;
-        }
-        summary_.peak = validation_.peak;
-        summary_.averageValidity = static_cast<float>(
-            validation_.validityTotal * inverseTotal);
-        summary_.nonBlackSamples = validation_.nonBlack;
-        summary_.coveredSamples = validation_.covered;
-        summary_.sampleCount = totalSamples;
-        summary_.diffuseSHCoverage = diffuseSHFitCoverage(
-            validation_.diffuseFit);
-        summary_.diffuseSH = {};
-        summary_.diffuseSHState = solveDiffuseSHFit(
-                                      validation_.diffuseFit,
-                                      summary_.diffuseSH) ?
-            classifyDiffuseSH(summary_.diffuseSH) :
-            DiffuseSHState::invalid;
-        summary_.pending = false;
-        phase_ = UpdatePhase::idle;
-        nextMipLevel_ = 0;
-        nextValidationFace_ = 0;
-        validation_ = {};
-        ++summary_.completedReadbacks;
-        ++summary_.publishedUpdates;
-        return EnvironmentUpdateConsumeResult::completed;
-    }
-
-    EnvironmentUpdateConsumeResult EnvironmentUpdater::abortPendingUpdate(
-        EnvironmentProvider& provider) noexcept
-    {
-        provider.abortUpdate();
-        summary_.pending = false;
-        phase_ = UpdatePhase::idle;
-        nextMipLevel_ = 0;
-        nextValidationFace_ = 0;
-        validation_ = {};
-        recordFailure();
-        return EnvironmentUpdateConsumeResult::failed;
     }
 
     EnvironmentUpdateConsumeResult EnvironmentUpdater::consumeUpdate(
@@ -772,42 +559,190 @@ namespace community_shaders::ibl
             !sameDevice(context, resources_.device.Get()) ||
             providerSnapshot.state != EnvironmentProviderState::updating ||
             providerSnapshot.activeUpdateGeneration != summary_.generation) {
-            return abortPendingUpdate(provider);
+            provider.abortUpdate();
+            summary_.pending = false;
+            recordFailure();
+            return EnvironmentUpdateConsumeResult::failed;
         }
-        if (phase_ == UpdatePhase::filtering) {
-            if (!dispatchNextFilterMip(context, provider)) {
-                return abortPendingUpdate(provider);
-            }
+
+        BOOL complete{};
+        const auto queryResult = context->GetData(
+            resources_.completionEvent.Get(),
+            &complete,
+            sizeof(complete),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (queryResult == S_FALSE || complete != TRUE) {
             return EnvironmentUpdateConsumeResult::pending;
         }
-        if (phase_ == UpdatePhase::waitingForReadback) {
-            BOOL complete{};
-            const auto queryResult = context->GetData(
-                resources_.completionEvent.Get(),
-                &complete,
-                sizeof(complete),
-                D3D11_ASYNC_GETDATA_DONOTFLUSH);
-            if (queryResult == S_FALSE || complete != TRUE) {
-                return EnvironmentUpdateConsumeResult::pending;
-            }
-            if (FAILED(queryResult)) {
-                return abortPendingUpdate(provider);
-            }
-            phase_ = UpdatePhase::validating;
-            validation_ = {};
-            nextValidationFace_ = 0;
+        if (FAILED(queryResult)) {
+            provider.abortUpdate();
+            summary_.pending = false;
+            recordFailure();
+            return EnvironmentUpdateConsumeResult::failed;
         }
-        if (phase_ == UpdatePhase::validating) {
-            if (!consumeValidationFace(context, nextValidationFace_)) {
-                return abortPendingUpdate(provider);
+
+        double red{};
+        double green{};
+        double blue{};
+        double validityTotal{};
+        std::array<double, kEnvironmentCubeFaceCount> faceLuminance{};
+        std::array<double, kEnvironmentCubeFaceCount> faceValidity{};
+        std::array<double, kEnvironmentCubeFaceCount> faceSolidAngle{};
+        float peak{};
+        std::uint32_t nonBlack{};
+        std::uint32_t covered{};
+        DiffuseSHFit diffuseFit{};
+        bool validGeneration = true;
+        const auto faceSampleCount = resources_.extent * resources_.extent;
+        for (UINT face = 0; face < kEnvironmentCubeFaceCount; ++face) {
+            const auto subresource = D3D11CalcSubresource(0, face, 1);
+            D3D11_MAPPED_SUBRESOURCE mappedRadiance{};
+            D3D11_MAPPED_SUBRESOURCE mappedValidity{};
+            if (FAILED(context->Map(
+                    resources_.stagingRadiance.Get(),
+                    subresource,
+                    D3D11_MAP_READ,
+                    0,
+                    &mappedRadiance)) ||
+                !mappedRadiance.pData ||
+                mappedRadiance.RowPitch <
+                    resources_.extent * sizeof(std::uint32_t)) {
+                if (mappedRadiance.pData) {
+                    context->Unmap(
+                        resources_.stagingRadiance.Get(),
+                        subresource);
+                }
+                validGeneration = false;
+                break;
             }
-            ++nextValidationFace_;
-            if (nextValidationFace_ < kEnvironmentCubeFaceCount) {
-                return EnvironmentUpdateConsumeResult::pending;
+            if (FAILED(context->Map(
+                    resources_.stagingValidity.Get(),
+                    subresource,
+                    D3D11_MAP_READ,
+                    0,
+                    &mappedValidity)) ||
+                !mappedValidity.pData ||
+                mappedValidity.RowPitch <
+                    resources_.extent * sizeof(float)) {
+                context->Unmap(
+                    resources_.stagingRadiance.Get(),
+                    subresource);
+                if (mappedValidity.pData) {
+                    context->Unmap(
+                        resources_.stagingValidity.Get(),
+                        subresource);
+                }
+                validGeneration = false;
+                break;
             }
-            return completeValidation(provider);
+
+            for (std::uint32_t y = 0; y < resources_.extent; ++y) {
+                const auto* radianceRow =
+                    reinterpret_cast<const std::uint32_t*>(
+                        static_cast<const std::byte*>(mappedRadiance.pData) +
+                        static_cast<std::size_t>(y) *
+                            mappedRadiance.RowPitch);
+                const auto* validityRow = reinterpret_cast<const float*>(
+                    static_cast<const std::byte*>(mappedValidity.pData) +
+                    static_cast<std::size_t>(y) * mappedValidity.RowPitch);
+                for (std::uint32_t x = 0; x < resources_.extent; ++x) {
+                    const auto validity = validityRow[x];
+                    const auto sample = decodeR11G11B10Float(radianceRow[x]);
+                    if (!std::isfinite(validity) || validity < 0.0f ||
+                        validity > 1.0001f || !std::isfinite(sample.red) ||
+                        !std::isfinite(sample.green) ||
+                        !std::isfinite(sample.blue) || sample.red < 0.0f ||
+                        sample.green < 0.0f || sample.blue < 0.0f) {
+                        validGeneration = false;
+                        continue;
+                    }
+                    red += sample.red;
+                    green += sample.green;
+                    blue += sample.blue;
+                    validityTotal += validity;
+                    const auto luminance = sample.red * 0.2126f +
+                        sample.green * 0.7152f + sample.blue * 0.0722f;
+                    faceLuminance[face] += luminance;
+                    const auto samplePeak = std::max(
+                        sample.red,
+                        std::max(sample.green, sample.blue));
+                    peak = std::max(peak, samplePeak);
+                    if (samplePeak > kNonBlackThreshold) {
+                        ++nonBlack;
+                    }
+                    if (validity > kCoveredThreshold) {
+                        ++covered;
+                    }
+                    const auto horizontal =
+                        ((static_cast<float>(x) + 0.5f) /
+                            static_cast<float>(resources_.extent)) *
+                            2.0f -
+                        1.0f;
+                    const auto vertical =
+                        ((static_cast<float>(y) + 0.5f) /
+                            static_cast<float>(resources_.extent)) *
+                            2.0f -
+                        1.0f;
+                    const auto solidAngleWeight =
+                        cubeTexelSolidAngleWeight(horizontal, vertical);
+                    faceValidity[face] +=
+                        static_cast<double>(validity) * solidAngleWeight;
+                    faceSolidAngle[face] += solidAngleWeight;
+                    accumulateDiffuseSHFit(
+                        diffuseFit,
+                        environmentCubeDirection(
+                            static_cast<EnvironmentCubeFace>(face),
+                            horizontal,
+                            vertical),
+                        { sample.red, sample.green, sample.blue },
+                        validity,
+                        solidAngleWeight);
+                }
+            }
+            context->Unmap(resources_.stagingValidity.Get(), subresource);
+            context->Unmap(resources_.stagingRadiance.Get(), subresource);
         }
-        return abortPendingUpdate(provider);
+
+        const auto totalSamples = faceSampleCount * kEnvironmentCubeFaceCount;
+        validGeneration = validGeneration && covered > 0;
+        if (!validGeneration || !provider.publishUpdate()) {
+            provider.abortUpdate();
+            summary_.pending = false;
+            recordFailure();
+            return EnvironmentUpdateConsumeResult::failed;
+        }
+
+        const auto inverseTotal = 1.0 / static_cast<double>(totalSamples);
+        summary_.average = {
+            static_cast<float>(red * inverseTotal),
+            static_cast<float>(green * inverseTotal),
+            static_cast<float>(blue * inverseTotal),
+        };
+        for (std::uint32_t face = 0; face < kEnvironmentCubeFaceCount; ++face) {
+            summary_.faceAverageLuminance[face] = static_cast<float>(
+                faceLuminance[face] / static_cast<double>(faceSampleCount));
+            summary_.faceAverageValidity[face] = faceSolidAngle[face] > 0.0 ?
+                static_cast<float>(
+                    faceValidity[face] / faceSolidAngle[face]) :
+                0.0f;
+        }
+        summary_.peak = peak;
+        summary_.averageValidity = static_cast<float>(
+            validityTotal * inverseTotal);
+        summary_.nonBlackSamples = nonBlack;
+        summary_.coveredSamples = covered;
+        summary_.sampleCount = totalSamples;
+        summary_.diffuseSHCoverage = diffuseSHFitCoverage(diffuseFit);
+        summary_.diffuseSH = {};
+        summary_.diffuseSHState = solveDiffuseSHFit(
+                                      diffuseFit,
+                                      summary_.diffuseSH) ?
+            classifyDiffuseSH(summary_.diffuseSH) :
+            DiffuseSHState::invalid;
+        summary_.pending = false;
+        ++summary_.completedReadbacks;
+        ++summary_.publishedUpdates;
+        return EnvironmentUpdateConsumeResult::completed;
     }
 
     void EnvironmentUpdater::recordFailure() noexcept

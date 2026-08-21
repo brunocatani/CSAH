@@ -85,8 +85,6 @@ namespace community_shaders::contact_shadows
             const void* bytecode,
             SIZE_T bytecodeLength,
             ID3D11PixelShader* shader) noexcept;
-        void observeDepthTargetBinding(
-            ID3D11DepthStencilView* depthStencil) noexcept;
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11PixelShader* requested,
             bool compositorFeatureActive) noexcept;
@@ -106,7 +104,7 @@ namespace community_shaders::contact_shadows
 
     private:
         Runtime() = default;
-        [[nodiscard]] bool uploadSettings(
+        void uploadSettings(
             ID3D11DeviceContext* context,
             bool contactShadowsActive,
             bool maskActive,
@@ -134,7 +132,6 @@ namespace community_shaders::contact_shadows
             kMaximumShaderContracts> replacements_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> dispatchCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
-        Microsoft::WRL::ComPtr<ID3D11ComputeShader> reprojectCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolveCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> dispatchRecords_;
@@ -151,13 +148,11 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11Texture2D> maskTexture_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> maskView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> maskOutput_;
-        Microsoft::WRL::ComPtr<ID3D11Resource> maskDepthResource_;
         UINT maskWidth_{};
         UINT maskHeight_{};
         std::array<TrackedShader, kMaximumTrackedShaders> originals_{};
         std::atomic_bool enabled_{ true };
         std::atomic_bool foveated_{ true };
-        std::atomic_bool stereoReprojection_{ true };
         std::atomic<float> strength_{ 0.85f };
         std::atomic<float> maxDistance_{ 96.0f };
         std::atomic<float> fadeDistance_{ 2048.0f };
@@ -165,8 +160,6 @@ namespace community_shaders::contact_shadows
         std::atomic_uint32_t sampleCount_{ 8 };
         std::atomic_uint64_t settingsRevision_{ 1 };
         std::atomic_bool resourcesReady_{};
-        std::atomic_bool maskDirty_{ true };
-        std::atomic_bool maskValid_{};
         std::uint64_t uploadedRevision_{};
         bool uploadedContactActive_{};
         bool uploadedMaskActive_{};

@@ -10,7 +10,6 @@ namespace community_shaders::contact_shadows
     {
         bool enabled{ true };
         bool foveated{ true };
-        bool stereoReprojection{ true };
         float strength{ 0.85f };
         float maxDistance{ 96.0f };
         float fadeDistance{ 2048.0f };

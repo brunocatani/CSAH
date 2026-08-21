@@ -5,7 +5,6 @@
 #include "support/Logger.h"
 
 #include "SubsurfaceScatteringCS.h"
-#include "SubsurfaceTileClassifyCS.h"
 
 #include <array>
 #include <utility>
@@ -16,6 +15,8 @@ namespace community_shaders::subsurface_scattering
     {
         constexpr UINT kAlbedoSlot = 0;
         constexpr UINT kDepthSlot = 3;
+        constexpr UINT kThreadGroupWidth = 8;
+        constexpr UINT kThreadGroupHeight = 8;
 
         struct alignas(16) GpuSettings
         {
@@ -55,7 +56,6 @@ namespace community_shaders::subsurface_scattering
         resourcesReady_.store(false, std::memory_order_release);
         device_ = device;
         context_ = context;
-        classifyShader_.Reset();
         shader_.Reset();
         constants_.Reset();
         scratchA_.Reset();
@@ -64,15 +64,6 @@ namespace community_shaders::subsurface_scattering
         scratchBView_.Reset();
         scratchAOutput_.Reset();
         scratchBOutput_.Reset();
-        sourceResource_.Reset();
-        sourceOutput_.Reset();
-        activeTiles_.Reset();
-        activeTilesView_.Reset();
-        activeTilesOutput_.Reset();
-        tileDispatchArguments_.Reset();
-        tileDispatchArgumentsOutput_.Reset();
-        sourceSubresource_ = 0;
-        tileCapacity_ = 0;
         width_ = 0;
         height_ = 0;
         format_ = DXGI_FORMAT_UNKNOWN;
@@ -81,17 +72,11 @@ namespace community_shaders::subsurface_scattering
             failures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        const auto classifyResult = device->CreateComputeShader(
-            fo4vr_cs_subsurface_tile_classify,
-            sizeof(fo4vr_cs_subsurface_tile_classify),
-            nullptr,
-            classifyShader_.ReleaseAndGetAddressOf());
-        const auto shaderResult = SUCCEEDED(classifyResult) ?
-            device->CreateComputeShader(
+        const auto shaderResult = device->CreateComputeShader(
             fo4vr_cs_subsurface_scattering,
             sizeof(fo4vr_cs_subsurface_scattering),
             nullptr,
-            shader_.ReleaseAndGetAddressOf()) : E_FAIL;
+            shader_.ReleaseAndGetAddressOf());
         D3D11_BUFFER_DESC description{};
         description.ByteWidth = sizeof(GpuSettings);
         description.Usage = D3D11_USAGE_DEFAULT;
@@ -100,23 +85,20 @@ namespace community_shaders::subsurface_scattering
             device->CreateBuffer(
                 &description, nullptr, constants_.ReleaseAndGetAddressOf()) :
             E_FAIL;
-        if (FAILED(classifyResult) || FAILED(shaderResult) ||
-            FAILED(bufferResult) || !classifyShader_ || !shader_ ||
+        if (FAILED(shaderResult) || FAILED(bufferResult) || !shader_ ||
             !constants_) {
-            classifyShader_.Reset();
             shader_.Reset();
             constants_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
-                "Subsurface Scattering GPU resource creation failed (classify=0x{:08X}, shader=0x{:08X}, constants=0x{:08X}).",
-                static_cast<std::uint32_t>(classifyResult),
+                "Subsurface Scattering GPU resource creation failed (shader=0x{:08X}, constants=0x{:08X}).",
                 static_cast<std::uint32_t>(shaderResult),
                 static_cast<std::uint32_t>(bufferResult));
             return;
         }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Subsurface Scattering skin-tile classification and indirect stereo compute pipeline is ready; execution remains class-mask-gated after exact directional DFLight.");
+            "Subsurface Scattering stereo compute pipeline is ready; execution is class-mask-gated after exact directional DFLight and producer coverage is reported separately.");
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept
@@ -238,127 +220,8 @@ namespace community_shaders::subsurface_scattering
                 "Subsurface Scattering stereo scratch pair allocated at {}x{} format {}.",
                 width_, height_, static_cast<unsigned>(format_));
         }
-        const auto tileCapacity =
-            ((width + 15u) / 16u) * ((height + 15u) / 16u);
-        if (!activeTiles_ || !activeTilesView_ || !activeTilesOutput_ ||
-            !tileDispatchArguments_ || !tileDispatchArgumentsOutput_ ||
-            tileCapacity_ != tileCapacity) {
-            D3D11_BUFFER_DESC tileDescription{};
-            tileDescription.ByteWidth = tileCapacity * sizeof(UINT) * 2u;
-            tileDescription.Usage = D3D11_USAGE_DEFAULT;
-            tileDescription.BindFlags =
-                D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-            tileDescription.MiscFlags =
-                D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-            tileDescription.StructureByteStride = sizeof(UINT) * 2u;
-            Microsoft::WRL::ComPtr<ID3D11Buffer> nextTiles;
-            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nextTileView;
-            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> nextTileOutput;
-            auto result = device_->CreateBuffer(
-                &tileDescription,
-                nullptr,
-                nextTiles.GetAddressOf());
-            D3D11_SHADER_RESOURCE_VIEW_DESC tileViewDescription{};
-            tileViewDescription.Format = DXGI_FORMAT_UNKNOWN;
-            tileViewDescription.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-            tileViewDescription.Buffer.NumElements = tileCapacity;
-            result = SUCCEEDED(result) ?
-                device_->CreateShaderResourceView(
-                    nextTiles.Get(),
-                    &tileViewDescription,
-                    nextTileView.GetAddressOf()) : result;
-            D3D11_UNORDERED_ACCESS_VIEW_DESC tileOutputDescription{};
-            tileOutputDescription.Format = DXGI_FORMAT_UNKNOWN;
-            tileOutputDescription.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-            tileOutputDescription.Buffer.NumElements = tileCapacity;
-            result = SUCCEEDED(result) ?
-                device_->CreateUnorderedAccessView(
-                    nextTiles.Get(),
-                    &tileOutputDescription,
-                    nextTileOutput.GetAddressOf()) : result;
-
-            D3D11_BUFFER_DESC argumentDescription{};
-            argumentDescription.ByteWidth = sizeof(UINT) * 3u;
-            argumentDescription.Usage = D3D11_USAGE_DEFAULT;
-            argumentDescription.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
-            argumentDescription.MiscFlags =
-                D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS |
-                D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
-            Microsoft::WRL::ComPtr<ID3D11Buffer> nextArguments;
-            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
-                nextArgumentOutput;
-            result = SUCCEEDED(result) ? device_->CreateBuffer(
-                &argumentDescription,
-                nullptr,
-                nextArguments.GetAddressOf()) : result;
-            D3D11_UNORDERED_ACCESS_VIEW_DESC argumentOutputDescription{};
-            argumentOutputDescription.Format = DXGI_FORMAT_R32_TYPELESS;
-            argumentOutputDescription.ViewDimension =
-                D3D11_UAV_DIMENSION_BUFFER;
-            argumentOutputDescription.Buffer.NumElements = 3;
-            argumentOutputDescription.Buffer.Flags =
-                D3D11_BUFFER_UAV_FLAG_RAW;
-            result = SUCCEEDED(result) ?
-                device_->CreateUnorderedAccessView(
-                    nextArguments.Get(),
-                    &argumentOutputDescription,
-                    nextArgumentOutput.GetAddressOf()) : result;
-            if (FAILED(result) || !nextTiles || !nextTileView ||
-                !nextTileOutput || !nextArguments ||
-                !nextArgumentOutput) {
-                failures_.fetch_add(1, std::memory_order_relaxed);
-                logging::error(
-                    "Subsurface Scattering skin-tile infrastructure allocation failed for {} tiles (HRESULT=0x{:08X}).",
-                    tileCapacity,
-                    static_cast<std::uint32_t>(result));
-                return false;
-            }
-            activeTiles_ = std::move(nextTiles);
-            activeTilesView_ = std::move(nextTileView);
-            activeTilesOutput_ = std::move(nextTileOutput);
-            tileDispatchArguments_ = std::move(nextArguments);
-            tileDispatchArgumentsOutput_ = std::move(nextArgumentOutput);
-            tileCapacity_ = tileCapacity;
-            logging::info(
-                "Subsurface Scattering allocated a fixed {}-tile indirect skin worklist.",
-                tileCapacity_);
-        }
-        const auto calculatedSubresource = D3D11CalcSubresource(
+        *sourceSubresource = D3D11CalcSubresource(
             mipSlice, arraySlice, sourceDescription.MipLevels);
-        if (!sourceOutput_ || sourceResource_.Get() != resource.Get() ||
-            sourceSubresource_ != calculatedSubresource) {
-            sourceOutput_.Reset();
-            sourceResource_.Reset();
-            if ((sourceDescription.BindFlags &
-                    D3D11_BIND_UNORDERED_ACCESS) != 0) {
-                D3D11_UNORDERED_ACCESS_VIEW_DESC outputDescription{};
-                outputDescription.Format = format;
-                if (viewDescription.ViewDimension ==
-                    D3D11_RTV_DIMENSION_TEXTURE2D) {
-                    outputDescription.ViewDimension =
-                        D3D11_UAV_DIMENSION_TEXTURE2D;
-                    outputDescription.Texture2D.MipSlice = mipSlice;
-                } else {
-                    outputDescription.ViewDimension =
-                        D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
-                    outputDescription.Texture2DArray.MipSlice = mipSlice;
-                    outputDescription.Texture2DArray.FirstArraySlice =
-                        arraySlice;
-                    outputDescription.Texture2DArray.ArraySize = 1;
-                }
-                if (SUCCEEDED(device_->CreateUnorderedAccessView(
-                        texture.Get(),
-                        &outputDescription,
-                        sourceOutput_.ReleaseAndGetAddressOf())) &&
-                    sourceOutput_) {
-                    sourceResource_ = resource;
-                    sourceSubresource_ = calculatedSubresource;
-                    logging::info(
-                        "Subsurface Scattering will write its vertical pass directly to the directional-light target; the full-frame copy-back is bypassed.");
-                }
-            }
-        }
-        *sourceSubresource = calculatedSubresource;
         *source = texture.Detach();
         return true;
     }
@@ -389,7 +252,7 @@ namespace community_shaders::subsurface_scattering
         ID3D11DeviceContext* context) noexcept
     {
         if (!requested() || !context || context != context_.Get() ||
-            !classifyShader_ || !shader_ || !constants_) {
+            !shader_ || !constants_) {
             return false;
         }
         auto* surfaceClass =
@@ -420,9 +283,7 @@ namespace community_shaders::subsurface_scattering
         ID3D11Texture2D* sourceRaw{};
         if (!ensureScratch(
                 targets[0].Get(), &sourceRaw, &sourceSubresource) ||
-            !sourceRaw || !activeTiles_ || !activeTilesView_ ||
-            !activeTilesOutput_ || !tileDispatchArguments_ ||
-            !tileDispatchArgumentsOutput_) {
+            !sourceRaw) {
             return false;
         }
         source.Attach(sourceRaw);
@@ -437,62 +298,20 @@ namespace community_shaders::subsurface_scattering
         context->CopySubresourceRegion(
             scratchA_.Get(), 0, 0, 0, 0, source.Get(), sourceSubresource,
             &sourceBox);
-        context->OMSetRenderTargets(0, nullptr, nullptr);
-
-        constexpr std::array<UINT, 3> initialDispatchArguments{ 0, 1, 1 };
-        context->UpdateSubresource(
-            tileDispatchArguments_.Get(),
-            0,
-            nullptr,
-            initialDispatchArguments.data(),
-            0,
-            0);
 
         render::ScopedComputeState restore(
             context,
             {
                 .firstShaderResource = 0,
-                .shaderResourceCount = 5,
+                .shaderResourceCount = 4,
                 .firstUnorderedAccess = 0,
-                .unorderedAccessCount = 2,
+                .unorderedAccessCount = 1,
                 .firstConstantBuffer = 0,
                 .constantBufferCount = 1,
             });
         if (!restore.captured()) {
-            context->OMSetRenderTargets(
-                targetCount, rawTargets.data(), depthStencil.Get());
             return false;
         }
-        if (!updateConstants(context, 0.0f, 0.0f)) {
-            (void)restore.restore();
-            context->OMSetRenderTargets(
-                targetCount, rawTargets.data(), depthStencil.Get());
-            return false;
-        }
-        auto* classifyInput = surfaceClass;
-        const std::array<ID3D11UnorderedAccessView*, 2> classifyOutputs{
-            activeTilesOutput_.Get(),
-            tileDispatchArgumentsOutput_.Get(),
-        };
-        auto* constants = constants_.Get();
-        context->CSSetShader(classifyShader_.Get(), nullptr, 0);
-        context->CSSetShaderResources(0, 1, &classifyInput);
-        context->CSSetUnorderedAccessViews(
-            0,
-            static_cast<UINT>(classifyOutputs.size()),
-            classifyOutputs.data(),
-            nullptr);
-        context->CSSetConstantBuffers(0, 1, &constants);
-        context->Dispatch(
-            (width_ + 15u) / 16u,
-            (height_ + 15u) / 16u,
-            1);
-        const std::array<ID3D11UnorderedAccessView*, 2> noClassifyOutputs{};
-        context->CSSetUnorderedAccessViews(
-            0,
-            static_cast<UINT>(noClassifyOutputs.size()),
-            noClassifyOutputs.data(),
-            nullptr);
         auto dispatch = [this, context, albedo = albedo.Get(),
                             depth = depth.Get(), surfaceClass](
                             ID3D11ShaderResourceView* input,
@@ -502,8 +321,8 @@ namespace community_shaders::subsurface_scattering
             if (!updateConstants(context, directionX, directionY)) {
                 return false;
             }
-            std::array<ID3D11ShaderResourceView*, 5> inputs{
-                input, depth, surfaceClass, albedo, activeTilesView_.Get(),
+            std::array<ID3D11ShaderResourceView*, 4> inputs{
+                input, depth, surfaceClass, albedo,
             };
             auto* constants = constants_.Get();
             context->CSSetShader(shader_.Get(), nullptr, 0);
@@ -511,8 +330,11 @@ namespace community_shaders::subsurface_scattering
                 0, static_cast<UINT>(inputs.size()), inputs.data());
             context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
             context->CSSetConstantBuffers(0, 1, &constants);
-            context->DispatchIndirect(tileDispatchArguments_.Get(), 0);
-            std::array<ID3D11ShaderResourceView*, 5> nullInputs{};
+            context->Dispatch(
+                (width_ + kThreadGroupWidth - 1) / kThreadGroupWidth,
+                (height_ + kThreadGroupHeight - 1) / kThreadGroupHeight,
+                1);
+            std::array<ID3D11ShaderResourceView*, 4> nullInputs{};
             ID3D11UnorderedAccessView* nullOutput{};
             context->CSSetShaderResources(
                 0, static_cast<UINT>(nullInputs.size()), nullInputs.data());
@@ -523,28 +345,20 @@ namespace community_shaders::subsurface_scattering
         };
         const auto horizontal = dispatch(
             scratchAView_.Get(), scratchBOutput_.Get(), 1.0f, 0.0f);
-        auto* verticalOutput = sourceOutput_ ?
-            sourceOutput_.Get() : scratchAOutput_.Get();
         const auto vertical = horizontal && dispatch(
-            scratchBView_.Get(), verticalOutput, 0.0f, 1.0f);
+            scratchBView_.Get(), scratchAOutput_.Get(), 0.0f, 1.0f);
         const auto restored = restore.restore();
-        if (vertical && restored && !sourceOutput_) {
-            context->CopySubresourceRegion(
-                source.Get(),
-                sourceSubresource,
-                0,
-                0,
-                0,
-                scratchA_.Get(),
-                0,
-                nullptr);
-        }
-        context->OMSetRenderTargets(
-            targetCount, rawTargets.data(), depthStencil.Get());
         if (!vertical || !restored) {
             failures_.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
+
+        context->OMSetRenderTargets(0, nullptr, nullptr);
+        context->CopySubresourceRegion(
+            source.Get(), sourceSubresource, 0, 0, 0, scratchA_.Get(), 0,
+            nullptr);
+        context->OMSetRenderTargets(
+            targetCount, rawTargets.data(), depthStencil.Get());
         executions_.fetch_add(1, std::memory_order_relaxed);
         if (!firstExecutionLogged_.exchange(
                 true, std::memory_order_relaxed)) {
