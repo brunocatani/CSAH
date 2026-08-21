@@ -24,9 +24,9 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kWrapperFirstCallTargetRva = 0x0012FB50;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
-        constexpr std::array<std::byte, 5> kWrapperSignature{
-            std::byte{ 0x53 }, std::byte{ 0x48 }, std::byte{ 0x83 },
-            std::byte{ 0xEC }, std::byte{ 0x30 },
+        constexpr std::array<std::byte, 6> kWrapperSignature{
+            std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x48 },
+            std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x30 },
         };
         constexpr std::array<std::byte, 20> kRenderSignature{
             std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
@@ -225,41 +225,94 @@ namespace community_shaders::skylighting
                                  std::size_t size) noexcept {
             return rva <= imageSize && size <= imageSize - rva;
         };
-        if (!inImage(kWrapperRva, kWrapperSignature.size() + 5) ||
-            !inImage(kRenderRva, kRenderSignature.size()) ||
-            !inImage(kProjectionRva, kProjectionSignature.size()) ||
-            !inImage(kCubeSizeRva, sizeof(float)) ||
-            !inImage(kDirectionRva, sizeof(float) * 3)) {
+        if (!inImage(kWrapperRva, kWrapperSignature.size() + 5)) {
             logging::error(
-                "Skylighting native hook rejected out-of-image FO4VR contracts.");
+                "Skylighting native wrapper contract at RVA 0x00634300 is outside the FO4VR image.");
+            return false;
+        }
+        if (!inImage(kRenderRva, kRenderSignature.size())) {
+            logging::error(
+                "Skylighting native render contract at RVA 0x006350C0 is outside the FO4VR image.");
+            return false;
+        }
+        if (!inImage(kProjectionRva, kProjectionSignature.size())) {
+            logging::error(
+                "Skylighting native projection contract at RVA 0x00635530 is outside the FO4VR image.");
+            return false;
+        }
+        if (!inImage(kCubeSizeRva, sizeof(float))) {
+            logging::error(
+                "Skylighting native cube-size contract at RVA 0x05A3CFA4 is outside the FO4VR image.");
+            return false;
+        }
+        if (!inImage(kDirectionRva, sizeof(float) * 3)) {
+            logging::error(
+                "Skylighting native direction contract at RVA 0x05A3CFC8 is outside the FO4VR image.");
             return false;
         }
 
         auto* wrapper = image + kWrapperRva;
         auto* render = image + kRenderRva;
         auto* projection = image + kProjectionRva;
-        if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5) ||
-            std::memcmp(
+        if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5)) {
+            logging::error(
+                "Skylighting native wrapper contract at RVA 0x00634300 is not executable and readable.");
+            return false;
+        }
+        if (std::memcmp(
                 wrapper,
                 kWrapperSignature.data(),
-                kWrapperSignature.size()) != 0 ||
-            wrapper[kWrapperSignature.size()] != std::byte{ 0xE8 } ||
-            relativeTarget(wrapper + kWrapperSignature.size()) !=
-                image + kWrapperFirstCallTargetRva ||
-            !isExecutableRange(render, kRenderSignature.size()) ||
-            std::memcmp(
+                kWrapperSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native wrapper signature mismatch at RVA 0x00634300.");
+            return false;
+        }
+        auto* wrapperFirstCall = wrapper + kWrapperSignature.size();
+        if (wrapperFirstCall[0] != std::byte{ 0xE8 }) {
+            logging::error(
+                "Skylighting native wrapper first-call opcode mismatch at RVA 0x00634306.");
+            return false;
+        }
+        if (relativeTarget(wrapperFirstCall) !=
+            image + kWrapperFirstCallTargetRva) {
+            logging::error(
+                "Skylighting native wrapper first-call target mismatch; expected RVA 0x0012FB50.");
+            return false;
+        }
+        if (!isExecutableRange(render, kRenderSignature.size())) {
+            logging::error(
+                "Skylighting native render contract at RVA 0x006350C0 is not executable and readable.");
+            return false;
+        }
+        if (std::memcmp(
                 render,
                 kRenderSignature.data(),
-                kRenderSignature.size()) != 0 ||
-            !isExecutableRange(projection, kProjectionSignature.size()) ||
-            std::memcmp(
+                kRenderSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native render signature mismatch at RVA 0x006350C0.");
+            return false;
+        }
+        if (!isExecutableRange(projection, kProjectionSignature.size())) {
+            logging::error(
+                "Skylighting native projection contract at RVA 0x00635530 is not executable and readable.");
+            return false;
+        }
+        if (std::memcmp(
                 projection,
                 kProjectionSignature.data(),
-                kProjectionSignature.size()) != 0 ||
-            !isReadableRange(image + kCubeSizeRva, sizeof(float)) ||
-            !isReadableRange(image + kDirectionRva, sizeof(float) * 3)) {
+                kProjectionSignature.size()) != 0) {
             logging::error(
-                "Skylighting native FO4VR identity gate failed; the feature remains inactive.");
+                "Skylighting native projection signature mismatch at RVA 0x00635530.");
+            return false;
+        }
+        if (!isReadableRange(image + kCubeSizeRva, sizeof(float))) {
+            logging::error(
+                "Skylighting native cube-size global at RVA 0x05A3CFA4 is not readable.");
+            return false;
+        }
+        if (!isReadableRange(image + kDirectionRva, sizeof(float) * 3)) {
+            logging::error(
+                "Skylighting native direction global at RVA 0x05A3CFC8 is not readable.");
             return false;
         }
 
