@@ -209,6 +209,16 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+foreach(required IN ITEMS
+    "flatten_operands("
+    "Skylighting template retained an unmapped temporary operand")
+  string(FIND "${generator}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Skylighting DXBC nested-operand gate is missing '${required}'")
+  endif()
+endforeach()
+
 string(REGEX MATCHALL
   "Fo4vrCsSkylightingAmbientContract\\{"
   ambientContracts "${ambientHeader}")

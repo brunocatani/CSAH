@@ -42,6 +42,7 @@ class Operand:
     end: int
     operand_type: int
     immediate_indices: tuple[int | None, ...]
+    relative_operands: tuple[Operand, ...] = ()
 
 
 def u32(data: bytes | bytearray, offset: int) -> int:
@@ -263,9 +264,10 @@ def parse_operand(words: list[int], start: int, end: int) -> Operand:
             cursor += 1 + count
         if cursor > end:
             raise TransformError("DXBC immediate operand escapes its instruction")
-        return Operand(start, cursor, operand_type, ())
+        return Operand(start, cursor, operand_type, (), ())
 
     indices: list[int | None] = []
+    relative_operands: list[Operand] = []
     for dimension in range(index_dimension):
         representation = (token >> (22 + dimension * 3)) & 0x7
         if representation == 0:
@@ -281,6 +283,7 @@ def parse_operand(words: list[int], start: int, end: int) -> Operand:
         elif representation == 2:
             relative = parse_operand(words, cursor, end)
             indices.append(None)
+            relative_operands.append(relative)
             cursor = relative.end
         elif representation in (3, 4):
             immediate_words = 1 if representation == 3 else 2
@@ -289,10 +292,30 @@ def parse_operand(words: list[int], start: int, end: int) -> Operand:
             cursor += immediate_words
             relative = parse_operand(words, cursor, end)
             indices.append(None)
+            relative_operands.append(relative)
             cursor = relative.end
         else:
             raise TransformError("DXBC operand uses an unsupported index representation")
-    return Operand(start, cursor, operand_type, tuple(indices))
+    return Operand(
+        start,
+        cursor,
+        operand_type,
+        tuple(indices),
+        tuple(relative_operands),
+    )
+
+
+def flatten_operands(operands: list[Operand]) -> list[Operand]:
+    result: list[Operand] = []
+
+    def append_tree(operand: Operand) -> None:
+        result.append(operand)
+        for relative in operand.relative_operands:
+            append_tree(relative)
+
+    for operand in operands:
+        append_tree(operand)
+    return result
 
 
 def executable_operands(

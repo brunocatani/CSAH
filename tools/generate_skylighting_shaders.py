@@ -21,6 +21,7 @@ from dxbc_transform import (
     TransformError as ContractError,
     build_dxbc,
     executable_operands,
+    flatten_operands,
     instructions,
     opcode_extension_end,
     pack_words,
@@ -109,7 +110,9 @@ def replace_instruction_operands(
 ) -> list[int]:
     operands = {
         operand.start: operand
-        for operand in executable_operands(instruction, 0, len(instruction))
+        for operand in flatten_operands(
+            executable_operands(instruction, 0, len(instruction))
+        )
     }
     result: list[int] = []
     cursor = 0
@@ -213,7 +216,9 @@ def remap_template_instruction(
     specular_visibility_temp: int,
 ) -> list[int]:
     replacements: dict[int, list[int]] = {}
-    for operand in executable_operands(instruction, 0, len(instruction)):
+    for operand in flatten_operands(
+        executable_operands(instruction, 0, len(instruction))
+    ):
         if operand.operand_type == OPERAND_TEMP:
             if (
                 len(operand.immediate_indices) != 1
@@ -247,7 +252,27 @@ def remap_template_instruction(
                 raise ContractError(
                     "Skylighting template input contract changed"
                 )
-    return replace_instruction_operands(instruction, replacements)
+    result = replace_instruction_operands(instruction, replacements)
+    allowed_temps = set(
+        range(first_template_temp, first_template_temp + template_temp_count)
+    )
+    allowed_temps.update(
+        (diffuse_visibility_temp, specular_visibility_temp)
+    )
+    for operand in flatten_operands(
+        executable_operands(result, 0, len(result))
+    ):
+        if operand.operand_type != OPERAND_TEMP:
+            continue
+        if (
+            len(operand.immediate_indices) != 1
+            or operand.immediate_indices[0] is None
+            or int(operand.immediate_indices[0]) not in allowed_temps
+        ):
+            raise ContractError(
+                "Skylighting template retained an unmapped temporary operand"
+            )
+    return result
 
 
 def output_mask(register: int, mask: int) -> list[int]:
