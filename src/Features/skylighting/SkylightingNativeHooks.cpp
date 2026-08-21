@@ -43,6 +43,8 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
+        constexpr std::uintptr_t kAccumulatorGeometryVisitRva =
+            0x0281BD40;
         constexpr std::uintptr_t kPass14ResolverRva = 0x0281CB50;
         constexpr std::uintptr_t kAccumulatorPassCollectorRva = 0x0281E760;
         constexpr std::uintptr_t kLightingPassListResolverRva = 0x027A51E0;
@@ -150,6 +152,20 @@ namespace community_shaders::skylighting
             std::byte{ 0xF0 }, std::byte{ 0x48 },
         };
         constexpr std::array<std::byte, 32>
+            kAccumulatorGeometryVisitSignature{
+                std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
+                std::byte{ 0x24 }, std::byte{ 0x18 }, std::byte{ 0x48 },
+                std::byte{ 0x89 }, std::byte{ 0x7C }, std::byte{ 0x24 },
+                std::byte{ 0x20 }, std::byte{ 0x41 }, std::byte{ 0x56 },
+                std::byte{ 0x48 }, std::byte{ 0x83 }, std::byte{ 0xEC },
+                std::byte{ 0x20 }, std::byte{ 0x45 }, std::byte{ 0x8B },
+                std::byte{ 0xF0 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+                std::byte{ 0xDA }, std::byte{ 0x48 }, std::byte{ 0x8B },
+                std::byte{ 0xF9 }, std::byte{ 0xE8 }, std::byte{ 0x72 },
+                std::byte{ 0x94 }, std::byte{ 0x05 }, std::byte{ 0x00 },
+                std::byte{ 0x84 }, std::byte{ 0xC0 },
+            };
+        constexpr std::array<std::byte, 32>
             kAccumulatorPassCollectorSignature{
                 std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
                 std::byte{ 0x24 }, std::byte{ 0x08 }, std::byte{ 0x48 },
@@ -206,6 +222,10 @@ namespace community_shaders::skylighting
 
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
+        using AccumulatorGeometryVisit = std::uint8_t(__fastcall*)(
+            void* accumulator,
+            void* geometry,
+            std::uint32_t context);
         using Pass14Resolver = std::uint64_t(__fastcall*)(
             void* accumulator,
             void* geometry,
@@ -261,6 +281,7 @@ namespace community_shaders::skylighting
         NativeSkySingleton nativeSkySingleton{};
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
+        AccumulatorGeometryVisit originalAccumulatorGeometryVisit{};
         Pass14Resolver originalPass14Resolver{};
         AccumulatorPassCollector collectAccumulatorPass{};
         LightingPassListResolver resolveLightingPassList{};
@@ -272,9 +293,11 @@ namespace community_shaders::skylighting
         const void* bsxFlagsVtable{};
         std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
+        std::byte* accumulatorGeometryVisitTarget{};
         std::byte* pass14Target{};
         const RE::NiRTTI* specialGeometryNiRtti{};
         DetourIdentity installedWrapperIdentity{};
+        DetourIdentity installedAccumulatorGeometryVisitIdentity{};
         DetourIdentity installedPass14Identity{};
         std::atomic_bool installed{};
         std::atomic_bool passProducerReady{};
@@ -282,6 +305,9 @@ namespace community_shaders::skylighting
         std::atomic_bool firstCallbackLogged{};
         std::atomic_bool missingManagerLogged{};
         std::atomic_uint64_t passProducerCalls{};
+        std::atomic_uint64_t pass14ResolverCalls{};
+        std::atomic_uint64_t accumulatorGeometryVisits{};
+        std::atomic_uint64_t accumulatorGeometryVisitModeMask{};
         std::atomic_uint64_t emittedPasses{};
         std::atomic_uint64_t collectedPasses{};
         std::atomic_uint64_t rejectedInvalid{};
@@ -540,6 +566,40 @@ namespace community_shaders::skylighting
             return passList;
         }
 
+        std::uint8_t __fastcall hookAccumulatorGeometryVisit(
+            void* accumulator,
+            void* geometry,
+            std::uint32_t context) noexcept
+        {
+            if (passProductionActive.load(std::memory_order_acquire)) {
+                accumulatorGeometryVisits.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                if (isReadableRange(
+                        accumulator,
+                        kAccumulatorPassIndexOffset +
+                            sizeof(std::uint32_t))) {
+                    std::uint32_t mode{};
+                    std::memcpy(
+                        &mode,
+                        static_cast<std::byte*>(accumulator) +
+                            kAccumulatorPassIndexOffset,
+                        sizeof(mode));
+                    if (mode < 64) {
+                        accumulatorGeometryVisitModeMask.fetch_or(
+                            1ull << mode,
+                            std::memory_order_relaxed);
+                    }
+                }
+            }
+            return originalAccumulatorGeometryVisit ?
+                originalAccumulatorGeometryVisit(
+                    accumulator,
+                    geometry,
+                    context) :
+                1;
+        }
+
         std::uint64_t __fastcall hookPass14Resolver(
             void* accumulator,
             void* geometryAddress,
@@ -556,6 +616,7 @@ namespace community_shaders::skylighting
                         bucketIndex) :
                     1;
             }
+            pass14ResolverCalls.fetch_add(1, std::memory_order_relaxed);
             if (!geometryAddress || !propertyAddress ||
                 !collectAccumulatorPass) {
                 rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
@@ -747,7 +808,9 @@ namespace community_shaders::skylighting
     ScopedOcclusionPassProduction::ScopedOcclusionPassProduction() noexcept
     {
         active_ = passProducerReady.load(std::memory_order_acquire) &&
-            originalPass14Resolver && collectAccumulatorPass &&
+            originalAccumulatorGeometryVisit &&
+            accumulatorGeometryVisitTarget && originalPass14Resolver &&
+            collectAccumulatorPass &&
             resolveLightingPassList && clearPassList && emplacePass &&
             utilityShader && pass14Target;
         if (active_) {
@@ -777,6 +840,13 @@ namespace community_shaders::skylighting
         return {
             .owned = passProducerReady.load(std::memory_order_acquire),
             .calls = passProducerCalls.load(std::memory_order_relaxed),
+            .pass14ResolverCalls = pass14ResolverCalls.load(
+                std::memory_order_relaxed),
+            .accumulatorGeometryVisits = accumulatorGeometryVisits.load(
+                std::memory_order_relaxed),
+            .accumulatorGeometryVisitModeMask =
+                accumulatorGeometryVisitModeMask.load(
+                    std::memory_order_relaxed),
             .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
             .collectedPasses = collectedPasses.load(
                 std::memory_order_relaxed),
@@ -865,6 +935,9 @@ namespace community_shaders::skylighting
             return false;
         }
         if (!inImage(
+                kAccumulatorGeometryVisitRva,
+                kAccumulatorGeometryVisitSignature.size()) ||
+            !inImage(
                 kPass14ResolverRva,
                 kPass14ResolverSignature.size()) ||
             !inImage(
@@ -893,6 +966,8 @@ namespace community_shaders::skylighting
         auto* renderDepthTargetSetup =
             render + kRenderDepthTargetSetupOffset;
         auto* depthTargetMapper = image + kDepthTargetMapperRva;
+        auto* accumulatorGeometryVisit =
+            image + kAccumulatorGeometryVisitRva;
         auto* pass14Resolver = image + kPass14ResolverRva;
         auto* accumulatorPassCollector =
             image + kAccumulatorPassCollectorRva;
@@ -994,6 +1069,17 @@ namespace community_shaders::skylighting
         if (!isReadableRange(image + kDirectionRva, sizeof(float) * 3)) {
             logging::error(
                 "Skylighting native direction global at RVA 0x05A3CFC8 is not readable.");
+            return false;
+        }
+        if (!isExecutableRange(
+                accumulatorGeometryVisit,
+                kAccumulatorGeometryVisitSignature.size()) ||
+            std::memcmp(
+                accumulatorGeometryVisit,
+                kAccumulatorGeometryVisitSignature.data(),
+                kAccumulatorGeometryVisitSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native accumulator geometry-visit signature mismatch at RVA 0x0281BD40.");
             return false;
         }
         if (!isExecutableRange(
@@ -1115,6 +1201,7 @@ namespace community_shaders::skylighting
 
         const auto resetResolvedContracts = []() noexcept {
             originalWrapper = nullptr;
+            originalAccumulatorGeometryVisit = nullptr;
             originalPass14Resolver = nullptr;
             nativeSkySingleton = nullptr;
             nativeRender = nullptr;
@@ -1129,8 +1216,10 @@ namespace community_shaders::skylighting
             bsxFlagsVtable = nullptr;
             specialGeometryNiRtti = nullptr;
             wrapperTarget = nullptr;
+            accumulatorGeometryVisitTarget = nullptr;
             pass14Target = nullptr;
             installedWrapperIdentity = {};
+            installedAccumulatorGeometryVisitIdentity = {};
             installedPass14Identity = {};
             passProducerReady.store(false, std::memory_order_release);
             bsxKey.reset();
@@ -1154,6 +1243,25 @@ namespace community_shaders::skylighting
             return false;
         }
 
+        void* accumulatorGeometryVisitTrampoline{};
+        status = MH_CreateHook(
+            accumulatorGeometryVisit,
+            reinterpret_cast<void*>(&hookAccumulatorGeometryVisit),
+            &accumulatorGeometryVisitTrampoline);
+        if (status != MH_OK ||
+            !isExecutableRange(accumulatorGeometryVisitTrampoline, 1)) {
+            if (status == MH_OK) {
+                (void)MH_RemoveHook(accumulatorGeometryVisit);
+            }
+            (void)MH_RemoveHook(wrapper);
+            logging::error(
+                "Skylighting native accumulator geometry-visit detour creation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
+            return false;
+        }
+
         void* pass14Trampoline{};
         status = MH_CreateHook(
             pass14Resolver,
@@ -1163,6 +1271,7 @@ namespace community_shaders::skylighting
             if (status == MH_OK) {
                 (void)MH_RemoveHook(pass14Resolver);
             }
+            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native pass-14 detour creation failed: {} ({}).",
@@ -1174,6 +1283,9 @@ namespace community_shaders::skylighting
 
         originalWrapper = reinterpret_cast<WrapperFunction>(
             wrapperTrampoline);
+        originalAccumulatorGeometryVisit =
+            reinterpret_cast<AccumulatorGeometryVisit>(
+                accumulatorGeometryVisitTrampoline);
         originalPass14Resolver = reinterpret_cast<Pass14Resolver>(
             pass14Trampoline);
         nativeSkySingleton =
@@ -1182,12 +1294,32 @@ namespace community_shaders::skylighting
         nativeRender = reinterpret_cast<NativePrecipitationRender>(render);
         nativeProjection = reinterpret_cast<NativeProjectionSetup>(projection);
 
+        status = MH_EnableHook(accumulatorGeometryVisit);
+        DetourIdentity accumulatorGeometryVisitIdentity{};
+        if (status != MH_OK ||
+            !captureDetourIdentity(
+                accumulatorGeometryVisit,
+                accumulatorGeometryVisitIdentity)) {
+            (void)MH_DisableHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(pass14Resolver);
+            (void)MH_RemoveHook(wrapper);
+            logging::error(
+                "Skylighting native accumulator geometry-visit detour activation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
+            return false;
+        }
+
         status = MH_EnableHook(pass14Resolver);
         DetourIdentity pass14Identity{};
         if (status != MH_OK ||
             !captureDetourIdentity(pass14Resolver, pass14Identity)) {
             (void)MH_DisableHook(pass14Resolver);
+            (void)MH_DisableHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(pass14Resolver);
+            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native pass-14 detour activation failed: {} ({}).",
@@ -1203,8 +1335,10 @@ namespace community_shaders::skylighting
             !captureDetourIdentity(wrapper, wrapperIdentity)) {
             (void)MH_DisableHook(wrapper);
             (void)MH_DisableHook(pass14Resolver);
+            (void)MH_DisableHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(wrapper);
             (void)MH_RemoveHook(pass14Resolver);
+            (void)MH_RemoveHook(accumulatorGeometryVisit);
             logging::error(
                 "Skylighting native wrapper detour activation failed: {} ({}).",
                 MH_StatusToString(status),
@@ -1214,14 +1348,17 @@ namespace community_shaders::skylighting
         }
 
         wrapperTarget = wrapper;
+        accumulatorGeometryVisitTarget = accumulatorGeometryVisit;
         pass14Target = pass14Resolver;
         installedWrapperIdentity = wrapperIdentity;
+        installedAccumulatorGeometryVisitIdentity =
+            accumulatorGeometryVisitIdentity;
         installedPass14Identity = pass14Identity;
         passProducerReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
+            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, accumulator visit RVA 0x0281BD40, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
         return true;
     }
 
@@ -1235,6 +1372,19 @@ namespace community_shaders::skylighting
             currentWrapper.patch == installedWrapperIdentity.patch &&
             currentWrapper.destination ==
                 installedWrapperIdentity.destination;
+        DetourIdentity currentAccumulatorGeometryVisit{};
+        const auto accumulatorGeometryVisitOwned =
+            installed.load(std::memory_order_acquire) &&
+            accumulatorGeometryVisitTarget &&
+            installedAccumulatorGeometryVisitIdentity.patch &&
+            installedAccumulatorGeometryVisitIdentity.destination &&
+            captureDetourIdentity(
+                accumulatorGeometryVisitTarget,
+                currentAccumulatorGeometryVisit) &&
+            currentAccumulatorGeometryVisit.patch ==
+                installedAccumulatorGeometryVisitIdentity.patch &&
+            currentAccumulatorGeometryVisit.destination ==
+                installedAccumulatorGeometryVisitIdentity.destination;
         DetourIdentity currentPass14{};
         const auto pass14Owned = installed.load(std::memory_order_acquire) &&
             pass14Target && installedPass14Identity.patch &&
@@ -1247,15 +1397,17 @@ namespace community_shaders::skylighting
             utilityShaderVtable,
             utilityShaderSecondaryVtable);
         const auto utilityShaderOwned = utilityIdentity.valid();
-        const auto owned = wrapperOwned && pass14Owned &&
+        const auto owned = wrapperOwned &&
+            accumulatorGeometryVisitOwned && pass14Owned &&
             utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native ownership validation failed at '{}' (wrapper={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, accumulatorVisit={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
                 trigger ? trigger : "unknown",
                 wrapperOwned,
+                accumulatorGeometryVisitOwned,
                 pass14Owned,
                 utilityShaderOwned);
         }
