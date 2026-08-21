@@ -292,6 +292,20 @@ namespace community_shaders::skylighting
             requestedQuality_.load(std::memory_order_relaxed));
         dimensions_ = dimensionsFor(activeQuality_);
         qualityRestartWarningLogged_.store(false, std::memory_order_relaxed);
+        firstPrerequisiteRejectionLogged_.store(
+            false,
+            std::memory_order_relaxed);
+        firstWorldStateRejectionLogged_.store(
+            false,
+            std::memory_order_relaxed);
+        firstRenderAttemptLogged_.store(false, std::memory_order_relaxed);
+        firstOutputMergerObservationLogged_.store(
+            false,
+            std::memory_order_relaxed);
+        firstPrivateDepthFailureLogged_.store(
+            false,
+            std::memory_order_relaxed);
+        firstDepthMissLogged_.store(false, std::memory_order_relaxed);
         firstActiveAmbientBindLogged_.store(false, std::memory_order_relaxed);
 
         if (!createProbeResources()) {
@@ -477,13 +491,24 @@ namespace community_shaders::skylighting
     bool Runtime::ensurePrivateDepth(
         ID3D11DepthStencilView* source) noexcept
     {
+        const auto logFailure = [this](const char* reason) noexcept {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting private-depth creation failed at '{}'.",
+                    reason);
+            }
+        };
         if (!source || !device_ || !context_) {
+            logFailure("missing source DSV, device, or immediate context");
             return false;
         }
         ComPtr<ID3D11Resource> sourceResource;
         source->GetResource(sourceResource.GetAddressOf());
         ComPtr<ID3D11Texture2D> sourceTexture;
         if (!sourceResource || FAILED(sourceResource.As(&sourceTexture))) {
+            logFailure("source DSV resource is not a Texture2D");
             return false;
         }
         D3D11_TEXTURE2D_DESC sourceDescription{};
@@ -494,6 +519,21 @@ namespace community_shaders::skylighting
             sourceDescription.ArraySize != 1 ||
             sourceViewDescription.ViewDimension !=
                 D3D11_DSV_DIMENSION_TEXTURE2D) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting rejected the native precipitation DSV description: extent={}x{}, textureFormat={}, samples={}, array={}, viewFormat={}, viewDimension={}.",
+                    sourceDescription.Width,
+                    sourceDescription.Height,
+                    static_cast<std::uint32_t>(sourceDescription.Format),
+                    sourceDescription.SampleDesc.Count,
+                    sourceDescription.ArraySize,
+                    static_cast<std::uint32_t>(
+                        sourceViewDescription.Format),
+                    static_cast<std::uint32_t>(
+                        sourceViewDescription.ViewDimension));
+            }
             return false;
         }
         if (privateDepthView_ &&
@@ -509,6 +549,7 @@ namespace community_shaders::skylighting
             sourceDescription.Format,
             sourceViewDescription.Format);
         if (privateDescription.Format == DXGI_FORMAT_UNKNOWN) {
+            logFailure("unsupported native precipitation depth format");
             return false;
         }
         privateDescription.Usage = D3D11_USAGE_DEFAULT;
@@ -517,17 +558,33 @@ namespace community_shaders::skylighting
         privateDescription.CPUAccessFlags = 0;
         privateDescription.MiscFlags = 0;
         ComPtr<ID3D11Texture2D> texture;
-        if (FAILED(device_->CreateTexture2D(
-                &privateDescription,
-                nullptr,
-                texture.GetAddressOf()))) {
+        const auto textureResult = device_->CreateTexture2D(
+            &privateDescription,
+            nullptr,
+            texture.GetAddressOf());
+        if (FAILED(textureResult)) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting private depth texture creation failed with HRESULT 0x{:08X}.",
+                    static_cast<std::uint32_t>(textureResult));
+            }
             return false;
         }
         ComPtr<ID3D11DepthStencilView> view;
-        if (FAILED(device_->CreateDepthStencilView(
-                texture.Get(),
-                &sourceViewDescription,
-                view.GetAddressOf()))) {
+        const auto viewResult = device_->CreateDepthStencilView(
+            texture.Get(),
+            &sourceViewDescription,
+            view.GetAddressOf());
+        if (FAILED(viewResult)) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting private depth DSV creation failed with HRESULT 0x{:08X}.",
+                    static_cast<std::uint32_t>(viewResult));
+            }
             return false;
         }
         D3D11_SHADER_RESOURCE_VIEW_DESC resourceDescription{};
@@ -537,13 +594,22 @@ namespace community_shaders::skylighting
         resourceDescription.Texture2D.MostDetailedMip = 0;
         resourceDescription.Texture2D.MipLevels = 1;
         if (resourceDescription.Format == DXGI_FORMAT_UNKNOWN) {
+            logFailure("unsupported private depth SRV format");
             return false;
         }
         ComPtr<ID3D11ShaderResourceView> resource;
-        if (FAILED(device_->CreateShaderResourceView(
-                texture.Get(),
-                &resourceDescription,
-                resource.GetAddressOf()))) {
+        const auto resourceResult = device_->CreateShaderResourceView(
+            texture.Get(),
+            &resourceDescription,
+            resource.GetAddressOf());
+        if (FAILED(resourceResult)) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting private depth SRV creation failed with HRESULT 0x{:08X}.",
+                    static_cast<std::uint32_t>(resourceResult));
+            }
             return false;
         }
 
@@ -566,6 +632,16 @@ namespace community_shaders::skylighting
         ID3D11DeviceContext* context,
         ID3D11DepthStencilView* requested) noexcept
     {
+        if (privateCapture.owner == this &&
+            !firstOutputMergerObservationLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::info(
+                "Skylighting observed its native private-render output-merger bind (contextMatch={}, sourceDSV={}, alreadyAttempted={}).",
+                context == context_.Get(),
+                requested != nullptr,
+                privateCapture.dsvAttempted);
+        }
         if (privateCapture.owner != this || !context ||
             context != context_.Get() || !requested ||
             privateCapture.dsvAttempted) {
@@ -751,18 +827,46 @@ namespace community_shaders::skylighting
         NativeProjectionSetup restoreProjection) noexcept
     {
         captureCalls_.fetch_add(1, std::memory_order_relaxed);
-        if (!requested() ||
-            !gpuResourcesReady_.load(std::memory_order_acquire) ||
-            !nativeHookOwned_.load(std::memory_order_acquire) ||
+        const auto featureRequested = requested();
+        const auto resourcesReady =
+            gpuResourcesReady_.load(std::memory_order_acquire);
+        const auto hookOwned =
+            nativeHookOwned_.load(std::memory_order_acquire);
+        if (!featureRequested || !resourcesReady || !hookOwned ||
             !precipitation || !render || !restoreProjection || !context_) {
+            if (!firstPrerequisiteRejectionLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting rejected its first native callback prerequisite gate (requested={}, gpuReady={}, hookOwned={}, manager={}, render={}, projection={}, context={}).",
+                    featureRequested,
+                    resourcesReady,
+                    hookOwned,
+                    precipitation != nullptr,
+                    render != nullptr,
+                    restoreProjection != nullptr,
+                    context_.Get() != nullptr);
+            }
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        const auto* sky = RE::Sky::GetSingleton();
+        const auto* player = RE::PlayerCharacter::GetSingleton();
+        const auto* playerCell = player ? player->GetParentCell() : nullptr;
         const auto* playerCamera = RE::PlayerCamera::GetSingleton();
-        if (!sky || sky->mode.get() != RE::Sky::Mode::kFull ||
-            !playerCamera || !playerCamera->cameraRoot) {
+        const auto exterior = playerCell && playerCell->IsExterior();
+        if (!exterior || !playerCamera || !playerCamera->cameraRoot) {
+            if (!firstWorldStateRejectionLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting rejected its first world-state gate (player={}, cell={}, exterior={}, camera={}, cameraRoot={}).",
+                    player != nullptr,
+                    playerCell != nullptr,
+                    exterior,
+                    playerCamera != nullptr,
+                    playerCamera && playerCamera->cameraRoot != nullptr);
+            }
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
@@ -809,8 +913,15 @@ namespace community_shaders::skylighting
         *directionZ = -skyZ;
         constants_.occlusionDirection = { skyX, skyY, skyZ, 0.0f };
         nativeOutput_.fill(std::byte{});
+        if (!firstRenderAttemptLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::info(
+                "Skylighting entered its first verified exterior private-render transaction.");
+        }
         privateCapture = { .owner = this };
         render(precipitation, nativeOutput_.data());
+        const auto dsvAttempted = privateCapture.dsvAttempted;
         const auto depthBound = privateCapture.privateDepthBound;
         privateCapture = {};
 
@@ -833,6 +944,15 @@ namespace community_shaders::skylighting
             restoreProjection(precipitation, &cameraHolder);
         }
         if (!depthBound) {
+            if (!firstDepthMissLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting native private render completed without a private depth binding (outputMergerObserved={}, sourceDsvAttempted={}).",
+                    firstOutputMergerObservationLogged_.load(
+                        std::memory_order_relaxed),
+                    dsvAttempted);
+            }
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;

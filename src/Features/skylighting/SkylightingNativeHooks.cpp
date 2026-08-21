@@ -53,7 +53,7 @@ namespace community_shaders::skylighting
         };
 
         using WrapperFunction = void(__fastcall*)();
-        using NativeRendererSingleton = void*(__fastcall*)();
+        using NativeSkySingleton = void*(__fastcall*)();
 
         struct DetourIdentity
         {
@@ -62,7 +62,7 @@ namespace community_shaders::skylighting
         };
 
         WrapperFunction originalWrapper{};
-        NativeRendererSingleton nativeRendererSingleton{};
+        NativeSkySingleton nativeSkySingleton{};
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
         std::byte* wrapperTarget{};
@@ -149,14 +149,14 @@ namespace community_shaders::skylighting
 
         [[nodiscard]] void* resolveNativePrecipitationManager() noexcept
         {
-            if (!nativeRendererSingleton) {
+            if (!nativeSkySingleton) {
                 return nullptr;
             }
-            auto* rendererState = nativeRendererSingleton();
-            if (!rendererState) {
+            auto* skyState = nativeSkySingleton();
+            if (!skyState) {
                 return nullptr;
             }
-            auto* slot = static_cast<std::byte*>(rendererState) +
+            auto* slot = static_cast<std::byte*>(skyState) +
                 kPrecipitationManagerOffset;
             if (!isReadableRange(slot, sizeof(void*))) {
                 return nullptr;
@@ -227,7 +227,7 @@ namespace community_shaders::skylighting
                                       true,
                                       std::memory_order_relaxed)) {
                 logging::warn(
-                    "Skylighting could not resolve the persistent FO4VR precipitation manager at renderer offset +0xA0; captures remain fail-closed.");
+                    "Skylighting could not resolve the persistent FO4VR precipitation manager at native Sky offset +0xA0; captures remain fail-closed.");
             }
             Runtime::get().onNativePrecipitationFrame(
                 precipitation,
@@ -376,8 +376,8 @@ namespace community_shaders::skylighting
             return false;
         }
         originalWrapper = reinterpret_cast<WrapperFunction>(trampoline);
-        nativeRendererSingleton =
-            reinterpret_cast<NativeRendererSingleton>(
+        nativeSkySingleton =
+            reinterpret_cast<NativeSkySingleton>(
                 image + kWrapperFirstCallTargetRva);
         nativeRender = reinterpret_cast<NativePrecipitationRender>(render);
         nativeProjection = reinterpret_cast<NativeProjectionSetup>(projection);
@@ -387,7 +387,7 @@ namespace community_shaders::skylighting
             (void)MH_DisableHook(wrapper);
             (void)MH_RemoveHook(wrapper);
             originalWrapper = nullptr;
-            nativeRendererSingleton = nullptr;
+            nativeSkySingleton = nullptr;
             nativeRender = nullptr;
             nativeProjection = nullptr;
             logging::error(

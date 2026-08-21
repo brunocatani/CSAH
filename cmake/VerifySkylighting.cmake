@@ -47,7 +47,7 @@ foreach(required IN ITEMS
     "std::byte{ 0x40 }, std::byte{ 0x53 }"
     "wrapper + kWrapperSignature.size()"
     "resolveNativePrecipitationManager()"
-    "nativeRendererSingleton()"
+    "nativeSkySingleton()"
     "MH_CreateHook("
     "captureDetourIdentity("
     "Runtime::get().setNativeHookOwned(true)")
@@ -71,6 +71,9 @@ foreach(required IN ITEMS
     "PSSetShaderResources(50"
     "PSSetConstantBuffers(13"
     "probeDataValid_.store(true"
+    "playerCell->IsExterior()"
+    "firstOutputMergerObservationLogged_.exchange("
+    "firstDepthMissLogged_.exchange("
     "firstActiveAmbientBindLogged_.exchange(")
   string(FIND "${runtime}\n${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)

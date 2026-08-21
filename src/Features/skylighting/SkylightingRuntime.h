@@ -202,6 +202,12 @@ namespace community_shaders::skylighting
         std::atomic_uint64_t probeDispatches_{};
         std::atomic_uint64_t rejectedCaptures_{};
         std::atomic_uint64_t ambientBinds_{};
+        std::atomic_bool firstPrerequisiteRejectionLogged_{};
+        std::atomic_bool firstWorldStateRejectionLogged_{};
+        std::atomic_bool firstRenderAttemptLogged_{};
+        std::atomic_bool firstOutputMergerObservationLogged_{};
+        std::atomic_bool firstPrivateDepthFailureLogged_{};
+        std::atomic_bool firstDepthMissLogged_{};
         std::atomic_bool firstActiveAmbientBindLogged_{};
         std::atomic_bool qualityRestartWarningLogged_{};
     };
