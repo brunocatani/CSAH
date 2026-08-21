@@ -26,6 +26,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 
@@ -43,6 +44,10 @@ namespace community_shaders::skylighting
         constexpr std::ptrdiff_t kPrecipitationLastCubeSizeOffset = 0x90;
         constexpr std::size_t kNativeProjectionOffset = 0xED0;
         constexpr std::size_t kNativePrecipitationDepthTarget = 9;
+        constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
+        constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
+        constexpr std::size_t kFo4VrDepthStencilTargetsOffset = 0x2588;
+        constexpr std::size_t kFo4VrDepthStencilTargetCount = 18;
         constexpr float kCaptureDistance = 10000.0f;
         constexpr float kCaptureHeight = 5000.0f;
         constexpr float kTwoPi = 6.28318530717958647692f;
@@ -51,33 +56,84 @@ namespace community_shaders::skylighting
         constexpr float kR2X = 0.245122333753f;
         constexpr float kR2Y = 0.430159709002f;
 
+        // FO4VR has 145 render targets before this array. CommonLibF4VR
+        // declares 101, so its RendererData::depthStencilTargets field is
+        // 0x840 bytes early. Keep the corrected layout local to this port.
+        struct Fo4VrDepthStencilTarget
+        {
+            ID3D11Texture2D* texture{};
+            ID3D11DepthStencilView* depthViews[4]{};
+            ID3D11DepthStencilView* readOnlyDepthViews[4]{};
+            ID3D11DepthStencilView* readOnlyStencilViews[4]{};
+            ID3D11DepthStencilView* readOnlyDepthStencilViews[4]{};
+            ID3D11ShaderResourceView* depthResource{};
+            ID3D11ShaderResourceView* stencilResource{};
+        };
+        static_assert(sizeof(Fo4VrDepthStencilTarget) == 0x98);
+        static_assert(offsetof(Fo4VrDepthStencilTarget, texture) == 0x00);
+        static_assert(offsetof(Fo4VrDepthStencilTarget, depthViews) == 0x08);
+        static_assert(
+            offsetof(Fo4VrDepthStencilTarget, depthResource) == 0x88);
+
+        [[nodiscard]] bool isReadableRange(
+            const void* address,
+            std::size_t size) noexcept
+        {
+            if (!address || size == 0) {
+                return false;
+            }
+            const auto begin = reinterpret_cast<std::uintptr_t>(address);
+            if (begin > (std::numeric_limits<std::uintptr_t>::max)() - size) {
+                return false;
+            }
+            const auto end = begin + size;
+            auto cursor = begin;
+            while (cursor < end) {
+                MEMORY_BASIC_INFORMATION information{};
+                if (VirtualQuery(
+                        reinterpret_cast<const void*>(cursor),
+                        &information,
+                        sizeof(information)) != sizeof(information) ||
+                    information.State != MEM_COMMIT ||
+                    (information.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+                    return false;
+                }
+                const auto region = reinterpret_cast<std::uintptr_t>(
+                    information.BaseAddress);
+                if (region >
+                    (std::numeric_limits<std::uintptr_t>::max)() -
+                        information.RegionSize) {
+                    return false;
+                }
+                const auto regionEnd = region + information.RegionSize;
+                if (regionEnd <= cursor) {
+                    return false;
+                }
+                cursor = (std::min)(regionEnd, end);
+            }
+            return true;
+        }
+
         class ScopedNativeDepthTarget final
         {
         public:
             ScopedNativeDepthTarget(
-                RE::BSGraphics::DepthStencilTarget& target,
+                Fo4VrDepthStencilTarget& target,
                 ID3D11Texture2D* texture,
                 ID3D11DepthStencilView* depthView,
                 ID3D11ShaderResourceView* depthResource) noexcept :
                 target_(&target),
                 originalTexture_(target.texture),
-                originalDepthView_(target.dsView[0]),
-                originalDepthResource_(target.srViewDepth)
+                originalDepthView_(target.depthViews[0]),
+                originalDepthResource_(target.depthResource)
             {
                 if (!texture || !depthView || !depthResource) {
                     target_ = nullptr;
                     return;
                 }
-                // CommonLibF4VR redeclares the native D3D11 COM interfaces in
-                // REX::W32. These casts bridge only that namespace boundary.
-                target.texture =
-                    reinterpret_cast<REX::W32::ID3D11Texture2D*>(texture);
-                target.dsView[0] =
-                    reinterpret_cast<REX::W32::ID3D11DepthStencilView*>(
-                        depthView);
-                target.srViewDepth =
-                    reinterpret_cast<REX::W32::ID3D11ShaderResourceView*>(
-                        depthResource);
+                target.texture = texture;
+                target.depthViews[0] = depthView;
+                target.depthResource = depthResource;
             }
 
             ~ScopedNativeDepthTarget() noexcept
@@ -86,8 +142,8 @@ namespace community_shaders::skylighting
                     return;
                 }
                 target_->texture = originalTexture_;
-                target_->dsView[0] = originalDepthView_;
-                target_->srViewDepth = originalDepthResource_;
+                target_->depthViews[0] = originalDepthView_;
+                target_->depthResource = originalDepthResource_;
             }
 
             ScopedNativeDepthTarget(const ScopedNativeDepthTarget&) = delete;
@@ -100,10 +156,10 @@ namespace community_shaders::skylighting
             }
 
         private:
-            RE::BSGraphics::DepthStencilTarget* target_{};
-            REX::W32::ID3D11Texture2D* originalTexture_{};
-            REX::W32::ID3D11DepthStencilView* originalDepthView_{};
-            REX::W32::ID3D11ShaderResourceView* originalDepthResource_{};
+            Fo4VrDepthStencilTarget* target_{};
+            ID3D11Texture2D* originalTexture_{};
+            ID3D11DepthStencilView* originalDepthView_{};
+            ID3D11ShaderResourceView* originalDepthResource_{};
         };
 
         [[nodiscard]] std::uint32_t positiveModulo(
@@ -880,23 +936,78 @@ namespace community_shaders::skylighting
             clearProbeResources();
         }
 
+        const auto base = REL::Module::get().base();
         auto* rendererData = RE::BSGraphics::RendererData::GetSingleton();
-        if (!rendererData) {
+        const auto* mappedTargetEntry = reinterpret_cast<const std::int32_t*>(
+            base + kRendererStateRva + kDepthTargetMapOffset +
+            kNativePrecipitationDepthTarget * sizeof(std::int32_t));
+        if (!rendererData ||
+            !isReadableRange(mappedTargetEntry, sizeof(*mappedTargetEntry))) {
             if (!firstPrivateDepthFailureLogged_.exchange(
                     true,
                     std::memory_order_relaxed)) {
                 logging::warn(
-                    "Skylighting could not resolve FO4VR RendererData for native depth target 9.");
+                    "Skylighting could not resolve the FO4VR renderer base or logical depth-target map entry 9.");
             }
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        auto& nativeDepthTarget = rendererData->depthStencilTargets[
-            kNativePrecipitationDepthTarget];
-        if (!ensurePrivateDepth(
-                reinterpret_cast<ID3D11DepthStencilView*>(
-                    nativeDepthTarget.dsView[0])) ||
+        std::int32_t mappedDepthTarget{};
+        std::memcpy(
+            &mappedDepthTarget,
+            mappedTargetEntry,
+            sizeof(mappedDepthTarget));
+        if (mappedDepthTarget < 0 ||
+            mappedDepthTarget >=
+                static_cast<std::int32_t>(
+                    kFo4VrDepthStencilTargetCount)) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting logical depth target 9 mapped outside the verified FO4VR range (mapped={}, count={}).",
+                    mappedDepthTarget,
+                    kFo4VrDepthStencilTargetCount);
+            }
+            exteriorActive_.store(false, std::memory_order_release);
+            rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        auto* nativeDepthTarget = reinterpret_cast<Fo4VrDepthStencilTarget*>(
+            reinterpret_cast<std::byte*>(rendererData) +
+            kFo4VrDepthStencilTargetsOffset +
+            static_cast<std::size_t>(mappedDepthTarget) *
+                sizeof(Fo4VrDepthStencilTarget));
+        const auto targetReadable = isReadableRange(
+            nativeDepthTarget,
+            sizeof(*nativeDepthTarget));
+        auto* sourceTexture = targetReadable
+            ? nativeDepthTarget->texture
+            : nullptr;
+        auto* sourceDepthView = targetReadable
+            ? nativeDepthTarget->depthViews[0]
+            : nullptr;
+        auto* sourceDepthResource = targetReadable
+            ? nativeDepthTarget->depthResource
+            : nullptr;
+        if (!sourceTexture || !sourceDepthView || !sourceDepthResource) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting resolved an incomplete FO4VR precipitation depth target (logical=9, mapped={}, target={}, texture={}, dsv0={}, depthSrv={}).",
+                    mappedDepthTarget,
+                    static_cast<void*>(nativeDepthTarget),
+                    static_cast<void*>(sourceTexture),
+                    static_cast<void*>(sourceDepthView),
+                    static_cast<void*>(sourceDepthResource));
+            }
+            exteriorActive_.store(false, std::memory_order_release);
+            rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        if (!ensurePrivateDepth(sourceDepthView) ||
             !privateDepthTexture_ || !privateDepthView_ ||
             !privateDepthResource_) {
             exteriorActive_.store(false, std::memory_order_release);
@@ -904,7 +1015,6 @@ namespace community_shaders::skylighting
             return;
         }
 
-        const auto base = REL::Module::get().base();
         auto* cubeSize = reinterpret_cast<float*>(base + kCubeSizeRva);
         auto* directionX = reinterpret_cast<float*>(base + kDirectionXRva);
         auto* directionY = reinterpret_cast<float*>(base + kDirectionYRva);
@@ -946,7 +1056,8 @@ namespace community_shaders::skylighting
                 true,
                 std::memory_order_relaxed)) {
             logging::info(
-                "Skylighting entered its first verified exterior private-render transaction with native depth target 9 scoped to the private resource.");
+                "Skylighting entered its first verified exterior private-render transaction with logical depth target 9 mapped to FO4VR target {} and scoped to the private resource.",
+                mappedDepthTarget);
         }
         context_->ClearDepthStencilView(
             privateDepthView_.Get(),
@@ -956,7 +1067,7 @@ namespace community_shaders::skylighting
         auto privateRenderCompleted = false;
         {
             ScopedNativeDepthTarget privateTarget(
-                nativeDepthTarget,
+                *nativeDepthTarget,
                 privateDepthTexture_.Get(),
                 privateDepthView_.Get(),
                 privateDepthResource_.Get());

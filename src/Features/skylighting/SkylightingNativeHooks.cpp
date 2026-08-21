@@ -22,8 +22,13 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kRenderRva = 0x006350C0;
         constexpr std::uintptr_t kProjectionRva = 0x00635530;
         constexpr std::uintptr_t kWrapperFirstCallTargetRva = 0x0012FB50;
+        constexpr std::uintptr_t kDepthTargetMapperRva = 0x01DB9E40;
+        constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
+        constexpr std::size_t kRenderDepthTargetSetupOffset = 0x1CC;
+        constexpr std::size_t kDepthTargetMapperSignatureOffset = 0x1A;
+        constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
         constexpr std::ptrdiff_t kPrecipitationManagerOffset = 0xA0;
         constexpr std::size_t kPrecipitationManagerReadableSize = 0x98;
         constexpr std::array<std::byte, 6> kWrapperSignature{
@@ -50,6 +55,25 @@ namespace community_shaders::skylighting
             std::byte{ 0xFF }, std::byte{ 0xFF }, std::byte{ 0x48 },
             std::byte{ 0x81 }, std::byte{ 0xEC }, std::byte{ 0xE0 },
             std::byte{ 0x01 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+        };
+        constexpr std::array<std::byte, 27> kRenderDepthTargetSetupSignature{
+            std::byte{ 0x45 }, std::byte{ 0x33 }, std::byte{ 0xC9 },
+            std::byte{ 0x48 }, std::byte{ 0x8D }, std::byte{ 0x0D },
+            std::byte{ 0x7A }, std::byte{ 0x6D }, std::byte{ 0x27 },
+            std::byte{ 0x03 }, std::byte{ 0x41 }, std::byte{ 0x8D },
+            std::byte{ 0x51 }, std::byte{ 0x09 }, std::byte{ 0x45 },
+            std::byte{ 0x33 }, std::byte{ 0xC0 }, std::byte{ 0xC6 },
+            std::byte{ 0x44 }, std::byte{ 0x24 }, std::byte{ 0x20 },
+            std::byte{ 0x00 }, std::byte{ 0xE8 }, std::byte{ 0x99 },
+            std::byte{ 0x4B }, std::byte{ 0x78 }, std::byte{ 0x01 },
+        };
+        constexpr std::array<std::byte, 17> kDepthTargetMapperSignature{
+            std::byte{ 0x48 }, std::byte{ 0x63 }, std::byte{ 0xC2 },
+            std::byte{ 0x41 }, std::byte{ 0x89 }, std::byte{ 0x92 },
+            std::byte{ 0x88 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+            std::byte{ 0x00 }, std::byte{ 0x8B }, std::byte{ 0x8C },
+            std::byte{ 0x81 }, std::byte{ 0xFC }, std::byte{ 0x15 },
+            std::byte{ 0x00 }, std::byte{ 0x00 },
         };
 
         using WrapperFunction = void(__fastcall*)();
@@ -136,6 +160,29 @@ namespace community_shaders::skylighting
             std::int32_t displacement{};
             std::memcpy(&displacement, instruction + 1, sizeof(displacement));
             const auto next = reinterpret_cast<std::uintptr_t>(instruction) + 5;
+            const auto target = static_cast<std::int64_t>(next) +
+                static_cast<std::int64_t>(displacement);
+            if (target <= 0 ||
+                static_cast<std::uint64_t>(target) >
+                    std::numeric_limits<std::uintptr_t>::max()) {
+                return nullptr;
+            }
+            return reinterpret_cast<const std::byte*>(
+                static_cast<std::uintptr_t>(target));
+        }
+
+        [[nodiscard]] const std::byte* ripRelativeTarget(
+            const std::byte* instruction) noexcept
+        {
+            if (!isReadableRange(instruction, 7) ||
+                instruction[0] != std::byte{ 0x48 } ||
+                instruction[1] != std::byte{ 0x8D } ||
+                instruction[2] != std::byte{ 0x0D }) {
+                return nullptr;
+            }
+            std::int32_t displacement{};
+            std::memcpy(&displacement, instruction + 3, sizeof(displacement));
+            const auto next = reinterpret_cast<std::uintptr_t>(instruction) + 7;
             const auto target = static_cast<std::int64_t>(next) +
                 static_cast<std::int64_t>(displacement);
             if (target <= 0 ||
@@ -284,6 +331,20 @@ namespace community_shaders::skylighting
                 "Skylighting native projection contract at RVA 0x00635530 is outside the FO4VR image.");
             return false;
         }
+        if (!inImage(
+                kRenderRva + kRenderDepthTargetSetupOffset,
+                kRenderDepthTargetSetupSignature.size()) ||
+            !inImage(
+                kDepthTargetMapperRva +
+                    kDepthTargetMapperSignatureOffset,
+                kDepthTargetMapperSignature.size()) ||
+            !inImage(
+                kRendererStateRva + kDepthTargetMapOffset,
+                sizeof(std::int32_t) * 10)) {
+            logging::error(
+                "Skylighting native depth-target mapping contract is outside the FO4VR image.");
+            return false;
+        }
         if (!inImage(kCubeSizeRva, sizeof(float))) {
             logging::error(
                 "Skylighting native cube-size contract at RVA 0x05A3CFA4 is outside the FO4VR image.");
@@ -298,6 +359,9 @@ namespace community_shaders::skylighting
         auto* wrapper = image + kWrapperRva;
         auto* render = image + kRenderRva;
         auto* projection = image + kProjectionRva;
+        auto* renderDepthTargetSetup =
+            render + kRenderDepthTargetSetupOffset;
+        auto* depthTargetMapper = image + kDepthTargetMapperRva;
         if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5)) {
             logging::error(
                 "Skylighting native wrapper contract at RVA 0x00634300 is not executable and readable.");
@@ -334,6 +398,32 @@ namespace community_shaders::skylighting
                 kRenderSignature.size()) != 0) {
             logging::error(
                 "Skylighting native render signature mismatch at RVA 0x006350C0.");
+            return false;
+        }
+        if (!isExecutableRange(
+                renderDepthTargetSetup,
+                kRenderDepthTargetSetupSignature.size()) ||
+            std::memcmp(
+                renderDepthTargetSetup,
+                kRenderDepthTargetSetupSignature.data(),
+                kRenderDepthTargetSetupSignature.size()) != 0 ||
+            ripRelativeTarget(renderDepthTargetSetup + 3) !=
+                image + kRendererStateRva ||
+            relativeTarget(renderDepthTargetSetup + 22) !=
+                depthTargetMapper) {
+            logging::error(
+                "Skylighting native render depth-target setup signature mismatch at RVA 0x0063528C.");
+            return false;
+        }
+        if (!isExecutableRange(
+                depthTargetMapper + kDepthTargetMapperSignatureOffset,
+                kDepthTargetMapperSignature.size()) ||
+            std::memcmp(
+                depthTargetMapper + kDepthTargetMapperSignatureOffset,
+                kDepthTargetMapperSignature.data(),
+                kDepthTargetMapperSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native depth-target mapper signature mismatch at RVA 0x01DB9E5A.");
             return false;
         }
         if (!isExecutableRange(projection, kProjectionSignature.size())) {

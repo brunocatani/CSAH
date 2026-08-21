@@ -39,13 +39,22 @@ foreach(required IN ITEMS
     "kWrapperRva = 0x00634300"
     "kRenderRva = 0x006350C0"
     "kProjectionRva = 0x00635530"
+    "kDepthTargetMapperRva = 0x01DB9E40"
+    "kRendererStateRva = 0x038AC010"
     "kCubeSizeRva = 0x05A3CFA4"
     "kDirectionRva = 0x05A3CFC8"
+    "kRenderDepthTargetSetupOffset = 0x1CC"
+    "kDepthTargetMapperSignatureOffset = 0x1A"
+    "kDepthTargetMapOffset = 0x15FC"
     "kWrapperFirstCallTargetRva = 0x0012FB50"
     "kPrecipitationManagerOffset = 0xA0"
     "std::array<std::byte, 6> kWrapperSignature"
+    "std::array<std::byte, 27> kRenderDepthTargetSetupSignature"
+    "std::array<std::byte, 17> kDepthTargetMapperSignature"
     "std::byte{ 0x40 }, std::byte{ 0x53 }"
     "wrapper + kWrapperSignature.size()"
+    "ripRelativeTarget(renderDepthTargetSetup + 3)"
+    "relativeTarget(renderDepthTargetSetup + 22)"
     "resolveNativePrecipitationManager()"
     "nativeSkySingleton()"
     "MH_CreateHook("
@@ -66,6 +75,11 @@ foreach(required IN ITEMS
     "DXGI_FORMAT_R8_UINT"
     "ScopedComputeState"
     "kNativePrecipitationDepthTarget = 9"
+    "kRendererStateRva = 0x038AC010"
+    "kDepthTargetMapOffset = 0x15FC"
+    "kFo4VrDepthStencilTargetsOffset = 0x2588"
+    "kFo4VrDepthStencilTargetCount = 18"
+    "sizeof(Fo4VrDepthStencilTarget) == 0x98"
     "ScopedNativeDepthTarget"
     "RendererData::GetSingleton()"
     "InterlockedIncrement("
@@ -159,7 +173,8 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "substituteDepthStencil"
-    "privateCaptureActive")
+    "privateCaptureActive"
+    "rendererData->depthStencilTargets")
   string(FIND "${runtime}\n${runtimeHeader}\n${d3dHook}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
