@@ -598,6 +598,7 @@ def main() -> int:
             "dcl_resource_texture2d (float,float,float,float) t0",
             "dcl_uav_typed_texture3d (float,float,float,float) u0",
             "dcl_uav_typed_texture3d (uint,uint,uint,uint) u1",
+            "dcl_uav_raw u2",
             "dcl_constantbuffer CB13[12], immediateIndexed",
             "dcl_thread_group 8, 8, 1",
         ):

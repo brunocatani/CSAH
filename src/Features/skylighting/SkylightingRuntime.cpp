@@ -55,6 +55,9 @@ namespace community_shaders::skylighting
             0.01745329251994329577f;
         constexpr float kR2X = 0.245122333753f;
         constexpr float kR2Y = 0.430159709002f;
+        constexpr std::size_t kDiagnosticStatCount = 10;
+        constexpr std::size_t kDiagnosticByteWidth =
+            kDiagnosticStatCount * sizeof(std::uint32_t);
 
         // FO4VR has 145 render targets before this array. CommonLibF4VR
         // declares 101, so its RendererData::depthStencilTargets field is
@@ -406,6 +409,9 @@ namespace community_shaders::skylighting
             false,
             std::memory_order_relaxed);
         firstActiveAmbientBindLogged_.store(false, std::memory_order_relaxed);
+        diagnosticSubmitted_ = false;
+        diagnosticPending_ = false;
+        diagnosticLogged_ = false;
 
         if (!createProbeResources()) {
             logging::error(
@@ -503,6 +509,54 @@ namespace community_shaders::skylighting
             return false;
         }
 
+        D3D11_BUFFER_DESC diagnosticDescription{};
+        diagnosticDescription.ByteWidth =
+            static_cast<UINT>(kDiagnosticByteWidth);
+        diagnosticDescription.Usage = D3D11_USAGE_DEFAULT;
+        diagnosticDescription.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+        diagnosticDescription.MiscFlags =
+            D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+        ComPtr<ID3D11Buffer> diagnosticBuffer;
+        if (FAILED(device_->CreateBuffer(
+                &diagnosticDescription,
+                nullptr,
+                diagnosticBuffer.GetAddressOf()))) {
+            return false;
+        }
+        D3D11_UNORDERED_ACCESS_VIEW_DESC diagnosticOutputDescription{};
+        diagnosticOutputDescription.Format = DXGI_FORMAT_R32_TYPELESS;
+        diagnosticOutputDescription.ViewDimension =
+            D3D11_UAV_DIMENSION_BUFFER;
+        diagnosticOutputDescription.Buffer.NumElements =
+            static_cast<UINT>(kDiagnosticStatCount);
+        diagnosticOutputDescription.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+        ComPtr<ID3D11UnorderedAccessView> diagnosticOutput;
+        if (FAILED(device_->CreateUnorderedAccessView(
+                diagnosticBuffer.Get(),
+                &diagnosticOutputDescription,
+                diagnosticOutput.GetAddressOf()))) {
+            return false;
+        }
+        auto stagingDescription = diagnosticDescription;
+        stagingDescription.Usage = D3D11_USAGE_STAGING;
+        stagingDescription.BindFlags = 0;
+        stagingDescription.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        stagingDescription.MiscFlags = 0;
+        ComPtr<ID3D11Buffer> diagnosticStaging;
+        if (FAILED(device_->CreateBuffer(
+                &stagingDescription,
+                nullptr,
+                diagnosticStaging.GetAddressOf()))) {
+            return false;
+        }
+        D3D11_QUERY_DESC queryDescription{ D3D11_QUERY_EVENT, 0 };
+        ComPtr<ID3D11Query> diagnosticCompletion;
+        if (FAILED(device_->CreateQuery(
+                &queryDescription,
+                diagnosticCompletion.GetAddressOf()))) {
+            return false;
+        }
+
         ComPtr<ID3D11ComputeShader> updateShader;
         if (FAILED(device_->CreateComputeShader(
                 fo4vr_cs_skylighting_update_probes,
@@ -544,6 +598,10 @@ namespace community_shaders::skylighting
         accumulationTexture_ = std::move(accumulationTexture);
         accumulationResource_ = std::move(accumulationResource);
         accumulationOutput_ = std::move(accumulationOutput);
+        diagnosticBuffer_ = std::move(diagnosticBuffer);
+        diagnosticOutput_ = std::move(diagnosticOutput);
+        diagnosticStaging_ = std::move(diagnosticStaging);
+        diagnosticCompletion_ = std::move(diagnosticCompletion);
         updateShader_ = std::move(updateShader);
         comparisonSampler_ = std::move(comparisonSampler);
         constantsBuffer_ = std::move(constantsBuffer);
@@ -813,7 +871,10 @@ namespace community_shaders::skylighting
             std::bit_cast<float>(
                 minimumSpecularBits_.load(std::memory_order_relaxed)),
             featureActive ? 1.0f : 0.0f,
-            0.0f,
+            featureActive && !diagnosticSubmitted_ &&
+                    !diagnosticPending_ && !diagnosticLogged_ ?
+                1.0f :
+                0.0f,
         };
         context_->UpdateSubresource(
             constantsBuffer_.Get(),
@@ -831,45 +892,70 @@ namespace community_shaders::skylighting
     void Runtime::dispatchProbeUpdate() noexcept
     {
         if (!context_ || !privateDepthResource_ || !probeOutput_ ||
-            !accumulationOutput_ || !updateShader_ ||
+            !accumulationOutput_ || !diagnosticBuffer_ ||
+            !diagnosticOutput_ || !diagnosticStaging_ ||
+            !diagnosticCompletion_ || !updateShader_ ||
             !comparisonSampler_ || !constantsBuffer_) {
             return;
         }
-        render::ScopedComputeState state(
-            context_.Get(),
-            {
-                .firstShaderResource = 0,
-                .shaderResourceCount = 1,
-                .firstUnorderedAccess = 0,
-                .unorderedAccessCount = 2,
-                .firstSampler = 0,
-                .samplerCount = 1,
-                .firstConstantBuffer = 13,
-                .constantBufferCount = 1,
-            });
-        if (!state.captured()) {
-            return;
+        const auto collectDiagnostic = constants_.response.w > 0.5f;
+        if (collectDiagnostic) {
+            std::array<std::uint32_t, kDiagnosticStatCount> initial{};
+            initial[8] = std::bit_cast<std::uint32_t>(1.0f);
+            context_->UpdateSubresource(
+                diagnosticBuffer_.Get(),
+                0,
+                nullptr,
+                initial.data(),
+                0,
+                0);
         }
-        ID3D11ShaderResourceView* resource = privateDepthResource_.Get();
-        std::array<ID3D11UnorderedAccessView*, 2> outputs{
-            probeOutput_.Get(),
-            accumulationOutput_.Get(),
-        };
-        ID3D11SamplerState* sampler = comparisonSampler_.Get();
-        ID3D11Buffer* constants = constantsBuffer_.Get();
-        context_->CSSetShaderResources(0, 1, &resource);
-        context_->CSSetUnorderedAccessViews(
-            0,
-            static_cast<UINT>(outputs.size()),
-            outputs.data(),
-            nullptr);
-        context_->CSSetSamplers(0, 1, &sampler);
-        context_->CSSetConstantBuffers(13, 1, &constants);
-        context_->CSSetShader(updateShader_.Get(), nullptr, 0);
-        context_->Dispatch(
-            (dimensions_.width + 7u) / 8u,
-            (dimensions_.height + 7u) / 8u,
-            dimensions_.depth);
+        {
+            render::ScopedComputeState state(
+                context_.Get(),
+                {
+                    .firstShaderResource = 0,
+                    .shaderResourceCount = 1,
+                    .firstUnorderedAccess = 0,
+                    .unorderedAccessCount = 3,
+                    .firstSampler = 0,
+                    .samplerCount = 1,
+                    .firstConstantBuffer = 13,
+                    .constantBufferCount = 1,
+                });
+            if (!state.captured()) {
+                return;
+            }
+            ID3D11ShaderResourceView* resource = privateDepthResource_.Get();
+            std::array<ID3D11UnorderedAccessView*, 3> outputs{
+                probeOutput_.Get(),
+                accumulationOutput_.Get(),
+                diagnosticOutput_.Get(),
+            };
+            ID3D11SamplerState* sampler = comparisonSampler_.Get();
+            ID3D11Buffer* constants = constantsBuffer_.Get();
+            context_->CSSetShaderResources(0, 1, &resource);
+            context_->CSSetUnorderedAccessViews(
+                0,
+                static_cast<UINT>(outputs.size()),
+                outputs.data(),
+                nullptr);
+            context_->CSSetSamplers(0, 1, &sampler);
+            context_->CSSetConstantBuffers(13, 1, &constants);
+            context_->CSSetShader(updateShader_.Get(), nullptr, 0);
+            context_->Dispatch(
+                (dimensions_.width + 7u) / 8u,
+                (dimensions_.height + 7u) / 8u,
+                dimensions_.depth);
+        }
+        if (collectDiagnostic) {
+            context_->CopyResource(
+                diagnosticStaging_.Get(),
+                diagnosticBuffer_.Get());
+            context_->End(diagnosticCompletion_.Get());
+            diagnosticSubmitted_ = true;
+            diagnosticPending_ = true;
+        }
         const auto previousDispatches = probeDispatches_.fetch_add(
             1,
             std::memory_order_relaxed);
@@ -882,12 +968,71 @@ namespace community_shaders::skylighting
         }
     }
 
+    void Runtime::consumeDiagnosticReadback() noexcept
+    {
+        if (!diagnosticPending_ || !context_ || !diagnosticStaging_ ||
+            !diagnosticCompletion_) {
+            return;
+        }
+        BOOL complete{};
+        const auto queryResult = context_->GetData(
+            diagnosticCompletion_.Get(),
+            &complete,
+            sizeof(complete),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (queryResult == S_FALSE) {
+            return;
+        }
+        diagnosticPending_ = false;
+        diagnosticLogged_ = true;
+        if (FAILED(queryResult)) {
+            logging::warn(
+                "Skylighting GPU visibility trace completion failed with HRESULT 0x{:08X}.",
+                static_cast<std::uint32_t>(queryResult));
+            return;
+        }
+        if (complete != TRUE) {
+            logging::warn(
+                "Skylighting GPU visibility trace completed without a signaled event.");
+            return;
+        }
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        const auto mapResult = context_->Map(
+            diagnosticStaging_.Get(),
+            0,
+            D3D11_MAP_READ,
+            0,
+            &mapped);
+        if (FAILED(mapResult) || !mapped.pData) {
+            logging::warn(
+                "Skylighting GPU visibility trace readback failed with HRESULT 0x{:08X}.",
+                static_cast<std::uint32_t>(mapResult));
+            return;
+        }
+        std::array<std::uint32_t, kDiagnosticStatCount> stats{};
+        std::memcpy(stats.data(), mapped.pData, kDiagnosticByteWidth);
+        context_->Unmap(diagnosticStaging_.Get(), 0);
+        logging::info(
+            "Skylighting GPU visibility trace: sparseSamples={}, finiteProjection={}, insideUv={}, referenceInDepthRange={}, nonClearDepth={}, occluded={}, accumulated={}, changedProbe={}, sampledDepthMin={:.6f}, sampledDepthMax={:.6f}.",
+            stats[0],
+            stats[1],
+            stats[2],
+            stats[3],
+            stats[4],
+            stats[5],
+            stats[6],
+            stats[7],
+            std::bit_cast<float>(stats[8]),
+            std::bit_cast<float>(stats[9]));
+    }
+
     void Runtime::onNativePrecipitationFrame(
         void* precipitation,
         NativePrecipitationRender render,
         NativeProjectionSetup restoreProjection) noexcept
     {
         captureCalls_.fetch_add(1, std::memory_order_relaxed);
+        consumeDiagnosticReadback();
         const auto featureRequested = requested();
         const auto resourcesReady =
             gpuResourcesReady_.load(std::memory_order_acquire);

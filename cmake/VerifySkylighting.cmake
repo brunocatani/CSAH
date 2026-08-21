@@ -129,6 +129,8 @@ foreach(required IN ITEMS
     "register(t0)"
     "register(u0)"
     "register(u1)"
+    "register(u2)"
+    "RWByteAddressBuffer DiagnosticStats"
     "register(s0)"
     "register(b13)"
     "[numthreads(8, 8, 1)]"

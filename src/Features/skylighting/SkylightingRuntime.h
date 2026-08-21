@@ -144,6 +144,7 @@ namespace community_shaders::skylighting
         void clearProbeResources() noexcept;
         void publishConstants(bool featureActive) noexcept;
         void dispatchProbeUpdate() noexcept;
+        void consumeDiagnosticReadback() noexcept;
         void updateRollingVolume(float x, float y, float z) noexcept;
 
         Settings startupSettings_{};
@@ -162,6 +163,11 @@ namespace community_shaders::skylighting
             accumulationResource_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
             accumulationOutput_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> diagnosticBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+            diagnosticOutput_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> diagnosticStaging_;
+        Microsoft::WRL::ComPtr<ID3D11Query> diagnosticCompletion_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> updateShader_;
         Microsoft::WRL::ComPtr<ID3D11SamplerState> comparisonSampler_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constantsBuffer_;
@@ -175,6 +181,9 @@ namespace community_shaders::skylighting
         std::uint64_t publishedCaptureRevision_{};
         bool publishedFeatureActive_{};
         std::uint64_t captureRevision_{};
+        bool diagnosticSubmitted_{};
+        bool diagnosticPending_{};
+        bool diagnosticLogged_{};
 
         std::atomic_bool enabled_{ true };
         std::atomic_uint32_t requestedQuality_{

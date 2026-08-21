@@ -1,6 +1,7 @@
 Texture2D<float> OcclusionDepth : register(t0);
 RWTexture3D<float4> ProbeArray : register(u0);
 RWTexture3D<uint> AccumulationFrames : register(u1);
+RWByteAddressBuffer DiagnosticStats : register(u2);
 SamplerComparisonState OcclusionSampler : register(s0);
 
 cbuffer SkylightingSettings : register(b13)
@@ -14,7 +15,7 @@ cbuffer SkylightingSettings : register(b13)
     uint4 ArrayOrigin;
     int4 ValidMargin;
     // x=minimum diffuse visibility, y=minimum specular visibility,
-    // z=feature active, w=reserved.
+    // z=feature active, w=one-shot diagnostic collection.
     float4 Response;
 };
 
@@ -59,9 +60,44 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float3 occlusionPosition = projected.xyz * reciprocalW;
     const float2 occlusionUv =
         occlusionPosition.xy * float2(0.5f, -0.5f) + 0.5f;
+    const bool diagnosticSample = Response.w > 0.5f &&
+        all((dispatchThread % uint3(16u, 16u, 8u)) == 0u);
+    uint ignored;
+    if (diagnosticSample) {
+        DiagnosticStats.InterlockedAdd(0u, 1u, ignored);
+        if (all(abs(occlusionPosition) < 1.0e20f)) {
+            DiagnosticStats.InterlockedAdd(4u, 1u, ignored);
+        }
+    }
 
     if (Response.z > 0.5f &&
         all(occlusionUv > 0.0f) && all(occlusionUv < 1.0f)) {
+        if (diagnosticSample) {
+            DiagnosticStats.InterlockedAdd(8u, 1u, ignored);
+            if (occlusionPosition.z >= 0.0f &&
+                occlusionPosition.z <= 1.0f) {
+                DiagnosticStats.InterlockedAdd(12u, 1u, ignored);
+            }
+            uint depthWidth;
+            uint depthHeight;
+            OcclusionDepth.GetDimensions(depthWidth, depthHeight);
+            const uint2 depthPixel = min(
+                uint2(occlusionUv * float2(depthWidth, depthHeight)),
+                uint2(depthWidth - 1u, depthHeight - 1u));
+            const float sampledDepth = OcclusionDepth.Load(
+                int3(depthPixel, 0));
+            if (sampledDepth < 0.9999f) {
+                DiagnosticStats.InterlockedAdd(16u, 1u, ignored);
+            }
+            DiagnosticStats.InterlockedMin(
+                32u,
+                asuint(sampledDepth),
+                ignored);
+            DiagnosticStats.InterlockedMax(
+                36u,
+                asuint(sampledDepth),
+                ignored);
+        }
         const uint previousFrames = previouslyValid ?
             AccumulationFrames[dispatchThread] : 0u;
         const uint accumulation = min(previousFrames + 1u, 255u);
@@ -69,6 +105,9 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             OcclusionSampler,
             occlusionUv,
             occlusionPosition.z);
+        if (diagnosticSample && visibility < 0.9999f) {
+            DiagnosticStats.InterlockedAdd(20u, 1u, ignored);
+        }
         float4 sampledSh = EvaluateSh(
             normalize(OcclusionDirection.xyz)) *
             (visibility * 4.0f * kPi);
@@ -90,11 +129,20 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float confidence =
             min(kConfidenceFrames, (float)accumulation) /
             kConfidenceFrames;
-        ProbeArray[dispatchThread] = lerp(
+        const float4 updatedProbe = lerp(
             kUnitVisibilitySh,
             sampledSh,
             confidence);
+        ProbeArray[dispatchThread] = updatedProbe;
         AccumulationFrames[dispatchThread] = accumulation;
+        if (diagnosticSample) {
+            DiagnosticStats.InterlockedAdd(24u, 1u, ignored);
+            const float4 difference = abs(updatedProbe - kUnitVisibilitySh);
+            if (max(max(difference.x, difference.y),
+                    max(difference.z, difference.w)) > 1.0e-3f) {
+                DiagnosticStats.InterlockedAdd(28u, 1u, ignored);
+            }
+        }
     } else if (!previouslyValid) {
         ProbeArray[dispatchThread] = kUnitVisibilitySh;
         AccumulationFrames[dispatchThread] = 0u;
