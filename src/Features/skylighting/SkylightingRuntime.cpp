@@ -46,6 +46,7 @@ namespace community_shaders::skylighting
         constexpr std::ptrdiff_t kPrecipitationLastCubeSizeOffset = 0x90;
         constexpr std::size_t kNativeProjectionOffset = 0xED0;
         constexpr std::size_t kNativePrecipitationDepthTarget = 9;
+        constexpr float kPrivateDepthClearValue = 1.0f;
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
         constexpr std::size_t kFo4VrDepthStencilTargetsOffset = 0x2588;
@@ -1564,7 +1565,7 @@ namespace community_shaders::skylighting
         context_->ClearDepthStencilView(
             privateDepthView_.Get(),
             D3D11_CLEAR_DEPTH,
-            0.0f,
+            kPrivateDepthClearValue,
             0);
         const auto privateRenderStart = std::chrono::steady_clock::now();
         auto privateRenderCompleted = false;
