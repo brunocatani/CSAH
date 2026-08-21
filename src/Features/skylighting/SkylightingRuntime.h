@@ -45,7 +45,8 @@ namespace community_shaders::skylighting
         ScopedAmbientBindings() = default;
         ScopedAmbientBindings(
             ID3D11DeviceContext* context,
-            ID3D11ShaderResourceView* probe,
+            ID3D11ShaderResourceView* nearProbe,
+            ID3D11ShaderResourceView* farProbe,
             ID3D11Buffer* constants,
             ID3D11UnorderedAccessView* diagnostic,
             Runtime* owner) noexcept;
@@ -62,7 +63,7 @@ namespace community_shaders::skylighting
 
     private:
         ID3D11DeviceContext* context_{};
-        ID3D11ShaderResourceView* previousProbe_{};
+        std::array<ID3D11ShaderResourceView*, 2> previousProbes_{};
         ID3D11Buffer* previousConstants_{};
         ID3D11UnorderedAccessView* previousDiagnostic_{};
         Runtime* owner_{};
@@ -127,20 +128,6 @@ namespace community_shaders::skylighting
             float w{};
         };
 
-        struct alignas(16) Constants
-        {
-            std::array<float, 16> occlusionViewProjection{};
-            Float4 occlusionDirection{};
-            Float4 arraySize{};
-            Float4 cellSize{};
-            Float4 positionOffset{};
-            UInt4 arrayDimensions{};
-            UInt4 arrayOrigin{};
-            Int4 validMargin{};
-            Float4 response{};
-        };
-        static_assert(sizeof(Constants) == 192);
-
         struct Dimensions
         {
             std::uint32_t width{};
@@ -148,34 +135,82 @@ namespace community_shaders::skylighting
             std::uint32_t depth{};
         };
 
+        struct alignas(16) ProbeLevelConstants
+        {
+            Float4 arraySize{};
+            Float4 cellSize{};
+            Float4 positionOffset{};
+            UInt4 arrayDimensions{};
+            UInt4 arrayOrigin{};
+            Int4 validMargin{};
+        };
+        static_assert(sizeof(ProbeLevelConstants) == 96);
+
+        struct alignas(16) Constants
+        {
+            std::array<float, 16> occlusionViewProjection{};
+            Float4 occlusionDirection{};
+            ProbeLevelConstants nearLevel{};
+            ProbeLevelConstants farLevel{};
+            UInt4 updateControl{};
+            Float4 response{};
+        };
+        static_assert(sizeof(Constants) == 304);
+
+        struct ProbeResources
+        {
+            Dimensions dimensions{};
+            Microsoft::WRL::ComPtr<ID3D11Texture3D> probeTexture;
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> probeResource;
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> probeOutput;
+            Microsoft::WRL::ComPtr<ID3D11Texture3D> accumulationTexture;
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+                accumulationResource;
+            Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+                accumulationOutput;
+            std::array<std::int64_t, 3> previousCell{};
+            bool previousCellValid{};
+            bool dataValid{};
+            std::uint32_t updateSliceCursor{};
+        };
+
         [[nodiscard]] static Dimensions dimensionsFor(Quality quality) noexcept;
+        [[nodiscard]] static Dimensions farDimensionsFor(
+            Quality quality) noexcept;
+        [[nodiscard]] bool createProbeLevelResources(
+            ProbeResources& level,
+            Dimensions dimensions) noexcept;
         [[nodiscard]] bool createProbeResources() noexcept;
         [[nodiscard]] bool ensurePrivateDepth(
             ID3D11DepthStencilView* source) noexcept;
         void clearProbeResources() noexcept;
         void publishConstants(bool featureActive) noexcept;
-        void dispatchProbeUpdate() noexcept;
+        void dispatchProbeUpdate(
+            ProbeResources& level,
+            std::uint32_t levelIndex,
+            std::uint32_t sliceStart,
+            std::uint32_t sliceCount) noexcept;
         void consumeDiagnosticReadback() noexcept;
         void submitAmbientDiagnostic() noexcept;
         void consumeAmbientDiagnosticReadback() noexcept;
-        void updateRollingVolume(float x, float y, float z) noexcept;
+        [[nodiscard]] bool updateRollingVolume(
+            ProbeResources& level,
+            ProbeLevelConstants& levelConstants,
+            float captureDistance,
+            float captureHeight,
+            float x,
+            float y,
+            float z) noexcept;
 
         Settings startupSettings_{};
         Quality activeQuality_{ Quality::high };
-        Dimensions dimensions_{};
+        ProbeResources nearProbes_{};
+        ProbeResources farProbes_{};
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> privateDepthTexture_;
         Microsoft::WRL::ComPtr<ID3D11DepthStencilView> privateDepthView_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> privateDepthResource_;
-        Microsoft::WRL::ComPtr<ID3D11Texture3D> probeTexture_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> probeResource_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> probeOutput_;
-        Microsoft::WRL::ComPtr<ID3D11Texture3D> accumulationTexture_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
-            accumulationResource_;
-        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
-            accumulationOutput_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> diagnosticBuffer_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
             diagnosticOutput_;
@@ -194,8 +229,6 @@ namespace community_shaders::skylighting
         D3D11_DEPTH_STENCIL_VIEW_DESC privateDepthViewDescription_{};
         Constants constants_{};
         alignas(16) std::array<std::byte, 0xF10> nativeOutput_{};
-        std::array<std::int64_t, 3> previousCell_{};
-        bool previousCellValid_{};
         std::uint64_t publishedSettingsRevision_{};
         std::uint64_t publishedCaptureRevision_{};
         bool publishedFeatureActive_{};
@@ -234,6 +267,7 @@ namespace community_shaders::skylighting
         std::atomic_bool firstPrivateDepthFailureLogged_{};
         std::atomic_bool firstActiveAmbientBindLogged_{};
         std::atomic_bool firstPassProducerSummaryLogged_{};
+        std::atomic_bool firstFarProbeUpdateLogged_{};
         std::atomic_bool qualityRestartWarningLogged_{};
     };
 }

@@ -4,16 +4,24 @@ RWTexture3D<uint> AccumulationFrames : register(u1);
 RWByteAddressBuffer DiagnosticStats : register(u2);
 SamplerComparisonState OcclusionSampler : register(s0);
 
-cbuffer SkylightingSettings : register(b13)
+struct ProbeLevelSettings
 {
-    column_major float4x4 OcclusionViewProjection;
-    float4 OcclusionDirection;
     float4 ArraySize;
     float4 CellSize;
     float4 PositionOffset;
     uint4 ArrayDimensions;
     uint4 ArrayOrigin;
     int4 ValidMargin;
+};
+
+cbuffer SkylightingSettings : register(b13)
+{
+    column_major float4x4 OcclusionViewProjection;
+    float4 OcclusionDirection;
+    ProbeLevelSettings NearLevel;
+    ProbeLevelSettings FarLevel;
+    // x=level (0 near, 1 far), y=first Z slice, z=slice count.
+    uint4 UpdateControl;
     // x=minimum diffuse visibility, y=minimum specular visibility,
     // z=feature active, w=one-shot diagnostic collection.
     float4 Response;
@@ -35,24 +43,37 @@ float4 EvaluateSh(float3 direction)
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
-    const uint3 dimensions = ArrayDimensions.xyz;
-    if (any(dispatchThread >= dimensions)) {
+    ProbeLevelSettings level;
+    if (UpdateControl.x == 0u) {
+        level = NearLevel;
+    } else {
+        level = FarLevel;
+    }
+    const uint3 dimensions = level.ArrayDimensions.xyz;
+    const uint probeSlice = UpdateControl.y + dispatchThread.z;
+    if (dispatchThread.x >= dimensions.x ||
+        dispatchThread.y >= dimensions.y ||
+        dispatchThread.z >= UpdateControl.z ||
+        probeSlice >= dimensions.z) {
         return;
     }
+    const uint3 probeTexel = uint3(
+        dispatchThread.xy,
+        probeSlice);
 
     const int3 logicalCell = int3(
-        (dispatchThread + dimensions - ArrayOrigin.xyz) % dimensions);
-    const int3 validMinimum = max(ValidMargin.xyz, 0);
+        (probeTexel + dimensions - level.ArrayOrigin.xyz) % dimensions);
+    const int3 validMinimum = max(level.ValidMargin.xyz, 0);
     const int3 validMaximum =
-        int3(dimensions) - 1 + min(ValidMargin.xyz, 0);
+        int3(dimensions) - 1 + min(level.ValidMargin.xyz, 0);
     const bool previouslyValid =
         all(logicalCell >= validMinimum) &&
         all(logicalCell <= validMaximum);
 
     const float3 cellCentre =
         (float3(logicalCell) + 0.5f - float3(dimensions) * 0.5f) *
-            CellSize.xyz +
-        PositionOffset.xyz;
+            level.CellSize.xyz +
+        level.PositionOffset.xyz;
     const float4 projected = mul(
         OcclusionViewProjection,
         float4(cellCentre, 1.0f));
@@ -61,7 +82,8 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     const float2 occlusionUv =
         occlusionPosition.xy * float2(0.5f, -0.5f) + 0.5f;
     const bool diagnosticSample = Response.w > 0.5f &&
-        all((dispatchThread % uint3(16u, 16u, 8u)) == 0u);
+        UpdateControl.x == 0u &&
+        all((probeTexel % uint3(16u, 16u, 8u)) == 0u);
     uint ignored;
     if (diagnosticSample) {
         DiagnosticStats.InterlockedAdd(0u, 1u, ignored);
@@ -99,7 +121,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 ignored);
         }
         const uint previousFrames = previouslyValid ?
-            AccumulationFrames[dispatchThread] : 0u;
+            AccumulationFrames[probeTexel] : 0u;
         const uint accumulation = min(previousFrames + 1u, 255u);
         const float visibility = OcclusionDepth.SampleCmpLevelZero(
             OcclusionSampler,
@@ -117,7 +139,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             const float previousConfidence =
                 min(kConfidenceFrames, (float)previousFrames) /
                 kConfidenceFrames;
-            const float4 previous = ProbeArray[dispatchThread];
+            const float4 previous = ProbeArray[probeTexel];
             const float4 unbiasedPrevious = kUnitVisibilitySh +
                 (previous - kUnitVisibilitySh) /
                     max(previousConfidence, 1.0f / kConfidenceFrames);
@@ -133,8 +155,8 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             kUnitVisibilitySh,
             sampledSh,
             confidence);
-        ProbeArray[dispatchThread] = updatedProbe;
-        AccumulationFrames[dispatchThread] = accumulation;
+        ProbeArray[probeTexel] = updatedProbe;
+        AccumulationFrames[probeTexel] = accumulation;
         if (diagnosticSample) {
             DiagnosticStats.InterlockedAdd(24u, 1u, ignored);
             const float4 difference = abs(updatedProbe - kUnitVisibilitySh);
@@ -144,7 +166,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             }
         }
     } else if (!previouslyValid) {
-        ProbeArray[dispatchThread] = kUnitVisibilitySh;
-        AccumulationFrames[dispatchThread] = 0u;
+        ProbeArray[probeTexel] = kUnitVisibilitySh;
+        AccumulationFrames[probeTexel] = 0u;
     }
 }

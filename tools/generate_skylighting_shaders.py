@@ -38,6 +38,7 @@ from dxbc_transform import (
 
 SKYLIGHTING_CONSTANT_SLOT = 13
 SKYLIGHTING_PROBE_SLOT = 50
+SKYLIGHTING_FAR_PROBE_SLOT = 51
 SKYLIGHTING_DIAGNOSTIC_SLOT = 7
 REQUIRED_NATIVE_RESOURCE_SLOTS = {1, 2, 3}
 REQUIRED_NATIVE_CONSTANT_SLOTS = {2, 8, 12}
@@ -143,6 +144,7 @@ def declaration_contract(
     _, _, _, words = shader_words(template)
     constant_declaration: list[int] | None = None
     resource_declaration: list[int] | None = None
+    far_resource_declaration: list[int] | None = None
     diagnostic_declaration: list[int] | None = None
     for start, end in instructions(words):
         opcode = words[start] & 0x7FF
@@ -164,6 +166,14 @@ def declaration_contract(
         ):
             resource_declaration = words[start:end]
         if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices ==
+                (SKYLIGHTING_FAR_PROBE_SLOT,)
+        ):
+            far_resource_declaration = words[start:end]
+        if (
             opcode == OPCODE_DCL_UNORDERED_ACCESS_VIEW_RAW
             and operands
             and operands[0].operand_type == OPERAND_UNORDERED_ACCESS_VIEW
@@ -176,6 +186,8 @@ def declaration_contract(
         raise ContractError("Skylighting template no longer declares b13")
     if resource_declaration is None:
         raise ContractError("Skylighting template no longer declares t50")
+    if far_resource_declaration is None:
+        raise ContractError("Skylighting template no longer declares t51")
     if diagnostic_declaration is None:
         raise ContractError("Skylighting template no longer declares u7")
 
@@ -194,6 +206,7 @@ def declaration_contract(
     return (
         [
             resource_declaration,
+            far_resource_declaration,
             constant_declaration,
             diagnostic_declaration,
         ],
@@ -388,6 +401,8 @@ def patch_ambient_shader(original: bytes, template: bytes) -> bytes:
         raise ContractError("ambient native s1/s2/s3 contract changed")
     if SKYLIGHTING_PROBE_SLOT in resources:
         raise ContractError("ambient shader unexpectedly owns t50")
+    if SKYLIGHTING_FAR_PROBE_SLOT in resources:
+        raise ContractError("ambient shader unexpectedly owns t51")
     if SKYLIGHTING_CONSTANT_SLOT in constants:
         raise ContractError("ambient shader unexpectedly owns b13")
 
@@ -588,8 +603,9 @@ def validate_candidate(
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB13[12], immediateIndexed",
+        "dcl_constantbuffer CB13[19], immediateIndexed",
         "dcl_resource_texture3d (float,float,float,float) t50",
+        "dcl_resource_texture3d (float,float,float,float) t51",
         "dcl_uav_raw u7",
         "dcl_input_ps_siv linear noperspective v0.xy, position",
         "dcl_input_ps constant v1.x",
@@ -628,8 +644,9 @@ def main() -> int:
             "Skylighting ambient transform compilation",
         )
         for required in (
-            "dcl_constantbuffer CB13[12], immediateIndexed",
+            "dcl_constantbuffer CB13[19], immediateIndexed",
             "dcl_resource_texture3d (float,float,float,float) t50",
+            "dcl_resource_texture3d (float,float,float,float) t51",
             "dcl_uav_raw u7",
             "dcl_input_ps_siv linear noperspective v0.xy, position",
             "dcl_input_ps constant v1.x",
@@ -655,7 +672,7 @@ def main() -> int:
             "dcl_uav_typed_texture3d (float,float,float,float) u0",
             "dcl_uav_typed_texture3d (uint,uint,uint,uint) u1",
             "dcl_uav_raw u2",
-            "dcl_constantbuffer CB13[12], immediateIndexed",
+            "dcl_constantbuffer CB13[19], immediateIndexed",
             "dcl_thread_group 8, 8, 1",
         ):
             if required not in compute_assembly:

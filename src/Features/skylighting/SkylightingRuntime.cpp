@@ -52,6 +52,9 @@ namespace community_shaders::skylighting
         constexpr std::size_t kFo4VrDepthStencilTargetCount = 18;
         constexpr float kCaptureDistance = 10000.0f;
         constexpr float kCaptureHeight = 5000.0f;
+        constexpr float kFarCaptureDistance = 32768.0f;
+        constexpr float kFarCaptureHeight = 16384.0f;
+        constexpr std::uint64_t kFarCaptureInterval = 8;
         constexpr float kTwoPi = 6.28318530717958647692f;
         constexpr float kDegreesToRadians =
             0.01745329251994329577f;
@@ -270,7 +273,8 @@ namespace community_shaders::skylighting
 
     ScopedAmbientBindings::ScopedAmbientBindings(
         ID3D11DeviceContext* context,
-        ID3D11ShaderResourceView* probe,
+        ID3D11ShaderResourceView* nearProbe,
+        ID3D11ShaderResourceView* farProbe,
         ID3D11Buffer* constants,
         ID3D11UnorderedAccessView* diagnostic,
         Runtime* owner) noexcept :
@@ -279,9 +283,19 @@ namespace community_shaders::skylighting
         if (!context_) {
             return;
         }
-        context_->PSGetShaderResources(50, 1, &previousProbe_);
+        context_->PSGetShaderResources(
+            50,
+            static_cast<UINT>(previousProbes_.size()),
+            previousProbes_.data());
         context_->PSGetConstantBuffers(13, 1, &previousConstants_);
-        context_->PSSetShaderResources(50, 1, &probe);
+        const std::array<ID3D11ShaderResourceView*, 2> probes{
+            nearProbe,
+            farProbe,
+        };
+        context_->PSSetShaderResources(
+            50,
+            static_cast<UINT>(probes.size()),
+            probes.data());
         context_->PSSetConstantBuffers(13, 1, &constants);
         if (diagnostic && owner_) {
             context_->OMGetRenderTargetsAndUnorderedAccessViews(
@@ -312,7 +326,7 @@ namespace community_shaders::skylighting
     ScopedAmbientBindings::ScopedAmbientBindings(
         ScopedAmbientBindings&& other) noexcept :
         context_(other.context_),
-        previousProbe_(other.previousProbe_),
+        previousProbes_(other.previousProbes_),
         previousConstants_(other.previousConstants_),
         previousDiagnostic_(other.previousDiagnostic_),
         owner_(other.owner_),
@@ -320,7 +334,7 @@ namespace community_shaders::skylighting
         captured_(other.captured_)
     {
         other.context_ = nullptr;
-        other.previousProbe_ = nullptr;
+        other.previousProbes_.fill(nullptr);
         other.previousConstants_ = nullptr;
         other.previousDiagnostic_ = nullptr;
         other.owner_ = nullptr;
@@ -334,14 +348,14 @@ namespace community_shaders::skylighting
         if (this != &other) {
             (void)restore();
             context_ = other.context_;
-            previousProbe_ = other.previousProbe_;
+            previousProbes_ = other.previousProbes_;
             previousConstants_ = other.previousConstants_;
             previousDiagnostic_ = other.previousDiagnostic_;
             owner_ = other.owner_;
             diagnosticCaptured_ = other.diagnosticCaptured_;
             captured_ = other.captured_;
             other.context_ = nullptr;
-            other.previousProbe_ = nullptr;
+            other.previousProbes_.fill(nullptr);
             other.previousConstants_ = nullptr;
             other.previousDiagnostic_ = nullptr;
             other.owner_ = nullptr;
@@ -375,11 +389,16 @@ namespace community_shaders::skylighting
                 owner_->submitAmbientDiagnostic();
             }
         }
-        context_->PSSetShaderResources(50, 1, &previousProbe_);
+        context_->PSSetShaderResources(
+            50,
+            static_cast<UINT>(previousProbes_.size()),
+            previousProbes_.data());
         context_->PSSetConstantBuffers(13, 1, &previousConstants_);
-        if (previousProbe_) {
-            previousProbe_->Release();
-            previousProbe_ = nullptr;
+        for (auto*& previousProbe : previousProbes_) {
+            if (previousProbe) {
+                previousProbe->Release();
+                previousProbe = nullptr;
+            }
         }
         if (previousConstants_) {
             previousConstants_->Release();
@@ -408,6 +427,19 @@ namespace community_shaders::skylighting
             return { 256, 256, 128 };
         }
         return { 256, 256, 128 };
+    }
+
+    Runtime::Dimensions Runtime::farDimensionsFor(Quality quality) noexcept
+    {
+        switch (quality) {
+        case Quality::low:
+            return { 32, 32, 16 };
+        case Quality::medium:
+            return { 64, 64, 32 };
+        case Quality::high:
+            return { 128, 128, 64 };
+        }
+        return { 128, 128, 64 };
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept
@@ -454,7 +486,8 @@ namespace community_shaders::skylighting
         context_ = immediateContext;
         activeQuality_ = sanitizeQuality(
             requestedQuality_.load(std::memory_order_relaxed));
-        dimensions_ = dimensionsFor(activeQuality_);
+        nearProbes_.dimensions = dimensionsFor(activeQuality_);
+        farProbes_.dimensions = farDimensionsFor(activeQuality_);
         qualityRestartWarningLogged_.store(false, std::memory_order_relaxed);
         firstPrerequisiteRejectionLogged_.store(
             false,
@@ -470,6 +503,7 @@ namespace community_shaders::skylighting
         firstPassProducerSummaryLogged_.store(
             false,
             std::memory_order_relaxed);
+        firstFarProbeUpdateLogged_.store(false, std::memory_order_relaxed);
         diagnosticSubmitted_ = false;
         diagnosticPending_ = false;
         diagnosticLogged_ = false;
@@ -489,23 +523,30 @@ namespace community_shaders::skylighting
         clearProbeResources();
         gpuResourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Skylighting GPU resources are ready at {} quality ({}x{}x{}, shared stereo world-space probes).",
+            "Skylighting GPU resources are ready at {} quality (near={}x{}x{} over {:.0f} units, far={}x{}x{} over {:.0f} units, shared stereo world-space clipmap).",
             qualityName(activeQuality_),
-            dimensions_.width,
-            dimensions_.height,
-            dimensions_.depth);
+            nearProbes_.dimensions.width,
+            nearProbes_.dimensions.height,
+            nearProbes_.dimensions.depth,
+            kCaptureDistance,
+            farProbes_.dimensions.width,
+            farProbes_.dimensions.height,
+            farProbes_.dimensions.depth,
+            kFarCaptureDistance);
     }
 
-    bool Runtime::createProbeResources() noexcept
+    bool Runtime::createProbeLevelResources(
+        ProbeResources& level,
+        Dimensions dimensions) noexcept
     {
-        if (!device_ || !context_) {
+        if (!device_) {
             return false;
         }
 
         D3D11_TEXTURE3D_DESC probeDescription{};
-        probeDescription.Width = dimensions_.width;
-        probeDescription.Height = dimensions_.height;
-        probeDescription.Depth = dimensions_.depth;
+        probeDescription.Width = dimensions.width;
+        probeDescription.Height = dimensions.height;
+        probeDescription.Depth = dimensions.depth;
         probeDescription.MipLevels = 1;
         probeDescription.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
         probeDescription.Usage = D3D11_USAGE_DEFAULT;
@@ -538,7 +579,7 @@ namespace community_shaders::skylighting
             D3D11_UAV_DIMENSION_TEXTURE3D;
         probeOutputDescription.Texture3D.MipSlice = 0;
         probeOutputDescription.Texture3D.FirstWSlice = 0;
-        probeOutputDescription.Texture3D.WSize = dimensions_.depth;
+        probeOutputDescription.Texture3D.WSize = dimensions.depth;
         ComPtr<ID3D11UnorderedAccessView> probeOutput;
         if (FAILED(device_->CreateUnorderedAccessView(
                 probeTexture.Get(),
@@ -574,6 +615,30 @@ namespace community_shaders::skylighting
                 accumulationTexture.Get(),
                 &accumulationOutputDescription,
                 accumulationOutput.GetAddressOf()))) {
+            return false;
+        }
+
+        level.dimensions = dimensions;
+        level.probeTexture = std::move(probeTexture);
+        level.probeResource = std::move(probeResource);
+        level.probeOutput = std::move(probeOutput);
+        level.accumulationTexture = std::move(accumulationTexture);
+        level.accumulationResource = std::move(accumulationResource);
+        level.accumulationOutput = std::move(accumulationOutput);
+        level.previousCell = {};
+        level.previousCellValid = false;
+        level.dataValid = false;
+        level.updateSliceCursor = 0;
+        return true;
+    }
+
+    bool Runtime::createProbeResources() noexcept
+    {
+        if (!device_ || !context_ ||
+            !createProbeLevelResources(
+                nearProbes_, dimensionsFor(activeQuality_)) ||
+            !createProbeLevelResources(
+                farProbes_, farDimensionsFor(activeQuality_))) {
             return false;
         }
 
@@ -702,12 +767,6 @@ namespace community_shaders::skylighting
             return false;
         }
 
-        probeTexture_ = std::move(probeTexture);
-        probeResource_ = std::move(probeResource);
-        probeOutput_ = std::move(probeOutput);
-        accumulationTexture_ = std::move(accumulationTexture);
-        accumulationResource_ = std::move(accumulationResource);
-        accumulationOutput_ = std::move(accumulationOutput);
         diagnosticBuffer_ = std::move(diagnosticBuffer);
         diagnosticOutput_ = std::move(diagnosticOutput);
         diagnosticStaging_ = std::move(diagnosticStaging);
@@ -725,7 +784,9 @@ namespace community_shaders::skylighting
 
     void Runtime::clearProbeResources() noexcept
     {
-        if (!context_ || !probeOutput_ || !accumulationOutput_) {
+        if (!context_ || !nearProbes_.probeOutput ||
+            !nearProbes_.accumulationOutput || !farProbes_.probeOutput ||
+            !farProbes_.accumulationOutput) {
             return;
         }
         constexpr std::array<float, 4> unitVisibility{
@@ -735,11 +796,20 @@ namespace community_shaders::skylighting
             0.0f,
         };
         constexpr std::array<UINT, 4> noAccumulation{};
-        context_->ClearUnorderedAccessViewFloat(
-            probeOutput_.Get(), unitVisibility.data());
-        context_->ClearUnorderedAccessViewUint(
-            accumulationOutput_.Get(), noAccumulation.data());
-        previousCellValid_ = false;
+        const auto clearLevel = [&](ProbeResources& level) noexcept {
+            context_->ClearUnorderedAccessViewFloat(
+                level.probeOutput.Get(),
+                unitVisibility.data());
+            context_->ClearUnorderedAccessViewUint(
+                level.accumulationOutput.Get(),
+                noAccumulation.data());
+            level.previousCell = {};
+            level.previousCellValid = false;
+            level.dataValid = false;
+            level.updateSliceCursor = 0;
+        };
+        clearLevel(nearProbes_);
+        clearLevel(farProbes_);
         probeDataValid_.store(false, std::memory_order_release);
         resetRequested_.store(false, std::memory_order_release);
     }
@@ -903,13 +973,23 @@ namespace community_shaders::skylighting
         return true;
     }
 
-    void Runtime::updateRollingVolume(float x, float y, float z) noexcept
+    bool Runtime::updateRollingVolume(
+        ProbeResources& level,
+        ProbeLevelConstants& levelConstants,
+        float captureDistance,
+        float captureHeight,
+        float x,
+        float y,
+        float z) noexcept
     {
         const std::array<float, 3> position{ x, y, z };
         const std::array<float, 3> cellSize{
-            kCaptureDistance / static_cast<float>(dimensions_.width),
-            kCaptureDistance / static_cast<float>(dimensions_.height),
-            kCaptureHeight / static_cast<float>(dimensions_.depth),
+            captureDistance /
+                static_cast<float>(level.dimensions.width),
+            captureDistance /
+                static_cast<float>(level.dimensions.height),
+            captureHeight /
+                static_cast<float>(level.dimensions.depth),
         };
         std::array<std::int64_t, 3> cell{};
         std::array<float, 3> offset{};
@@ -921,61 +1001,73 @@ namespace community_shaders::skylighting
                 position[axis];
         }
 
-        constants_.arraySize = {
-            kCaptureDistance,
-            kCaptureDistance,
-            kCaptureHeight,
+        levelConstants.arraySize = {
+            captureDistance,
+            captureDistance,
+            captureHeight,
             0.0f,
         };
-        constants_.cellSize = {
+        levelConstants.cellSize = {
             cellSize[0],
             cellSize[1],
             cellSize[2],
             0.0f,
         };
-        constants_.positionOffset = {
+        levelConstants.positionOffset = {
             offset[0],
             offset[1],
             offset[2],
             0.0f,
         };
-        constants_.arrayDimensions = {
-            dimensions_.width,
-            dimensions_.height,
-            dimensions_.depth,
+        levelConstants.arrayDimensions = {
+            level.dimensions.width,
+            level.dimensions.height,
+            level.dimensions.depth,
             0,
         };
-        constants_.arrayOrigin = {
+        levelConstants.arrayOrigin = {
             positiveModulo(
-                cell[0] - static_cast<std::int64_t>(dimensions_.width / 2),
-                dimensions_.width),
+                cell[0] -
+                    static_cast<std::int64_t>(
+                        level.dimensions.width / 2),
+                level.dimensions.width),
             positiveModulo(
-                cell[1] - static_cast<std::int64_t>(dimensions_.height / 2),
-                dimensions_.height),
+                cell[1] -
+                    static_cast<std::int64_t>(
+                        level.dimensions.height / 2),
+                level.dimensions.height),
             positiveModulo(
-                cell[2] - static_cast<std::int64_t>(dimensions_.depth / 2),
-                dimensions_.depth),
+                cell[2] -
+                    static_cast<std::int64_t>(
+                        level.dimensions.depth / 2),
+                level.dimensions.depth),
             0,
         };
-        constants_.validMargin = previousCellValid_ ?
+        levelConstants.validMargin = level.previousCellValid ?
             Int4{
                 clampDifference<std::int32_t>(
-                    previousCell_[0] - cell[0], dimensions_.width),
+                    level.previousCell[0] - cell[0],
+                    level.dimensions.width),
                 clampDifference<std::int32_t>(
-                    previousCell_[1] - cell[1], dimensions_.height),
+                    level.previousCell[1] - cell[1],
+                    level.dimensions.height),
                 clampDifference<std::int32_t>(
-                    previousCell_[2] - cell[2], dimensions_.depth),
+                    level.previousCell[2] - cell[2],
+                    level.dimensions.depth),
                 0,
             } :
             Int4{
-                static_cast<std::int32_t>(dimensions_.width),
-                static_cast<std::int32_t>(dimensions_.height),
-                static_cast<std::int32_t>(dimensions_.depth),
+                static_cast<std::int32_t>(level.dimensions.width),
+                static_cast<std::int32_t>(level.dimensions.height),
+                static_cast<std::int32_t>(level.dimensions.depth),
                 0,
             };
-        previousCell_ = cell;
-        previousCellValid_ = true;
+        const auto moved = !level.previousCellValid ||
+            level.previousCell != cell;
+        level.previousCell = cell;
+        level.previousCellValid = true;
         ++captureRevision_;
+        return moved;
     }
 
     void Runtime::publishConstants(bool featureActive) noexcept
@@ -1007,16 +1099,42 @@ namespace community_shaders::skylighting
         publishedFeatureActive_ = featureActive;
     }
 
-    void Runtime::dispatchProbeUpdate() noexcept
+    void Runtime::dispatchProbeUpdate(
+        ProbeResources& level,
+        std::uint32_t levelIndex,
+        std::uint32_t sliceStart,
+        std::uint32_t sliceCount) noexcept
     {
-        if (!context_ || !privateDepthResource_ || !probeOutput_ ||
-            !accumulationOutput_ || !diagnosticBuffer_ ||
+        if (!context_ || !privateDepthResource_ || !level.probeOutput ||
+            !level.accumulationOutput || !diagnosticBuffer_ ||
             !diagnosticOutput_ || !diagnosticStaging_ ||
             !diagnosticCompletion_ || !updateShader_ ||
             !comparisonSampler_ || !constantsBuffer_) {
             return;
         }
-        const auto collectDiagnostic = constants_.response.w > 0.5f;
+        const auto safeSliceStart = (std::min)(
+            sliceStart,
+            level.dimensions.depth - 1u);
+        const auto safeSliceCount = (std::max)(
+            1u,
+            (std::min)(
+                sliceCount,
+                level.dimensions.depth - safeSliceStart));
+        constants_.updateControl = {
+            levelIndex,
+            safeSliceStart,
+            safeSliceCount,
+            0,
+        };
+        context_->UpdateSubresource(
+            constantsBuffer_.Get(),
+            0,
+            nullptr,
+            &constants_,
+            0,
+            0);
+        const auto collectDiagnostic =
+            levelIndex == 0 && constants_.response.w > 0.5f;
         if (collectDiagnostic) {
             std::array<std::uint32_t, kDiagnosticStatCount> initial{};
             initial[8] = std::bit_cast<std::uint32_t>(1.0f);
@@ -1046,8 +1164,8 @@ namespace community_shaders::skylighting
             }
             ID3D11ShaderResourceView* resource = privateDepthResource_.Get();
             std::array<ID3D11UnorderedAccessView*, 3> outputs{
-                probeOutput_.Get(),
-                accumulationOutput_.Get(),
+                level.probeOutput.Get(),
+                level.accumulationOutput.Get(),
                 diagnosticOutput_.Get(),
             };
             ID3D11SamplerState* sampler = comparisonSampler_.Get();
@@ -1062,9 +1180,9 @@ namespace community_shaders::skylighting
             context_->CSSetConstantBuffers(13, 1, &constants);
             context_->CSSetShader(updateShader_.Get(), nullptr, 0);
             context_->Dispatch(
-                (dimensions_.width + 7u) / 8u,
-                (dimensions_.height + 7u) / 8u,
-                dimensions_.depth);
+                (level.dimensions.width + 7u) / 8u,
+                (level.dimensions.height + 7u) / 8u,
+                safeSliceCount);
         }
         if (collectDiagnostic) {
             context_->CopyResource(
@@ -1077,12 +1195,30 @@ namespace community_shaders::skylighting
         const auto previousDispatches = probeDispatches_.fetch_add(
             1,
             std::memory_order_relaxed);
-        probeDataValid_.store(true, std::memory_order_release);
+        level.dataValid = true;
+        probeDataValid_.store(
+            nearProbes_.dataValid,
+            std::memory_order_release);
         if (previousDispatches == 0) {
             logging::info(
-                "Skylighting completed its first exterior probe update (captures={}, depthBinds={}, dispatches=1).",
+                "Skylighting completed its first exterior near-probe update (captures={}, depthBinds={}, slices={} of {}).",
                 captureCalls_.load(std::memory_order_relaxed),
-                privateDepthBinds_.load(std::memory_order_relaxed));
+                privateDepthBinds_.load(std::memory_order_relaxed),
+                safeSliceCount,
+                level.dimensions.depth);
+        }
+        if (levelIndex == 1u &&
+            !firstFarProbeUpdateLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            logging::info(
+                "Skylighting completed its first far-probe update ({}x{}x{}, slices={} of {}, field={:.0f} units).",
+                level.dimensions.width,
+                level.dimensions.height,
+                level.dimensions.depth,
+                safeSliceCount,
+                level.dimensions.depth,
+                kFarCaptureDistance);
         }
     }
 
@@ -1395,6 +1531,16 @@ namespace community_shaders::skylighting
         const auto frame = frameIndex_.fetch_add(
             1,
             std::memory_order_relaxed);
+        const auto updateFarLevel = frame != 0 &&
+            frame % kFarCaptureInterval ==
+                kFarCaptureInterval - 1;
+        auto& targetLevel = updateFarLevel ? farProbes_ : nearProbes_;
+        auto& targetConstants = updateFarLevel ?
+            constants_.farLevel : constants_.nearLevel;
+        const auto targetDistance = updateFarLevel ?
+            kFarCaptureDistance : kCaptureDistance;
+        const auto targetHeight = updateFarLevel ?
+            kFarCaptureHeight : kCaptureHeight;
         auto u = 0.5f + static_cast<float>(frame) * kR2X;
         auto v = 0.5f + static_cast<float>(frame) * kR2Y;
         u -= std::floor(u);
@@ -1409,8 +1555,8 @@ namespace community_shaders::skylighting
         const auto skyZ = std::sqrt(
             (std::max)(0.0f, 1.0f - radius * radius));
 
-        *cubeSize = kCaptureDistance;
-        *lastCubeSize = kCaptureDistance;
+        *cubeSize = targetDistance;
+        *lastCubeSize = targetDistance;
         *directionX = -skyX;
         *directionY = -skyY;
         *directionZ = -skyZ;
@@ -1487,13 +1633,40 @@ namespace community_shaders::skylighting
             return;
         }
         const auto& cameraPosition = playerCamera->cameraRoot->world.translate;
-        updateRollingVolume(
+        const auto volumeMoved = updateRollingVolume(
+            targetLevel,
+            targetConstants,
+            targetDistance,
+            targetHeight,
             cameraPosition.x,
             cameraPosition.y,
             cameraPosition.z);
+        const auto stableSlices = updateFarLevel ?
+            8u :
+            (activeQuality_ == Quality::high ?
+                    13u :
+                    (activeQuality_ == Quality::medium ? 11u : 8u));
+        std::uint32_t sliceStart{};
+        std::uint32_t sliceCount{};
+        if (volumeMoved || !targetLevel.dataValid) {
+            sliceCount = targetLevel.dimensions.depth;
+            targetLevel.updateSliceCursor = 0;
+        } else {
+            sliceStart = targetLevel.updateSliceCursor;
+            sliceCount = (std::min)(
+                stableSlices,
+                targetLevel.dimensions.depth - sliceStart);
+            targetLevel.updateSliceCursor =
+                (sliceStart + sliceCount) %
+                targetLevel.dimensions.depth;
+        }
         exteriorActive_.store(true, std::memory_order_release);
         publishConstants(true);
-        dispatchProbeUpdate();
+        dispatchProbeUpdate(
+            targetLevel,
+            updateFarLevel ? 1u : 0u,
+            sliceStart,
+            sliceCount);
     }
 
     bool Runtime::requested() const noexcept
@@ -1515,7 +1688,7 @@ namespace community_shaders::skylighting
             exteriorActive_.load(std::memory_order_acquire) &&
             privateDepthReady_.load(std::memory_order_acquire) &&
             probeDataValid_.load(std::memory_order_acquire) &&
-            probeResource_;
+            nearProbes_.probeResource && farProbes_.probeResource;
         const auto settingsRevision =
             settingsRevision_.load(std::memory_order_acquire);
         if (settingsRevision != publishedSettingsRevision_ ||
@@ -1566,7 +1739,8 @@ namespace community_shaders::skylighting
         ambientBinds_.fetch_add(1, std::memory_order_relaxed);
         return ScopedAmbientBindings(
             context,
-            active ? probeResource_.Get() : nullptr,
+            active ? nearProbes_.probeResource.Get() : nullptr,
+            active ? farProbes_.probeResource.Get() : nullptr,
             constantsBuffer_.Get(),
             collectAmbientDiagnostic ? ambientDiagnosticOutput_.Get() :
                                        nullptr,
@@ -1650,9 +1824,9 @@ namespace community_shaders::skylighting
             .requestedQuality = sanitizeQuality(
                 requestedQuality_.load(std::memory_order_relaxed)),
             .activeQuality = activeQuality_,
-            .probeWidth = dimensions_.width,
-            .probeHeight = dimensions_.height,
-            .probeDepth = dimensions_.depth,
+            .probeWidth = nearProbes_.dimensions.width,
+            .probeHeight = nearProbes_.dimensions.height,
+            .probeDepth = nearProbes_.dimensions.depth,
             .captureCalls = captureCalls_.load(std::memory_order_relaxed),
             .privateDepthBinds =
                 privateDepthBinds_.load(std::memory_order_relaxed),

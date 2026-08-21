@@ -1,9 +1,20 @@
 Texture2D<float4> NativeNormal : register(t1);
 Texture2D<float4> NativeMaterial : register(t2);
 Texture2D<float4> NativeDepth : register(t3);
-Texture3D<float4> SkylightingProbeArray : register(t50);
+Texture3D<float4> NearSkylightingProbeArray : register(t50);
+Texture3D<float4> FarSkylightingProbeArray : register(t51);
 RWByteAddressBuffer SkylightingAmbientDiagnostic : register(u7);
 SamplerState NativeDepthSampler : register(s3);
+
+struct ProbeLevelSettings
+{
+    float4 ArraySize;
+    float4 CellSize;
+    float4 PositionOffset;
+    uint4 ArrayDimensions;
+    uint4 ArrayOrigin;
+    int4 ValidMargin;
+};
 
 cbuffer NativeStereo : register(b8)
 {
@@ -19,12 +30,9 @@ cbuffer SkylightingSettings : register(b13)
 {
     column_major float4x4 OcclusionViewProjection;
     float4 OcclusionDirection;
-    float4 ArraySize;
-    float4 CellSize;
-    float4 PositionOffset;
-    uint4 ArrayDimensions;
-    uint4 ArrayOrigin;
-    int4 ValidMargin;
+    ProbeLevelSettings NearLevel;
+    ProbeLevelSettings FarLevel;
+    uint4 UpdateControl;
     // x=minimum diffuse visibility, y=minimum specular visibility,
     // z=feature active, w=reserved.
     float4 Response;
@@ -127,20 +135,21 @@ float4 FauxSpecularLobe(
         broadness);
 }
 
-float EdgeFade(float3 relativePosition)
+float LevelExtent(
+    float3 relativePosition,
+    ProbeLevelSettings level)
 {
-    const float3 uvw = saturate(
-        relativePosition / ArraySize.xyz + 0.5f);
-    const float3 edgeDistance = min(uvw, 1.0f - uvw);
-    return saturate(
-        min(edgeDistance.x, min(edgeDistance.y, edgeDistance.z)) * 20.0f);
+    const float3 normalized = abs(
+        (relativePosition - level.PositionOffset.xyz) /
+        max(level.ArraySize.xyz * 0.5f, 1.0f));
+    return max(length(normalized.xy), normalized.z);
 }
 
-bool SampleSkylighting(
+bool SampleProbeLevel(
+    uint levelIndex,
     float3 relativeWorldPosition,
     float3 normal,
     out float4 visibilitySh,
-    out float fade,
     out bool insideVolume,
     out bool weightedSample)
 {
@@ -149,22 +158,29 @@ bool SampleSkylighting(
         0.0f,
         0.0f,
         0.0f);
-    fade = 0.0f;
     insideVolume = false;
     weightedSample = false;
-    if (Response.z <= 0.5f || any(ArrayDimensions.xyz == 0u)) {
+    ProbeLevelSettings level;
+    if (levelIndex == 0u) {
+        level = NearLevel;
+    } else {
+        level = FarLevel;
+    }
+    if (Response.z <= 0.5f ||
+        any(level.ArrayDimensions.xyz == 0u)) {
         return false;
     }
 
-    relativeWorldPosition += normal * CellSize.xyz * 0.5f;
-    const float3 adjusted = relativeWorldPosition - PositionOffset.xyz;
-    const float3 uvw = adjusted / ArraySize.xyz + 0.5f;
+    relativeWorldPosition += normal * level.CellSize.xyz * 0.5f;
+    const float3 adjusted =
+        relativeWorldPosition - level.PositionOffset.xyz;
+    const float3 uvw = adjusted / level.ArraySize.xyz + 0.5f;
     if (any(uvw < 0.0f) || any(uvw > 1.0f)) {
         return false;
     }
     insideVolume = true;
 
-    const int3 dimensions = int3(ArrayDimensions.xyz);
+    const int3 dimensions = int3(level.ArrayDimensions.xyz);
     const float3 cellCoordinates = uvw * float3(dimensions);
     const int3 cell000 = int3(floor(cellCoordinates - 0.5f));
     const float3 trilinearPosition =
@@ -189,8 +205,8 @@ bool SampleSkylighting(
                 const float3 cellCentre =
                     (float3(logicalCell) + 0.5f -
                         float3(dimensions) * 0.5f) *
-                        CellSize.xyz +
-                    PositionOffset.xyz;
+                        level.CellSize.xyz +
+                    level.PositionOffset.xyz;
                 const float3 towardCell = cellCentre - relativeWorldPosition;
                 const float distanceSquared = dot(towardCell, towardCell);
                 const float tangentWeight = distanceSquared > 1.0e-8f ?
@@ -200,10 +216,16 @@ bool SampleSkylighting(
                     1.0f;
                 const float weight = trilinearWeight * tangentWeight;
                 const int3 physicalCell = int3(
-                    (uint3(logicalCell) + ArrayOrigin.xyz) %
-                    ArrayDimensions.xyz);
-                sum += SkylightingProbeArray.Load(
-                    int4(physicalCell, 0)) * weight;
+                    (uint3(logicalCell) + level.ArrayOrigin.xyz) %
+                    level.ArrayDimensions.xyz);
+                [branch]
+                if (levelIndex == 0u) {
+                    sum += NearSkylightingProbeArray.Load(
+                        int4(physicalCell, 0)) * weight;
+                } else {
+                    sum += FarSkylightingProbeArray.Load(
+                        int4(physicalCell, 0)) * weight;
+                }
                 weightSum += weight;
             }
         }
@@ -213,7 +235,81 @@ bool SampleSkylighting(
     }
     weightedSample = true;
     visibilitySh = sum / weightSum;
-    fade = EdgeFade(relativeWorldPosition);
+    return true;
+}
+
+bool SampleSkylighting(
+    float3 relativeWorldPosition,
+    float3 normal,
+    out float4 visibilitySh,
+    out float fade,
+    out bool insideVolume,
+    out bool weightedSample)
+{
+    const float4 unitVisibility = float4(
+        3.54490770181103205460f,
+        0.0f,
+        0.0f,
+        0.0f);
+    visibilitySh = unitVisibility;
+    fade = 0.0f;
+    insideVolume = false;
+    weightedSample = false;
+
+    const float nearExtent = LevelExtent(
+        relativeWorldPosition,
+        NearLevel);
+    float nearWeight = 1.0f - smoothstep(
+        0.55f,
+        0.90f,
+        nearExtent);
+    const float farExtent = LevelExtent(
+        relativeWorldPosition,
+        FarLevel);
+    const float farFade = 1.0f - smoothstep(
+        0.75f,
+        0.98f,
+        farExtent);
+
+    float4 nearVisibility = unitVisibility;
+    bool nearInside = false;
+    bool nearWeighted = false;
+    const bool nearSampled = nearWeight > 0.0f && SampleProbeLevel(
+        0u,
+        relativeWorldPosition,
+        normal,
+        nearVisibility,
+        nearInside,
+        nearWeighted);
+    if (!nearSampled) {
+        nearWeight = 0.0f;
+    }
+
+    float4 farVisibility = unitVisibility;
+    bool farInside = false;
+    bool farWeighted = false;
+    const bool farSampled = nearWeight < 0.999f && farFade > 0.0f &&
+        SampleProbeLevel(
+            1u,
+            relativeWorldPosition,
+            normal,
+            farVisibility,
+            farInside,
+            farWeighted);
+
+    insideVolume = nearInside || farInside;
+    weightedSample = nearWeighted || farWeighted;
+    if (!nearSampled && !farSampled) {
+        return false;
+    }
+    if (nearWeight >= 0.999f && nearSampled) {
+        visibilitySh = nearVisibility;
+        fade = 1.0f;
+        return true;
+    }
+
+    visibilitySh = lerp(farVisibility, nearVisibility, nearWeight);
+    fade = farFade;
     return true;
 }
 

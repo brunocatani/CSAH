@@ -142,6 +142,13 @@ foreach(required IN ITEMS
     "return { 64, 64, 32 }"
     "return { 128, 128, 64 }"
     "return { 256, 256, 128 }"
+    "return { 32, 32, 16 }"
+    "return { 64, 64, 32 }"
+    "kFarCaptureDistance = 32768.0f"
+    "kFarCaptureInterval = 8"
+    "farProbes_"
+    "farLevel"
+    "updateSliceCursor"
     "DXGI_FORMAT_R16G16B16A16_FLOAT"
     "DXGI_FORMAT_R8_UINT"
     "ScopedComputeState"
@@ -165,9 +172,9 @@ foreach(required IN ITEMS
     "observePrivateCaptureDraw("
     "Skylighting first private draw state:"
     "nativeOutput_.data() + kNativeProjectionOffset"
-    "PSSetShaderResources(50"
+    "previousProbes_.size()"
     "PSSetConstantBuffers(13"
-    "probeDataValid_.store(true"
+    "probeDataValid_.store("
     "playerCell->IsExterior()"
     "firstActiveAmbientBindLogged_.exchange(")
   string(FIND "${runtime}\n${runtimeHeader}" "${required}" found)
@@ -199,9 +206,16 @@ endforeach()
 
 foreach(required IN ITEMS
     "register(t50)"
+    "register(t51)"
     "register(u7)"
     "register(b13)"
-    "Texture3D<float4> SkylightingProbeArray"
+    "Texture3D<float4> NearSkylightingProbeArray"
+    "Texture3D<float4> FarSkylightingProbeArray"
+    "ProbeLevelSettings NearLevel"
+    "ProbeLevelSettings FarLevel"
+    "LevelExtent("
+    "smoothstep("
+    "lerp(farVisibility, nearVisibility, nearWeight)"
     "RWByteAddressBuffer SkylightingAmbientDiagnostic"
     "ReconstructRelativeWorldPosition"
     "const float2 screenUv = input.Position.xy /"
@@ -241,6 +255,10 @@ foreach(required IN ITEMS
     "register(u1)"
     "register(u2)"
     "RWByteAddressBuffer DiagnosticStats"
+    "ProbeLevelSettings NearLevel"
+    "ProbeLevelSettings FarLevel"
+    "UpdateControl"
+    "probeSlice"
     "sampledDepth > 1.0e-5f"
     "register(s0)"
     "register(b13)"
@@ -344,4 +362,4 @@ foreach(required IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified Skylighting: exact FO4VR native capture, shared stereo probes, 39 ambient contracts, and DevMenu ownership")
+  "Verified Skylighting: exact FO4VR native capture, shared stereo near/far clipmap, 39 ambient contracts, and DevMenu ownership")
