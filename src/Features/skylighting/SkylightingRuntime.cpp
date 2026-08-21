@@ -16,6 +16,7 @@
 
 #include "Features/skylighting/SkylightingRuntime.h"
 
+#include "Features/skylighting/SkylightingNativeHooks.h"
 #include "UpdateProbesCS.h"
 #include "render/ComputeStateScope.h"
 #include "support/Logger.h"
@@ -409,6 +410,9 @@ namespace community_shaders::skylighting
             false,
             std::memory_order_relaxed);
         firstActiveAmbientBindLogged_.store(false, std::memory_order_relaxed);
+        firstPassProducerSummaryLogged_.store(
+            false,
+            std::memory_order_relaxed);
         diagnosticSubmitted_ = false;
         diagnosticPending_ = false;
         diagnosticLogged_ = false;
@@ -1209,6 +1213,7 @@ namespace community_shaders::skylighting
             D3D11_CLEAR_DEPTH,
             1.0f,
             0);
+        const auto producerBefore = occlusionPassProducerSnapshot();
         auto privateRenderCompleted = false;
         {
             ScopedNativeDepthTarget privateTarget(
@@ -1216,11 +1221,47 @@ namespace community_shaders::skylighting
                 privateDepthTexture_.Get(),
                 privateDepthView_.Get(),
                 privateDepthResource_.Get());
-            if (privateTarget.active()) {
+            ScopedOcclusionPassProduction passProduction;
+            if (privateTarget.active() && passProduction.active()) {
                 privateDepthBinds_.fetch_add(1, std::memory_order_relaxed);
                 render(precipitation, nativeOutput_.data());
                 privateRenderCompleted = true;
             }
+        }
+        const auto producerAfter = occlusionPassProducerSnapshot();
+        if (!firstPassProducerSummaryLogged_.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            const auto difference = [](std::uint64_t after,
+                                        std::uint64_t before) noexcept {
+                return after >= before ? after - before : 0;
+            };
+            logging::info(
+                "Skylighting first private geometry-producer transaction: owned={}, completed={}, calls={}, emitted={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
+                producerAfter.owned,
+                privateRenderCompleted,
+                difference(producerAfter.calls, producerBefore.calls),
+                difference(
+                    producerAfter.emittedPasses,
+                    producerBefore.emittedPasses),
+                difference(
+                    producerAfter.rejectedInvalid,
+                    producerBefore.rejectedInvalid),
+                difference(
+                    producerAfter.rejectedSkinned,
+                    producerBefore.rejectedSkinned),
+                difference(
+                    producerAfter.rejectedSmall,
+                    producerBefore.rejectedSmall),
+                difference(
+                    producerAfter.rejectedBsx,
+                    producerBefore.rejectedBsx),
+                difference(
+                    producerAfter.rejectedFlags,
+                    producerBefore.rejectedFlags),
+                difference(
+                    producerAfter.rejectedAllocation,
+                    producerBefore.rejectedAllocation));
         }
 
         std::memcpy(

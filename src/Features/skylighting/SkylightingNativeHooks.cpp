@@ -1,3 +1,19 @@
+#include "PCH.h"
+
+#pragma push_macro("MEM_RELEASE")
+#pragma push_macro("MAX_PATH")
+#pragma push_macro("near")
+#pragma push_macro("far")
+#undef MEM_RELEASE
+#undef MAX_PATH
+#undef near
+#undef far
+#include <RE/Fallout.h>
+#pragma pop_macro("far")
+#pragma pop_macro("near")
+#pragma pop_macro("MAX_PATH")
+#pragma pop_macro("MEM_RELEASE")
+
 #include "Features/skylighting/SkylightingNativeHooks.h"
 
 #include "Features/skylighting/SkylightingRuntime.h"
@@ -9,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -26,11 +43,42 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
+        constexpr std::uintptr_t kLightingPropertyVtableRva = 0x030A5C18;
+        constexpr std::size_t kLightingPassBuilderSlot = 0x2D;
+        constexpr std::uintptr_t kLightingPassBuilderRva = 0x027A3250;
+        constexpr std::uintptr_t kPassListClearRva = 0x0278E3E0;
+        constexpr std::uintptr_t kPassListEmplaceRva = 0x0278E610;
+        constexpr std::uintptr_t kUtilityShaderSingletonRva = 0x0689B4F0;
+        constexpr std::uintptr_t kUtilityShaderVtableRva = 0x030BD988;
+        constexpr std::uintptr_t kBsxFlagsVtableRva = 0x02E72CB8;
         constexpr std::size_t kRenderDepthTargetSetupOffset = 0x1CC;
         constexpr std::size_t kDepthTargetMapperSignatureOffset = 0x1A;
         constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
         constexpr std::ptrdiff_t kPrecipitationManagerOffset = 0xA0;
         constexpr std::size_t kPrecipitationManagerReadableSize = 0x98;
+        constexpr std::size_t kOcclusionPassListOffset = 0x198;
+        constexpr std::size_t kBsxValueOffset = 0x18;
+        constexpr std::size_t kMaximumParentTraversal = 64;
+        constexpr float kMinimumOccluderRadius = 32.0f;
+        constexpr std::uint32_t kUtilityVertexColorDescriptor = 1u << 0;
+        constexpr std::uint32_t kUtilityTextureDescriptor = 1u << 1;
+        constexpr std::uint32_t kUtilityAlphaTestDescriptor = 1u << 7;
+        constexpr std::uint32_t kUtilityRenderDepthDescriptor = 1u << 13;
+        constexpr std::uint32_t kUtilityTreeAnimDescriptor = 1u << 26;
+        constexpr std::uint8_t kUtilityDepthPassCategory = 0x1E;
+        constexpr std::uint16_t kNiAlphaPropertyAlphaTest = 1u << 9;
+        constexpr std::int32_t kExcludedBsxFlags = 0x3D54;
+
+        constexpr std::uint64_t kPropertySkinned = 1ull << 1;
+        constexpr std::uint64_t kPropertyTempRefraction = 1ull << 2;
+        constexpr std::uint64_t kPropertyRefraction = 1ull << 15;
+        constexpr std::uint64_t kPropertyEyeReflect = 1ull << 17;
+        constexpr std::uint64_t kPropertyDecal = 1ull << 26;
+        constexpr std::uint64_t kPropertyDynamicDecal = 1ull << 27;
+        constexpr std::uint64_t kPropertyZBufferWrite = 1ull << 32;
+        constexpr std::uint64_t kPropertyLodLandscape = 1ull << 33;
+        constexpr std::uint64_t kPropertyVertexColors = 1ull << 37;
+        constexpr std::uint64_t kPropertyTreeAnim = 1ull << 61;
         constexpr std::array<std::byte, 6> kWrapperSignature{
             std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x48 },
             std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x30 },
@@ -75,9 +123,63 @@ namespace community_shaders::skylighting
             std::byte{ 0x81 }, std::byte{ 0xFC }, std::byte{ 0x15 },
             std::byte{ 0x00 }, std::byte{ 0x00 },
         };
+        constexpr std::array<std::byte, 33>
+            kLightingPassBuilderSignature{
+                std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xC4 },
+                std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x58 },
+                std::byte{ 0x08 }, std::byte{ 0x4C }, std::byte{ 0x89 },
+                std::byte{ 0x48 }, std::byte{ 0x20 }, std::byte{ 0x48 },
+                std::byte{ 0x89 }, std::byte{ 0x50 }, std::byte{ 0x10 },
+                std::byte{ 0x55 }, std::byte{ 0x56 }, std::byte{ 0x57 },
+                std::byte{ 0x41 }, std::byte{ 0x54 }, std::byte{ 0x41 },
+                std::byte{ 0x55 }, std::byte{ 0x41 }, std::byte{ 0x56 },
+                std::byte{ 0x41 }, std::byte{ 0x57 }, std::byte{ 0x48 },
+                std::byte{ 0x81 }, std::byte{ 0xEC }, std::byte{ 0x00 },
+                std::byte{ 0x01 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+            };
+        constexpr std::array<std::byte, 32> kPassListClearSignature{
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
+            std::byte{ 0x24 }, std::byte{ 0x10 }, std::byte{ 0x56 },
+            std::byte{ 0x48 }, std::byte{ 0x83 }, std::byte{ 0xEC },
+            std::byte{ 0x20 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+            std::byte{ 0x19 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+            std::byte{ 0xF1 }, std::byte{ 0x48 }, std::byte{ 0x85 },
+            std::byte{ 0xDB }, std::byte{ 0x74 }, std::byte{ 0x3F },
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x7C },
+            std::byte{ 0x24 }, std::byte{ 0x30 }, std::byte{ 0x66 },
+            std::byte{ 0x0F }, std::byte{ 0x1F }, std::byte{ 0x44 },
+            std::byte{ 0x00 }, std::byte{ 0x00 },
+        };
+        constexpr std::array<std::byte, 32> kPassListEmplaceSignature{
+            std::byte{ 0x48 }, std::byte{ 0x83 }, std::byte{ 0xEC },
+            std::byte{ 0x68 }, std::byte{ 0x4D }, std::byte{ 0x8B },
+            std::byte{ 0xD1 }, std::byte{ 0x48 }, std::byte{ 0x85 },
+            std::byte{ 0xD2 }, std::byte{ 0x75 }, std::byte{ 0x48 },
+            std::byte{ 0x44 }, std::byte{ 0x8B }, std::byte{ 0x8C },
+            std::byte{ 0x24 }, std::byte{ 0x90 }, std::byte{ 0x00 },
+            std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x33 },
+            std::byte{ 0xC0 }, std::byte{ 0x49 }, std::byte{ 0x8B },
+            std::byte{ 0xD2 }, std::byte{ 0x48 }, std::byte{ 0x89 },
+            std::byte{ 0x44 }, std::byte{ 0x24 }, std::byte{ 0x50 },
+            std::byte{ 0x48 }, std::byte{ 0x89 },
+        };
 
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
+        using LightingPassBuilder = void*(__fastcall*)(
+            void* property,
+            void* geometry,
+            std::uint32_t renderMode,
+            void* accumulator);
+        using PassListClear = void(__fastcall*)(void** list);
+        using PassListEmplace = void*(__fastcall*)(
+            void** list,
+            void* reusablePass,
+            void* property,
+            void* shader,
+            std::uint32_t descriptor,
+            std::uint8_t passCategory,
+            void* geometry);
 
         struct DetourIdentity
         {
@@ -85,15 +187,47 @@ namespace community_shaders::skylighting
             const void* destination{};
         };
 
+        struct PointerPatchOutcome
+        {
+            bool owned{};
+            bool protectionRestored{};
+            bool rolledBack{};
+        };
+
+        enum class BsxFilterResult
+        {
+            include,
+            exclude,
+            invalid,
+        };
+
         WrapperFunction originalWrapper{};
         NativeSkySingleton nativeSkySingleton{};
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
+        LightingPassBuilder originalLightingPassBuilder{};
+        PassListClear clearPassList{};
+        PassListEmplace emplacePass{};
+        void** lightingPassBuilderCell{};
+        void* utilityShader{};
+        const void* utilityShaderVtable{};
+        const void* bsxFlagsVtable{};
+        std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
         DetourIdentity installedIdentity{};
         std::atomic_bool installed{};
+        std::atomic_bool passProducerReady{};
         std::atomic_bool firstCallbackLogged{};
         std::atomic_bool missingManagerLogged{};
+        std::atomic_uint64_t passProducerCalls{};
+        std::atomic_uint64_t emittedPasses{};
+        std::atomic_uint64_t rejectedInvalid{};
+        std::atomic_uint64_t rejectedSkinned{};
+        std::atomic_uint64_t rejectedSmall{};
+        std::atomic_uint64_t rejectedBsx{};
+        std::atomic_uint64_t rejectedFlags{};
+        std::atomic_uint64_t rejectedAllocation{};
+        thread_local std::uint32_t passProductionDepth{};
 
         [[nodiscard]] bool isReadableRange(
             const void* address,
@@ -148,6 +282,218 @@ namespace community_shaders::skylighting
             constexpr DWORD executable = PAGE_EXECUTE | PAGE_EXECUTE_READ |
                 PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
             return (information.Protect & executable) != 0;
+        }
+
+        [[nodiscard]] void* readPointerCell(void** cell) noexcept
+        {
+            return cell ? InterlockedCompareExchangePointer(
+                              cell,
+                              nullptr,
+                              nullptr) :
+                          nullptr;
+        }
+
+        [[nodiscard]] PointerPatchOutcome patchPointerCell(
+            void** target,
+            void* expected,
+            void* replacement) noexcept
+        {
+            PointerPatchOutcome result;
+            if (!target || !expected || !replacement ||
+                readPointerCell(target) != expected) {
+                return result;
+            }
+            DWORD oldProtection{};
+            if (VirtualProtect(
+                    target,
+                    sizeof(*target),
+                    PAGE_READWRITE,
+                    &oldProtection) == FALSE) {
+                return result;
+            }
+            auto* observed = InterlockedCompareExchangePointer(
+                target,
+                replacement,
+                expected);
+            DWORD ignoredProtection{};
+            result.protectionRestored = VirtualProtect(
+                                            target,
+                                            sizeof(*target),
+                                            oldProtection,
+                                            &ignoredProtection) != FALSE;
+            FlushInstructionCache(
+                GetCurrentProcess(),
+                target,
+                sizeof(*target));
+            result.owned = observed == expected &&
+                readPointerCell(target) == replacement;
+            if (!result.owned || result.protectionRestored) {
+                return result;
+            }
+
+            observed = InterlockedCompareExchangePointer(
+                target,
+                expected,
+                replacement);
+            DWORD secondIgnoredProtection{};
+            const auto secondRestore = VirtualProtect(
+                target,
+                sizeof(*target),
+                oldProtection,
+                &secondIgnoredProtection);
+            FlushInstructionCache(
+                GetCurrentProcess(),
+                target,
+                sizeof(*target));
+            result.rolledBack = observed == replacement &&
+                readPointerCell(target) == expected;
+            result.protectionRestored = secondRestore != FALSE;
+            result.owned = readPointerCell(target) == replacement;
+            return result;
+        }
+
+        [[nodiscard]] BsxFilterResult filterBsxFlags(
+            RE::BSGeometry* geometry) noexcept
+        {
+            if (!geometry || geometry->userData == 0) {
+                return BsxFilterResult::include;
+            }
+            if (!bsxKey || !bsxFlagsVtable) {
+                return BsxFilterResult::invalid;
+            }
+            auto* parent = geometry->parent;
+            std::size_t depth{};
+            while (parent && depth < kMaximumParentTraversal) {
+                auto* extra = parent->GetExtraData(*bsxKey);
+                if (extra) {
+                    auto* vtable = *reinterpret_cast<void**>(extra);
+                    if (vtable != bsxFlagsVtable) {
+                        return BsxFilterResult::invalid;
+                    }
+                    std::int32_t value{};
+                    std::memcpy(
+                        &value,
+                        reinterpret_cast<const std::byte*>(extra) +
+                            kBsxValueOffset,
+                        sizeof(value));
+                    return (value & kExcludedBsxFlags) != 0 ?
+                        BsxFilterResult::exclude :
+                        BsxFilterResult::include;
+                }
+                parent = parent->parent;
+                ++depth;
+            }
+            return parent ? BsxFilterResult::invalid :
+                            BsxFilterResult::include;
+        }
+
+        void* __fastcall hookLightingPassBuilder(
+            void* propertyAddress,
+            void* geometryAddress,
+            std::uint32_t renderMode,
+            void* accumulator) noexcept
+        {
+            if (passProductionDepth == 0 ||
+                !passProducerReady.load(std::memory_order_acquire)) {
+                return originalLightingPassBuilder ?
+                    originalLightingPassBuilder(
+                        propertyAddress,
+                        geometryAddress,
+                        renderMode,
+                        accumulator) :
+                    nullptr;
+            }
+            (void)renderMode;
+            (void)accumulator;
+            passProducerCalls.fetch_add(1, std::memory_order_relaxed);
+            if (!propertyAddress || !geometryAddress || !clearPassList ||
+                !emplacePass || !utilityShader) {
+                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                return nullptr;
+            }
+
+            auto** passList = reinterpret_cast<void**>(
+                static_cast<std::byte*>(propertyAddress) +
+                kOcclusionPassListOffset);
+            clearPassList(passList);
+
+            auto* property = static_cast<RE::BSShaderProperty*>(
+                propertyAddress);
+            auto* geometry = static_cast<RE::BSGeometry*>(geometryAddress);
+            const auto propertyFlags = property->flags.underlying();
+            const auto treeAnimated =
+                (propertyFlags & kPropertyTreeAnim) != 0;
+            if ((propertyFlags & kPropertySkinned) != 0 && !treeAnimated) {
+                rejectedSkinned.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            }
+            if (!std::isfinite(geometry->worldBound.fRadius)) {
+                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            }
+            if (geometry->worldBound.fRadius <= kMinimumOccluderRadius) {
+                rejectedSmall.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            }
+
+            switch (filterBsxFlags(geometry)) {
+            case BsxFilterResult::exclude:
+                rejectedBsx.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            case BsxFilterResult::invalid:
+                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            case BsxFilterResult::include:
+                break;
+            }
+
+            constexpr auto excludedPropertyFlags =
+                kPropertyRefraction | kPropertyTempRefraction |
+                kPropertyLodLandscape | kPropertyEyeReflect |
+                kPropertyDecal | kPropertyDynamicDecal;
+            if ((propertyFlags & kPropertyZBufferWrite) == 0 ||
+                (propertyFlags & excludedPropertyFlags) != 0) {
+                rejectedFlags.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            }
+
+            auto descriptor = kUtilityRenderDepthDescriptor;
+            if ((propertyFlags & kPropertyVertexColors) != 0) {
+                descriptor |= kUtilityVertexColorDescriptor;
+            }
+            const auto& geometryRuntime = geometry->GetRuntimeData();
+            auto* alphaProperty = geometryRuntime.properties[0].get();
+            if (alphaProperty) {
+                std::uint16_t alphaFlags{};
+                std::memcpy(
+                    &alphaFlags,
+                    reinterpret_cast<const std::byte*>(alphaProperty) + 0x28,
+                    sizeof(alphaFlags));
+                if ((alphaFlags & kNiAlphaPropertyAlphaTest) != 0) {
+                    descriptor |= kUtilityTextureDescriptor |
+                        kUtilityAlphaTestDescriptor;
+                }
+            }
+            if (treeAnimated) {
+                descriptor |= kUtilityTreeAnimDescriptor;
+            }
+            // FO4VR's VS canonicalizer at 0x142974C50 strips the Skyrim
+            // utility LOD bit. Do not publish an unsupported PS key.
+
+            auto* pass = emplacePass(
+                passList,
+                nullptr,
+                propertyAddress,
+                utilityShader,
+                descriptor,
+                kUtilityDepthPassCategory,
+                geometryAddress);
+            if (!pass) {
+                rejectedAllocation.fetch_add(1, std::memory_order_relaxed);
+                return passList;
+            }
+            emittedPasses.fetch_add(1, std::memory_order_relaxed);
+            return passList;
         }
 
         [[nodiscard]] const std::byte* relativeTarget(
@@ -283,6 +629,51 @@ namespace community_shaders::skylighting
         }
     }
 
+    ScopedOcclusionPassProduction::ScopedOcclusionPassProduction() noexcept
+    {
+        active_ = passProducerReady.load(std::memory_order_acquire) &&
+            originalLightingPassBuilder && clearPassList && emplacePass &&
+            utilityShader && lightingPassBuilderCell &&
+            readPointerCell(lightingPassBuilderCell) ==
+                reinterpret_cast<void*>(&hookLightingPassBuilder);
+        if (active_) {
+            ++passProductionDepth;
+        }
+    }
+
+    ScopedOcclusionPassProduction::~ScopedOcclusionPassProduction() noexcept
+    {
+        if (active_ && passProductionDepth > 0) {
+            --passProductionDepth;
+        }
+    }
+
+    bool ScopedOcclusionPassProduction::active() const noexcept
+    {
+        return active_;
+    }
+
+    OcclusionPassProducerSnapshot occlusionPassProducerSnapshot() noexcept
+    {
+        return {
+            .owned = passProducerReady.load(std::memory_order_acquire) &&
+                lightingPassBuilderCell &&
+                readPointerCell(lightingPassBuilderCell) ==
+                    reinterpret_cast<void*>(&hookLightingPassBuilder),
+            .calls = passProducerCalls.load(std::memory_order_relaxed),
+            .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
+            .rejectedInvalid = rejectedInvalid.load(
+                std::memory_order_relaxed),
+            .rejectedSkinned = rejectedSkinned.load(
+                std::memory_order_relaxed),
+            .rejectedSmall = rejectedSmall.load(std::memory_order_relaxed),
+            .rejectedBsx = rejectedBsx.load(std::memory_order_relaxed),
+            .rejectedFlags = rejectedFlags.load(std::memory_order_relaxed),
+            .rejectedAllocation = rejectedAllocation.load(
+                std::memory_order_relaxed),
+        };
+    }
+
     bool installNativeHooks() noexcept
     {
         if (installed.load(std::memory_order_acquire)) {
@@ -355,6 +746,24 @@ namespace community_shaders::skylighting
                 "Skylighting native direction contract at RVA 0x05A3CFC8 is outside the FO4VR image.");
             return false;
         }
+        if (!inImage(
+                kLightingPropertyVtableRva +
+                    kLightingPassBuilderSlot * sizeof(void*),
+                sizeof(void*)) ||
+            !inImage(
+                kLightingPassBuilderRva,
+                kLightingPassBuilderSignature.size()) ||
+            !inImage(kPassListClearRva, kPassListClearSignature.size()) ||
+            !inImage(
+                kPassListEmplaceRva,
+                kPassListEmplaceSignature.size()) ||
+            !inImage(kUtilityShaderSingletonRva, sizeof(void*)) ||
+            !inImage(kUtilityShaderVtableRva, sizeof(void*)) ||
+            !inImage(kBsxFlagsVtableRva, sizeof(void*))) {
+            logging::error(
+                "Skylighting native world-occlusion producer contract is outside the FO4VR image.");
+            return false;
+        }
 
         auto* wrapper = image + kWrapperRva;
         auto* render = image + kRenderRva;
@@ -362,6 +771,16 @@ namespace community_shaders::skylighting
         auto* renderDepthTargetSetup =
             render + kRenderDepthTargetSetupOffset;
         auto* depthTargetMapper = image + kDepthTargetMapperRva;
+        auto** lightingPassCell = reinterpret_cast<void**>(
+            image + kLightingPropertyVtableRva +
+            kLightingPassBuilderSlot * sizeof(void*));
+        auto* expectedLightingPass = image + kLightingPassBuilderRva;
+        auto* passListClear = image + kPassListClearRva;
+        auto* passListEmplace = image + kPassListEmplaceRva;
+        auto** utilityShaderCell = reinterpret_cast<void**>(
+            image + kUtilityShaderSingletonRva);
+        auto* expectedUtilityVtable = image + kUtilityShaderVtableRva;
+        auto* expectedBsxVtable = image + kBsxFlagsVtableRva;
         if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5)) {
             logging::error(
                 "Skylighting native wrapper contract at RVA 0x00634300 is not executable and readable.");
@@ -449,6 +868,72 @@ namespace community_shaders::skylighting
                 "Skylighting native direction global at RVA 0x05A3CFC8 is not readable.");
             return false;
         }
+        if (!isReadableRange(lightingPassCell, sizeof(*lightingPassCell)) ||
+            readPointerCell(lightingPassCell) != expectedLightingPass) {
+            logging::error(
+                "Skylighting rejected BSLightingShaderProperty pass-builder slot 0x2D: the verified FO4VR target RVA 0x027A3250 is not installed.");
+            return false;
+        }
+        if (!isExecutableRange(
+                expectedLightingPass,
+                kLightingPassBuilderSignature.size()) ||
+            std::memcmp(
+                expectedLightingPass,
+                kLightingPassBuilderSignature.data(),
+                kLightingPassBuilderSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native lighting-pass builder signature mismatch at RVA 0x027A3250.");
+            return false;
+        }
+        if (!isExecutableRange(passListClear, kPassListClearSignature.size()) ||
+            std::memcmp(
+                passListClear,
+                kPassListClearSignature.data(),
+                kPassListClearSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native pass-list clear signature mismatch at RVA 0x0278E3E0.");
+            return false;
+        }
+        if (!isExecutableRange(
+                passListEmplace,
+                kPassListEmplaceSignature.size()) ||
+            std::memcmp(
+                passListEmplace,
+                kPassListEmplaceSignature.data(),
+                kPassListEmplaceSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native pass-list emplace signature mismatch at RVA 0x0278E610.");
+            return false;
+        }
+        if (!isReadableRange(utilityShaderCell, sizeof(*utilityShaderCell))) {
+            logging::error(
+                "Skylighting native utility-shader singleton cell at RVA 0x0689B4F0 is not readable.");
+            return false;
+        }
+        auto* resolvedUtilityShader = readPointerCell(utilityShaderCell);
+        if (!isReadableRange(resolvedUtilityShader, sizeof(void*)) ||
+            readPointerCell(reinterpret_cast<void**>(resolvedUtilityShader)) !=
+                expectedUtilityVtable) {
+            logging::error(
+                "Skylighting rejected the FO4VR utility-shader singleton: its verified vtable RVA 0x030BD988 is not installed.");
+            return false;
+        }
+
+        try {
+            bsxKey.emplace("BSX");
+        } catch (...) {
+            logging::error(
+                "Skylighting could not acquire the BSX extra-data key; the world-occlusion producer remains disabled.");
+            return false;
+        }
+        originalLightingPassBuilder =
+            reinterpret_cast<LightingPassBuilder>(expectedLightingPass);
+        clearPassList = reinterpret_cast<PassListClear>(passListClear);
+        emplacePass = reinterpret_cast<PassListEmplace>(passListEmplace);
+        lightingPassBuilderCell = lightingPassCell;
+        utilityShader = resolvedUtilityShader;
+        utilityShaderVtable = expectedUtilityVtable;
+        bsxFlagsVtable = expectedBsxVtable;
 
         void* trampoline{};
         auto status = MH_CreateHook(
@@ -463,6 +948,14 @@ namespace community_shaders::skylighting
                 "Skylighting native wrapper detour creation failed: {} ({}).",
                 MH_StatusToString(status),
                 static_cast<int>(status));
+            originalLightingPassBuilder = nullptr;
+            clearPassList = nullptr;
+            emplacePass = nullptr;
+            lightingPassBuilderCell = nullptr;
+            utilityShader = nullptr;
+            utilityShaderVtable = nullptr;
+            bsxFlagsVtable = nullptr;
+            bsxKey.reset();
             return false;
         }
         originalWrapper = reinterpret_cast<WrapperFunction>(trampoline);
@@ -471,45 +964,106 @@ namespace community_shaders::skylighting
                 image + kWrapperFirstCallTargetRva);
         nativeRender = reinterpret_cast<NativePrecipitationRender>(render);
         nativeProjection = reinterpret_cast<NativeProjectionSetup>(projection);
-        status = MH_EnableHook(wrapper);
-        DetourIdentity identity{};
-        if (status != MH_OK || !captureDetourIdentity(wrapper, identity)) {
-            (void)MH_DisableHook(wrapper);
+        const auto passPatch = patchPointerCell(
+            lightingPassCell,
+            expectedLightingPass,
+            reinterpret_cast<void*>(&hookLightingPassBuilder));
+        if (!passPatch.owned || !passPatch.protectionRestored) {
             (void)MH_RemoveHook(wrapper);
             originalWrapper = nullptr;
             nativeSkySingleton = nullptr;
             nativeRender = nullptr;
             nativeProjection = nullptr;
+            passProducerReady.store(false, std::memory_order_release);
+            if (readPointerCell(lightingPassCell) !=
+                reinterpret_cast<void*>(&hookLightingPassBuilder)) {
+                originalLightingPassBuilder = nullptr;
+                clearPassList = nullptr;
+                emplacePass = nullptr;
+                lightingPassBuilderCell = nullptr;
+                utilityShader = nullptr;
+                utilityShaderVtable = nullptr;
+                bsxFlagsVtable = nullptr;
+                bsxKey.reset();
+            }
             logging::error(
-                "Skylighting native wrapper detour activation failed: {} ({}).",
+                "Skylighting world-occlusion pass-builder patch failed (owned={}, protectionRestored={}, rolledBack={}); capture remains disabled.",
+                passPatch.owned,
+                passPatch.protectionRestored,
+                passPatch.rolledBack);
+            return false;
+        }
+        status = MH_EnableHook(wrapper);
+        DetourIdentity identity{};
+        if (status != MH_OK || !captureDetourIdentity(wrapper, identity)) {
+            (void)MH_DisableHook(wrapper);
+            (void)MH_RemoveHook(wrapper);
+            const auto passRollback = patchPointerCell(
+                lightingPassCell,
+                reinterpret_cast<void*>(&hookLightingPassBuilder),
+                expectedLightingPass);
+            originalWrapper = nullptr;
+            nativeSkySingleton = nullptr;
+            nativeRender = nullptr;
+            nativeProjection = nullptr;
+            passProducerReady.store(false, std::memory_order_release);
+            if (passRollback.owned && passRollback.protectionRestored &&
+                readPointerCell(lightingPassCell) == expectedLightingPass) {
+                originalLightingPassBuilder = nullptr;
+                clearPassList = nullptr;
+                emplacePass = nullptr;
+                lightingPassBuilderCell = nullptr;
+                utilityShader = nullptr;
+                utilityShaderVtable = nullptr;
+                bsxFlagsVtable = nullptr;
+                bsxKey.reset();
+            }
+            logging::error(
+                "Skylighting native wrapper detour activation failed: {} ({}); pass-builder rollback owned={}, protectionRestored={}.",
                 MH_StatusToString(status),
-                static_cast<int>(status));
+                static_cast<int>(status),
+                passRollback.owned,
+                passRollback.protectionRestored);
             return false;
         }
 
         wrapperTarget = wrapper;
         installedIdentity = identity;
+        passProducerReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting precipitation capture hook (wrapper RVA 0x00634300, render RVA 0x006350C0, projection RVA 0x00635530)." );
+            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, property vtable RVA 0x030A5C18 slot 0x2D, pass-list offset 0x198, utility shader RVA 0x0689B4F0)." );
         return true;
     }
 
     bool validateNativeHooks(const char* trigger) noexcept
     {
         DetourIdentity current{};
-        const auto owned = installed.load(std::memory_order_acquire) &&
+        const auto wrapperOwned = installed.load(std::memory_order_acquire) &&
             wrapperTarget && installedIdentity.patch &&
             installedIdentity.destination &&
             captureDetourIdentity(wrapperTarget, current) &&
             current.patch == installedIdentity.patch &&
             current.destination == installedIdentity.destination;
+        const auto passBuilderOwned = lightingPassBuilderCell &&
+            readPointerCell(lightingPassBuilderCell) ==
+                reinterpret_cast<void*>(&hookLightingPassBuilder);
+        const auto utilityShaderOwned = utilityShader &&
+            isReadableRange(utilityShader, sizeof(void*)) &&
+            readPointerCell(reinterpret_cast<void**>(utilityShader)) ==
+                utilityShaderVtable;
+        const auto owned = wrapperOwned && passBuilderOwned &&
+            utilityShaderOwned;
+        passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native hook ownership validation failed at '{}'; ambient consumption and private capture are disabled.",
-                trigger ? trigger : "unknown");
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, passBuilder={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                trigger ? trigger : "unknown",
+                wrapperOwned,
+                passBuilderOwned,
+                utilityShaderOwned);
         }
         return owned;
     }
