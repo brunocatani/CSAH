@@ -80,6 +80,8 @@ foreach(required IN ITEMS
     "patchPointerCell("
     "hookLightingPassBuilder"
     "inspectUtilityShader("
+    "std::atomic_bool passProductionActive"
+    "passProductionActive.compare_exchange_strong("
     "captureDetourIdentity("
     "Runtime::get().setNativeHookOwned(true)")
   string(FIND "${nativeHook}" "${required}" found)
@@ -88,6 +90,12 @@ foreach(required IN ITEMS
       "Skylighting native identity contract is missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${nativeHook}" "thread_local" skylightingThreadLocal)
+if(NOT skylightingThreadLocal EQUAL -1)
+  message(FATAL_ERROR
+    "Skylighting capture scope must be visible to FO4VR render workers")
+endif()
 
 foreach(required IN ITEMS
     "return { 64, 64, 32 }"

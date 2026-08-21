@@ -251,7 +251,7 @@ namespace community_shaders::skylighting
         std::atomic_uint64_t rejectedBsx{};
         std::atomic_uint64_t rejectedFlags{};
         std::atomic_uint64_t rejectedAllocation{};
-        thread_local std::uint32_t passProductionDepth{};
+        std::atomic_bool passProductionActive{};
 
         [[nodiscard]] bool isReadableRange(
             const void* address,
@@ -447,7 +447,7 @@ namespace community_shaders::skylighting
             std::uint32_t renderMode,
             void* accumulator) noexcept
         {
-            if (passProductionDepth == 0 ||
+            if (!passProductionActive.load(std::memory_order_acquire) ||
                 !passProducerReady.load(std::memory_order_acquire)) {
                 return originalLightingPassBuilder ?
                     originalLightingPassBuilder(
@@ -691,14 +691,19 @@ namespace community_shaders::skylighting
             readPointerCell(lightingPassBuilderCell) ==
                 reinterpret_cast<void*>(&hookLightingPassBuilder);
         if (active_) {
-            ++passProductionDepth;
+            auto expected = false;
+            active_ = passProductionActive.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire);
         }
     }
 
     ScopedOcclusionPassProduction::~ScopedOcclusionPassProduction() noexcept
     {
-        if (active_ && passProductionDepth > 0) {
-            --passProductionDepth;
+        if (active_) {
+            passProductionActive.store(false, std::memory_order_release);
         }
     }
 
