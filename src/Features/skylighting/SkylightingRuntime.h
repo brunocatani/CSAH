@@ -76,8 +76,10 @@ namespace community_shaders::skylighting
         void beginWorldSession() noexcept;
 
         // Called by the verified native precipitation wrapper detour after
-        // the engine's original weather pass has completed.
+        // the engine's original weather pass has completed. The manager is
+        // resolved from FO4VR's persistent renderer state, not active weather.
         void onNativePrecipitationFrame(
+            void* precipitation,
             NativePrecipitationRender render,
             NativeProjectionSetup restoreProjection) noexcept;
 
@@ -200,6 +202,7 @@ namespace community_shaders::skylighting
         std::atomic_uint64_t probeDispatches_{};
         std::atomic_uint64_t rejectedCaptures_{};
         std::atomic_uint64_t ambientBinds_{};
+        std::atomic_bool firstActiveAmbientBindLogged_{};
         std::atomic_bool qualityRestartWarningLogged_{};
     };
 }

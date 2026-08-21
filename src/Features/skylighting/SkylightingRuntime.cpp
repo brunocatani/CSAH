@@ -292,6 +292,7 @@ namespace community_shaders::skylighting
             requestedQuality_.load(std::memory_order_relaxed));
         dimensions_ = dimensionsFor(activeQuality_);
         qualityRestartWarningLogged_.store(false, std::memory_order_relaxed);
+        firstActiveAmbientBindLogged_.store(false, std::memory_order_relaxed);
 
         if (!createProbeResources()) {
             logging::error(
@@ -732,11 +733,20 @@ namespace community_shaders::skylighting
             (dimensions_.width + 7u) / 8u,
             (dimensions_.height + 7u) / 8u,
             dimensions_.depth);
-        probeDispatches_.fetch_add(1, std::memory_order_relaxed);
+        const auto previousDispatches = probeDispatches_.fetch_add(
+            1,
+            std::memory_order_relaxed);
         probeDataValid_.store(true, std::memory_order_release);
+        if (previousDispatches == 0) {
+            logging::info(
+                "Skylighting completed its first exterior probe update (captures={}, depthBinds={}, dispatches=1).",
+                captureCalls_.load(std::memory_order_relaxed),
+                privateDepthBinds_.load(std::memory_order_relaxed));
+        }
     }
 
     void Runtime::onNativePrecipitationFrame(
+        void* precipitation,
         NativePrecipitationRender render,
         NativeProjectionSetup restoreProjection) noexcept
     {
@@ -744,7 +754,7 @@ namespace community_shaders::skylighting
         if (!requested() ||
             !gpuResourcesReady_.load(std::memory_order_acquire) ||
             !nativeHookOwned_.load(std::memory_order_acquire) ||
-            !render || !restoreProjection || !context_) {
+            !precipitation || !render || !restoreProjection || !context_) {
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
@@ -752,7 +762,7 @@ namespace community_shaders::skylighting
         const auto* sky = RE::Sky::GetSingleton();
         const auto* playerCamera = RE::PlayerCamera::GetSingleton();
         if (!sky || sky->mode.get() != RE::Sky::Mode::kFull ||
-            !sky->precip || !playerCamera || !playerCamera->cameraRoot) {
+            !playerCamera || !playerCamera->cameraRoot) {
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
@@ -766,7 +776,6 @@ namespace community_shaders::skylighting
         auto* directionX = reinterpret_cast<float*>(base + kDirectionXRva);
         auto* directionY = reinterpret_cast<float*>(base + kDirectionYRva);
         auto* directionZ = reinterpret_cast<float*>(base + kDirectionZRva);
-        auto* precipitation = static_cast<void*>(sky->precip);
         auto* precipitationBytes = static_cast<std::byte*>(precipitation);
         auto* lastCubeSize = reinterpret_cast<float*>(
             precipitationBytes + kPrecipitationLastCubeSizeOffset);
@@ -865,6 +874,12 @@ namespace community_shaders::skylighting
             captureRevision_ != publishedCaptureRevision_ ||
             active != publishedFeatureActive_) {
             publishConstants(active);
+        }
+        if (active && !firstActiveAmbientBindLogged_.exchange(
+                          true,
+                          std::memory_order_relaxed)) {
+            logging::info(
+                "Skylighting bound its first active world-space probe to DFLight ambient shading.");
         }
         ambientBinds_.fetch_add(1, std::memory_order_relaxed);
         return ScopedAmbientBindings(

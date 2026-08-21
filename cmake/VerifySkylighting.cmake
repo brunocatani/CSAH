@@ -42,9 +42,12 @@ foreach(required IN ITEMS
     "kCubeSizeRva = 0x05A3CFA4"
     "kDirectionRva = 0x05A3CFC8"
     "kWrapperFirstCallTargetRva = 0x0012FB50"
+    "kPrecipitationManagerOffset = 0xA0"
     "std::array<std::byte, 6> kWrapperSignature"
     "std::byte{ 0x40 }, std::byte{ 0x53 }"
     "wrapper + kWrapperSignature.size()"
+    "resolveNativePrecipitationManager()"
+    "nativeRendererSingleton()"
     "MH_CreateHook("
     "captureDetourIdentity("
     "Runtime::get().setNativeHookOwned(true)")
@@ -67,7 +70,8 @@ foreach(required IN ITEMS
     "nativeOutput_.data() + kNativeProjectionOffset"
     "PSSetShaderResources(50"
     "PSSetConstantBuffers(13"
-    "probeDataValid_.store(true")
+    "probeDataValid_.store(true"
+    "firstActiveAmbientBindLogged_.exchange(")
   string(FIND "${runtime}\n${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
