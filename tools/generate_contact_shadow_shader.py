@@ -87,6 +87,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--compute-header", type=Path, required=True)
     parser.add_argument("--dispatch-binary", type=Path, required=True)
     parser.add_argument("--dispatch-header", type=Path, required=True)
+    parser.add_argument("--reproject-binary", type=Path, required=True)
+    parser.add_argument("--reproject-header", type=Path, required=True)
     parser.add_argument("--resolve-binary", type=Path, required=True)
     parser.add_argument("--resolve-header", type=Path, required=True)
     return parser.parse_args()
@@ -944,6 +946,54 @@ def compile_dispatch_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
     return output.read_bytes()
 
 
+def compile_reproject_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "ContactShadows"
+        / "ContactShadowReprojectCS.hlsl"
+    )
+    output = temporary / "ContactShadowReprojectCS.dxbc"
+    assembly = temporary / "ContactShadowReprojectCS.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "cs_5_0",
+            "/E",
+            "CSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "contact-shadow stereo-reprojection compilation",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_constantbuffer CB2[46], immediateIndexed",
+        "dcl_constantbuffer CB8[1], immediateIndexed",
+        "dcl_constantbuffer CB12[48], dynamicIndexed",
+        "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_resource_texture2d (float,float,float,float) t1",
+        "dcl_uav_typed_texture2d (unorm,unorm,unorm,unorm) u0",
+        "dcl_thread_group 8, 8, 1",
+    ):
+        if required not in text:
+            raise ContractError(
+                "contact-shadow stereo-reprojection assembly changed: "
+                + required
+            )
+    return output.read_bytes()
+
+
 def compile_resolve_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
     source = (
         root
@@ -1066,6 +1116,8 @@ def main() -> int:
     args.compute_header.parent.mkdir(parents=True, exist_ok=True)
     args.dispatch_binary.parent.mkdir(parents=True, exist_ok=True)
     args.dispatch_header.parent.mkdir(parents=True, exist_ok=True)
+    args.reproject_binary.parent.mkdir(parents=True, exist_ok=True)
+    args.reproject_header.parent.mkdir(parents=True, exist_ok=True)
     args.resolve_binary.parent.mkdir(parents=True, exist_ok=True)
     args.resolve_header.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fo4vr-contact-shadows-") as folder:
@@ -1090,6 +1142,11 @@ def main() -> int:
         )
         compute = compile_compute_shader(root, args.fxc.resolve(), temporary)
         dispatch = compile_dispatch_shader(
+            root,
+            args.fxc.resolve(),
+            temporary,
+        )
+        reproject = compile_reproject_shader(
             root,
             args.fxc.resolve(),
             temporary,
@@ -1189,6 +1246,12 @@ def main() -> int:
             args.dispatch_header,
             dispatch,
             "fo4vr_cs_contact_shadow_dispatch",
+        )
+        args.reproject_binary.write_bytes(reproject)
+        write_header(
+            args.reproject_header,
+            reproject,
+            "fo4vr_cs_contact_shadow_reproject",
         )
         args.resolve_binary.write_bytes(resolve)
         write_header(

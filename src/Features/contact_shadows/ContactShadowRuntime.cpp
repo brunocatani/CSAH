@@ -6,6 +6,7 @@
 
 #include "ContactShadowDispatchCS.h"
 #include "ContactShadowMaskCS.h"
+#include "ContactShadowReprojectCS.h"
 #include "ContactShadowResolveCS.h"
 #include "ContactShadowsDFLight.h"
 
@@ -136,6 +137,7 @@ namespace community_shaders::contact_shadows
         }
         dispatchCompute_.Reset();
         maskCompute_.Reset();
+        reprojectCompute_.Reset();
         resolveCompute_.Reset();
         constants_.Reset();
         dispatchRecords_.Reset();
@@ -242,6 +244,18 @@ namespace community_shaders::contact_shadows
                 static_cast<std::uint32_t>(computeResult));
             return;
         }
+        const auto reprojectResult = device->CreateComputeShader(
+            fo4vr_cs_contact_shadow_reproject,
+            sizeof(fo4vr_cs_contact_shadow_reproject),
+            nullptr,
+            reprojectCompute_.ReleaseAndGetAddressOf());
+        if (FAILED(reprojectResult) || !reprojectCompute_) {
+            reprojectCompute_.Reset();
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::warn(
+                "Contact Shadows stereo reprojection creation failed (HRESULT=0x{:08X}); both eyes will retain independent wavefront raymarching.",
+                static_cast<std::uint32_t>(reprojectResult));
+        }
         const auto resolveResult = device->CreateComputeShader(
             fo4vr_cs_contact_shadow_resolve,
             sizeof(fo4vr_cs_contact_shadow_resolve),
@@ -253,6 +267,7 @@ namespace community_shaders::contact_shadows
             }
             dispatchCompute_.Reset();
             maskCompute_.Reset();
+            reprojectCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Contact Shadows directional-resolve compute creation failed (HRESULT=0x{:08X}).",
@@ -274,6 +289,7 @@ namespace community_shaders::contact_shadows
             }
             dispatchCompute_.Reset();
             maskCompute_.Reset();
+            reprojectCompute_.Reset();
             resolveCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
@@ -352,6 +368,7 @@ namespace community_shaders::contact_shadows
             }
             dispatchCompute_.Reset();
             maskCompute_.Reset();
+            reprojectCompute_.Reset();
             resolveCompute_.Reset();
             constants_.Reset();
             dispatchRecords_.Reset();
@@ -757,15 +774,28 @@ namespace community_shaders::contact_shadows
             (maskWidth_ + kThreadGroupWidth - 1) / kThreadGroupWidth;
         const auto dispatchHeight =
             (maskHeight_ + kThreadGroupHeight - 1) / kThreadGroupHeight;
+        const auto stereoReprojectionActive = contactShadowsActive &&
+            reprojectCompute_ &&
+            stereoReprojection_.load(std::memory_order_relaxed);
         constexpr std::array<float, 4> fullyVisible{
             1.0f,
             1.0f,
             1.0f,
             1.0f,
         };
-        context->ClearUnorderedAccessViewFloat(
-            contactShadowsActive ? maskOutput_.Get() : rawMaskOutput_.Get(),
-            fullyVisible.data());
+        if (stereoReprojectionActive) {
+            context->ClearUnorderedAccessViewFloat(
+                rawMaskOutput_.Get(),
+                fullyVisible.data());
+            context->ClearUnorderedAccessViewFloat(
+                maskOutput_.Get(),
+                fullyVisible.data());
+        } else {
+            context->ClearUnorderedAccessViewFloat(
+                contactShadowsActive ? maskOutput_.Get() :
+                                       rawMaskOutput_.Get(),
+                fullyVisible.data());
+        }
         if (contactShadowsActive) {
             const std::array<ID3D11UnorderedAccessView*, 2> setupOutputs{
                 dispatchRecordsOutput_.Get(),
@@ -797,18 +827,22 @@ namespace community_shaders::contact_shadows
                 0,
                 static_cast<UINT>(raymarchInputs.size()),
                 raymarchInputs.data());
+            auto* wavefrontOutput = stereoReprojectionActive ?
+                rawMaskOutput_.Get() : resolvedOutput;
             context->CSSetUnorderedAccessViews(
                 0,
                 1,
-                &resolvedOutput,
+                &wavefrontOutput,
                 nullptr);
             context->CSSetSamplers(
                 kCloudSamplerSlot,
                 1,
                 &cloudSampler);
             auto indexedSettings = uploadedGpuSettings_;
+            const auto activeDispatchCount = stereoReprojectionActive ?
+                kDispatchRecordCount / 2u : kDispatchRecordCount;
             for (UINT dispatchIndex = 0;
-                 dispatchIndex < kDispatchRecordCount;
+                 dispatchIndex < activeDispatchCount;
                  ++dispatchIndex) {
                 indexedSettings[11] = static_cast<float>(dispatchIndex);
                 context->UpdateSubresource(
@@ -830,6 +864,58 @@ namespace community_shaders::contact_shadows
                 indexedSettings.data(),
                 0,
                 0);
+            if (stereoReprojectionActive) {
+                const std::array<ID3D11UnorderedAccessView*, 2>
+                    noWavefrontOutputs{};
+                const std::array<ID3D11ShaderResourceView*, 3>
+                    noWavefrontInputs{};
+                context->CSSetUnorderedAccessViews(
+                    0,
+                    static_cast<UINT>(noWavefrontOutputs.size()),
+                    noWavefrontOutputs.data(),
+                    nullptr);
+                context->CSSetShaderResources(
+                    0,
+                    static_cast<UINT>(noWavefrontInputs.size()),
+                    noWavefrontInputs.data());
+                const D3D11_BOX leftEyeBox{
+                    0,
+                    0,
+                    0,
+                    maskWidth_ / 2u,
+                    maskHeight_,
+                    1,
+                };
+                context->CopySubresourceRegion(
+                    maskTexture_.Get(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    rawMaskTexture_.Get(),
+                    0,
+                    &leftEyeBox);
+                const std::array<ID3D11ShaderResourceView*, 2>
+                    reprojectionInputs{
+                        depthView,
+                        rawMaskView_.Get(),
+                    };
+                context->CSSetShader(reprojectCompute_.Get(), nullptr, 0);
+                context->CSSetShaderResources(
+                    0,
+                    static_cast<UINT>(reprojectionInputs.size()),
+                    reprojectionInputs.data());
+                context->CSSetUnorderedAccessViews(
+                    0,
+                    1,
+                    &resolvedOutput,
+                    nullptr);
+                context->Dispatch(
+                    (maskWidth_ / 2u + kThreadGroupWidth - 1u) /
+                        kThreadGroupWidth,
+                    dispatchHeight,
+                    1);
+            }
         } else {
             const std::array<ID3D11ShaderResourceView*, 3> resolveInputs{
                 depthView,
@@ -940,6 +1026,9 @@ namespace community_shaders::contact_shadows
         const auto safe = sanitize(settings);
         enabled_.store(safe.enabled, std::memory_order_release);
         foveated_.store(safe.foveated, std::memory_order_relaxed);
+        stereoReprojection_.store(
+            safe.stereoReprojection,
+            std::memory_order_relaxed);
         strength_.store(safe.strength, std::memory_order_relaxed);
         maxDistance_.store(safe.maxDistance, std::memory_order_relaxed);
         fadeDistance_.store(safe.fadeDistance, std::memory_order_relaxed);
@@ -955,6 +1044,8 @@ namespace community_shaders::contact_shadows
             .settings = sanitize({
                 .enabled = enabled_.load(std::memory_order_acquire),
                 .foveated = foveated_.load(std::memory_order_relaxed),
+                .stereoReprojection = stereoReprojection_.load(
+                    std::memory_order_relaxed),
                 .strength = strength_.load(std::memory_order_relaxed),
                 .maxDistance = maxDistance_.load(std::memory_order_relaxed),
                 .fadeDistance = fadeDistance_.load(std::memory_order_relaxed),

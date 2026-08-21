@@ -134,6 +134,7 @@ namespace community_shaders::contact_shadows
             kMaximumShaderContracts> replacements_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> dispatchCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> reprojectCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolveCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> dispatchRecords_;
@@ -156,6 +157,7 @@ namespace community_shaders::contact_shadows
         std::array<TrackedShader, kMaximumTrackedShaders> originals_{};
         std::atomic_bool enabled_{ true };
         std::atomic_bool foveated_{ true };
+        std::atomic_bool stereoReprojection_{ true };
         std::atomic<float> strength_{ 0.85f };
         std::atomic<float> maxDistance_{ 96.0f };
         std::atomic<float> fadeDistance_{ 2048.0f };

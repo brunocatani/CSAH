@@ -66,6 +66,9 @@ int main()
     const auto defaults = loadSettings(ini.path());
     require(defaults.enabled, "missing file enabled default");
     require(defaults.foveated, "missing file foveated default");
+    require(
+        defaults.stereoReprojection,
+        "missing file stereo-reprojection default");
     require(defaults.sampleCount == 8, "missing file sample default");
     require(defaults.fadeDistance == 2048.0f, "missing file fade default");
 
@@ -73,6 +76,7 @@ int main()
         "[ContactShadows]\n"
         "bEnabled=0\n"
         "bFoveated= false \n"
+        "bStereoReprojection=0\n"
         "fStrength=0.62\n"
         "fMaxDistance=72\n"
         "fFadeDistance=1536\n"
@@ -81,6 +85,9 @@ int main()
     const auto configured = loadSettings(ini.path());
     require(!configured.enabled, "disabled owned key");
     require(!configured.foveated, "disabled foveation key");
+    require(
+        !configured.stereoReprojection,
+        "disabled stereo-reprojection key");
     require(
         std::abs(configured.strength - 0.62f) < 1.0e-6f,
         "strength key");

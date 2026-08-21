@@ -7,6 +7,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
     CONTACT_SHADOW_DISPATCH_SHADER_SOURCE
+    CONTACT_SHADOW_REPROJECT_SHADER_SOURCE
     CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
     CONTACT_SHADOW_SHADER_GENERATOR
     D3D11_HOOK_SOURCE
@@ -25,6 +26,7 @@ file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
 file(READ "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}" dispatchShaderSource)
+file(READ "${CONTACT_SHADOW_REPROJECT_SHADER_SOURCE}" reprojectShaderSource)
 file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
 file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
@@ -46,6 +48,7 @@ foreach(required IN ITEMS
     "PSSetShaderResources(kMaskSlot"
     "dispatchMask"
     "dispatchCompute_"
+    "reprojectCompute_"
     "resolveCompute_"
     "dispatchRecords_"
     "dispatchRecordsView_"
@@ -53,13 +56,15 @@ foreach(required IN ITEMS
     "dispatchArguments_"
     "dispatchArgumentsOutput_"
     "DispatchIndirect"
+    "CopySubresourceRegion"
+    "stereoReprojection_"
     "kDispatchRecordCount = 16"
     "uploadedGpuSettings_"
     "observeDepthTargetBinding"
     "maskDepthResource_"
     "maskDirty_"
     "maskValid_"
-    "contactShadowsActive ? maskOutput_.Get() : rawMaskOutput_.Get()"
+    "contactShadowsActive ? maskOutput_.Get()"
     "maskValid_.load(std::memory_order_acquire)"
     "rawMaskTexture_"
     "rawMaskView_"
@@ -79,6 +84,27 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Contact Shadows runtime regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "Texture2D<float> SceneDepth : register(t0)"
+    "Texture2D<float> LeftEyeShadow : register(t1)"
+    "RWTexture2D<unorm float> StereoShadow : register(u0)"
+    "NativeDFLight : register(b2)"
+    "NativeStereo : register(b8)"
+    "NativeCamera : register(b12)"
+    "ReconstructRelativeWorldPosition"
+    "ProjectRelativeWorldPosition"
+    "const uint2 rightPixel"
+    "matchingDepthDomain"
+    "relativeDisagreement <= 0.02f"
+    "StereoShadow[rightPixel] = result"
+    "[numthreads(8, 8, 1)]")
+  string(FIND "${reprojectShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows stereo reprojection regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -257,6 +283,8 @@ foreach(required IN ITEMS
     "compile_resolve_shader"
     "compile_dispatch_shader"
     "fo4vr_cs_contact_shadow_dispatch"
+    "compile_reproject_shader"
+    "fo4vr_cs_contact_shadow_reproject"
     "contact-shadow resolve assembly changed"
     "fo4vr_cs_contact_shadow_resolve"
     "multiply_rgb(1, visibility_scratch)"
@@ -333,6 +361,7 @@ endif()
 foreach(required IN ITEMS
     "bEnabled"
     "bFoveated"
+    "bStereoReprojection"
     "fStrength"
     "fMaxDistance"
     "fFadeDistance"
@@ -354,6 +383,7 @@ foreach(required IN ITEMS
     "\"section\": \"ContactShadows\""
     "\"key\": \"bEnabled\""
     "\"key\": \"bFoveated\""
+    "\"key\": \"bStereoReprojection\""
     "\"key\": \"fStrength\""
     "\"key\": \"fMaxDistance\""
     "\"key\": \"fFadeDistance\""

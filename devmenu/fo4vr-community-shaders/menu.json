@@ -58,7 +58,8 @@
               "label": "Contact shadows",
               "controls": [
                 { "id": "contact-shadows", "type": "toggle", "label": "Contact Shadows", "help": "Adds short-range screen-space directional occlusion.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "bEnabled" } },
-                { "id": "contact-foveated", "type": "toggle", "label": "Foveated Sampling", "help": "Reduces contact-shadow work outside the center view without changing center fidelity.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "bFoveated" } }
+                { "id": "contact-foveated", "type": "toggle", "label": "Foveated Sampling", "help": "Reduces contact-shadow work outside the center view without changing center fidelity.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "bFoveated" } },
+                { "id": "contact-stereo-reprojection", "type": "toggle", "label": "Stereo Reprojection", "help": "Raymarches the left eye and depth-reprojects into the right eye. Invalid disocclusions remain unshadowed.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "bStereoReprojection" } }
               ]
             }
           ]

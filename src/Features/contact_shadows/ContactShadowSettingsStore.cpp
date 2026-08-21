@@ -152,6 +152,10 @@ namespace community_shaders::contact_shadows
                 path,
                 L"bFoveated",
                 defaults.foveated),
+            .stereoReprojection = readBoolean(
+                path,
+                L"bStereoReprojection",
+                defaults.stereoReprojection),
             .strength = readFloat(path, L"fStrength", defaults.strength),
             .maxDistance = readFloat(
                 path,
@@ -177,10 +181,11 @@ namespace community_shaders::contact_shadows
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Contact Shadows settings loaded from '{}'; enabled={}, foveated={}, strength={}, ray distance={}, fade distance={}, thickness={}, samples={}.",
+            "Contact Shadows settings loaded from '{}'; enabled={}, foveated={}, stereo reprojection={}, strength={}, ray distance={}, fade distance={}, thickness={}, samples={}.",
             path.string(),
             result.enabled,
             result.foveated,
+            result.stereoReprojection,
             result.strength,
             result.maxDistance,
             result.fadeDistance,
@@ -226,6 +231,11 @@ namespace community_shaders::contact_shadows
                       path,
                       L"bFoveated",
                       safe.foveated ? L"1" : L"0") &&
+            success;
+        success = writeValue(
+                      path,
+                      L"bStereoReprojection",
+                      safe.stereoReprojection ? L"1" : L"0") &&
             success;
         success = writeValue(path, L"fStrength", strength) && success;
         success = writeValue(path, L"fMaxDistance", distance) && success;

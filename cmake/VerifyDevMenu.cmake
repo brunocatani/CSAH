@@ -74,9 +74,9 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 92)
+if(NOT controlCount EQUAL 93)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 92 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 93 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -206,4 +206,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 92 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 93 shared-INI controls, direct runtime publication, no wrist provider or assets")
