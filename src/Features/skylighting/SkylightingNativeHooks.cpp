@@ -47,8 +47,6 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
         constexpr std::uintptr_t kGpuCullingEnabledRva = 0x027E0D50;
-        constexpr std::uintptr_t kAccumulatorGeometryVisitRva =
-            0x0281BD40;
         constexpr std::uintptr_t kPass14ResolverRva = 0x0281CB50;
         constexpr std::uintptr_t kAccumulatorPassCollectorRva = 0x0281E760;
         constexpr std::uintptr_t kLightingPrecipitationBuilderRva =
@@ -76,7 +74,6 @@ namespace community_shaders::skylighting
             0x170;
         constexpr std::size_t kRenderPassNextOffset = 0x40;
         constexpr std::size_t kRenderPassCategoryOffset = 0x4C;
-        constexpr std::size_t kRenderPassReadableSize = 0x4D;
         constexpr std::size_t kMaximumCollectedPasses = 16;
         constexpr std::size_t kBsxValueOffset = 0x18;
         constexpr std::size_t kUtilityShaderSecondaryVtableOffset = 0x10;
@@ -175,20 +172,6 @@ namespace community_shaders::skylighting
             std::byte{ 0xF0 }, std::byte{ 0x48 },
         };
         constexpr std::array<std::byte, 32>
-            kAccumulatorGeometryVisitSignature{
-                std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
-                std::byte{ 0x24 }, std::byte{ 0x18 }, std::byte{ 0x48 },
-                std::byte{ 0x89 }, std::byte{ 0x7C }, std::byte{ 0x24 },
-                std::byte{ 0x20 }, std::byte{ 0x41 }, std::byte{ 0x56 },
-                std::byte{ 0x48 }, std::byte{ 0x83 }, std::byte{ 0xEC },
-                std::byte{ 0x20 }, std::byte{ 0x45 }, std::byte{ 0x8B },
-                std::byte{ 0xF0 }, std::byte{ 0x48 }, std::byte{ 0x8B },
-                std::byte{ 0xDA }, std::byte{ 0x48 }, std::byte{ 0x8B },
-                std::byte{ 0xF9 }, std::byte{ 0xE8 }, std::byte{ 0x72 },
-                std::byte{ 0x94 }, std::byte{ 0x05 }, std::byte{ 0x00 },
-                std::byte{ 0x84 }, std::byte{ 0xC0 },
-            };
-        constexpr std::array<std::byte, 32>
             kAccumulatorPassCollectorSignature{
                 std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
                 std::byte{ 0x24 }, std::byte{ 0x08 }, std::byte{ 0x48 },
@@ -260,10 +243,6 @@ namespace community_shaders::skylighting
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
         using NativeGpuCullingEnabled = std::uint8_t(__fastcall*)();
-        using AccumulatorGeometryVisit = std::uint8_t(__fastcall*)(
-            void* accumulator,
-            void* geometry,
-            std::uint32_t context);
         using Pass14Resolver = std::uint64_t(__fastcall*)(
             void* accumulator,
             void* geometry,
@@ -320,7 +299,6 @@ namespace community_shaders::skylighting
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
         NativeGpuCullingEnabled originalGpuCullingEnabled{};
-        AccumulatorGeometryVisit originalAccumulatorGeometryVisit{};
         Pass14Resolver originalPass14Resolver{};
         AccumulatorPassCollector collectAccumulatorPass{};
         LightingPassListResolver resolveLightingPassList{};
@@ -334,33 +312,17 @@ namespace community_shaders::skylighting
         std::byte* wrapperTarget{};
         std::byte* gpuCullingEnabledTarget{};
         const void* privateRenderGpuCullingReturnAddress{};
-        std::byte* accumulatorGeometryVisitTarget{};
         std::byte* pass14Target{};
         const RE::NiRTTI* specialGeometryNiRtti{};
         const void* lightingPrecipitationPassBuilder{};
         DetourIdentity installedWrapperIdentity{};
         DetourIdentity installedGpuCullingEnabledIdentity{};
-        DetourIdentity installedAccumulatorGeometryVisitIdentity{};
         DetourIdentity installedPass14Identity{};
         std::atomic_bool installed{};
         std::atomic_bool passProducerReady{};
         std::atomic_bool utilityShaderDeferredLogged{};
         std::atomic_bool firstCallbackLogged{};
         std::atomic_bool missingManagerLogged{};
-        std::atomic_uint64_t passProducerCalls{};
-        std::atomic_uint64_t pass14ResolverCalls{};
-        std::atomic_uint64_t accumulatorGeometryVisits{};
-        std::atomic_uint64_t accumulatorGeometryVisitModeMask{};
-        std::atomic_uint64_t forcedPrivateCpuCulling{};
-        std::atomic_uint64_t forwardedNonLightingProperties{};
-        std::atomic_uint64_t emittedPasses{};
-        std::atomic_uint64_t collectedPasses{};
-        std::atomic_uint64_t rejectedInvalid{};
-        std::atomic_uint64_t rejectedSkinned{};
-        std::atomic_uint64_t rejectedSmall{};
-        std::atomic_uint64_t rejectedBsx{};
-        std::atomic_uint64_t rejectedFlags{};
-        std::atomic_uint64_t rejectedAllocation{};
         std::atomic_bool passProductionActive{};
 
         [[nodiscard]] bool isReadableRange(
@@ -495,21 +457,16 @@ namespace community_shaders::skylighting
         [[nodiscard]] bool usesLightingPrecipitationBuilder(
             void* propertyAddress) noexcept
         {
-            if (!propertyAddress || !lightingPrecipitationPassBuilder ||
-                !isReadableRange(propertyAddress, sizeof(void*))) {
+            if (!propertyAddress || !lightingPrecipitationPassBuilder) {
                 return false;
             }
-            auto* vtable = readPointerCell(
-                reinterpret_cast<void**>(propertyAddress));
-            if (!isReadableRange(
-                    vtable,
-                    kLightingPrecipitationBuilderSlotOffset +
-                        sizeof(void*))) {
+            auto* vtable = *reinterpret_cast<void**>(propertyAddress);
+            if (!vtable) {
                 return false;
             }
-            auto* target = readPointerCell(reinterpret_cast<void**>(
+            auto* target = *reinterpret_cast<void**>(
                 static_cast<std::byte*>(vtable) +
-                kLightingPrecipitationBuilderSlotOffset));
+                kLightingPrecipitationBuilderSlotOffset);
             return target == lightingPrecipitationPassBuilder;
         }
 
@@ -518,14 +475,9 @@ namespace community_shaders::skylighting
             void* geometryAddress,
             void* accumulator) noexcept
         {
-            passProducerCalls.fetch_add(1, std::memory_order_relaxed);
             if (!propertyAddress || !geometryAddress || !accumulator ||
                 !resolveLightingPassList || !clearPassList || !emplacePass ||
-                !utilityShader ||
-                !isReadableRange(
-                    accumulator,
-                    kAccumulatorPassKeyOffset + sizeof(void*))) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                !utilityShader) {
                 return nullptr;
             }
 
@@ -536,18 +488,14 @@ namespace community_shaders::skylighting
                 accumulatorBytes + kAccumulatorPassIndexOffset,
                 sizeof(passIndex));
             if (passIndex >= kAccumulatorPassListCount) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
                 return nullptr;
             }
-            auto* passKey = readPointerCell(reinterpret_cast<void**>(
-                accumulatorBytes + kAccumulatorPassKeyOffset));
+            auto* passKey = *reinterpret_cast<void**>(
+                accumulatorBytes + kAccumulatorPassKeyOffset);
             auto** passBucket = resolveLightingPassList(
                 propertyAddress,
                 passKey);
-            if (!isReadableRange(
-                    passBucket,
-                    sizeof(void*) * kAccumulatorPassListCount)) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+            if (!passBucket) {
                 return nullptr;
             }
             auto** passList = passBucket + passIndex;
@@ -560,24 +508,19 @@ namespace community_shaders::skylighting
             const auto treeAnimated =
                 (propertyFlags & kPropertyTreeAnim) != 0;
             if ((propertyFlags & kPropertySkinned) != 0 && !treeAnimated) {
-                rejectedSkinned.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             }
             if (!std::isfinite(geometry->worldBound.fRadius)) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             }
             if (geometry->worldBound.fRadius <= kMinimumOccluderRadius) {
-                rejectedSmall.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             }
 
             switch (filterBsxFlags(geometry)) {
             case BsxFilterResult::exclude:
-                rejectedBsx.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             case BsxFilterResult::invalid:
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             case BsxFilterResult::include:
                 break;
@@ -589,7 +532,6 @@ namespace community_shaders::skylighting
                 kPropertyDecal | kPropertyDynamicDecal;
             if ((propertyFlags & kPropertyZBufferWrite) == 0 ||
                 (propertyFlags & excludedPropertyFlags) != 0) {
-                rejectedFlags.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             }
 
@@ -625,10 +567,8 @@ namespace community_shaders::skylighting
                 kUtilityDepthPassCategory,
                 geometryAddress);
             if (!pass) {
-                rejectedAllocation.fetch_add(1, std::memory_order_relaxed);
                 return passList;
             }
-            emittedPasses.fetch_add(1, std::memory_order_relaxed);
             return passList;
         }
 
@@ -638,48 +578,11 @@ namespace community_shaders::skylighting
             if (passProductionActive.load(std::memory_order_acquire) &&
                 _ReturnAddress() ==
                     privateRenderGpuCullingReturnAddress) {
-                forcedPrivateCpuCulling.fetch_add(
-                    1,
-                    std::memory_order_relaxed);
                 return 0;
             }
             return originalGpuCullingEnabled ?
                 originalGpuCullingEnabled() :
                 0;
-        }
-
-        std::uint8_t __fastcall hookAccumulatorGeometryVisit(
-            void* accumulator,
-            void* geometry,
-            std::uint32_t context) noexcept
-        {
-            if (passProductionActive.load(std::memory_order_acquire)) {
-                accumulatorGeometryVisits.fetch_add(
-                    1,
-                    std::memory_order_relaxed);
-                if (isReadableRange(
-                        accumulator,
-                        kAccumulatorPassIndexOffset +
-                            sizeof(std::uint32_t))) {
-                    std::uint32_t mode{};
-                    std::memcpy(
-                        &mode,
-                        static_cast<std::byte*>(accumulator) +
-                            kAccumulatorPassIndexOffset,
-                        sizeof(mode));
-                    if (mode < 64) {
-                        accumulatorGeometryVisitModeMask.fetch_or(
-                            1ull << mode,
-                            std::memory_order_relaxed);
-                    }
-                }
-            }
-            return originalAccumulatorGeometryVisit ?
-                originalAccumulatorGeometryVisit(
-                    accumulator,
-                    geometry,
-                    context) :
-                1;
         }
 
         std::uint64_t __fastcall hookPass14Resolver(
@@ -688,8 +591,7 @@ namespace community_shaders::skylighting
             void* propertyAddress,
             std::uint32_t bucketIndex) noexcept
         {
-            if (!passProductionActive.load(std::memory_order_acquire) ||
-                !passProducerReady.load(std::memory_order_acquire)) {
+            if (!passProductionActive.load(std::memory_order_acquire)) {
                 return originalPass14Resolver ?
                     originalPass14Resolver(
                         accumulator,
@@ -698,11 +600,15 @@ namespace community_shaders::skylighting
                         bucketIndex) :
                     1;
             }
-            pass14ResolverCalls.fetch_add(1, std::memory_order_relaxed);
             if (!geometryAddress || !propertyAddress ||
                 !collectAccumulatorPass) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
-                return 1;
+                return originalPass14Resolver ?
+                    originalPass14Resolver(
+                        accumulator,
+                        geometryAddress,
+                        propertyAddress,
+                        bucketIndex) :
+                    1;
             }
 
             auto* geometry = static_cast<RE::BSGeometry*>(geometryAddress);
@@ -716,9 +622,6 @@ namespace community_shaders::skylighting
                     1;
             }
             if (!usesLightingPrecipitationBuilder(propertyAddress)) {
-                forwardedNonLightingProperties.fetch_add(
-                    1,
-                    std::memory_order_relaxed);
                 return originalPass14Resolver ?
                     originalPass14Resolver(
                         accumulator,
@@ -733,15 +636,17 @@ namespace community_shaders::skylighting
                 geometryAddress,
                 accumulator);
             if (!passList) {
-                return 1;
+                return originalPass14Resolver ?
+                    originalPass14Resolver(
+                        accumulator,
+                        geometryAddress,
+                        propertyAddress,
+                        bucketIndex) :
+                    1;
             }
-            auto* pass = readPointerCell(passList);
+            auto* pass = *passList;
             std::size_t passCount{};
             while (pass && passCount < kMaximumCollectedPasses) {
-                if (!isReadableRange(pass, kRenderPassReadableSize)) {
-                    rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
-                    break;
-                }
                 std::uint8_t category{};
                 std::memcpy(
                     &category,
@@ -753,15 +658,11 @@ namespace community_shaders::skylighting
                         accumulator,
                         pass,
                         bucketIndex);
-                    collectedPasses.fetch_add(1, std::memory_order_relaxed);
                 }
-                pass = readPointerCell(reinterpret_cast<void**>(
+                pass = *reinterpret_cast<void**>(
                     static_cast<std::byte*>(pass) +
-                    kRenderPassNextOffset));
+                    kRenderPassNextOffset);
                 ++passCount;
-            }
-            if (pass) {
-                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
             }
             return 1;
         }
@@ -904,8 +805,7 @@ namespace community_shaders::skylighting
         active_ = passProducerReady.load(std::memory_order_acquire) &&
             originalGpuCullingEnabled && gpuCullingEnabledTarget &&
             privateRenderGpuCullingReturnAddress &&
-            originalAccumulatorGeometryVisit &&
-            accumulatorGeometryVisitTarget && originalPass14Resolver &&
+            originalPass14Resolver &&
             collectAccumulatorPass &&
             resolveLightingPassList && clearPassList && emplacePass &&
             utilityShader && lightingPrecipitationPassBuilder &&
@@ -930,38 +830,6 @@ namespace community_shaders::skylighting
     bool ScopedOcclusionPassProduction::active() const noexcept
     {
         return active_;
-    }
-
-    OcclusionPassProducerSnapshot occlusionPassProducerSnapshot() noexcept
-    {
-        return {
-            .owned = passProducerReady.load(std::memory_order_acquire),
-            .calls = passProducerCalls.load(std::memory_order_relaxed),
-            .pass14ResolverCalls = pass14ResolverCalls.load(
-                std::memory_order_relaxed),
-            .accumulatorGeometryVisits = accumulatorGeometryVisits.load(
-                std::memory_order_relaxed),
-            .accumulatorGeometryVisitModeMask =
-                accumulatorGeometryVisitModeMask.load(
-                    std::memory_order_relaxed),
-            .forcedPrivateCpuCulling = forcedPrivateCpuCulling.load(
-                std::memory_order_relaxed),
-            .forwardedNonLightingProperties =
-                forwardedNonLightingProperties.load(
-                    std::memory_order_relaxed),
-            .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
-            .collectedPasses = collectedPasses.load(
-                std::memory_order_relaxed),
-            .rejectedInvalid = rejectedInvalid.load(
-                std::memory_order_relaxed),
-            .rejectedSkinned = rejectedSkinned.load(
-                std::memory_order_relaxed),
-            .rejectedSmall = rejectedSmall.load(std::memory_order_relaxed),
-            .rejectedBsx = rejectedBsx.load(std::memory_order_relaxed),
-            .rejectedFlags = rejectedFlags.load(std::memory_order_relaxed),
-            .rejectedAllocation = rejectedAllocation.load(
-                std::memory_order_relaxed),
-        };
     }
 
     bool installNativeHooks() noexcept
@@ -1043,9 +911,6 @@ namespace community_shaders::skylighting
                 kGpuCullingEnabledRva,
                 kGpuCullingEnabledSignature.size()) ||
             !inImage(
-                kAccumulatorGeometryVisitRva,
-                kAccumulatorGeometryVisitSignature.size()) ||
-            !inImage(
                 kPass14ResolverRva,
                 kPass14ResolverSignature.size()) ||
             !inImage(
@@ -1080,8 +945,6 @@ namespace community_shaders::skylighting
         auto* gpuCullingEnabled = image + kGpuCullingEnabledRva;
         auto* renderGpuCullingQuery =
             render + kRenderGpuCullingQueryOffset;
-        auto* accumulatorGeometryVisit =
-            image + kAccumulatorGeometryVisitRva;
         auto* pass14Resolver = image + kPass14ResolverRva;
         auto* accumulatorPassCollector =
             image + kAccumulatorPassCollectorRva;
@@ -1203,17 +1066,6 @@ namespace community_shaders::skylighting
             relativeTarget(renderGpuCullingQuery) != gpuCullingEnabled) {
             logging::error(
                 "Skylighting native precipitation GPU-culling query callsite mismatch at RVA 0x006352D2.");
-            return false;
-        }
-        if (!isExecutableRange(
-                accumulatorGeometryVisit,
-                kAccumulatorGeometryVisitSignature.size()) ||
-            std::memcmp(
-                accumulatorGeometryVisit,
-                kAccumulatorGeometryVisitSignature.data(),
-                kAccumulatorGeometryVisitSignature.size()) != 0) {
-            logging::error(
-                "Skylighting native accumulator geometry-visit signature mismatch at RVA 0x0281BD40.");
             return false;
         }
         if (!isExecutableRange(
@@ -1349,7 +1201,6 @@ namespace community_shaders::skylighting
         const auto resetResolvedContracts = []() noexcept {
             originalWrapper = nullptr;
             originalGpuCullingEnabled = nullptr;
-            originalAccumulatorGeometryVisit = nullptr;
             originalPass14Resolver = nullptr;
             nativeSkySingleton = nullptr;
             nativeRender = nullptr;
@@ -1367,11 +1218,9 @@ namespace community_shaders::skylighting
             wrapperTarget = nullptr;
             gpuCullingEnabledTarget = nullptr;
             privateRenderGpuCullingReturnAddress = nullptr;
-            accumulatorGeometryVisitTarget = nullptr;
             pass14Target = nullptr;
             installedWrapperIdentity = {};
             installedGpuCullingEnabledIdentity = {};
-            installedAccumulatorGeometryVisitIdentity = {};
             installedPass14Identity = {};
             passProducerReady.store(false, std::memory_order_release);
             bsxKey.reset();
@@ -1414,26 +1263,6 @@ namespace community_shaders::skylighting
             return false;
         }
 
-        void* accumulatorGeometryVisitTrampoline{};
-        status = MH_CreateHook(
-            accumulatorGeometryVisit,
-            reinterpret_cast<void*>(&hookAccumulatorGeometryVisit),
-            &accumulatorGeometryVisitTrampoline);
-        if (status != MH_OK ||
-            !isExecutableRange(accumulatorGeometryVisitTrampoline, 1)) {
-            if (status == MH_OK) {
-                (void)MH_RemoveHook(accumulatorGeometryVisit);
-            }
-            (void)MH_RemoveHook(gpuCullingEnabled);
-            (void)MH_RemoveHook(wrapper);
-            logging::error(
-                "Skylighting native accumulator geometry-visit detour creation failed: {} ({}).",
-                MH_StatusToString(status),
-                static_cast<int>(status));
-            resetResolvedContracts();
-            return false;
-        }
-
         void* pass14Trampoline{};
         status = MH_CreateHook(
             pass14Resolver,
@@ -1443,7 +1272,6 @@ namespace community_shaders::skylighting
             if (status == MH_OK) {
                 (void)MH_RemoveHook(pass14Resolver);
             }
-            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             logging::error(
@@ -1459,9 +1287,6 @@ namespace community_shaders::skylighting
         originalGpuCullingEnabled =
             reinterpret_cast<NativeGpuCullingEnabled>(
                 gpuCullingEnabledTrampoline);
-        originalAccumulatorGeometryVisit =
-            reinterpret_cast<AccumulatorGeometryVisit>(
-                accumulatorGeometryVisitTrampoline);
         originalPass14Resolver = reinterpret_cast<Pass14Resolver>(
             pass14Trampoline);
         nativeSkySingleton =
@@ -1480,31 +1305,10 @@ namespace community_shaders::skylighting
                 gpuCullingEnabledIdentity)) {
             (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(gpuCullingEnabled);
-            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(pass14Resolver);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native GPU-culling query detour activation failed: {} ({}).",
-                MH_StatusToString(status),
-                static_cast<int>(status));
-            resetResolvedContracts();
-            return false;
-        }
-
-        status = MH_EnableHook(accumulatorGeometryVisit);
-        DetourIdentity accumulatorGeometryVisitIdentity{};
-        if (status != MH_OK ||
-            !captureDetourIdentity(
-                accumulatorGeometryVisit,
-                accumulatorGeometryVisitIdentity)) {
-            (void)MH_DisableHook(accumulatorGeometryVisit);
-            (void)MH_DisableHook(gpuCullingEnabled);
-            (void)MH_RemoveHook(accumulatorGeometryVisit);
-            (void)MH_RemoveHook(gpuCullingEnabled);
-            (void)MH_RemoveHook(pass14Resolver);
-            (void)MH_RemoveHook(wrapper);
-            logging::error(
-                "Skylighting native accumulator geometry-visit detour activation failed: {} ({}).",
                 MH_StatusToString(status),
                 static_cast<int>(status));
             resetResolvedContracts();
@@ -1516,10 +1320,8 @@ namespace community_shaders::skylighting
         if (status != MH_OK ||
             !captureDetourIdentity(pass14Resolver, pass14Identity)) {
             (void)MH_DisableHook(pass14Resolver);
-            (void)MH_DisableHook(accumulatorGeometryVisit);
             (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(pass14Resolver);
-            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             logging::error(
@@ -1536,11 +1338,9 @@ namespace community_shaders::skylighting
             !captureDetourIdentity(wrapper, wrapperIdentity)) {
             (void)MH_DisableHook(wrapper);
             (void)MH_DisableHook(pass14Resolver);
-            (void)MH_DisableHook(accumulatorGeometryVisit);
             (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             (void)MH_RemoveHook(pass14Resolver);
-            (void)MH_RemoveHook(accumulatorGeometryVisit);
             (void)MH_RemoveHook(gpuCullingEnabled);
             logging::error(
                 "Skylighting native wrapper detour activation failed: {} ({}).",
@@ -1552,18 +1352,15 @@ namespace community_shaders::skylighting
 
         wrapperTarget = wrapper;
         gpuCullingEnabledTarget = gpuCullingEnabled;
-        accumulatorGeometryVisitTarget = accumulatorGeometryVisit;
         pass14Target = pass14Resolver;
         installedWrapperIdentity = wrapperIdentity;
         installedGpuCullingEnabledIdentity = gpuCullingEnabledIdentity;
-        installedAccumulatorGeometryVisitIdentity =
-            accumulatorGeometryVisitIdentity;
         installedPass14Identity = pass14Identity;
         passProducerReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, scoped GPU-culling query RVA 0x027E0D50, accumulator visit RVA 0x0281BD40, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
+            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, scoped GPU-culling query RVA 0x027E0D50, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
         return true;
     }
 
@@ -1590,19 +1387,6 @@ namespace community_shaders::skylighting
                 installedGpuCullingEnabledIdentity.patch &&
             currentGpuCullingEnabled.destination ==
                 installedGpuCullingEnabledIdentity.destination;
-        DetourIdentity currentAccumulatorGeometryVisit{};
-        const auto accumulatorGeometryVisitOwned =
-            installed.load(std::memory_order_acquire) &&
-            accumulatorGeometryVisitTarget &&
-            installedAccumulatorGeometryVisitIdentity.patch &&
-            installedAccumulatorGeometryVisitIdentity.destination &&
-            captureDetourIdentity(
-                accumulatorGeometryVisitTarget,
-                currentAccumulatorGeometryVisit) &&
-            currentAccumulatorGeometryVisit.patch ==
-                installedAccumulatorGeometryVisitIdentity.patch &&
-            currentAccumulatorGeometryVisit.destination ==
-                installedAccumulatorGeometryVisitIdentity.destination;
         DetourIdentity currentPass14{};
         const auto pass14Owned = installed.load(std::memory_order_acquire) &&
             pass14Target && installedPass14Identity.patch &&
@@ -1616,17 +1400,15 @@ namespace community_shaders::skylighting
             utilityShaderSecondaryVtable);
         const auto utilityShaderOwned = utilityIdentity.valid();
         const auto owned = wrapperOwned && gpuCullingEnabledOwned &&
-            accumulatorGeometryVisitOwned && pass14Owned &&
-            utilityShaderOwned;
+            pass14Owned && utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native ownership validation failed at '{}' (wrapper={}, gpuCullingQuery={}, accumulatorVisit={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, gpuCullingQuery={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
                 trigger ? trigger : "unknown",
                 wrapperOwned,
                 gpuCullingEnabledOwned,
-                accumulatorGeometryVisitOwned,
                 pass14Owned,
                 utilityShaderOwned);
         }

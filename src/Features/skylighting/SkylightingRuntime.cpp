@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -1213,7 +1214,7 @@ namespace community_shaders::skylighting
             D3D11_CLEAR_DEPTH,
             1.0f,
             0);
-        const auto producerBefore = occlusionPassProducerSnapshot();
+        const auto privateRenderStart = std::chrono::steady_clock::now();
         auto privateRenderCompleted = false;
         {
             ScopedNativeDepthTarget privateTarget(
@@ -1228,56 +1229,18 @@ namespace community_shaders::skylighting
                 privateRenderCompleted = true;
             }
         }
-        const auto producerAfter = occlusionPassProducerSnapshot();
+        const auto privateRenderEnd = std::chrono::steady_clock::now();
         if (!firstPassProducerSummaryLogged_.exchange(
                 true,
                 std::memory_order_relaxed)) {
-            const auto difference = [](std::uint64_t after,
-                                        std::uint64_t before) noexcept {
-                return after >= before ? after - before : 0;
-            };
+            const auto elapsedMilliseconds =
+                std::chrono::duration<double, std::milli>(
+                    privateRenderEnd - privateRenderStart)
+                    .count();
             logging::info(
-                "Skylighting first private geometry-producer transaction: owned={}, completed={}, forcedCpuCull={}, builderCalls={}, pass14Calls={}, accumulatorVisits={}, accumulatorModeMask=0x{:016X}, forwardedNonLighting={}, emitted={}, collected={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
-                producerAfter.owned,
+                "Skylighting first private capture render completed={} in {:.3f} ms without hot-path diagnostics.",
                 privateRenderCompleted,
-                difference(
-                    producerAfter.forcedPrivateCpuCulling,
-                    producerBefore.forcedPrivateCpuCulling),
-                difference(producerAfter.calls, producerBefore.calls),
-                difference(
-                    producerAfter.pass14ResolverCalls,
-                    producerBefore.pass14ResolverCalls),
-                difference(
-                    producerAfter.accumulatorGeometryVisits,
-                    producerBefore.accumulatorGeometryVisits),
-                producerAfter.accumulatorGeometryVisitModeMask,
-                difference(
-                    producerAfter.forwardedNonLightingProperties,
-                    producerBefore.forwardedNonLightingProperties),
-                difference(
-                    producerAfter.emittedPasses,
-                    producerBefore.emittedPasses),
-                difference(
-                    producerAfter.collectedPasses,
-                    producerBefore.collectedPasses),
-                difference(
-                    producerAfter.rejectedInvalid,
-                    producerBefore.rejectedInvalid),
-                difference(
-                    producerAfter.rejectedSkinned,
-                    producerBefore.rejectedSkinned),
-                difference(
-                    producerAfter.rejectedSmall,
-                    producerBefore.rejectedSmall),
-                difference(
-                    producerAfter.rejectedBsx,
-                    producerBefore.rejectedBsx),
-                difference(
-                    producerAfter.rejectedFlags,
-                    producerBefore.rejectedFlags),
-                difference(
-                    producerAfter.rejectedAllocation,
-                    producerBefore.rejectedAllocation));
+                elapsedMilliseconds);
         }
 
         std::memcpy(
