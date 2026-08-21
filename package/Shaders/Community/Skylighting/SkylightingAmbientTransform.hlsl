@@ -2,6 +2,7 @@ Texture2D<float4> NativeNormal : register(t1);
 Texture2D<float4> NativeMaterial : register(t2);
 Texture2D<float> NativeDepth : register(t3);
 Texture3D<float4> SkylightingProbeArray : register(t50);
+RWByteAddressBuffer SkylightingAmbientDiagnostic : register(u7);
 
 cbuffer NativeDFLight : register(b2)
 {
@@ -143,7 +144,9 @@ bool SampleSkylighting(
     float3 relativeWorldPosition,
     float3 normal,
     out float4 visibilitySh,
-    out float fade)
+    out float fade,
+    out bool insideVolume,
+    out bool weightedSample)
 {
     visibilitySh = float4(
         3.54490770181103205460f,
@@ -151,6 +154,8 @@ bool SampleSkylighting(
         0.0f,
         0.0f);
     fade = 0.0f;
+    insideVolume = false;
+    weightedSample = false;
     if (Response.z <= 0.5f || any(ArrayDimensions.xyz == 0u)) {
         return false;
     }
@@ -161,6 +166,7 @@ bool SampleSkylighting(
     if (any(uvw < 0.0f) || any(uvw > 1.0f)) {
         return false;
     }
+    insideVolume = true;
 
     const int3 dimensions = int3(ArrayDimensions.xyz);
     const float3 cellCoordinates = uvw * float3(dimensions);
@@ -209,6 +215,7 @@ bool SampleSkylighting(
     if (weightSum <= 1.0e-6f) {
         return false;
     }
+    weightedSample = true;
     visibilitySh = sum / weightSum;
     fade = EdgeFade(relativeWorldPosition);
     return true;
@@ -219,6 +226,14 @@ PixelOutput PSMain(PixelInput input)
     PixelOutput output;
     output.DiffuseVisibility = 1.0f;
     output.SpecularVisibility = 1.0f;
+    const uint2 diagnosticPixel = uint2(input.Position.xy);
+    const bool diagnosticSample = Response.w > 0.5f &&
+        all((diagnosticPixel & uint2(255u, 255u)) ==
+            uint2(128u, 128u));
+    uint ignored;
+    if (diagnosticSample) {
+        SkylightingAmbientDiagnostic.InterlockedAdd(0u, 1u, ignored);
+    }
     if (Response.z > 0.5f) {
         uint width;
         uint height;
@@ -229,6 +244,10 @@ PixelOutput PSMain(PixelInput input)
             int2((int)width - 1, (int)height - 1));
         const float depth = NativeDepth.Load(int3(pixel, 0));
         if (depth > 1.0e-6f) {
+            if (diagnosticSample) {
+                SkylightingAmbientDiagnostic.InterlockedAdd(
+                    4u, 1u, ignored);
+            }
             const float2 packedUv =
                 (float2(pixel) + 0.5f) / float2(width, height);
             const float3 relativeWorldPosition =
@@ -237,15 +256,32 @@ PixelOutput PSMain(PixelInput input)
                     depth,
                     input.Eye);
             if (all(abs(relativeWorldPosition) <= 1.0e8f)) {
+                if (diagnosticSample) {
+                    SkylightingAmbientDiagnostic.InterlockedAdd(
+                        8u, 1u, ignored);
+                }
                 const float3 normal = DecodeNativeNormal(
                     NativeNormal.Load(int3(pixel, 0)).xy);
                 float4 visibilitySh;
                 float fade;
-                if (SampleSkylighting(
-                        relativeWorldPosition,
-                        normal,
-                        visibilitySh,
-                        fade)) {
+                bool insideVolume;
+                bool weightedSample;
+                const bool sampled = SampleSkylighting(
+                    relativeWorldPosition,
+                    normal,
+                    visibilitySh,
+                    fade,
+                    insideVolume,
+                    weightedSample);
+                if (diagnosticSample && insideVolume) {
+                    SkylightingAmbientDiagnostic.InterlockedAdd(
+                        12u, 1u, ignored);
+                }
+                if (diagnosticSample && weightedSample) {
+                    SkylightingAmbientDiagnostic.InterlockedAdd(
+                        16u, 1u, ignored);
+                }
+                if (sampled) {
                     const float diffuseVisibility = lerp(
                         1.0f,
                         saturate(dot(
@@ -274,6 +310,44 @@ PixelOutput PSMain(PixelInput input)
                         Response.y,
                         1.0f,
                         specularVisibility);
+                    if (diagnosticSample) {
+                        if (fade > 1.0e-3f) {
+                            SkylightingAmbientDiagnostic.InterlockedAdd(
+                                20u, 1u, ignored);
+                        }
+                        if (output.DiffuseVisibility.x < 0.999f) {
+                            SkylightingAmbientDiagnostic.InterlockedAdd(
+                                24u, 1u, ignored);
+                        }
+                        if (output.SpecularVisibility.x < 0.999f) {
+                            SkylightingAmbientDiagnostic.InterlockedAdd(
+                                28u, 1u, ignored);
+                        }
+                        SkylightingAmbientDiagnostic.InterlockedMin(
+                            32u,
+                            asuint(output.DiffuseVisibility.x),
+                            ignored);
+                        SkylightingAmbientDiagnostic.InterlockedMax(
+                            36u,
+                            asuint(output.DiffuseVisibility.x),
+                            ignored);
+                        SkylightingAmbientDiagnostic.InterlockedMin(
+                            40u,
+                            asuint(output.SpecularVisibility.x),
+                            ignored);
+                        SkylightingAmbientDiagnostic.InterlockedMax(
+                            44u,
+                            asuint(output.SpecularVisibility.x),
+                            ignored);
+                        SkylightingAmbientDiagnostic.InterlockedMin(
+                            48u,
+                            asuint(fade),
+                            ignored);
+                        SkylightingAmbientDiagnostic.InterlockedMax(
+                            52u,
+                            asuint(fade),
+                            ignored);
+                    }
                 }
             }
         }

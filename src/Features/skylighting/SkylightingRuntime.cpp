@@ -60,6 +60,10 @@ namespace community_shaders::skylighting
         constexpr std::size_t kDiagnosticStatCount = 10;
         constexpr std::size_t kDiagnosticByteWidth =
             kDiagnosticStatCount * sizeof(std::uint32_t);
+        constexpr std::size_t kAmbientDiagnosticStatCount = 14;
+        constexpr std::size_t kAmbientDiagnosticByteWidth =
+            kAmbientDiagnosticStatCount * sizeof(std::uint32_t);
+        constexpr UINT kAmbientDiagnosticUavSlot = 7;
 
         // FO4VR has 145 render targets before this array. CommonLibF4VR
         // declares 101, so its RendererData::depthStencilTargets field is
@@ -267,8 +271,10 @@ namespace community_shaders::skylighting
     ScopedAmbientBindings::ScopedAmbientBindings(
         ID3D11DeviceContext* context,
         ID3D11ShaderResourceView* probe,
-        ID3D11Buffer* constants) noexcept :
-        context_(context)
+        ID3D11Buffer* constants,
+        ID3D11UnorderedAccessView* diagnostic,
+        Runtime* owner) noexcept :
+        context_(context), owner_(owner)
     {
         if (!context_) {
             return;
@@ -277,6 +283,24 @@ namespace community_shaders::skylighting
         context_->PSGetConstantBuffers(13, 1, &previousConstants_);
         context_->PSSetShaderResources(50, 1, &probe);
         context_->PSSetConstantBuffers(13, 1, &constants);
+        if (diagnostic && owner_) {
+            context_->OMGetRenderTargetsAndUnorderedAccessViews(
+                0,
+                nullptr,
+                nullptr,
+                kAmbientDiagnosticUavSlot,
+                1,
+                &previousDiagnostic_);
+            context_->OMSetRenderTargetsAndUnorderedAccessViews(
+                D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL,
+                nullptr,
+                nullptr,
+                kAmbientDiagnosticUavSlot,
+                1,
+                &diagnostic,
+                nullptr);
+            diagnosticCaptured_ = true;
+        }
         captured_ = true;
     }
 
@@ -290,11 +314,17 @@ namespace community_shaders::skylighting
         context_(other.context_),
         previousProbe_(other.previousProbe_),
         previousConstants_(other.previousConstants_),
+        previousDiagnostic_(other.previousDiagnostic_),
+        owner_(other.owner_),
+        diagnosticCaptured_(other.diagnosticCaptured_),
         captured_(other.captured_)
     {
         other.context_ = nullptr;
         other.previousProbe_ = nullptr;
         other.previousConstants_ = nullptr;
+        other.previousDiagnostic_ = nullptr;
+        other.owner_ = nullptr;
+        other.diagnosticCaptured_ = false;
         other.captured_ = false;
     }
 
@@ -306,10 +336,16 @@ namespace community_shaders::skylighting
             context_ = other.context_;
             previousProbe_ = other.previousProbe_;
             previousConstants_ = other.previousConstants_;
+            previousDiagnostic_ = other.previousDiagnostic_;
+            owner_ = other.owner_;
+            diagnosticCaptured_ = other.diagnosticCaptured_;
             captured_ = other.captured_;
             other.context_ = nullptr;
             other.previousProbe_ = nullptr;
             other.previousConstants_ = nullptr;
+            other.previousDiagnostic_ = nullptr;
+            other.owner_ = nullptr;
+            other.diagnosticCaptured_ = false;
             other.captured_ = false;
         }
         return *this;
@@ -319,6 +355,25 @@ namespace community_shaders::skylighting
     {
         if (!captured_ || !context_) {
             return false;
+        }
+        if (diagnosticCaptured_) {
+            auto* previous = previousDiagnostic_;
+            context_->OMSetRenderTargetsAndUnorderedAccessViews(
+                D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL,
+                nullptr,
+                nullptr,
+                kAmbientDiagnosticUavSlot,
+                1,
+                &previous,
+                nullptr);
+            if (previousDiagnostic_) {
+                previousDiagnostic_->Release();
+                previousDiagnostic_ = nullptr;
+            }
+            diagnosticCaptured_ = false;
+            if (owner_) {
+                owner_->submitAmbientDiagnostic();
+            }
         }
         context_->PSSetShaderResources(50, 1, &previousProbe_);
         context_->PSSetConstantBuffers(13, 1, &previousConstants_);
@@ -332,6 +387,7 @@ namespace community_shaders::skylighting
         }
         captured_ = false;
         context_ = nullptr;
+        owner_ = nullptr;
         return true;
     }
 
@@ -417,6 +473,9 @@ namespace community_shaders::skylighting
         diagnosticSubmitted_ = false;
         diagnosticPending_ = false;
         diagnosticLogged_ = false;
+        ambientDiagnosticSubmitted_ = false;
+        ambientDiagnosticPending_ = false;
+        ambientDiagnosticLogged_ = false;
 
         if (!createProbeResources()) {
             logging::error(
@@ -562,6 +621,47 @@ namespace community_shaders::skylighting
             return false;
         }
 
+        auto ambientDiagnosticDescription = diagnosticDescription;
+        ambientDiagnosticDescription.ByteWidth =
+            static_cast<UINT>(kAmbientDiagnosticByteWidth);
+        ComPtr<ID3D11Buffer> ambientDiagnosticBuffer;
+        if (FAILED(device_->CreateBuffer(
+                &ambientDiagnosticDescription,
+                nullptr,
+                ambientDiagnosticBuffer.GetAddressOf()))) {
+            return false;
+        }
+        auto ambientDiagnosticOutputDescription = diagnosticOutputDescription;
+        ambientDiagnosticOutputDescription.Buffer.NumElements =
+            static_cast<UINT>(kAmbientDiagnosticStatCount);
+        ComPtr<ID3D11UnorderedAccessView> ambientDiagnosticOutput;
+        if (FAILED(device_->CreateUnorderedAccessView(
+                ambientDiagnosticBuffer.Get(),
+                &ambientDiagnosticOutputDescription,
+                ambientDiagnosticOutput.GetAddressOf()))) {
+            return false;
+        }
+        auto ambientDiagnosticStagingDescription =
+            ambientDiagnosticDescription;
+        ambientDiagnosticStagingDescription.Usage = D3D11_USAGE_STAGING;
+        ambientDiagnosticStagingDescription.BindFlags = 0;
+        ambientDiagnosticStagingDescription.CPUAccessFlags =
+            D3D11_CPU_ACCESS_READ;
+        ambientDiagnosticStagingDescription.MiscFlags = 0;
+        ComPtr<ID3D11Buffer> ambientDiagnosticStaging;
+        if (FAILED(device_->CreateBuffer(
+                &ambientDiagnosticStagingDescription,
+                nullptr,
+                ambientDiagnosticStaging.GetAddressOf()))) {
+            return false;
+        }
+        ComPtr<ID3D11Query> ambientDiagnosticCompletion;
+        if (FAILED(device_->CreateQuery(
+                &queryDescription,
+                ambientDiagnosticCompletion.GetAddressOf()))) {
+            return false;
+        }
+
         ComPtr<ID3D11ComputeShader> updateShader;
         if (FAILED(device_->CreateComputeShader(
                 fo4vr_cs_skylighting_update_probes,
@@ -607,6 +707,11 @@ namespace community_shaders::skylighting
         diagnosticOutput_ = std::move(diagnosticOutput);
         diagnosticStaging_ = std::move(diagnosticStaging);
         diagnosticCompletion_ = std::move(diagnosticCompletion);
+        ambientDiagnosticBuffer_ = std::move(ambientDiagnosticBuffer);
+        ambientDiagnosticOutput_ = std::move(ambientDiagnosticOutput);
+        ambientDiagnosticStaging_ = std::move(ambientDiagnosticStaging);
+        ambientDiagnosticCompletion_ =
+            std::move(ambientDiagnosticCompletion);
         updateShader_ = std::move(updateShader);
         comparisonSampler_ = std::move(comparisonSampler);
         constantsBuffer_ = std::move(constantsBuffer);
@@ -648,6 +753,9 @@ namespace community_shaders::skylighting
         exteriorActive_.store(false, std::memory_order_release);
         probeDataValid_.store(false, std::memory_order_release);
         resetRequested_.store(true, std::memory_order_release);
+        ambientDiagnosticSubmitted_ = false;
+        ambientDiagnosticPending_ = false;
+        ambientDiagnosticLogged_ = false;
     }
 
     bool Runtime::ensurePrivateDepth(
@@ -1031,6 +1139,86 @@ namespace community_shaders::skylighting
             std::bit_cast<float>(stats[9]));
     }
 
+    void Runtime::submitAmbientDiagnostic() noexcept
+    {
+        if (ambientDiagnosticSubmitted_ || ambientDiagnosticPending_ ||
+            ambientDiagnosticLogged_ || !context_ ||
+            !ambientDiagnosticBuffer_ || !ambientDiagnosticStaging_ ||
+            !ambientDiagnosticCompletion_ || !constantsBuffer_) {
+            return;
+        }
+        constants_.response.w = 0.0f;
+        context_->UpdateSubresource(
+            constantsBuffer_.Get(),
+            0,
+            nullptr,
+            &constants_,
+            0,
+            0);
+        context_->CopyResource(
+            ambientDiagnosticStaging_.Get(),
+            ambientDiagnosticBuffer_.Get());
+        context_->End(ambientDiagnosticCompletion_.Get());
+        ambientDiagnosticSubmitted_ = true;
+        ambientDiagnosticPending_ = true;
+    }
+
+    void Runtime::consumeAmbientDiagnosticReadback() noexcept
+    {
+        if (!ambientDiagnosticPending_ || !context_ ||
+            !ambientDiagnosticStaging_ || !ambientDiagnosticCompletion_) {
+            return;
+        }
+        const auto completion = context_->GetData(
+            ambientDiagnosticCompletion_.Get(),
+            nullptr,
+            0,
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (completion == S_FALSE) {
+            return;
+        }
+        ambientDiagnosticPending_ = false;
+        ambientDiagnosticLogged_ = true;
+        if (FAILED(completion)) {
+            logging::warn(
+                "Skylighting ambient-consumer diagnostic completion failed with HRESULT 0x{:08X}.",
+                static_cast<std::uint32_t>(completion));
+            return;
+        }
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        const auto mapResult = context_->Map(
+            ambientDiagnosticStaging_.Get(),
+            0,
+            D3D11_MAP_READ,
+            0,
+            &mapped);
+        if (FAILED(mapResult) || !mapped.pData) {
+            logging::warn(
+                "Skylighting ambient-consumer diagnostic readback failed with HRESULT 0x{:08X}.",
+                static_cast<std::uint32_t>(mapResult));
+            return;
+        }
+        std::array<std::uint32_t, kAmbientDiagnosticStatCount> stats{};
+        std::memcpy(stats.data(), mapped.pData, kAmbientDiagnosticByteWidth);
+        context_->Unmap(ambientDiagnosticStaging_.Get(), 0);
+        logging::info(
+            "Skylighting ambient-consumer trace: sparsePixels={}, depthValid={}, finitePosition={}, insideVolume={}, weightedSample={}, positiveFade={}, diffuseNonNeutral={}, specularNonNeutral={}, diffuseRange={:.6f}..{:.6f}, specularRange={:.6f}..{:.6f}, fadeRange={:.6f}..{:.6f}.",
+            stats[0],
+            stats[1],
+            stats[2],
+            stats[3],
+            stats[4],
+            stats[5],
+            stats[6],
+            stats[7],
+            std::bit_cast<float>(stats[8]),
+            std::bit_cast<float>(stats[9]),
+            std::bit_cast<float>(stats[10]),
+            std::bit_cast<float>(stats[11]),
+            std::bit_cast<float>(stats[12]),
+            std::bit_cast<float>(stats[13]));
+    }
+
     void Runtime::onNativePrecipitationFrame(
         void* precipitation,
         NativePrecipitationRender render,
@@ -1038,6 +1226,7 @@ namespace community_shaders::skylighting
     {
         captureCalls_.fetch_add(1, std::memory_order_relaxed);
         consumeDiagnosticReadback();
+        consumeAmbientDiagnosticReadback();
         const auto featureRequested = requested();
         const auto resourcesReady =
             gpuResourcesReady_.load(std::memory_order_acquire);
@@ -1309,11 +1498,40 @@ namespace community_shaders::skylighting
             logging::info(
                 "Skylighting bound its first active world-space probe to DFLight ambient shading.");
         }
+        const auto collectAmbientDiagnostic = active &&
+            !ambientDiagnosticSubmitted_ && !ambientDiagnosticPending_ &&
+            !ambientDiagnosticLogged_ && ambientDiagnosticBuffer_ &&
+            ambientDiagnosticOutput_ && ambientDiagnosticStaging_ &&
+            ambientDiagnosticCompletion_;
+        if (collectAmbientDiagnostic) {
+            std::array<std::uint32_t, kAmbientDiagnosticStatCount> initial{};
+            initial[8] = std::bit_cast<std::uint32_t>(1.0f);
+            initial[10] = std::bit_cast<std::uint32_t>(1.0f);
+            initial[12] = std::bit_cast<std::uint32_t>(1.0f);
+            context_->UpdateSubresource(
+                ambientDiagnosticBuffer_.Get(),
+                0,
+                nullptr,
+                initial.data(),
+                0,
+                0);
+            constants_.response.w = 1.0f;
+            context_->UpdateSubresource(
+                constantsBuffer_.Get(),
+                0,
+                nullptr,
+                &constants_,
+                0,
+                0);
+        }
         ambientBinds_.fetch_add(1, std::memory_order_relaxed);
         return ScopedAmbientBindings(
             context,
             active ? probeResource_.Get() : nullptr,
-            constantsBuffer_.Get());
+            constantsBuffer_.Get(),
+            collectAmbientDiagnostic ? ambientDiagnosticOutput_.Get() :
+                                       nullptr,
+            collectAmbientDiagnostic ? this : nullptr);
     }
 
     RuntimeSnapshot Runtime::snapshot() const noexcept

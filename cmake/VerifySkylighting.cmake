@@ -150,6 +150,9 @@ foreach(required IN ITEMS
     "without hot-path diagnostics"
     "RendererData::GetSingleton()"
     "InterlockedIncrement("
+    "submitAmbientDiagnostic()"
+    "consumeAmbientDiagnosticReadback()"
+    "Skylighting ambient-consumer trace:"
     "nativeOutput_.data() + kNativeProjectionOffset"
     "PSSetShaderResources(50"
     "PSSetConstantBuffers(13"
@@ -179,9 +182,12 @@ endforeach()
 
 foreach(required IN ITEMS
     "register(t50)"
+    "register(u7)"
     "register(b13)"
     "Texture3D<float4> SkylightingProbeArray"
+    "RWByteAddressBuffer SkylightingAmbientDiagnostic"
     "ReconstructRelativeWorldPosition"
+    "insideVolume"
     "FauxSpecularLobe"
     "output.DiffuseVisibility"
     "output.SpecularVisibility")
@@ -242,7 +248,8 @@ endforeach()
 
 foreach(required IN ITEMS
     "skylighting::Runtime::get().scopeAmbientDraw"
-    "skylighting::installNativeHooks()")
+    "skylighting::installNativeHooks()"
+    "D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL")
   string(FIND "${d3dHook}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR

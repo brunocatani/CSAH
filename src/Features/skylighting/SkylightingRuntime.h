@@ -12,6 +12,8 @@
 
 namespace community_shaders::skylighting
 {
+    class Runtime;
+
     using NativePrecipitationRender =
         void(__fastcall*)(void* precipitation, void* rainEmitter);
     using NativeProjectionSetup =
@@ -44,7 +46,9 @@ namespace community_shaders::skylighting
         ScopedAmbientBindings(
             ID3D11DeviceContext* context,
             ID3D11ShaderResourceView* probe,
-            ID3D11Buffer* constants) noexcept;
+            ID3D11Buffer* constants,
+            ID3D11UnorderedAccessView* diagnostic,
+            Runtime* owner) noexcept;
         ~ScopedAmbientBindings();
 
         ScopedAmbientBindings(const ScopedAmbientBindings&) = delete;
@@ -60,6 +64,9 @@ namespace community_shaders::skylighting
         ID3D11DeviceContext* context_{};
         ID3D11ShaderResourceView* previousProbe_{};
         ID3D11Buffer* previousConstants_{};
+        ID3D11UnorderedAccessView* previousDiagnostic_{};
+        Runtime* owner_{};
+        bool diagnosticCaptured_{};
         bool captured_{};
     };
 
@@ -90,6 +97,8 @@ namespace community_shaders::skylighting
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
+        friend class ScopedAmbientBindings;
+
         Runtime() = default;
 
         struct UInt4
@@ -145,6 +154,8 @@ namespace community_shaders::skylighting
         void publishConstants(bool featureActive) noexcept;
         void dispatchProbeUpdate() noexcept;
         void consumeDiagnosticReadback() noexcept;
+        void submitAmbientDiagnostic() noexcept;
+        void consumeAmbientDiagnosticReadback() noexcept;
         void updateRollingVolume(float x, float y, float z) noexcept;
 
         Settings startupSettings_{};
@@ -168,6 +179,12 @@ namespace community_shaders::skylighting
             diagnosticOutput_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> diagnosticStaging_;
         Microsoft::WRL::ComPtr<ID3D11Query> diagnosticCompletion_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> ambientDiagnosticBuffer_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+            ambientDiagnosticOutput_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> ambientDiagnosticStaging_;
+        Microsoft::WRL::ComPtr<ID3D11Query>
+            ambientDiagnosticCompletion_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> updateShader_;
         Microsoft::WRL::ComPtr<ID3D11SamplerState> comparisonSampler_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constantsBuffer_;
@@ -184,6 +201,9 @@ namespace community_shaders::skylighting
         bool diagnosticSubmitted_{};
         bool diagnosticPending_{};
         bool diagnosticLogged_{};
+        bool ambientDiagnosticSubmitted_{};
+        bool ambientDiagnosticPending_{};
+        bool ambientDiagnosticLogged_{};
 
         std::atomic_bool enabled_{ true };
         std::atomic_uint32_t requestedQuality_{

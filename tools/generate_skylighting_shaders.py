@@ -11,12 +11,14 @@ from pathlib import Path
 from dxbc_transform import (
     OPCODE_DCL_CONSTANT_BUFFER,
     OPCODE_DCL_RESOURCE,
+    OPCODE_DCL_UNORDERED_ACCESS_VIEW_RAW,
     OPCODE_RET,
     OPERAND_CONSTANT_BUFFER,
     OPERAND_INPUT,
     OPERAND_OUTPUT,
     OPERAND_RESOURCE,
     OPERAND_TEMP,
+    OPERAND_UNORDERED_ACCESS_VIEW,
     DxbcChunk,
     TransformError as ContractError,
     build_dxbc,
@@ -34,6 +36,7 @@ from dxbc_transform import (
 
 SKYLIGHTING_CONSTANT_SLOT = 13
 SKYLIGHTING_PROBE_SLOT = 50
+SKYLIGHTING_DIAGNOSTIC_SLOT = 7
 REQUIRED_NATIVE_RESOURCE_SLOTS = {1, 2, 3}
 REQUIRED_NATIVE_CONSTANT_SLOTS = {2, 8, 12}
 MUL_OPCODE = 0x38
@@ -137,6 +140,7 @@ def declaration_contract(
     _, _, _, words = shader_words(template)
     constant_declaration: list[int] | None = None
     resource_declaration: list[int] | None = None
+    diagnostic_declaration: list[int] | None = None
     for start, end in instructions(words):
         opcode = words[start] & 0x7FF
         operands = executable_operands(words, start, end)
@@ -156,10 +160,21 @@ def declaration_contract(
             and operands[0].immediate_indices == (SKYLIGHTING_PROBE_SLOT,)
         ):
             resource_declaration = words[start:end]
+        if (
+            opcode == OPCODE_DCL_UNORDERED_ACCESS_VIEW_RAW
+            and operands
+            and operands[0].operand_type == OPERAND_UNORDERED_ACCESS_VIEW
+            and operands[0].immediate_indices
+            and operands[0].immediate_indices[0]
+            == SKYLIGHTING_DIAGNOSTIC_SLOT
+        ):
+            diagnostic_declaration = words[start:end]
     if constant_declaration is None:
         raise ContractError("Skylighting template no longer declares b13")
     if resource_declaration is None:
         raise ContractError("Skylighting template no longer declares t50")
+    if diagnostic_declaration is None:
+        raise ContractError("Skylighting template no longer declares u7")
 
     temp_declaration, _, body = shader_declarations_and_body(words)
     temp_count = words[temp_declaration[0] + 1]
@@ -174,7 +189,11 @@ def declaration_contract(
             "Skylighting template contains an early return"
         )
     return (
-        [resource_declaration, constant_declaration],
+        [
+            resource_declaration,
+            constant_declaration,
+            diagnostic_declaration,
+        ],
         transform[:-1],
         temp_count,
     )
@@ -561,6 +580,7 @@ def validate_candidate(
     for required in (
         "dcl_constantbuffer CB13[12], immediateIndexed",
         "dcl_resource_texture3d (float,float,float,float) t50",
+        "dcl_uav_raw u7",
         "dcl_input_ps_siv linear noperspective v0.xy, position",
         "dcl_input_ps constant v1.x",
         "dcl_output o0.xyzw",
@@ -600,6 +620,7 @@ def main() -> int:
         for required in (
             "dcl_constantbuffer CB13[12], immediateIndexed",
             "dcl_resource_texture3d (float,float,float,float) t50",
+            "dcl_uav_raw u7",
             "dcl_input_ps_siv linear noperspective v0.xy, position",
             "dcl_input_ps constant v1.x",
             "dcl_output o0.xyzw",

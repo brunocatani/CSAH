@@ -1864,6 +1864,8 @@ namespace community_shaders::render
                         D3D11_KEEP_UNORDERED_ACCESS_VIEWS &&
                     unorderedAccessStartSlot >= 7);
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
+                renderTargetCount !=
+                    D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&
                 linear_lighting::Runtime::get().linearLightingEnabled() &&
                 surfaceRuntime.required() && appendDoesNotOverlapUavs) {
                 const auto binding = surfaceRuntime.prepareGBufferBinding(
