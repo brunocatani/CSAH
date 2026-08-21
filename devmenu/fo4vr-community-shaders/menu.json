@@ -234,7 +234,7 @@
                 { "id": "ray-distance", "type": "slider", "label": "Ray Distance", "default": 96.0, "min": 8.0, "max": 256.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "fMaxDistance" } },
                 { "id": "fade-distance", "type": "slider", "label": "View Fade Distance", "default": 2048.0, "min": 256.0, "max": 8192.0, "step": 64.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "fFadeDistance" } },
                 { "id": "thickness", "type": "slider", "label": "Surface Thickness", "default": 0.012, "min": 0.002, "max": 0.05, "step": 0.001, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "fThickness" } },
-                { "id": "samples", "type": "number", "label": "Center Samples", "default": 8, "min": 2, "max": 16, "step": 1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "iSampleCount" } }
+                { "id": "samples", "type": "number", "label": "Ray Budget", "help": "Caps the continuous wavefront reach in 32-pixel blocks. Eight permits the full 256-pixel close-shadow reach.", "default": 8, "min": 2, "max": 8, "step": 1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ContactShadows", "key": "iSampleCount" } }
               ]
             }
           ]

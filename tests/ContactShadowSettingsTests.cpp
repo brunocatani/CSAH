@@ -105,6 +105,11 @@ int main()
     require(clamped.thickness == 0.05f, "thickness upper clamp");
     require(clamped.sampleCount == 2, "sample-count lower clamp");
 
+    ini.write("[ContactShadows]\niSampleCount=99\n");
+    require(
+        loadSettings(ini.path()).sampleCount == 8,
+        "sample-count upper clamp");
+
     ini.write("[LinearLighting]\nbEnabled=0\n");
     require(loadSettings(ini.path()).enabled, "independent INI section");
 

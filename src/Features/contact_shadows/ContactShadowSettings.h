@@ -30,7 +30,7 @@ namespace community_shaders::contact_shadows
             std::clamp(result.fadeDistance, 256.0f, 8192.0f) : 2048.0f;
         result.thickness = std::isfinite(result.thickness) ?
             std::clamp(result.thickness, 0.002f, 0.05f) : 0.012f;
-        result.sampleCount = std::clamp(result.sampleCount, 2u, 16u);
+        result.sampleCount = std::clamp(result.sampleCount, 2u, 8u);
         return result;
     }
 }
