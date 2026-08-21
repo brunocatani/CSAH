@@ -326,7 +326,8 @@ float SegmentBlockerOcclusion(
     float previousSeparation,
     float separation,
     float bias,
-    float thickness)
+    float thickness,
+    float inferenceConfidence)
 {
     const float endpointOcclusion = max(
         BlockerOcclusion(previousSeparation, bias, thickness),
@@ -346,12 +347,13 @@ float SegmentBlockerOcclusion(
     if (segmentMaximum <= bias || segmentMinimum >= thickness) {
         return endpointOcclusion;
     }
-    const float intervalOverlap = max(
-        0.0f,
-        min(segmentMaximum, thickness) - max(segmentMinimum, bias));
-    const float intervalCoverage = saturate(
-        intervalOverlap /
-        max(segmentMaximum - segmentMinimum, validRange));
+    // A normal coarse crossing receives a full-confidence plateau. Attenuate
+    // only jumps tens of blocker slabs wide: those are unrelated foreground
+    // discontinuities, not a missed sample inside one solid blocker.
+    const float spanInThicknesses =
+        (segmentMaximum - segmentMinimum) / validRange;
+    const float spanConfidence =
+        1.0f - smoothstep(16.0f, 64.0f, spanInThicknesses);
     const float intervalProbe = clamp(
         0.5f * (bias + thickness),
         segmentMinimum,
@@ -359,7 +361,7 @@ float SegmentBlockerOcclusion(
     return max(
         endpointOcclusion,
         BlockerOcclusion(intervalProbe, bias, thickness) *
-            sqrt(intervalCoverage));
+            spanConfidence * inferenceConfidence);
 }
 
 [numthreads(8, 8, 1)]
@@ -551,12 +553,20 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float thickness = max(
             ContactParams1.x,
             candidateDepth * ContactParams0.z);
+        // Inferred crossings are a contact completion, not a replacement for
+        // long-range shadow maps. Keep the nearby fill intact and remove the
+        // detached blob as the ray approaches its configured far extent.
+        const float inferenceConfidence = 1.0f - smoothstep(
+            0.35f,
+            0.85f,
+            rayFraction);
         const float hit = previousSeparationValid ?
             SegmentBlockerOcclusion(
                 previousSeparation,
                 separation,
                 ContactParams1.y,
-                thickness) :
+                thickness,
+                inferenceConfidence) :
             BlockerOcclusion(
                 separation,
                 ContactParams1.y,
