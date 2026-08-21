@@ -21,6 +21,7 @@
 
 #include <MinHook.h>
 #include <Windows.h>
+#include <intrin.h>
 
 #include <algorithm>
 #include <array>
@@ -30,6 +31,8 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+
+#pragma intrinsic(_ReturnAddress)
 
 namespace community_shaders::skylighting
 {
@@ -43,6 +46,7 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
+        constexpr std::uintptr_t kGpuCullingEnabledRva = 0x027E0D50;
         constexpr std::uintptr_t kAccumulatorGeometryVisitRva =
             0x0281BD40;
         constexpr std::uintptr_t kPass14ResolverRva = 0x0281CB50;
@@ -57,6 +61,8 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kBsxFlagsVtableRva = 0x02E72CB8;
         constexpr std::uintptr_t kSpecialGeometryNiRttiRva = 0x0689B458;
         constexpr std::size_t kRenderDepthTargetSetupOffset = 0x1CC;
+        constexpr std::size_t kRenderGpuCullingQueryOffset = 0x212;
+        constexpr std::size_t kRenderGpuCullingReturnOffset = 0x217;
         constexpr std::size_t kDepthTargetMapperSignatureOffset = 0x1A;
         constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
         constexpr std::ptrdiff_t kPrecipitationManagerOffset = 0xA0;
@@ -137,6 +143,19 @@ namespace community_shaders::skylighting
             std::byte{ 0x00 }, std::byte{ 0x8B }, std::byte{ 0x8C },
             std::byte{ 0x81 }, std::byte{ 0xFC }, std::byte{ 0x15 },
             std::byte{ 0x00 }, std::byte{ 0x00 },
+        };
+        constexpr std::array<std::byte, 33> kGpuCullingEnabledSignature{
+            std::byte{ 0x80 }, std::byte{ 0x3D }, std::byte{ 0x79 },
+            std::byte{ 0x7D }, std::byte{ 0x09 }, std::byte{ 0x04 },
+            std::byte{ 0x00 }, std::byte{ 0x74 }, std::byte{ 0x15 },
+            std::byte{ 0x80 }, std::byte{ 0x3D }, std::byte{ 0xD0 },
+            std::byte{ 0xCA }, std::byte{ 0x13 }, std::byte{ 0x01 },
+            std::byte{ 0x00 }, std::byte{ 0x74 }, std::byte{ 0x0C },
+            std::byte{ 0x80 }, std::byte{ 0x3D }, std::byte{ 0x68 },
+            std::byte{ 0x7D }, std::byte{ 0x09 }, std::byte{ 0x04 },
+            std::byte{ 0x00 }, std::byte{ 0x75 }, std::byte{ 0x03 },
+            std::byte{ 0xB0 }, std::byte{ 0x01 }, std::byte{ 0xC3 },
+            std::byte{ 0x32 }, std::byte{ 0xC0 }, std::byte{ 0xC3 },
         };
         constexpr std::array<std::byte, 32> kPass14ResolverSignature{
             std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
@@ -222,6 +241,7 @@ namespace community_shaders::skylighting
 
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
+        using NativeGpuCullingEnabled = std::uint8_t(__fastcall*)();
         using AccumulatorGeometryVisit = std::uint8_t(__fastcall*)(
             void* accumulator,
             void* geometry,
@@ -281,6 +301,7 @@ namespace community_shaders::skylighting
         NativeSkySingleton nativeSkySingleton{};
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
+        NativeGpuCullingEnabled originalGpuCullingEnabled{};
         AccumulatorGeometryVisit originalAccumulatorGeometryVisit{};
         Pass14Resolver originalPass14Resolver{};
         AccumulatorPassCollector collectAccumulatorPass{};
@@ -293,10 +314,13 @@ namespace community_shaders::skylighting
         const void* bsxFlagsVtable{};
         std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
+        std::byte* gpuCullingEnabledTarget{};
+        const void* privateRenderGpuCullingReturnAddress{};
         std::byte* accumulatorGeometryVisitTarget{};
         std::byte* pass14Target{};
         const RE::NiRTTI* specialGeometryNiRtti{};
         DetourIdentity installedWrapperIdentity{};
+        DetourIdentity installedGpuCullingEnabledIdentity{};
         DetourIdentity installedAccumulatorGeometryVisitIdentity{};
         DetourIdentity installedPass14Identity{};
         std::atomic_bool installed{};
@@ -308,6 +332,7 @@ namespace community_shaders::skylighting
         std::atomic_uint64_t pass14ResolverCalls{};
         std::atomic_uint64_t accumulatorGeometryVisits{};
         std::atomic_uint64_t accumulatorGeometryVisitModeMask{};
+        std::atomic_uint64_t forcedPrivateCpuCulling{};
         std::atomic_uint64_t emittedPasses{};
         std::atomic_uint64_t collectedPasses{};
         std::atomic_uint64_t rejectedInvalid{};
@@ -566,6 +591,22 @@ namespace community_shaders::skylighting
             return passList;
         }
 
+        __declspec(noinline) std::uint8_t __fastcall
+            hookGpuCullingEnabled() noexcept
+        {
+            if (passProductionActive.load(std::memory_order_acquire) &&
+                _ReturnAddress() ==
+                    privateRenderGpuCullingReturnAddress) {
+                forcedPrivateCpuCulling.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return 0;
+            }
+            return originalGpuCullingEnabled ?
+                originalGpuCullingEnabled() :
+                0;
+        }
+
         std::uint8_t __fastcall hookAccumulatorGeometryVisit(
             void* accumulator,
             void* geometry,
@@ -808,6 +849,8 @@ namespace community_shaders::skylighting
     ScopedOcclusionPassProduction::ScopedOcclusionPassProduction() noexcept
     {
         active_ = passProducerReady.load(std::memory_order_acquire) &&
+            originalGpuCullingEnabled && gpuCullingEnabledTarget &&
+            privateRenderGpuCullingReturnAddress &&
             originalAccumulatorGeometryVisit &&
             accumulatorGeometryVisitTarget && originalPass14Resolver &&
             collectAccumulatorPass &&
@@ -847,6 +890,8 @@ namespace community_shaders::skylighting
             .accumulatorGeometryVisitModeMask =
                 accumulatorGeometryVisitModeMask.load(
                     std::memory_order_relaxed),
+            .forcedPrivateCpuCulling = forcedPrivateCpuCulling.load(
+                std::memory_order_relaxed),
             .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
             .collectedPasses = collectedPasses.load(
                 std::memory_order_relaxed),
@@ -914,6 +959,9 @@ namespace community_shaders::skylighting
                 kRenderRva + kRenderDepthTargetSetupOffset,
                 kRenderDepthTargetSetupSignature.size()) ||
             !inImage(
+                kRenderRva + kRenderGpuCullingQueryOffset,
+                5) ||
+            !inImage(
                 kDepthTargetMapperRva +
                     kDepthTargetMapperSignatureOffset,
                 kDepthTargetMapperSignature.size()) ||
@@ -935,6 +983,9 @@ namespace community_shaders::skylighting
             return false;
         }
         if (!inImage(
+                kGpuCullingEnabledRva,
+                kGpuCullingEnabledSignature.size()) ||
+            !inImage(
                 kAccumulatorGeometryVisitRva,
                 kAccumulatorGeometryVisitSignature.size()) ||
             !inImage(
@@ -966,6 +1017,9 @@ namespace community_shaders::skylighting
         auto* renderDepthTargetSetup =
             render + kRenderDepthTargetSetupOffset;
         auto* depthTargetMapper = image + kDepthTargetMapperRva;
+        auto* gpuCullingEnabled = image + kGpuCullingEnabledRva;
+        auto* renderGpuCullingQuery =
+            render + kRenderGpuCullingQueryOffset;
         auto* accumulatorGeometryVisit =
             image + kAccumulatorGeometryVisitRva;
         auto* pass14Resolver = image + kPass14ResolverRva;
@@ -1069,6 +1123,24 @@ namespace community_shaders::skylighting
         if (!isReadableRange(image + kDirectionRva, sizeof(float) * 3)) {
             logging::error(
                 "Skylighting native direction global at RVA 0x05A3CFC8 is not readable.");
+            return false;
+        }
+        if (!isExecutableRange(
+                gpuCullingEnabled,
+                kGpuCullingEnabledSignature.size()) ||
+            std::memcmp(
+                gpuCullingEnabled,
+                kGpuCullingEnabledSignature.data(),
+                kGpuCullingEnabledSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native GPU-culling query signature mismatch at RVA 0x027E0D50.");
+            return false;
+        }
+        if (!isExecutableRange(renderGpuCullingQuery, 5) ||
+            renderGpuCullingQuery[0] != std::byte{ 0xE8 } ||
+            relativeTarget(renderGpuCullingQuery) != gpuCullingEnabled) {
+            logging::error(
+                "Skylighting native precipitation GPU-culling query callsite mismatch at RVA 0x006352D2.");
             return false;
         }
         if (!isExecutableRange(
@@ -1201,6 +1273,7 @@ namespace community_shaders::skylighting
 
         const auto resetResolvedContracts = []() noexcept {
             originalWrapper = nullptr;
+            originalGpuCullingEnabled = nullptr;
             originalAccumulatorGeometryVisit = nullptr;
             originalPass14Resolver = nullptr;
             nativeSkySingleton = nullptr;
@@ -1216,9 +1289,12 @@ namespace community_shaders::skylighting
             bsxFlagsVtable = nullptr;
             specialGeometryNiRtti = nullptr;
             wrapperTarget = nullptr;
+            gpuCullingEnabledTarget = nullptr;
+            privateRenderGpuCullingReturnAddress = nullptr;
             accumulatorGeometryVisitTarget = nullptr;
             pass14Target = nullptr;
             installedWrapperIdentity = {};
+            installedGpuCullingEnabledIdentity = {};
             installedAccumulatorGeometryVisitIdentity = {};
             installedPass14Identity = {};
             passProducerReady.store(false, std::memory_order_release);
@@ -1243,6 +1319,25 @@ namespace community_shaders::skylighting
             return false;
         }
 
+        void* gpuCullingEnabledTrampoline{};
+        status = MH_CreateHook(
+            gpuCullingEnabled,
+            reinterpret_cast<void*>(&hookGpuCullingEnabled),
+            &gpuCullingEnabledTrampoline);
+        if (status != MH_OK ||
+            !isExecutableRange(gpuCullingEnabledTrampoline, 1)) {
+            if (status == MH_OK) {
+                (void)MH_RemoveHook(gpuCullingEnabled);
+            }
+            (void)MH_RemoveHook(wrapper);
+            logging::error(
+                "Skylighting native GPU-culling query detour creation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
+            return false;
+        }
+
         void* accumulatorGeometryVisitTrampoline{};
         status = MH_CreateHook(
             accumulatorGeometryVisit,
@@ -1253,6 +1348,7 @@ namespace community_shaders::skylighting
             if (status == MH_OK) {
                 (void)MH_RemoveHook(accumulatorGeometryVisit);
             }
+            (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native accumulator geometry-visit detour creation failed: {} ({}).",
@@ -1272,6 +1368,7 @@ namespace community_shaders::skylighting
                 (void)MH_RemoveHook(pass14Resolver);
             }
             (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native pass-14 detour creation failed: {} ({}).",
@@ -1283,6 +1380,9 @@ namespace community_shaders::skylighting
 
         originalWrapper = reinterpret_cast<WrapperFunction>(
             wrapperTrampoline);
+        originalGpuCullingEnabled =
+            reinterpret_cast<NativeGpuCullingEnabled>(
+                gpuCullingEnabledTrampoline);
         originalAccumulatorGeometryVisit =
             reinterpret_cast<AccumulatorGeometryVisit>(
                 accumulatorGeometryVisitTrampoline);
@@ -1293,6 +1393,27 @@ namespace community_shaders::skylighting
                 image + kWrapperFirstCallTargetRva);
         nativeRender = reinterpret_cast<NativePrecipitationRender>(render);
         nativeProjection = reinterpret_cast<NativeProjectionSetup>(projection);
+        privateRenderGpuCullingReturnAddress =
+            render + kRenderGpuCullingReturnOffset;
+
+        status = MH_EnableHook(gpuCullingEnabled);
+        DetourIdentity gpuCullingEnabledIdentity{};
+        if (status != MH_OK ||
+            !captureDetourIdentity(
+                gpuCullingEnabled,
+                gpuCullingEnabledIdentity)) {
+            (void)MH_DisableHook(gpuCullingEnabled);
+            (void)MH_RemoveHook(gpuCullingEnabled);
+            (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(pass14Resolver);
+            (void)MH_RemoveHook(wrapper);
+            logging::error(
+                "Skylighting native GPU-culling query detour activation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
+            return false;
+        }
 
         status = MH_EnableHook(accumulatorGeometryVisit);
         DetourIdentity accumulatorGeometryVisitIdentity{};
@@ -1301,7 +1422,9 @@ namespace community_shaders::skylighting
                 accumulatorGeometryVisit,
                 accumulatorGeometryVisitIdentity)) {
             (void)MH_DisableHook(accumulatorGeometryVisit);
+            (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(pass14Resolver);
             (void)MH_RemoveHook(wrapper);
             logging::error(
@@ -1318,8 +1441,10 @@ namespace community_shaders::skylighting
             !captureDetourIdentity(pass14Resolver, pass14Identity)) {
             (void)MH_DisableHook(pass14Resolver);
             (void)MH_DisableHook(accumulatorGeometryVisit);
+            (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(pass14Resolver);
             (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             logging::error(
                 "Skylighting native pass-14 detour activation failed: {} ({}).",
@@ -1336,9 +1461,11 @@ namespace community_shaders::skylighting
             (void)MH_DisableHook(wrapper);
             (void)MH_DisableHook(pass14Resolver);
             (void)MH_DisableHook(accumulatorGeometryVisit);
+            (void)MH_DisableHook(gpuCullingEnabled);
             (void)MH_RemoveHook(wrapper);
             (void)MH_RemoveHook(pass14Resolver);
             (void)MH_RemoveHook(accumulatorGeometryVisit);
+            (void)MH_RemoveHook(gpuCullingEnabled);
             logging::error(
                 "Skylighting native wrapper detour activation failed: {} ({}).",
                 MH_StatusToString(status),
@@ -1348,9 +1475,11 @@ namespace community_shaders::skylighting
         }
 
         wrapperTarget = wrapper;
+        gpuCullingEnabledTarget = gpuCullingEnabled;
         accumulatorGeometryVisitTarget = accumulatorGeometryVisit;
         pass14Target = pass14Resolver;
         installedWrapperIdentity = wrapperIdentity;
+        installedGpuCullingEnabledIdentity = gpuCullingEnabledIdentity;
         installedAccumulatorGeometryVisitIdentity =
             accumulatorGeometryVisitIdentity;
         installedPass14Identity = pass14Identity;
@@ -1358,7 +1487,7 @@ namespace community_shaders::skylighting
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, accumulator visit RVA 0x0281BD40, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
+            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, scoped GPU-culling query RVA 0x027E0D50, accumulator visit RVA 0x0281BD40, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
         return true;
     }
 
@@ -1372,6 +1501,19 @@ namespace community_shaders::skylighting
             currentWrapper.patch == installedWrapperIdentity.patch &&
             currentWrapper.destination ==
                 installedWrapperIdentity.destination;
+        DetourIdentity currentGpuCullingEnabled{};
+        const auto gpuCullingEnabledOwned =
+            installed.load(std::memory_order_acquire) &&
+            gpuCullingEnabledTarget &&
+            installedGpuCullingEnabledIdentity.patch &&
+            installedGpuCullingEnabledIdentity.destination &&
+            captureDetourIdentity(
+                gpuCullingEnabledTarget,
+                currentGpuCullingEnabled) &&
+            currentGpuCullingEnabled.patch ==
+                installedGpuCullingEnabledIdentity.patch &&
+            currentGpuCullingEnabled.destination ==
+                installedGpuCullingEnabledIdentity.destination;
         DetourIdentity currentAccumulatorGeometryVisit{};
         const auto accumulatorGeometryVisitOwned =
             installed.load(std::memory_order_acquire) &&
@@ -1397,16 +1539,17 @@ namespace community_shaders::skylighting
             utilityShaderVtable,
             utilityShaderSecondaryVtable);
         const auto utilityShaderOwned = utilityIdentity.valid();
-        const auto owned = wrapperOwned &&
+        const auto owned = wrapperOwned && gpuCullingEnabledOwned &&
             accumulatorGeometryVisitOwned && pass14Owned &&
             utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native ownership validation failed at '{}' (wrapper={}, accumulatorVisit={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, gpuCullingQuery={}, accumulatorVisit={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
                 trigger ? trigger : "unknown",
                 wrapperOwned,
+                gpuCullingEnabledOwned,
                 accumulatorGeometryVisitOwned,
                 pass14Owned,
                 utilityShaderOwned);
