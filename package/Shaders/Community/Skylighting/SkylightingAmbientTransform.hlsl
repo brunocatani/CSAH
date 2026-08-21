@@ -1,6 +1,6 @@
 Texture2D<float4> NativeNormal : register(t1);
 Texture2D<float4> NativeMaterial : register(t2);
-Texture2D<float> NativeDepth : register(t3);
+Texture2D<float4> NativeDepth : register(t3);
 Texture3D<float4> SkylightingProbeArray : register(t50);
 RWByteAddressBuffer SkylightingAmbientDiagnostic : register(u7);
 SamplerState NativeNormalSampler : register(s1);
@@ -243,7 +243,7 @@ PixelOutput PSMain(PixelInput input)
             DFLight[45].xy * DFLight[0].xy;
         const float depth = NativeDepth.Sample(
             NativeDepthSampler,
-            nativeUv);
+            nativeUv).y;
         if (depth > 1.0e-6f) {
             if (diagnosticSample) {
                 SkylightingAmbientDiagnostic.InterlockedAdd(

@@ -190,6 +190,8 @@ foreach(required IN ITEMS
     "screenPosition * DFLight[0].xy"
     "DFLight[45].xy * DFLight[0].xy"
     "NativeDepth.Sample("
+    "nativeUv).y"
+    "Texture2D<float4> NativeDepth"
     "NativeNormal.Sample("
     "NativeMaterial.Sample("
     "register(s1)"
