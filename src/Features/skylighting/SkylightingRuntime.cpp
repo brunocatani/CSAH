@@ -676,7 +676,8 @@ namespace community_shaders::skylighting
         samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
         samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
         samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-        samplerDescription.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+        samplerDescription.ComparisonFunc =
+            D3D11_COMPARISON_GREATER_EQUAL;
         samplerDescription.MinLOD = 0.0f;
         samplerDescription.MaxLOD = D3D11_FLOAT32_MAX;
         ComPtr<ID3D11SamplerState> comparisonSampler;
@@ -1126,7 +1127,7 @@ namespace community_shaders::skylighting
         std::memcpy(stats.data(), mapped.pData, kDiagnosticByteWidth);
         context_->Unmap(diagnosticStaging_.Get(), 0);
         logging::info(
-            "Skylighting GPU visibility trace: sparseSamples={}, finiteProjection={}, insideUv={}, referenceInDepthRange={}, nonClearDepth={}, occluded={}, accumulated={}, changedProbe={}, sampledDepthMin={:.6f}, sampledDepthMax={:.6f}.",
+            "Skylighting GPU visibility trace: sparseSamples={}, finiteProjection={}, insideUv={}, referenceInDepthRange={}, nonClearDepth={}, occluded={}, accumulated={}, changedProbe={}, sampledDepthMin={:.9f}, sampledDepthMax={:.9f}.",
             stats[0],
             stats[1],
             stats[2],
@@ -1421,7 +1422,7 @@ namespace community_shaders::skylighting
         context_->ClearDepthStencilView(
             privateDepthView_.Get(),
             D3D11_CLEAR_DEPTH,
-            1.0f,
+            0.0f,
             0);
         const auto privateRenderStart = std::chrono::steady_clock::now();
         auto privateRenderCompleted = false;

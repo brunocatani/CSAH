@@ -86,7 +86,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 uint2(depthWidth - 1u, depthHeight - 1u));
             const float sampledDepth = OcclusionDepth.Load(
                 int3(depthPixel, 0));
-            if (sampledDepth < 0.9999f) {
+            if (sampledDepth > 1.0e-5f) {
                 DiagnosticStats.InterlockedAdd(16u, 1u, ignored);
             }
             DiagnosticStats.InterlockedMin(

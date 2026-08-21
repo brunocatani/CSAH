@@ -132,6 +132,12 @@ foreach(forbidden IN ITEMS
   endif()
 endforeach()
 
+string(FIND "${runtime}" "D3D11_COMPARISON_LESS_EQUAL" staleDepthPolarity)
+if(NOT staleDepthPolarity EQUAL -1)
+  message(FATAL_ERROR
+    "Skylighting retained Skyrim's non-FO4VR precipitation depth polarity")
+endif()
+
 foreach(required IN ITEMS
     "return { 64, 64, 32 }"
     "return { 128, 128, 64 }"
@@ -147,6 +153,9 @@ foreach(required IN ITEMS
     "sizeof(Fo4VrDepthStencilTarget) == 0x98"
     "ScopedNativeDepthTarget"
     "ScopedOcclusionPassProduction"
+    "D3D11_COMPARISON_GREATER_EQUAL"
+    "D3D11_CLEAR_DEPTH,"
+    "0.0f,"
     "without hot-path diagnostics"
     "RendererData::GetSingleton()"
     "InterlockedIncrement("
@@ -224,6 +233,7 @@ foreach(required IN ITEMS
     "register(u1)"
     "register(u2)"
     "RWByteAddressBuffer DiagnosticStats"
+    "sampledDepth > 1.0e-5f"
     "register(s0)"
     "register(b13)"
     "[numthreads(8, 8, 1)]"
