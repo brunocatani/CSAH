@@ -5,6 +5,7 @@
 #include "support/Logger.h"
 
 #include "ContactShadowMaskCS.h"
+#include "ContactShadowResolveCS.h"
 #include "ContactShadowsDFLight.h"
 
 #include <cstring>
@@ -18,7 +19,6 @@ namespace community_shaders::contact_shadows
         constexpr std::size_t kInvalidContractIndex =
             std::numeric_limits<std::size_t>::max();
         constexpr UINT kDepthSlot = 3;
-        constexpr UINT kCloudSlot = 1;
         constexpr UINT kMaskSlot = 46;
         constexpr UINT kConstantSlot = 13;
         constexpr UINT kCloudSamplerSlot = 0;
@@ -131,7 +131,11 @@ namespace community_shaders::contact_shadows
             replacement.Reset();
         }
         maskCompute_.Reset();
+        resolveCompute_.Reset();
         constants_.Reset();
+        rawMaskTexture_.Reset();
+        rawMaskView_.Reset();
+        rawMaskOutput_.Reset();
         maskTexture_.Reset();
         maskView_.Reset();
         maskOutput_.Reset();
@@ -207,6 +211,22 @@ namespace community_shaders::contact_shadows
                 static_cast<std::uint32_t>(computeResult));
             return;
         }
+        const auto resolveResult = device->CreateComputeShader(
+            fo4vr_cs_contact_shadow_resolve,
+            sizeof(fo4vr_cs_contact_shadow_resolve),
+            nullptr,
+            resolveCompute_.ReleaseAndGetAddressOf());
+        if (FAILED(resolveResult) || !resolveCompute_) {
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
+            maskCompute_.Reset();
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::error(
+                "Contact Shadows directional-resolve compute creation failed (HRESULT=0x{:08X}).",
+                static_cast<std::uint32_t>(resolveResult));
+            return;
+        }
 
         D3D11_BUFFER_DESC description{};
         description.ByteWidth = sizeof(GpuSettings);
@@ -221,6 +241,7 @@ namespace community_shaders::contact_shadows
                 replacement.Reset();
             }
             maskCompute_.Reset();
+            resolveCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Contact Shadows settings-buffer creation failed (HRESULT=0x{:08X}).",
@@ -229,7 +250,7 @@ namespace community_shaders::contact_shadows
         }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Contact Shadows GPU mask pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
+            "Contact Shadows raw-mask and depth-aware directional-resolve pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
             fo4vr_cs_contact_shadow_dflight_contracts.size());
     }
 
@@ -367,7 +388,8 @@ namespace community_shaders::contact_shadows
             source.ArraySize != 1 || source.SampleDesc.Count != 1) {
             return false;
         }
-        if (maskTexture_ && maskView_ && maskOutput_ &&
+        if (rawMaskTexture_ && rawMaskView_ && rawMaskOutput_ &&
+            maskTexture_ && maskView_ && maskOutput_ &&
             maskWidth_ == source.Width && maskHeight_ == source.Height) {
             return true;
         }
@@ -383,36 +405,67 @@ namespace community_shaders::contact_shadows
         description.BindFlags =
             D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
 
+        const auto createTarget = [&](
+                                      const char* label,
+                                      Microsoft::WRL::ComPtr<ID3D11Texture2D>&
+                                          targetTexture,
+                                      Microsoft::WRL::ComPtr<
+                                          ID3D11ShaderResourceView>& targetView,
+                                      Microsoft::WRL::ComPtr<
+                                          ID3D11UnorderedAccessView>&
+                                          targetOutput) noexcept {
+            const auto textureResult = device_->CreateTexture2D(
+                &description,
+                nullptr,
+                targetTexture.GetAddressOf());
+            const auto viewResult = SUCCEEDED(textureResult) ?
+                device_->CreateShaderResourceView(
+                    targetTexture.Get(),
+                    nullptr,
+                    targetView.GetAddressOf()) : E_FAIL;
+            const auto outputResult = SUCCEEDED(viewResult) ?
+                device_->CreateUnorderedAccessView(
+                    targetTexture.Get(),
+                    nullptr,
+                    targetOutput.GetAddressOf()) : E_FAIL;
+            if (FAILED(textureResult) || FAILED(viewResult) ||
+                FAILED(outputResult) || !targetTexture || !targetView ||
+                !targetOutput) {
+                logging::error(
+                    "Contact Shadows {} allocation failed for {}x{} (texture=0x{:08X}, SRV=0x{:08X}, UAV=0x{:08X}).",
+                    label,
+                    source.Width,
+                    source.Height,
+                    static_cast<std::uint32_t>(textureResult),
+                    static_cast<std::uint32_t>(viewResult),
+                    static_cast<std::uint32_t>(outputResult));
+                return false;
+            }
+            return true;
+        };
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> nextRawTexture;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nextRawView;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> nextRawOutput;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> nextTexture;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> nextView;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> nextOutput;
-        const auto textureResult = device_->CreateTexture2D(
-            &description,
-            nullptr,
-            nextTexture.GetAddressOf());
-        const auto viewResult = SUCCEEDED(textureResult) ?
-            device_->CreateShaderResourceView(
-                nextTexture.Get(),
-                nullptr,
-                nextView.GetAddressOf()) : E_FAIL;
-        const auto outputResult = SUCCEEDED(viewResult) ?
-            device_->CreateUnorderedAccessView(
-                nextTexture.Get(),
-                nullptr,
-                nextOutput.GetAddressOf()) : E_FAIL;
-        if (FAILED(textureResult) || FAILED(viewResult) || FAILED(outputResult) ||
-            !nextTexture || !nextView || !nextOutput) {
+        if (!createTarget(
+                "raw mask",
+                nextRawTexture,
+                nextRawView,
+                nextRawOutput) ||
+            !createTarget(
+                "resolved mask",
+                nextTexture,
+                nextView,
+                nextOutput)) {
             failures_.fetch_add(1, std::memory_order_relaxed);
-            logging::error(
-                "Contact Shadows mask allocation failed for {}x{} (texture=0x{:08X}, SRV=0x{:08X}, UAV=0x{:08X}).",
-                source.Width,
-                source.Height,
-                static_cast<std::uint32_t>(textureResult),
-                static_cast<std::uint32_t>(viewResult),
-                static_cast<std::uint32_t>(outputResult));
             return false;
         }
 
+        rawMaskTexture_ = std::move(nextRawTexture);
+        rawMaskView_ = std::move(nextRawView);
+        rawMaskOutput_ = std::move(nextRawOutput);
         maskTexture_ = std::move(nextTexture);
         maskView_ = std::move(nextView);
         maskOutput_ = std::move(nextOutput);
@@ -420,7 +473,7 @@ namespace community_shaders::contact_shadows
         maskHeight_ = source.Height;
         maskRebuilds_.fetch_add(1, std::memory_order_relaxed);
         logging::info(
-            "Contact Shadows stereo mask allocated at {}x{} R8_UNORM.",
+            "Contact Shadows raw and resolved stereo masks allocated at {}x{} R8_UNORM.",
             maskWidth_,
             maskHeight_);
         return true;
@@ -433,7 +486,7 @@ namespace community_shaders::contact_shadows
         bool& maskActive) noexcept
     {
         maskActive = false;
-        if (!context || !maskCompute_ || !constants_) {
+        if (!context || !maskCompute_ || !resolveCompute_ || !constants_) {
             return false;
         }
 
@@ -483,7 +536,8 @@ namespace community_shaders::contact_shadows
                     static_cast<bool>(dflight),
                     static_cast<bool>(stereo),
                     static_cast<bool>(camera),
-                    maskTexture_ && maskView_ && maskOutput_);
+                    rawMaskTexture_ && rawMaskView_ && rawMaskOutput_ &&
+                        maskTexture_ && maskView_ && maskOutput_);
             }
             return false;
         }
@@ -491,7 +545,7 @@ namespace community_shaders::contact_shadows
             context,
             {
                 .firstShaderResource = 0,
-                .shaderResourceCount = 2,
+                .shaderResourceCount = 3,
                 .firstUnorderedAccess = 0,
                 .unorderedAccessCount = 1,
                 .firstSampler = kCloudSamplerSlot,
@@ -511,15 +565,12 @@ namespace community_shaders::contact_shadows
         }
 
         auto* depthView = depth.Get();
-        auto* output = maskOutput_.Get();
+        auto* rawOutput = rawMaskOutput_.Get();
+        auto* resolvedOutput = maskOutput_.Get();
         auto* dflightConstants = dflight.Get();
         auto* stereoConstants = stereo.Get();
         auto* cameraConstants = camera.Get();
         auto* settingsConstants = constants_.Get();
-        context->CSSetShader(maskCompute_.Get(), nullptr, 0);
-        context->CSSetShaderResources(0, 1, &depthView);
-        context->CSSetShaderResources(kCloudSlot, 1, &cloud);
-        context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
         context->CSSetConstantBuffers(
             kDFLightConstantSlot,
             1,
@@ -536,14 +587,53 @@ namespace community_shaders::contact_shadows
             kConstantSlot,
             1,
             &settingsConstants);
+        const auto dispatchWidth =
+            (maskWidth_ + kThreadGroupWidth - 1) / kThreadGroupWidth;
+        const auto dispatchHeight =
+            (maskHeight_ + kThreadGroupHeight - 1) / kThreadGroupHeight;
+        if (contactShadowsActive) {
+            context->CSSetShader(maskCompute_.Get(), nullptr, 0);
+            context->CSSetShaderResources(0, 1, &depthView);
+            context->CSSetUnorderedAccessViews(
+                0,
+                1,
+                &rawOutput,
+                nullptr);
+            context->Dispatch(dispatchWidth, dispatchHeight, 1);
+        } else {
+            constexpr std::array<float, 4> fullyVisible{
+                1.0f,
+                1.0f,
+                1.0f,
+                1.0f,
+            };
+            context->ClearUnorderedAccessViewFloat(
+                rawMaskOutput_.Get(),
+                fullyVisible.data());
+        }
+
+        ID3D11UnorderedAccessView* noOutput{};
+        context->CSSetUnorderedAccessViews(0, 1, &noOutput, nullptr);
+        const std::array<ID3D11ShaderResourceView*, 3> resolveInputs{
+            depthView,
+            rawMaskView_.Get(),
+            cloud,
+        };
+        context->CSSetShader(resolveCompute_.Get(), nullptr, 0);
+        context->CSSetShaderResources(
+            0,
+            static_cast<UINT>(resolveInputs.size()),
+            resolveInputs.data());
+        context->CSSetUnorderedAccessViews(
+            0,
+            1,
+            &resolvedOutput,
+            nullptr);
         context->CSSetSamplers(
             kCloudSamplerSlot,
             1,
             &cloudSampler);
-        context->Dispatch(
-            (maskWidth_ + kThreadGroupWidth - 1) / kThreadGroupWidth,
-            (maskHeight_ + kThreadGroupHeight - 1) / kThreadGroupHeight,
-            1);
+        context->Dispatch(dispatchWidth, dispatchHeight, 1);
         if (!restore.restore()) {
             if (!firstDispatchFailureLogged_.exchange(
                     true,

@@ -131,7 +131,11 @@ namespace community_shaders::contact_shadows
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumShaderContracts> replacements_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolveCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> rawMaskTexture_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rawMaskView_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> rawMaskOutput_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> maskTexture_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> maskView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> maskOutput_;

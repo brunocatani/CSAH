@@ -6,6 +6,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SETTINGS_STORE_HEADER
     CONTACT_SHADOW_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
+    CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
     CONTACT_SHADOW_SHADER_GENERATOR
     D3D11_HOOK_SOURCE
     DEVMENU_MANIFEST_SOURCE
@@ -22,6 +23,7 @@ file(READ "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}" settingsStoreSource)
 file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
+file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
 file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${DEVMENU_MANIFEST_SOURCE}" devMenuManifest)
@@ -41,6 +43,14 @@ foreach(required IN ITEMS
     "PSGetShaderResources("
     "PSSetShaderResources(kMaskSlot"
     "dispatchMask"
+    "resolveCompute_"
+    "rawMaskTexture_"
+    "rawMaskView_"
+    "rawMaskOutput_"
+    "fo4vr_cs_contact_shadow_resolve"
+    "shaderResourceCount = 3"
+    "ClearUnorderedAccessViewFloat"
+    "const std::array<ID3D11ShaderResourceView*, 3> resolveInputs"
     "ScopedComputeState restore"
     "recordDrawFallback"
     "selectPixelShader"
@@ -52,6 +62,42 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Contact Shadows runtime regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "TextureCube<float> CloudOcclusion"
+    "CloudVisibility(")
+  string(FIND "${maskShaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows raw mask must not consume cloud visibility '${forbidden}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "Texture2D<float> SceneDepth : register(t0)"
+    "Texture2D<float> RawContactShadow : register(t1)"
+    "TextureCube<float> CloudOcclusion : register(t2)"
+    "RWTexture2D<unorm float> ResolvedShadowMask : register(u0)"
+    "SamplerState CloudSampler : register(s0)"
+    "NativeDFLight : register(b2)"
+    "NativeStereo : register(b8)"
+    "NativeCamera : register(b12)"
+    "ContactShadowSettings : register(b13)"
+    "LoadSameReceiverVisibility"
+    "relativeDifference > 0.03f"
+    "TwoSidedBridge"
+    "max(negativeVisibility, positiveVisibility)"
+    "averageStep * 0.25f"
+    "averageStep * 0.5f"
+    "min(bridgeQuarter, bridgeHalf)"
+    "contactVisibility * cloudVisibility"
+    "[numthreads(8, 8, 1)]")
+  string(FIND "${resolveShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows directional resolve regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -180,6 +226,9 @@ foreach(required IN ITEMS
     "contact-shadow template contains an early return"
     "contains an injected early return"
     "contact-shadow mask compute assembly changed"
+    "compile_resolve_shader"
+    "contact-shadow resolve assembly changed"
+    "fo4vr_cs_contact_shadow_resolve"
     "multiply_rgb(1, visibility_scratch)"
     "multiply_rgb(0, visibility_scratch)")
   string(FIND "${generatorSource}" "${required}" found)
