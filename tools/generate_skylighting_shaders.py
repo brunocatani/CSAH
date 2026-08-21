@@ -11,12 +11,14 @@ from pathlib import Path
 from dxbc_transform import (
     OPCODE_DCL_CONSTANT_BUFFER,
     OPCODE_DCL_RESOURCE,
+    OPCODE_DCL_SAMPLER,
     OPCODE_DCL_UNORDERED_ACCESS_VIEW_RAW,
     OPCODE_RET,
     OPERAND_CONSTANT_BUFFER,
     OPERAND_INPUT,
     OPERAND_OUTPUT,
     OPERAND_RESOURCE,
+    OPERAND_SAMPLER,
     OPERAND_TEMP,
     OPERAND_UNORDERED_ACCESS_VIEW,
     DxbcChunk,
@@ -39,6 +41,7 @@ SKYLIGHTING_PROBE_SLOT = 50
 SKYLIGHTING_DIAGNOSTIC_SLOT = 7
 REQUIRED_NATIVE_RESOURCE_SLOTS = {1, 2, 3}
 REQUIRED_NATIVE_CONSTANT_SLOTS = {2, 8, 12}
+REQUIRED_NATIVE_SAMPLER_SLOTS = {1, 2, 3}
 MUL_OPCODE = 0x38
 MOV_OPCODE = 0x36
 VANILLA_GAMMA = 2.2
@@ -372,10 +375,17 @@ def patch_ambient_shader(original: bytes, template: bytes) -> bytes:
         OPCODE_DCL_CONSTANT_BUFFER,
         OPERAND_CONSTANT_BUFFER,
     )
+    samplers = declared_slots(
+        words,
+        OPCODE_DCL_SAMPLER,
+        OPERAND_SAMPLER,
+    )
     if not REQUIRED_NATIVE_RESOURCE_SLOTS.issubset(resources):
         raise ContractError("ambient native t1/t2/t3 contract changed")
     if not REQUIRED_NATIVE_CONSTANT_SLOTS.issubset(constants):
         raise ContractError("ambient native b2/b8/b12 contract changed")
+    if not REQUIRED_NATIVE_SAMPLER_SLOTS.issubset(samplers):
+        raise ContractError("ambient native s1/s2/s3 contract changed")
     if SKYLIGHTING_PROBE_SLOT in resources:
         raise ContractError("ambient shader unexpectedly owns t50")
     if SKYLIGHTING_CONSTANT_SLOT in constants:

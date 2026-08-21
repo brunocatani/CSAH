@@ -3,6 +3,9 @@ Texture2D<float4> NativeMaterial : register(t2);
 Texture2D<float> NativeDepth : register(t3);
 Texture3D<float4> SkylightingProbeArray : register(t50);
 RWByteAddressBuffer SkylightingAmbientDiagnostic : register(u7);
+SamplerState NativeNormalSampler : register(s1);
+SamplerState NativeMaterialSampler : register(s2);
+SamplerState NativeDepthSampler : register(s3);
 
 cbuffer NativeDFLight : register(b2)
 {
@@ -236,16 +239,11 @@ PixelOutput PSMain(PixelInput input)
         SkylightingAmbientDiagnostic.InterlockedAdd(0u, 1u, ignored);
     }
     if (Response.z > 0.5f) {
-        uint width;
-        uint height;
-        NativeDepth.GetDimensions(width, height);
         const float2 nativeUv = input.Position.xy *
             DFLight[45].xy * DFLight[0].xy;
-        const int2 pixel = clamp(
-            int2(nativeUv * float2(width, height)),
-            int2(0, 0),
-            int2((int)width - 1, (int)height - 1));
-        const float depth = NativeDepth.Load(int3(pixel, 0));
+        const float depth = NativeDepth.Sample(
+            NativeDepthSampler,
+            nativeUv);
         if (depth > 1.0e-6f) {
             if (diagnosticSample) {
                 SkylightingAmbientDiagnostic.InterlockedAdd(
@@ -262,7 +260,9 @@ PixelOutput PSMain(PixelInput input)
                         8u, 1u, ignored);
                 }
                 const float3 normal = DecodeNativeNormal(
-                    NativeNormal.Load(int3(pixel, 0)).xy);
+                    NativeNormal.Sample(
+                        NativeNormalSampler,
+                        nativeUv).xy);
                 float4 visibilitySh;
                 float fade;
                 bool insideVolume;
@@ -292,7 +292,9 @@ PixelOutput PSMain(PixelInput input)
                     const float3 viewDirection = normalize(
                         -relativeWorldPosition);
                     const float nativeGloss = saturate(
-                        NativeMaterial.Load(int3(pixel, 0)).x);
+                        NativeMaterial.Sample(
+                            NativeMaterialSampler,
+                            nativeUv).x);
                     const float roughness = saturate(1.0f - nativeGloss);
                     const float specularVisibility = lerp(
                         1.0f,
