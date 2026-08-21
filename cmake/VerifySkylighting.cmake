@@ -220,6 +220,9 @@ endforeach()
 
 foreach(required IN ITEMS
     "skylighting::loadSettings()"
+    "ensureSkylightingNativeHooks("
+    "ensureSkylightingNativeHooks(\"PostLoadGame\")"
+    "ensureSkylightingNativeHooks(\"NewGame\")"
     "skylighting::validateNativeHooks("
     ".beginWorldSession()")
   string(FIND "${plugin}" "${required}" found)

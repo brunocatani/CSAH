@@ -3102,8 +3102,8 @@ namespace community_shaders::render
                 *device,
                 *immediateContext);
             if (!skylighting::installNativeHooks()) {
-                logging::warn(
-                    "Verified Skylighting precipitation capture hook remains unavailable; Skylighting stays fail-closed while other renderer features continue.");
+                logging::info(
+                    "Skylighting native hook was not installed during D3D device capture; GameDataReady and world-load lifecycle retries remain armed.");
             }
             surface_classification::Runtime::get().onDeviceCreated(
                 *device,

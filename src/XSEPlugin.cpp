@@ -48,6 +48,18 @@ extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Ve
 
 namespace
 {
+    [[nodiscard]] bool ensureSkylightingNativeHooks(
+        const char* trigger) noexcept
+    {
+        if (community_shaders::skylighting::validateNativeHooks(trigger)) {
+            return true;
+        }
+        if (!community_shaders::skylighting::installNativeHooks()) {
+            return false;
+        }
+        return community_shaders::skylighting::validateNativeHooks(trigger);
+    }
+
     void reportPluginBoundaryFailure(
         const char* boundary,
         const char* detail) noexcept
@@ -104,7 +116,7 @@ namespace
                 validateBSDFPrePassShaderHook("GameDataReady");
             (void)community_shaders::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
-            (void)community_shaders::skylighting::validateNativeHooks(
+            (void)ensureSkylightingNativeHooks(
                 "GameDataReady");
             (void)community_shaders::dlaa::validateEngineHooks(
                 "GameDataReady");
@@ -212,6 +224,7 @@ namespace
         }
         case F4SE::MessagingInterface::kPostLoadGame:
             community_shaders::native_shadows::onWorldReady("PostLoadGame");
+            (void)ensureSkylightingNativeHooks("PostLoadGame");
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()
@@ -225,6 +238,7 @@ namespace
             break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::native_shadows::onWorldReady("NewGame");
+            (void)ensureSkylightingNativeHooks("NewGame");
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()

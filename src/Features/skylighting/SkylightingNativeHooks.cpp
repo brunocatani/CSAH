@@ -240,6 +240,7 @@ namespace community_shaders::skylighting
         DetourIdentity installedIdentity{};
         std::atomic_bool installed{};
         std::atomic_bool passProducerReady{};
+        std::atomic_bool utilityShaderDeferredLogged{};
         std::atomic_bool firstCallbackLogged{};
         std::atomic_bool missingManagerLogged{};
         std::atomic_uint64_t passProducerCalls{};
@@ -967,6 +968,15 @@ namespace community_shaders::skylighting
             return false;
         }
         auto* resolvedUtilityShader = readPointerCell(utilityShaderCell);
+        if (!resolvedUtilityShader) {
+            if (!utilityShaderDeferredLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Skylighting native hook installation is deferred until FO4VR constructs the utility-shader singleton.");
+            }
+            return false;
+        }
         const auto utilityIdentity = inspectUtilityShader(
             resolvedUtilityShader,
             expectedUtilityVtable,
