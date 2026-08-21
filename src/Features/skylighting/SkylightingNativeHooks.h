@@ -9,6 +9,7 @@ namespace community_shaders::skylighting
         bool owned{};
         std::uint64_t calls{};
         std::uint64_t emittedPasses{};
+        std::uint64_t collectedPasses{};
         std::uint64_t rejectedInvalid{};
         std::uint64_t rejectedSkinned{};
         std::uint64_t rejectedSmall{};

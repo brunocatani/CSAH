@@ -1237,13 +1237,16 @@ namespace community_shaders::skylighting
                 return after >= before ? after - before : 0;
             };
             logging::info(
-                "Skylighting first private geometry-producer transaction: owned={}, completed={}, calls={}, emitted={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
+                "Skylighting first private geometry-producer transaction: owned={}, completed={}, calls={}, emitted={}, collected={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
                 producerAfter.owned,
                 privateRenderCompleted,
                 difference(producerAfter.calls, producerBefore.calls),
                 difference(
                     producerAfter.emittedPasses,
                     producerBefore.emittedPasses),
+                difference(
+                    producerAfter.collectedPasses,
+                    producerBefore.collectedPasses),
                 difference(
                     producerAfter.rejectedInvalid,
                     producerBefore.rejectedInvalid),

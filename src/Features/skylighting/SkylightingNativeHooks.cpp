@@ -43,9 +43,8 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
         constexpr std::uintptr_t kCubeSizeRva = 0x05A3CFA4;
         constexpr std::uintptr_t kDirectionRva = 0x05A3CFC8;
-        constexpr std::uintptr_t kLightingPropertyVtableRva = 0x030A5C18;
-        constexpr std::size_t kLightingPassBuilderSlot = 0x2E;
-        constexpr std::uintptr_t kLightingPassBuilderRva = 0x027A48B0;
+        constexpr std::uintptr_t kPass14ResolverRva = 0x0281CB50;
+        constexpr std::uintptr_t kAccumulatorPassCollectorRva = 0x0281E760;
         constexpr std::uintptr_t kLightingPassListResolverRva = 0x027A51E0;
         constexpr std::uintptr_t kPassListClearRva = 0x0278E3E0;
         constexpr std::uintptr_t kPassListEmplaceRva = 0x0278E610;
@@ -54,6 +53,7 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kUtilityShaderSecondaryVtableRva =
             0x030BD9F8;
         constexpr std::uintptr_t kBsxFlagsVtableRva = 0x02E72CB8;
+        constexpr std::uintptr_t kSpecialGeometryNiRttiRva = 0x0689B458;
         constexpr std::size_t kRenderDepthTargetSetupOffset = 0x1CC;
         constexpr std::size_t kDepthTargetMapperSignatureOffset = 0x1A;
         constexpr std::size_t kDepthTargetMapOffset = 0x15FC;
@@ -62,6 +62,10 @@ namespace community_shaders::skylighting
         constexpr std::size_t kAccumulatorPassIndexOffset = 0xF6B0;
         constexpr std::size_t kAccumulatorPassKeyOffset = 0xF6B8;
         constexpr std::uint32_t kAccumulatorPassListCount = 4;
+        constexpr std::size_t kRenderPassNextOffset = 0x40;
+        constexpr std::size_t kRenderPassCategoryOffset = 0x4C;
+        constexpr std::size_t kRenderPassReadableSize = 0x4D;
+        constexpr std::size_t kMaximumCollectedPasses = 16;
         constexpr std::size_t kBsxValueOffset = 0x18;
         constexpr std::size_t kUtilityShaderSecondaryVtableOffset = 0x10;
         constexpr std::size_t kUtilityShaderKindOffset = 0x18;
@@ -132,18 +136,32 @@ namespace community_shaders::skylighting
             std::byte{ 0x81 }, std::byte{ 0xFC }, std::byte{ 0x15 },
             std::byte{ 0x00 }, std::byte{ 0x00 },
         };
-        constexpr std::array<std::byte, 33> kLightingPassBuilderSignature{
-            std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x55 },
-            std::byte{ 0x56 }, std::byte{ 0x41 }, std::byte{ 0x55 },
-            std::byte{ 0x41 }, std::byte{ 0x57 }, std::byte{ 0x48 },
-            std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x60 },
-            std::byte{ 0x65 }, std::byte{ 0x48 }, std::byte{ 0x8B },
-            std::byte{ 0x04 }, std::byte{ 0x25 }, std::byte{ 0x58 },
-            std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x00 },
-            std::byte{ 0x44 }, std::byte{ 0x8B }, std::byte{ 0x15 },
-            std::byte{ 0x00 }, std::byte{ 0x82 }, std::byte{ 0x0F },
-            std::byte{ 0x04 }, std::byte{ 0x41 }, std::byte{ 0xBB },
-            std::byte{ 0xC0 }, std::byte{ 0x09 }, std::byte{ 0x00 },
+        constexpr std::array<std::byte, 32> kPass14ResolverSignature{
+            std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
+            std::byte{ 0x24 }, std::byte{ 0x08 }, std::byte{ 0x48 },
+            std::byte{ 0x89 }, std::byte{ 0x74 }, std::byte{ 0x24 },
+            std::byte{ 0x10 }, std::byte{ 0x48 }, std::byte{ 0x89 },
+            std::byte{ 0x7C }, std::byte{ 0x24 }, std::byte{ 0x18 },
+            std::byte{ 0x41 }, std::byte{ 0x56 }, std::byte{ 0x48 },
+            std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x20 },
+            std::byte{ 0x49 }, std::byte{ 0x8B }, std::byte{ 0x40 },
+            std::byte{ 0x30 }, std::byte{ 0x41 }, std::byte{ 0x8B },
+            std::byte{ 0xF1 }, std::byte{ 0x4D }, std::byte{ 0x8B },
+            std::byte{ 0xF0 }, std::byte{ 0x48 },
+        };
+        constexpr std::array<std::byte, 32>
+            kAccumulatorPassCollectorSignature{
+                std::byte{ 0x48 }, std::byte{ 0x89 }, std::byte{ 0x5C },
+                std::byte{ 0x24 }, std::byte{ 0x08 }, std::byte{ 0x48 },
+                std::byte{ 0x89 }, std::byte{ 0x74 }, std::byte{ 0x24 },
+                std::byte{ 0x10 }, std::byte{ 0x57 }, std::byte{ 0x48 },
+                std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x30 },
+                std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0xF2 },
+                std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0x52 },
+                std::byte{ 0x18 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+                std::byte{ 0xF9 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+                std::byte{ 0x4E }, std::byte{ 0x08 }, std::byte{ 0x41 },
+                std::byte{ 0x8B }, std::byte{ 0xD8 },
         };
         constexpr std::array<std::byte, 32>
             kLightingPassListResolverSignature{
@@ -188,11 +206,15 @@ namespace community_shaders::skylighting
 
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
-        using LightingPassBuilder = void*(__fastcall*)(
-            void* property,
+        using Pass14Resolver = std::uint64_t(__fastcall*)(
+            void* accumulator,
             void* geometry,
-            std::uint32_t renderMode,
-            void* accumulator);
+            void* property,
+            std::uint32_t bucketIndex);
+        using AccumulatorPassCollector = void(__fastcall*)(
+            void* accumulator,
+            void* pass,
+            std::uint32_t bucketIndex);
         using PassListClear = void(__fastcall*)(void** list);
         using LightingPassListResolver = void**(__fastcall*)(
             void* property,
@@ -210,13 +232,6 @@ namespace community_shaders::skylighting
         {
             const std::byte* patch{};
             const void* destination{};
-        };
-
-        struct PointerPatchOutcome
-        {
-            bool owned{};
-            bool protectionRestored{};
-            bool rolledBack{};
         };
 
         struct UtilityShaderIdentity
@@ -246,18 +261,21 @@ namespace community_shaders::skylighting
         NativeSkySingleton nativeSkySingleton{};
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
-        LightingPassBuilder originalLightingPassBuilder{};
+        Pass14Resolver originalPass14Resolver{};
+        AccumulatorPassCollector collectAccumulatorPass{};
         LightingPassListResolver resolveLightingPassList{};
         PassListClear clearPassList{};
         PassListEmplace emplacePass{};
-        void** lightingPassBuilderCell{};
         void* utilityShader{};
         const void* utilityShaderVtable{};
         const void* utilityShaderSecondaryVtable{};
         const void* bsxFlagsVtable{};
         std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
-        DetourIdentity installedIdentity{};
+        std::byte* pass14Target{};
+        const RE::NiRTTI* specialGeometryNiRtti{};
+        DetourIdentity installedWrapperIdentity{};
+        DetourIdentity installedPass14Identity{};
         std::atomic_bool installed{};
         std::atomic_bool passProducerReady{};
         std::atomic_bool utilityShaderDeferredLogged{};
@@ -265,6 +283,7 @@ namespace community_shaders::skylighting
         std::atomic_bool missingManagerLogged{};
         std::atomic_uint64_t passProducerCalls{};
         std::atomic_uint64_t emittedPasses{};
+        std::atomic_uint64_t collectedPasses{};
         std::atomic_uint64_t rejectedInvalid{};
         std::atomic_uint64_t rejectedSkinned{};
         std::atomic_uint64_t rejectedSmall{};
@@ -367,65 +386,6 @@ namespace community_shaders::skylighting
             return identity;
         }
 
-        [[nodiscard]] PointerPatchOutcome patchPointerCell(
-            void** target,
-            void* expected,
-            void* replacement) noexcept
-        {
-            PointerPatchOutcome result;
-            if (!target || !expected || !replacement ||
-                readPointerCell(target) != expected) {
-                return result;
-            }
-            DWORD oldProtection{};
-            if (VirtualProtect(
-                    target,
-                    sizeof(*target),
-                    PAGE_READWRITE,
-                    &oldProtection) == FALSE) {
-                return result;
-            }
-            auto* observed = InterlockedCompareExchangePointer(
-                target,
-                replacement,
-                expected);
-            DWORD ignoredProtection{};
-            result.protectionRestored = VirtualProtect(
-                                            target,
-                                            sizeof(*target),
-                                            oldProtection,
-                                            &ignoredProtection) != FALSE;
-            FlushInstructionCache(
-                GetCurrentProcess(),
-                target,
-                sizeof(*target));
-            result.owned = observed == expected &&
-                readPointerCell(target) == replacement;
-            if (!result.owned || result.protectionRestored) {
-                return result;
-            }
-
-            observed = InterlockedCompareExchangePointer(
-                target,
-                expected,
-                replacement);
-            DWORD secondIgnoredProtection{};
-            const auto secondRestore = VirtualProtect(
-                target,
-                sizeof(*target),
-                oldProtection,
-                &secondIgnoredProtection);
-            FlushInstructionCache(
-                GetCurrentProcess(),
-                target,
-                sizeof(*target));
-            result.rolledBack = observed == replacement &&
-                readPointerCell(target) == expected;
-            result.protectionRestored = secondRestore != FALSE;
-            result.owned = readPointerCell(target) == replacement;
-            return result;
-        }
-
         [[nodiscard]] BsxFilterResult filterBsxFlags(
             RE::BSGeometry* geometry) noexcept
         {
@@ -461,23 +421,11 @@ namespace community_shaders::skylighting
                             BsxFilterResult::include;
         }
 
-        void* __fastcall hookLightingPassBuilder(
+        void** buildOcclusionPasses(
             void* propertyAddress,
             void* geometryAddress,
-            std::uint32_t renderMode,
             void* accumulator) noexcept
         {
-            if (!passProductionActive.load(std::memory_order_acquire) ||
-                !passProducerReady.load(std::memory_order_acquire)) {
-                return originalLightingPassBuilder ?
-                    originalLightingPassBuilder(
-                        propertyAddress,
-                        geometryAddress,
-                        renderMode,
-                        accumulator) :
-                    nullptr;
-            }
-            (void)renderMode;
             passProducerCalls.fetch_add(1, std::memory_order_relaxed);
             if (!propertyAddress || !geometryAddress || !accumulator ||
                 !resolveLightingPassList || !clearPassList || !emplacePass ||
@@ -590,6 +538,77 @@ namespace community_shaders::skylighting
             }
             emittedPasses.fetch_add(1, std::memory_order_relaxed);
             return passList;
+        }
+
+        std::uint64_t __fastcall hookPass14Resolver(
+            void* accumulator,
+            void* geometryAddress,
+            void* propertyAddress,
+            std::uint32_t bucketIndex) noexcept
+        {
+            if (!passProductionActive.load(std::memory_order_acquire) ||
+                !passProducerReady.load(std::memory_order_acquire)) {
+                return originalPass14Resolver ?
+                    originalPass14Resolver(
+                        accumulator,
+                        geometryAddress,
+                        propertyAddress,
+                        bucketIndex) :
+                    1;
+            }
+            if (!geometryAddress || !propertyAddress ||
+                !collectAccumulatorPass) {
+                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                return 1;
+            }
+
+            auto* geometry = static_cast<RE::BSGeometry*>(geometryAddress);
+            if (geometry->GetRTTI() == specialGeometryNiRtti) {
+                return originalPass14Resolver ?
+                    originalPass14Resolver(
+                        accumulator,
+                        geometryAddress,
+                        propertyAddress,
+                        bucketIndex) :
+                    1;
+            }
+
+            auto** passList = buildOcclusionPasses(
+                propertyAddress,
+                geometryAddress,
+                accumulator);
+            if (!passList) {
+                return 1;
+            }
+            auto* pass = readPointerCell(passList);
+            std::size_t passCount{};
+            while (pass && passCount < kMaximumCollectedPasses) {
+                if (!isReadableRange(pass, kRenderPassReadableSize)) {
+                    rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+                    break;
+                }
+                std::uint8_t category{};
+                std::memcpy(
+                    &category,
+                    static_cast<std::byte*>(pass) +
+                        kRenderPassCategoryOffset,
+                    sizeof(category));
+                if (category == kUtilityDepthPassCategory) {
+                    collectAccumulatorPass(
+                        accumulator,
+                        pass,
+                        bucketIndex);
+                    collectedPasses.fetch_add(1, std::memory_order_relaxed);
+                }
+                pass = readPointerCell(reinterpret_cast<void**>(
+                    static_cast<std::byte*>(pass) +
+                    kRenderPassNextOffset));
+                ++passCount;
+            }
+            if (pass) {
+                rejectedInvalid.fetch_add(1, std::memory_order_relaxed);
+            }
+            return 1;
         }
 
         [[nodiscard]] const std::byte* relativeTarget(
@@ -728,11 +747,9 @@ namespace community_shaders::skylighting
     ScopedOcclusionPassProduction::ScopedOcclusionPassProduction() noexcept
     {
         active_ = passProducerReady.load(std::memory_order_acquire) &&
-            originalLightingPassBuilder && resolveLightingPassList &&
-            clearPassList && emplacePass && utilityShader &&
-            lightingPassBuilderCell &&
-            readPointerCell(lightingPassBuilderCell) ==
-                reinterpret_cast<void*>(&hookLightingPassBuilder);
+            originalPass14Resolver && collectAccumulatorPass &&
+            resolveLightingPassList && clearPassList && emplacePass &&
+            utilityShader && pass14Target;
         if (active_) {
             auto expected = false;
             active_ = passProductionActive.compare_exchange_strong(
@@ -758,12 +775,11 @@ namespace community_shaders::skylighting
     OcclusionPassProducerSnapshot occlusionPassProducerSnapshot() noexcept
     {
         return {
-            .owned = passProducerReady.load(std::memory_order_acquire) &&
-                lightingPassBuilderCell &&
-                readPointerCell(lightingPassBuilderCell) ==
-                    reinterpret_cast<void*>(&hookLightingPassBuilder),
+            .owned = passProducerReady.load(std::memory_order_acquire),
             .calls = passProducerCalls.load(std::memory_order_relaxed),
             .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
+            .collectedPasses = collectedPasses.load(
+                std::memory_order_relaxed),
             .rejectedInvalid = rejectedInvalid.load(
                 std::memory_order_relaxed),
             .rejectedSkinned = rejectedSkinned.load(
@@ -849,12 +865,11 @@ namespace community_shaders::skylighting
             return false;
         }
         if (!inImage(
-                kLightingPropertyVtableRva +
-                    kLightingPassBuilderSlot * sizeof(void*),
-                sizeof(void*)) ||
+                kPass14ResolverRva,
+                kPass14ResolverSignature.size()) ||
             !inImage(
-                kLightingPassBuilderRva,
-                kLightingPassBuilderSignature.size()) ||
+                kAccumulatorPassCollectorRva,
+                kAccumulatorPassCollectorSignature.size()) ||
             !inImage(
                 kLightingPassListResolverRva,
                 kLightingPassListResolverSignature.size()) ||
@@ -865,7 +880,8 @@ namespace community_shaders::skylighting
             !inImage(kUtilityShaderSingletonRva, sizeof(void*)) ||
             !inImage(kUtilityShaderVtableRva, sizeof(void*)) ||
             !inImage(kUtilityShaderSecondaryVtableRva, sizeof(void*)) ||
-            !inImage(kBsxFlagsVtableRva, sizeof(void*))) {
+            !inImage(kBsxFlagsVtableRva, sizeof(void*)) ||
+            !inImage(kSpecialGeometryNiRttiRva, sizeof(void*))) {
             logging::error(
                 "Skylighting native world-occlusion producer contract is outside the FO4VR image.");
             return false;
@@ -877,10 +893,9 @@ namespace community_shaders::skylighting
         auto* renderDepthTargetSetup =
             render + kRenderDepthTargetSetupOffset;
         auto* depthTargetMapper = image + kDepthTargetMapperRva;
-        auto** lightingPassCell = reinterpret_cast<void**>(
-            image + kLightingPropertyVtableRva +
-            kLightingPassBuilderSlot * sizeof(void*));
-        auto* expectedLightingPass = image + kLightingPassBuilderRva;
+        auto* pass14Resolver = image + kPass14ResolverRva;
+        auto* accumulatorPassCollector =
+            image + kAccumulatorPassCollectorRva;
         auto* lightingPassListResolver =
             image + kLightingPassListResolverRva;
         auto* passListClear = image + kPassListClearRva;
@@ -891,6 +906,9 @@ namespace community_shaders::skylighting
         auto* expectedUtilitySecondaryVtable =
             image + kUtilityShaderSecondaryVtableRva;
         auto* expectedBsxVtable = image + kBsxFlagsVtableRva;
+        auto* expectedSpecialGeometryNiRtti =
+            reinterpret_cast<RE::NiRTTI*>(
+                image + kSpecialGeometryNiRttiRva);
         if (!isExecutableRange(wrapper, kWrapperSignature.size() + 5)) {
             logging::error(
                 "Skylighting native wrapper contract at RVA 0x00634300 is not executable and readable.");
@@ -978,21 +996,26 @@ namespace community_shaders::skylighting
                 "Skylighting native direction global at RVA 0x05A3CFC8 is not readable.");
             return false;
         }
-        if (!isReadableRange(lightingPassCell, sizeof(*lightingPassCell)) ||
-            readPointerCell(lightingPassCell) != expectedLightingPass) {
+        if (!isExecutableRange(
+                pass14Resolver,
+                kPass14ResolverSignature.size()) ||
+            std::memcmp(
+                pass14Resolver,
+                kPass14ResolverSignature.data(),
+                kPass14ResolverSignature.size()) != 0) {
             logging::error(
-                "Skylighting rejected BSLightingShaderProperty precipitation pass-builder slot 0x2E: the verified FO4VR target RVA 0x027A48B0 is not installed.");
+                "Skylighting native pass-14 resolver signature mismatch at RVA 0x0281CB50.");
             return false;
         }
         if (!isExecutableRange(
-                expectedLightingPass,
-                kLightingPassBuilderSignature.size()) ||
+                accumulatorPassCollector,
+                kAccumulatorPassCollectorSignature.size()) ||
             std::memcmp(
-                expectedLightingPass,
-                kLightingPassBuilderSignature.data(),
-                kLightingPassBuilderSignature.size()) != 0) {
+                accumulatorPassCollector,
+                kAccumulatorPassCollectorSignature.data(),
+                kAccumulatorPassCollectorSignature.size()) != 0) {
             logging::error(
-                "Skylighting native precipitation pass-builder signature mismatch at RVA 0x027A48B0.");
+                "Skylighting native accumulator pass-collector signature mismatch at RVA 0x0281E760.");
             return false;
         }
         if (!isExecutableRange(
@@ -1024,6 +1047,13 @@ namespace community_shaders::skylighting
                 kPassListEmplaceSignature.size()) != 0) {
             logging::error(
                 "Skylighting native pass-list emplace signature mismatch at RVA 0x0278E610.");
+            return false;
+        }
+        if (!isReadableRange(
+                expectedSpecialGeometryNiRtti,
+                sizeof(void*))) {
+            logging::error(
+                "Skylighting native special-geometry RTTI at RVA 0x0689B458 is not readable.");
             return false;
         }
         if (!isReadableRange(utilityShaderCell, sizeof(*utilityShaderCell))) {
@@ -1069,25 +1099,50 @@ namespace community_shaders::skylighting
                 "Skylighting could not acquire the BSX extra-data key; the world-occlusion producer remains disabled.");
             return false;
         }
-        originalLightingPassBuilder =
-            reinterpret_cast<LightingPassBuilder>(expectedLightingPass);
+        collectAccumulatorPass =
+            reinterpret_cast<AccumulatorPassCollector>(
+                accumulatorPassCollector);
         resolveLightingPassList =
             reinterpret_cast<LightingPassListResolver>(
                 lightingPassListResolver);
         clearPassList = reinterpret_cast<PassListClear>(passListClear);
         emplacePass = reinterpret_cast<PassListEmplace>(passListEmplace);
-        lightingPassBuilderCell = lightingPassCell;
         utilityShader = resolvedUtilityShader;
         utilityShaderVtable = expectedUtilityVtable;
         utilityShaderSecondaryVtable = expectedUtilitySecondaryVtable;
         bsxFlagsVtable = expectedBsxVtable;
+        specialGeometryNiRtti = expectedSpecialGeometryNiRtti;
 
-        void* trampoline{};
+        const auto resetResolvedContracts = []() noexcept {
+            originalWrapper = nullptr;
+            originalPass14Resolver = nullptr;
+            nativeSkySingleton = nullptr;
+            nativeRender = nullptr;
+            nativeProjection = nullptr;
+            collectAccumulatorPass = nullptr;
+            resolveLightingPassList = nullptr;
+            clearPassList = nullptr;
+            emplacePass = nullptr;
+            utilityShader = nullptr;
+            utilityShaderVtable = nullptr;
+            utilityShaderSecondaryVtable = nullptr;
+            bsxFlagsVtable = nullptr;
+            specialGeometryNiRtti = nullptr;
+            wrapperTarget = nullptr;
+            pass14Target = nullptr;
+            installedWrapperIdentity = {};
+            installedPass14Identity = {};
+            passProducerReady.store(false, std::memory_order_release);
+            bsxKey.reset();
+        };
+
+        void* wrapperTrampoline{};
         auto status = MH_CreateHook(
             wrapper,
             reinterpret_cast<void*>(&hookWrapper),
-            &trampoline);
-        if (status != MH_OK || !isExecutableRange(trampoline, 1)) {
+            &wrapperTrampoline);
+        if (status != MH_OK ||
+            !isExecutableRange(wrapperTrampoline, 1)) {
             if (status == MH_OK) {
                 (void)MH_RemoveHook(wrapper);
             }
@@ -1095,128 +1150,113 @@ namespace community_shaders::skylighting
                 "Skylighting native wrapper detour creation failed: {} ({}).",
                 MH_StatusToString(status),
                 static_cast<int>(status));
-            originalLightingPassBuilder = nullptr;
-            resolveLightingPassList = nullptr;
-            clearPassList = nullptr;
-            emplacePass = nullptr;
-            lightingPassBuilderCell = nullptr;
-            utilityShader = nullptr;
-            utilityShaderVtable = nullptr;
-            utilityShaderSecondaryVtable = nullptr;
-            bsxFlagsVtable = nullptr;
-            bsxKey.reset();
+            resetResolvedContracts();
             return false;
         }
-        originalWrapper = reinterpret_cast<WrapperFunction>(trampoline);
+
+        void* pass14Trampoline{};
+        status = MH_CreateHook(
+            pass14Resolver,
+            reinterpret_cast<void*>(&hookPass14Resolver),
+            &pass14Trampoline);
+        if (status != MH_OK || !isExecutableRange(pass14Trampoline, 1)) {
+            if (status == MH_OK) {
+                (void)MH_RemoveHook(pass14Resolver);
+            }
+            (void)MH_RemoveHook(wrapper);
+            logging::error(
+                "Skylighting native pass-14 detour creation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
+            return false;
+        }
+
+        originalWrapper = reinterpret_cast<WrapperFunction>(
+            wrapperTrampoline);
+        originalPass14Resolver = reinterpret_cast<Pass14Resolver>(
+            pass14Trampoline);
         nativeSkySingleton =
             reinterpret_cast<NativeSkySingleton>(
                 image + kWrapperFirstCallTargetRva);
         nativeRender = reinterpret_cast<NativePrecipitationRender>(render);
         nativeProjection = reinterpret_cast<NativeProjectionSetup>(projection);
-        const auto passPatch = patchPointerCell(
-            lightingPassCell,
-            expectedLightingPass,
-            reinterpret_cast<void*>(&hookLightingPassBuilder));
-        if (!passPatch.owned || !passPatch.protectionRestored) {
+
+        status = MH_EnableHook(pass14Resolver);
+        DetourIdentity pass14Identity{};
+        if (status != MH_OK ||
+            !captureDetourIdentity(pass14Resolver, pass14Identity)) {
+            (void)MH_DisableHook(pass14Resolver);
+            (void)MH_RemoveHook(pass14Resolver);
             (void)MH_RemoveHook(wrapper);
-            originalWrapper = nullptr;
-            nativeSkySingleton = nullptr;
-            nativeRender = nullptr;
-            nativeProjection = nullptr;
-            passProducerReady.store(false, std::memory_order_release);
-            if (readPointerCell(lightingPassCell) !=
-                reinterpret_cast<void*>(&hookLightingPassBuilder)) {
-                originalLightingPassBuilder = nullptr;
-                resolveLightingPassList = nullptr;
-                clearPassList = nullptr;
-                emplacePass = nullptr;
-                lightingPassBuilderCell = nullptr;
-                utilityShader = nullptr;
-                utilityShaderVtable = nullptr;
-                utilityShaderSecondaryVtable = nullptr;
-                bsxFlagsVtable = nullptr;
-                bsxKey.reset();
-            }
             logging::error(
-                "Skylighting world-occlusion pass-builder patch failed (owned={}, protectionRestored={}, rolledBack={}); capture remains disabled.",
-                passPatch.owned,
-                passPatch.protectionRestored,
-                passPatch.rolledBack);
+                "Skylighting native pass-14 detour activation failed: {} ({}).",
+                MH_StatusToString(status),
+                static_cast<int>(status));
+            resetResolvedContracts();
             return false;
         }
+
         status = MH_EnableHook(wrapper);
-        DetourIdentity identity{};
-        if (status != MH_OK || !captureDetourIdentity(wrapper, identity)) {
+        DetourIdentity wrapperIdentity{};
+        if (status != MH_OK ||
+            !captureDetourIdentity(wrapper, wrapperIdentity)) {
             (void)MH_DisableHook(wrapper);
+            (void)MH_DisableHook(pass14Resolver);
             (void)MH_RemoveHook(wrapper);
-            const auto passRollback = patchPointerCell(
-                lightingPassCell,
-                reinterpret_cast<void*>(&hookLightingPassBuilder),
-                expectedLightingPass);
-            originalWrapper = nullptr;
-            nativeSkySingleton = nullptr;
-            nativeRender = nullptr;
-            nativeProjection = nullptr;
-            passProducerReady.store(false, std::memory_order_release);
-            if (passRollback.owned && passRollback.protectionRestored &&
-                readPointerCell(lightingPassCell) == expectedLightingPass) {
-                originalLightingPassBuilder = nullptr;
-                resolveLightingPassList = nullptr;
-                clearPassList = nullptr;
-                emplacePass = nullptr;
-                lightingPassBuilderCell = nullptr;
-                utilityShader = nullptr;
-                utilityShaderVtable = nullptr;
-                utilityShaderSecondaryVtable = nullptr;
-                bsxFlagsVtable = nullptr;
-                bsxKey.reset();
-            }
+            (void)MH_RemoveHook(pass14Resolver);
             logging::error(
-                "Skylighting native wrapper detour activation failed: {} ({}); pass-builder rollback owned={}, protectionRestored={}.",
+                "Skylighting native wrapper detour activation failed: {} ({}).",
                 MH_StatusToString(status),
-                static_cast<int>(status),
-                passRollback.owned,
-                passRollback.protectionRestored);
+                static_cast<int>(status));
+            resetResolvedContracts();
             return false;
         }
 
         wrapperTarget = wrapper;
-        installedIdentity = identity;
+        pass14Target = pass14Resolver;
+        installedWrapperIdentity = wrapperIdentity;
+        installedPass14Identity = pass14Identity;
         passProducerReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, property vtable RVA 0x030A5C18 slot 0x2E, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0)." );
+            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
         return true;
     }
 
     bool validateNativeHooks(const char* trigger) noexcept
     {
-        DetourIdentity current{};
+        DetourIdentity currentWrapper{};
         const auto wrapperOwned = installed.load(std::memory_order_acquire) &&
-            wrapperTarget && installedIdentity.patch &&
-            installedIdentity.destination &&
-            captureDetourIdentity(wrapperTarget, current) &&
-            current.patch == installedIdentity.patch &&
-            current.destination == installedIdentity.destination;
-        const auto passBuilderOwned = lightingPassBuilderCell &&
-            readPointerCell(lightingPassBuilderCell) ==
-                reinterpret_cast<void*>(&hookLightingPassBuilder);
+            wrapperTarget && installedWrapperIdentity.patch &&
+            installedWrapperIdentity.destination &&
+            captureDetourIdentity(wrapperTarget, currentWrapper) &&
+            currentWrapper.patch == installedWrapperIdentity.patch &&
+            currentWrapper.destination ==
+                installedWrapperIdentity.destination;
+        DetourIdentity currentPass14{};
+        const auto pass14Owned = installed.load(std::memory_order_acquire) &&
+            pass14Target && installedPass14Identity.patch &&
+            installedPass14Identity.destination &&
+            captureDetourIdentity(pass14Target, currentPass14) &&
+            currentPass14.patch == installedPass14Identity.patch &&
+            currentPass14.destination == installedPass14Identity.destination;
         const auto utilityIdentity = inspectUtilityShader(
             utilityShader,
             utilityShaderVtable,
             utilityShaderSecondaryVtable);
         const auto utilityShaderOwned = utilityIdentity.valid();
-        const auto owned = wrapperOwned && passBuilderOwned &&
+        const auto owned = wrapperOwned && pass14Owned &&
             utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native ownership validation failed at '{}' (wrapper={}, passBuilder={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
                 trigger ? trigger : "unknown",
                 wrapperOwned,
-                passBuilderOwned,
+                pass14Owned,
                 utilityShaderOwned);
         }
         return owned;
