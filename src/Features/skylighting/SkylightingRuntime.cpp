@@ -1237,7 +1237,7 @@ namespace community_shaders::skylighting
                 return after >= before ? after - before : 0;
             };
             logging::info(
-                "Skylighting first private geometry-producer transaction: owned={}, completed={}, forcedCpuCull={}, builderCalls={}, pass14Calls={}, accumulatorVisits={}, accumulatorModeMask=0x{:016X}, emitted={}, collected={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
+                "Skylighting first private geometry-producer transaction: owned={}, completed={}, forcedCpuCull={}, builderCalls={}, pass14Calls={}, accumulatorVisits={}, accumulatorModeMask=0x{:016X}, forwardedNonLighting={}, emitted={}, collected={}, rejected=[invalid={},skinned={},small={},bsx={},flags={},allocation={}].",
                 producerAfter.owned,
                 privateRenderCompleted,
                 difference(
@@ -1251,6 +1251,9 @@ namespace community_shaders::skylighting
                     producerAfter.accumulatorGeometryVisits,
                     producerBefore.accumulatorGeometryVisits),
                 producerAfter.accumulatorGeometryVisitModeMask,
+                difference(
+                    producerAfter.forwardedNonLightingProperties,
+                    producerBefore.forwardedNonLightingProperties),
                 difference(
                     producerAfter.emittedPasses,
                     producerBefore.emittedPasses),

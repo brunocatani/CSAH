@@ -51,6 +51,8 @@ namespace community_shaders::skylighting
             0x0281BD40;
         constexpr std::uintptr_t kPass14ResolverRva = 0x0281CB50;
         constexpr std::uintptr_t kAccumulatorPassCollectorRva = 0x0281E760;
+        constexpr std::uintptr_t kLightingPrecipitationBuilderRva =
+            0x027A48B0;
         constexpr std::uintptr_t kLightingPassListResolverRva = 0x027A51E0;
         constexpr std::uintptr_t kPassListClearRva = 0x0278E3E0;
         constexpr std::uintptr_t kPassListEmplaceRva = 0x0278E610;
@@ -70,6 +72,8 @@ namespace community_shaders::skylighting
         constexpr std::size_t kAccumulatorPassIndexOffset = 0xF6B0;
         constexpr std::size_t kAccumulatorPassKeyOffset = 0xF6B8;
         constexpr std::uint32_t kAccumulatorPassListCount = 4;
+        constexpr std::size_t kLightingPrecipitationBuilderSlotOffset =
+            0x170;
         constexpr std::size_t kRenderPassNextOffset = 0x40;
         constexpr std::size_t kRenderPassCategoryOffset = 0x4C;
         constexpr std::size_t kRenderPassReadableSize = 0x4D;
@@ -198,6 +202,20 @@ namespace community_shaders::skylighting
                 std::byte{ 0x4E }, std::byte{ 0x08 }, std::byte{ 0x41 },
                 std::byte{ 0x8B }, std::byte{ 0xD8 },
         };
+        constexpr std::array<std::byte, 33>
+            kLightingPrecipitationBuilderSignature{
+                std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x55 },
+                std::byte{ 0x56 }, std::byte{ 0x41 }, std::byte{ 0x55 },
+                std::byte{ 0x41 }, std::byte{ 0x57 }, std::byte{ 0x48 },
+                std::byte{ 0x83 }, std::byte{ 0xEC }, std::byte{ 0x60 },
+                std::byte{ 0x65 }, std::byte{ 0x48 }, std::byte{ 0x8B },
+                std::byte{ 0x04 }, std::byte{ 0x25 }, std::byte{ 0x58 },
+                std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+                std::byte{ 0x44 }, std::byte{ 0x8B }, std::byte{ 0x15 },
+                std::byte{ 0x00 }, std::byte{ 0x82 }, std::byte{ 0x0F },
+                std::byte{ 0x04 }, std::byte{ 0x41 }, std::byte{ 0xBB },
+                std::byte{ 0xC0 }, std::byte{ 0x09 }, std::byte{ 0x00 },
+            };
         constexpr std::array<std::byte, 32>
             kLightingPassListResolverSignature{
                 std::byte{ 0x45 }, std::byte{ 0x33 }, std::byte{ 0xC0 },
@@ -319,6 +337,7 @@ namespace community_shaders::skylighting
         std::byte* accumulatorGeometryVisitTarget{};
         std::byte* pass14Target{};
         const RE::NiRTTI* specialGeometryNiRtti{};
+        const void* lightingPrecipitationPassBuilder{};
         DetourIdentity installedWrapperIdentity{};
         DetourIdentity installedGpuCullingEnabledIdentity{};
         DetourIdentity installedAccumulatorGeometryVisitIdentity{};
@@ -333,6 +352,7 @@ namespace community_shaders::skylighting
         std::atomic_uint64_t accumulatorGeometryVisits{};
         std::atomic_uint64_t accumulatorGeometryVisitModeMask{};
         std::atomic_uint64_t forcedPrivateCpuCulling{};
+        std::atomic_uint64_t forwardedNonLightingProperties{};
         std::atomic_uint64_t emittedPasses{};
         std::atomic_uint64_t collectedPasses{};
         std::atomic_uint64_t rejectedInvalid{};
@@ -470,6 +490,27 @@ namespace community_shaders::skylighting
             }
             return parent ? BsxFilterResult::invalid :
                             BsxFilterResult::include;
+        }
+
+        [[nodiscard]] bool usesLightingPrecipitationBuilder(
+            void* propertyAddress) noexcept
+        {
+            if (!propertyAddress || !lightingPrecipitationPassBuilder ||
+                !isReadableRange(propertyAddress, sizeof(void*))) {
+                return false;
+            }
+            auto* vtable = readPointerCell(
+                reinterpret_cast<void**>(propertyAddress));
+            if (!isReadableRange(
+                    vtable,
+                    kLightingPrecipitationBuilderSlotOffset +
+                        sizeof(void*))) {
+                return false;
+            }
+            auto* target = readPointerCell(reinterpret_cast<void**>(
+                static_cast<std::byte*>(vtable) +
+                kLightingPrecipitationBuilderSlotOffset));
+            return target == lightingPrecipitationPassBuilder;
         }
 
         void** buildOcclusionPasses(
@@ -674,6 +715,18 @@ namespace community_shaders::skylighting
                         bucketIndex) :
                     1;
             }
+            if (!usesLightingPrecipitationBuilder(propertyAddress)) {
+                forwardedNonLightingProperties.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return originalPass14Resolver ?
+                    originalPass14Resolver(
+                        accumulator,
+                        geometryAddress,
+                        propertyAddress,
+                        bucketIndex) :
+                    1;
+            }
 
             auto** passList = buildOcclusionPasses(
                 propertyAddress,
@@ -855,7 +908,8 @@ namespace community_shaders::skylighting
             accumulatorGeometryVisitTarget && originalPass14Resolver &&
             collectAccumulatorPass &&
             resolveLightingPassList && clearPassList && emplacePass &&
-            utilityShader && pass14Target;
+            utilityShader && lightingPrecipitationPassBuilder &&
+            pass14Target;
         if (active_) {
             auto expected = false;
             active_ = passProductionActive.compare_exchange_strong(
@@ -892,6 +946,9 @@ namespace community_shaders::skylighting
                     std::memory_order_relaxed),
             .forcedPrivateCpuCulling = forcedPrivateCpuCulling.load(
                 std::memory_order_relaxed),
+            .forwardedNonLightingProperties =
+                forwardedNonLightingProperties.load(
+                    std::memory_order_relaxed),
             .emittedPasses = emittedPasses.load(std::memory_order_relaxed),
             .collectedPasses = collectedPasses.load(
                 std::memory_order_relaxed),
@@ -995,6 +1052,9 @@ namespace community_shaders::skylighting
                 kAccumulatorPassCollectorRva,
                 kAccumulatorPassCollectorSignature.size()) ||
             !inImage(
+                kLightingPrecipitationBuilderRva,
+                kLightingPrecipitationBuilderSignature.size()) ||
+            !inImage(
                 kLightingPassListResolverRva,
                 kLightingPassListResolverSignature.size()) ||
             !inImage(kPassListClearRva, kPassListClearSignature.size()) ||
@@ -1025,6 +1085,8 @@ namespace community_shaders::skylighting
         auto* pass14Resolver = image + kPass14ResolverRva;
         auto* accumulatorPassCollector =
             image + kAccumulatorPassCollectorRva;
+        auto* expectedLightingPrecipitationBuilder =
+            image + kLightingPrecipitationBuilderRva;
         auto* lightingPassListResolver =
             image + kLightingPassListResolverRva;
         auto* passListClear = image + kPassListClearRva;
@@ -1177,6 +1239,17 @@ namespace community_shaders::skylighting
             return false;
         }
         if (!isExecutableRange(
+                expectedLightingPrecipitationBuilder,
+                kLightingPrecipitationBuilderSignature.size()) ||
+            std::memcmp(
+                expectedLightingPrecipitationBuilder,
+                kLightingPrecipitationBuilderSignature.data(),
+                kLightingPrecipitationBuilderSignature.size()) != 0) {
+            logging::error(
+                "Skylighting native lighting precipitation-builder signature mismatch at RVA 0x027A48B0.");
+            return false;
+        }
+        if (!isExecutableRange(
                 lightingPassListResolver,
                 kLightingPassListResolverSignature.size()) ||
             std::memcmp(
@@ -1270,6 +1343,8 @@ namespace community_shaders::skylighting
         utilityShaderSecondaryVtable = expectedUtilitySecondaryVtable;
         bsxFlagsVtable = expectedBsxVtable;
         specialGeometryNiRtti = expectedSpecialGeometryNiRtti;
+        lightingPrecipitationPassBuilder =
+            expectedLightingPrecipitationBuilder;
 
         const auto resetResolvedContracts = []() noexcept {
             originalWrapper = nullptr;
@@ -1288,6 +1363,7 @@ namespace community_shaders::skylighting
             utilityShaderSecondaryVtable = nullptr;
             bsxFlagsVtable = nullptr;
             specialGeometryNiRtti = nullptr;
+            lightingPrecipitationPassBuilder = nullptr;
             wrapperTarget = nullptr;
             gpuCullingEnabledTarget = nullptr;
             privateRenderGpuCullingReturnAddress = nullptr;
