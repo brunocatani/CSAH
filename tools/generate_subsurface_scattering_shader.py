@@ -18,6 +18,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--fxc", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--header", type=Path, required=True)
+    parser.add_argument("--classify-binary", type=Path, required=True)
+    parser.add_argument("--classify-header", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -35,11 +37,11 @@ def run(command: list[str], label: str) -> None:
         )
 
 
-def write_header(path: Path, data: bytes) -> None:
+def write_header(path: Path, data: bytes, symbol: str) -> None:
     rows = [
         "#pragma once",
         "",
-        "inline constexpr unsigned char fo4vr_cs_subsurface_scattering[] = {",
+        f"inline constexpr unsigned char {symbol}[] = {{",
     ]
     for offset in range(0, len(data), 16):
         values = ", ".join(f"0x{value:02x}" for value in data[offset:offset + 16])
@@ -59,8 +61,18 @@ def main() -> int:
         / "SubsurfaceScattering"
         / "SubsurfaceScatteringCS.hlsl"
     )
+    classify_source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "SubsurfaceScattering"
+        / "SubsurfaceTileClassifyCS.hlsl"
+    )
     args.binary.parent.mkdir(parents=True, exist_ok=True)
     args.header.parent.mkdir(parents=True, exist_ok=True)
+    args.classify_binary.parent.mkdir(parents=True, exist_ok=True)
+    args.classify_header.parent.mkdir(parents=True, exist_ok=True)
     assembly = args.binary.with_suffix(".asm.txt")
     run(
         [
@@ -88,8 +100,9 @@ def main() -> int:
         "dcl_resource_texture2d (float,float,float,float) t1",
         "dcl_resource_texture2d (float,float,float,float) t2",
         "dcl_resource_texture2d (float,float,float,float) t3",
+        "dcl_resource_structured t4, 8",
         "dcl_uav_typed_texture2d (float,float,float,float) u0",
-        "dcl_thread_group 8, 8, 1",
+        "dcl_thread_group 16, 16, 1",
         "round_ne",
         "l(0.381171, 0.094142, 0.001699",
     ):
@@ -97,8 +110,53 @@ def main() -> int:
             raise GenerationError(
                 "subsurface-scattering assembly changed: " + required
             )
-    write_header(args.header, args.binary.read_bytes())
+    write_header(
+        args.header,
+        args.binary.read_bytes(),
+        "fo4vr_cs_subsurface_scattering",
+    )
     assembly.unlink(missing_ok=True)
+
+    classify_assembly = args.classify_binary.with_suffix(".asm.txt")
+    run(
+        [
+            str(args.fxc.resolve()),
+            "/nologo",
+            "/T",
+            "cs_5_0",
+            "/E",
+            "CSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(args.classify_binary),
+            "/Fc",
+            str(classify_assembly),
+            str(classify_source),
+        ],
+        "subsurface-scattering tile-classification compilation",
+    )
+    classify_text = classify_assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_constantbuffer CB0[3], immediateIndexed",
+        "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_uav_structured u0, 8",
+        "dcl_uav_raw u1",
+        "dcl_tgsm_raw g0, 4",
+        "dcl_thread_group 8, 8, 1",
+    ):
+        if required not in classify_text:
+            raise GenerationError(
+                "subsurface-scattering tile-classification assembly changed: "
+                + required
+            )
+    write_header(
+        args.classify_header,
+        args.classify_binary.read_bytes(),
+        "fo4vr_cs_subsurface_tile_classify",
+    )
+    classify_assembly.unlink(missing_ok=True)
     return 0
 
 
