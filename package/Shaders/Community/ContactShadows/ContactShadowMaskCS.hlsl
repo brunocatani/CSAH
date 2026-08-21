@@ -331,7 +331,8 @@ float SegmentBlockerOcclusion(
     const float endpointOcclusion = max(
         BlockerOcclusion(previousSeparation, bias, thickness),
         BlockerOcclusion(separation, bias, thickness));
-    if (thickness - bias <= 1.0e-5f) {
+    const float validRange = thickness - bias;
+    if (validRange <= 1.0e-5f || separation <= previousSeparation) {
         return endpointOcclusion;
     }
 
@@ -345,13 +346,20 @@ float SegmentBlockerOcclusion(
     if (segmentMaximum <= bias || segmentMinimum >= thickness) {
         return endpointOcclusion;
     }
+    const float intervalOverlap = max(
+        0.0f,
+        min(segmentMaximum, thickness) - max(segmentMinimum, bias));
+    const float intervalCoverage = saturate(
+        intervalOverlap /
+        max(segmentMaximum - segmentMinimum, validRange));
     const float intervalProbe = clamp(
         0.5f * (bias + thickness),
         segmentMinimum,
         segmentMaximum);
     return max(
         endpointOcclusion,
-        BlockerOcclusion(intervalProbe, bias, thickness));
+        BlockerOcclusion(intervalProbe, bias, thickness) *
+            sqrt(intervalCoverage));
 }
 
 [numthreads(8, 8, 1)]
