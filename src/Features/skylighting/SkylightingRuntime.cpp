@@ -42,6 +42,7 @@ namespace community_shaders::skylighting
         constexpr std::ptrdiff_t kPrecipitationCameraOffset = 0x50;
         constexpr std::ptrdiff_t kPrecipitationLastCubeSizeOffset = 0x90;
         constexpr std::size_t kNativeProjectionOffset = 0xED0;
+        constexpr std::size_t kNativePrecipitationDepthTarget = 9;
         constexpr float kCaptureDistance = 10000.0f;
         constexpr float kCaptureHeight = 5000.0f;
         constexpr float kTwoPi = 6.28318530717958647692f;
@@ -50,14 +51,60 @@ namespace community_shaders::skylighting
         constexpr float kR2X = 0.245122333753f;
         constexpr float kR2Y = 0.430159709002f;
 
-        struct CaptureState
+        class ScopedNativeDepthTarget final
         {
-            Runtime* owner{};
-            bool dsvAttempted{};
-            bool privateDepthBound{};
-        };
+        public:
+            ScopedNativeDepthTarget(
+                RE::BSGraphics::DepthStencilTarget& target,
+                ID3D11Texture2D* texture,
+                ID3D11DepthStencilView* depthView,
+                ID3D11ShaderResourceView* depthResource) noexcept :
+                target_(&target),
+                originalTexture_(target.texture),
+                originalDepthView_(target.dsView[0]),
+                originalDepthResource_(target.srViewDepth)
+            {
+                if (!texture || !depthView || !depthResource) {
+                    target_ = nullptr;
+                    return;
+                }
+                // CommonLibF4VR redeclares the native D3D11 COM interfaces in
+                // REX::W32. These casts bridge only that namespace boundary.
+                target.texture =
+                    reinterpret_cast<REX::W32::ID3D11Texture2D*>(texture);
+                target.dsView[0] =
+                    reinterpret_cast<REX::W32::ID3D11DepthStencilView*>(
+                        depthView);
+                target.srViewDepth =
+                    reinterpret_cast<REX::W32::ID3D11ShaderResourceView*>(
+                        depthResource);
+            }
 
-        thread_local CaptureState privateCapture{};
+            ~ScopedNativeDepthTarget() noexcept
+            {
+                if (!target_) {
+                    return;
+                }
+                target_->texture = originalTexture_;
+                target_->dsView[0] = originalDepthView_;
+                target_->srViewDepth = originalDepthResource_;
+            }
+
+            ScopedNativeDepthTarget(const ScopedNativeDepthTarget&) = delete;
+            ScopedNativeDepthTarget& operator=(
+                const ScopedNativeDepthTarget&) = delete;
+
+            [[nodiscard]] bool active() const noexcept
+            {
+                return target_ != nullptr;
+            }
+
+        private:
+            RE::BSGraphics::DepthStencilTarget* target_{};
+            REX::W32::ID3D11Texture2D* originalTexture_{};
+            REX::W32::ID3D11DepthStencilView* originalDepthView_{};
+            REX::W32::ID3D11ShaderResourceView* originalDepthResource_{};
+        };
 
         [[nodiscard]] std::uint32_t positiveModulo(
             std::int64_t value,
@@ -299,13 +346,9 @@ namespace community_shaders::skylighting
             false,
             std::memory_order_relaxed);
         firstRenderAttemptLogged_.store(false, std::memory_order_relaxed);
-        firstOutputMergerObservationLogged_.store(
-            false,
-            std::memory_order_relaxed);
         firstPrivateDepthFailureLogged_.store(
             false,
             std::memory_order_relaxed);
-        firstDepthMissLogged_.store(false, std::memory_order_relaxed);
         firstActiveAmbientBindLogged_.store(false, std::memory_order_relaxed);
 
         if (!createProbeResources()) {
@@ -628,44 +671,6 @@ namespace community_shaders::skylighting
         return true;
     }
 
-    ID3D11DepthStencilView* Runtime::substituteDepthStencil(
-        ID3D11DeviceContext* context,
-        ID3D11DepthStencilView* requested) noexcept
-    {
-        if (privateCapture.owner == this &&
-            !firstOutputMergerObservationLogged_.exchange(
-                true,
-                std::memory_order_relaxed)) {
-            logging::info(
-                "Skylighting observed its native private-render output-merger bind (contextMatch={}, sourceDSV={}, alreadyAttempted={}).",
-                context == context_.Get(),
-                requested != nullptr,
-                privateCapture.dsvAttempted);
-        }
-        if (privateCapture.owner != this || !context ||
-            context != context_.Get() || !requested ||
-            privateCapture.dsvAttempted) {
-            return requested;
-        }
-        privateCapture.dsvAttempted = true;
-        if (!ensurePrivateDepth(requested) || !privateDepthView_) {
-            return nullptr;
-        }
-        context_->ClearDepthStencilView(
-            privateDepthView_.Get(),
-            D3D11_CLEAR_DEPTH,
-            1.0f,
-            0);
-        privateCapture.privateDepthBound = true;
-        privateDepthBinds_.fetch_add(1, std::memory_order_relaxed);
-        return privateDepthView_.Get();
-    }
-
-    bool Runtime::privateCaptureActive() const noexcept
-    {
-        return privateCapture.owner == this;
-    }
-
     void Runtime::updateRollingVolume(float x, float y, float z) noexcept
     {
         const std::array<float, 3> position{ x, y, z };
@@ -875,6 +880,30 @@ namespace community_shaders::skylighting
             clearProbeResources();
         }
 
+        auto* rendererData = RE::BSGraphics::RendererData::GetSingleton();
+        if (!rendererData) {
+            if (!firstPrivateDepthFailureLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Skylighting could not resolve FO4VR RendererData for native depth target 9.");
+            }
+            exteriorActive_.store(false, std::memory_order_release);
+            rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        auto& nativeDepthTarget = rendererData->depthStencilTargets[
+            kNativePrecipitationDepthTarget];
+        if (!ensurePrivateDepth(
+                reinterpret_cast<ID3D11DepthStencilView*>(
+                    nativeDepthTarget.dsView[0])) ||
+            !privateDepthTexture_ || !privateDepthView_ ||
+            !privateDepthResource_) {
+            exteriorActive_.store(false, std::memory_order_release);
+            rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+
         const auto base = REL::Module::get().base();
         auto* cubeSize = reinterpret_cast<float*>(base + kCubeSizeRva);
         auto* directionX = reinterpret_cast<float*>(base + kDirectionXRva);
@@ -917,13 +946,26 @@ namespace community_shaders::skylighting
                 true,
                 std::memory_order_relaxed)) {
             logging::info(
-                "Skylighting entered its first verified exterior private-render transaction.");
+                "Skylighting entered its first verified exterior private-render transaction with native depth target 9 scoped to the private resource.");
         }
-        privateCapture = { .owner = this };
-        render(precipitation, nativeOutput_.data());
-        const auto dsvAttempted = privateCapture.dsvAttempted;
-        const auto depthBound = privateCapture.privateDepthBound;
-        privateCapture = {};
+        context_->ClearDepthStencilView(
+            privateDepthView_.Get(),
+            D3D11_CLEAR_DEPTH,
+            1.0f,
+            0);
+        auto privateRenderCompleted = false;
+        {
+            ScopedNativeDepthTarget privateTarget(
+                nativeDepthTarget,
+                privateDepthTexture_.Get(),
+                privateDepthView_.Get(),
+                privateDepthResource_.Get());
+            if (privateTarget.active()) {
+                privateDepthBinds_.fetch_add(1, std::memory_order_relaxed);
+                render(precipitation, nativeOutput_.data());
+                privateRenderCompleted = true;
+            }
+        }
 
         std::memcpy(
             constants_.occlusionViewProjection.data(),
@@ -943,21 +985,11 @@ namespace community_shaders::skylighting
             auto* cameraHolder = camera;
             restoreProjection(precipitation, &cameraHolder);
         }
-        if (!depthBound) {
-            if (!firstDepthMissLogged_.exchange(
-                    true,
-                    std::memory_order_relaxed)) {
-                logging::warn(
-                    "Skylighting native private render completed without a private depth binding (outputMergerObserved={}, sourceDsvAttempted={}).",
-                    firstOutputMergerObservationLogged_.load(
-                        std::memory_order_relaxed),
-                    dsvAttempted);
-            }
+        if (!privateRenderCompleted) {
             exteriorActive_.store(false, std::memory_order_release);
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-
         const auto& cameraPosition = playerCamera->cameraRoot->world.translate;
         updateRollingVolume(
             cameraPosition.x,

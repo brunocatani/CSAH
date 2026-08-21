@@ -1813,20 +1813,6 @@ namespace community_shaders::render
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
-            auto& skylightingRuntime = skylighting::Runtime::get();
-            auto* effectiveDepthStencil =
-                skylightingRuntime.substituteDepthStencil(
-                    context,
-                    depthStencil);
-            if (skylightingRuntime.privateCaptureActive()) {
-                original(
-                    context,
-                    renderTargetCount,
-                    renderTargets,
-                    effectiveDepthStencil);
-                return;
-            }
-
             auto& surfaceRuntime = surface_classification::Runtime::get();
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 linear_lighting::Runtime::get().linearLightingEnabled() &&
@@ -1840,7 +1826,7 @@ namespace community_shaders::render
                         context,
                         binding.renderTargetCount,
                         binding.renderTargets.data(),
-                        effectiveDepthStencil);
+                        depthStencil);
                     return;
                 }
             }
@@ -1848,7 +1834,7 @@ namespace community_shaders::render
                 context,
                 renderTargetCount,
                 renderTargets,
-                effectiveDepthStencil);
+                depthStencil);
         }
 
         void STDMETHODCALLTYPE hookOMSetRenderTargetsAndUnorderedAccessViews(
@@ -1871,24 +1857,6 @@ namespace community_shaders::render
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
-            auto& skylightingRuntime = skylighting::Runtime::get();
-            auto* effectiveDepthStencil =
-                skylightingRuntime.substituteDepthStencil(
-                    context,
-                    depthStencil);
-            if (skylightingRuntime.privateCaptureActive()) {
-                original(
-                    context,
-                    renderTargetCount,
-                    renderTargets,
-                    effectiveDepthStencil,
-                    unorderedAccessStartSlot,
-                    unorderedAccessViewCount,
-                    unorderedAccessViews,
-                    initialCounts);
-                return;
-            }
-
             auto& surfaceRuntime = surface_classification::Runtime::get();
             const auto appendDoesNotOverlapUavs =
                 unorderedAccessViewCount == 0 ||
@@ -1907,7 +1875,7 @@ namespace community_shaders::render
                         context,
                         binding.renderTargetCount,
                         binding.renderTargets.data(),
-                        effectiveDepthStencil,
+                        depthStencil,
                         unorderedAccessStartSlot,
                         unorderedAccessViewCount,
                         unorderedAccessViews,
@@ -1919,7 +1887,7 @@ namespace community_shaders::render
                 context,
                 renderTargetCount,
                 renderTargets,
-                effectiveDepthStencil,
+                depthStencil,
                 unorderedAccessStartSlot,
                 unorderedAccessViewCount,
                 unorderedAccessViews,

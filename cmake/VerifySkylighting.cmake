@@ -65,15 +65,15 @@ foreach(required IN ITEMS
     "DXGI_FORMAT_R16G16B16A16_FLOAT"
     "DXGI_FORMAT_R8_UINT"
     "ScopedComputeState"
-    "substituteDepthStencil("
+    "kNativePrecipitationDepthTarget = 9"
+    "ScopedNativeDepthTarget"
+    "RendererData::GetSingleton()"
     "InterlockedIncrement("
     "nativeOutput_.data() + kNativeProjectionOffset"
     "PSSetShaderResources(50"
     "PSSetConstantBuffers(13"
     "probeDataValid_.store(true"
     "playerCell->IsExterior()"
-    "firstOutputMergerObservationLogged_.exchange("
-    "firstDepthMissLogged_.exchange("
     "firstActiveAmbientBindLogged_.exchange(")
   string(FIND "${runtime}\n${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)
@@ -148,14 +148,22 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "skylightingRuntime.substituteDepthStencil"
-    "skylightingRuntime.privateCaptureActive()"
     "skylighting::Runtime::get().scopeAmbientDraw"
     "skylighting::installNativeHooks()")
   string(FIND "${d3dHook}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Skylighting D3D11 integration is missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "substituteDepthStencil"
+    "privateCaptureActive")
+  string(FIND "${runtime}\n${runtimeHeader}\n${d3dHook}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Skylighting retained disproven D3D output-merger path '${forbidden}'")
   endif()
 endforeach()
 

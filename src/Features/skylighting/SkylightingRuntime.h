@@ -83,13 +83,6 @@ namespace community_shaders::skylighting
             NativePrecipitationRender render,
             NativeProjectionSetup restoreProjection) noexcept;
 
-        // Called only from the immediate-context output-merger detours. The
-        // returned DSV is borrowed for that one native call.
-        [[nodiscard]] ID3D11DepthStencilView* substituteDepthStencil(
-            ID3D11DeviceContext* context,
-            ID3D11DepthStencilView* requested) noexcept;
-        [[nodiscard]] bool privateCaptureActive() const noexcept;
-
         [[nodiscard]] bool requested() const noexcept;
         [[nodiscard]] ScopedAmbientBindings scopeAmbientDraw(
             ID3D11DeviceContext* context,
@@ -205,9 +198,7 @@ namespace community_shaders::skylighting
         std::atomic_bool firstPrerequisiteRejectionLogged_{};
         std::atomic_bool firstWorldStateRejectionLogged_{};
         std::atomic_bool firstRenderAttemptLogged_{};
-        std::atomic_bool firstOutputMergerObservationLogged_{};
         std::atomic_bool firstPrivateDepthFailureLogged_{};
-        std::atomic_bool firstDepthMissLogged_{};
         std::atomic_bool firstActiveAmbientBindLogged_{};
         std::atomic_bool qualityRestartWarningLogged_{};
     };
