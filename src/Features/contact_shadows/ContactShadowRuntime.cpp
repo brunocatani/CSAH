@@ -149,8 +149,11 @@ namespace community_shaders::contact_shadows
         maskTexture_.Reset();
         maskView_.Reset();
         maskOutput_.Reset();
+        maskDepthResource_.Reset();
         maskWidth_ = 0;
         maskHeight_ = 0;
+        maskDirty_.store(true, std::memory_order_relaxed);
+        maskValid_.store(false, std::memory_order_relaxed);
         for (auto& original : originals_) {
             original.shader.Reset();
             original.contractIndex = 0;
@@ -408,6 +411,24 @@ namespace community_shaders::contact_shadows
         failures_.fetch_add(1, std::memory_order_relaxed);
     }
 
+    void Runtime::observeDepthTargetBinding(
+        ID3D11DepthStencilView* depthStencil) noexcept
+    {
+        if (!depthStencil || !maskDepthResource_) {
+            return;
+        }
+        D3D11_DEPTH_STENCIL_VIEW_DESC description{};
+        depthStencil->GetDesc(&description);
+        if ((description.Flags & D3D11_DSV_READ_ONLY_DEPTH) != 0) {
+            return;
+        }
+        Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+        depthStencil->GetResource(resource.GetAddressOf());
+        if (resource.Get() == maskDepthResource_.Get()) {
+            maskDirty_.store(true, std::memory_order_release);
+        }
+    }
+
     PixelShaderSelection Runtime::selectPixelShader(
         ID3D11PixelShader* requested,
         bool compositorFeatureActive) noexcept
@@ -451,7 +472,7 @@ namespace community_shaders::contact_shadows
         return false;
     }
 
-    void Runtime::uploadSettings(
+    bool Runtime::uploadSettings(
         ID3D11DeviceContext* context,
         bool contactShadowsActive,
         bool maskActive,
@@ -465,7 +486,7 @@ namespace community_shaders::contact_shadows
                 maskActive == uploadedMaskActive_ &&
                 cloudShadowsActive == uploadedCloudActive_ &&
                 cloudOpacity == uploadedCloudOpacity_)) {
-            return;
+            return false;
         }
         const GpuSettings data{
             .strength = strength_.load(std::memory_order_relaxed),
@@ -491,6 +512,7 @@ namespace community_shaders::contact_shadows
         uploadedMaskActive_ = maskActive;
         uploadedCloudActive_ = cloudShadowsActive;
         uploadedCloudOpacity_ = cloudOpacity;
+        return true;
     }
 
     bool Runtime::ensureMaskResources(
@@ -510,6 +532,11 @@ namespace community_shaders::contact_shadows
         if (source.Width < 2 || source.Height == 0 || (source.Width & 1u) != 0 ||
             source.ArraySize != 1 || source.SampleDesc.Count != 1) {
             return false;
+        }
+        if (maskDepthResource_.Get() != resource.Get()) {
+            maskDepthResource_ = resource;
+            maskDirty_.store(true, std::memory_order_release);
+            maskValid_.store(false, std::memory_order_release);
         }
         if (rawMaskTexture_ && rawMaskView_ && rawMaskOutput_ &&
             maskTexture_ && maskView_ && maskOutput_ &&
@@ -594,6 +621,8 @@ namespace community_shaders::contact_shadows
         maskOutput_ = std::move(nextOutput);
         maskWidth_ = source.Width;
         maskHeight_ = source.Height;
+        maskDirty_.store(true, std::memory_order_release);
+        maskValid_.store(false, std::memory_order_release);
         maskRebuilds_.fetch_add(1, std::memory_order_relaxed);
         logging::info(
             "Contact Shadows raw and resolved stereo masks allocated at {}x{} R8_UNORM.",
@@ -623,12 +652,15 @@ namespace community_shaders::contact_shadows
             cloud_shadows::Runtime::get().prepareLighting(
                 context, cloud, cloudSampler, cloudOpacity);
         maskActive = contactShadowsActive || cloudReady;
-        uploadSettings(
+        const auto settingsChanged = uploadSettings(
             context,
             contactShadowsActive,
             maskActive,
             cloudReady,
             cloudOpacity);
+        if (settingsChanged) {
+            maskDirty_.store(true, std::memory_order_release);
+        }
         if (!maskActive) {
             return true;
         }
@@ -653,6 +685,8 @@ namespace community_shaders::contact_shadows
         const auto maskResourcesReady = depth && dflight && stereo && camera &&
             ensureMaskResources(depth.Get());
         if (!maskResourcesReady) {
+            maskValid_.store(false, std::memory_order_release);
+            maskDirty_.store(true, std::memory_order_release);
             if (!firstDispatchFailureLogged_.exchange(
                     true,
                     std::memory_order_relaxed)) {
@@ -669,6 +703,10 @@ namespace community_shaders::contact_shadows
                         dispatchArgumentsOutput_);
             }
             return false;
+        }
+        if (maskValid_.load(std::memory_order_acquire) &&
+            !maskDirty_.load(std::memory_order_acquire)) {
+            return true;
         }
         render::ScopedComputeState restore(
             context,
@@ -694,7 +732,6 @@ namespace community_shaders::contact_shadows
         }
 
         auto* depthView = depth.Get();
-        auto* rawOutput = rawMaskOutput_.Get();
         auto* resolvedOutput = maskOutput_.Get();
         auto* dflightConstants = dflight.Get();
         auto* stereoConstants = stereo.Get();
@@ -727,7 +764,7 @@ namespace community_shaders::contact_shadows
             1.0f,
         };
         context->ClearUnorderedAccessViewFloat(
-            rawMaskOutput_.Get(),
+            contactShadowsActive ? maskOutput_.Get() : rawMaskOutput_.Get(),
             fullyVisible.data());
         if (contactShadowsActive) {
             const std::array<ID3D11UnorderedAccessView*, 2> setupOutputs{
@@ -750,9 +787,10 @@ namespace community_shaders::contact_shadows
                 noSetupOutputs.data(),
                 nullptr);
 
-            const std::array<ID3D11ShaderResourceView*, 2> raymarchInputs{
+            const std::array<ID3D11ShaderResourceView*, 3> raymarchInputs{
                 depthView,
                 dispatchRecordsView_.Get(),
+                cloud,
             };
             context->CSSetShader(maskCompute_.Get(), nullptr, 0);
             context->CSSetShaderResources(
@@ -762,8 +800,12 @@ namespace community_shaders::contact_shadows
             context->CSSetUnorderedAccessViews(
                 0,
                 1,
-                &rawOutput,
+                &resolvedOutput,
                 nullptr);
+            context->CSSetSamplers(
+                kCloudSamplerSlot,
+                1,
+                &cloudSampler);
             auto indexedSettings = uploadedGpuSettings_;
             for (UINT dispatchIndex = 0;
                  dispatchIndex < kDispatchRecordCount;
@@ -788,35 +830,37 @@ namespace community_shaders::contact_shadows
                 indexedSettings.data(),
                 0,
                 0);
+        } else {
+            const std::array<ID3D11ShaderResourceView*, 3> resolveInputs{
+                depthView,
+                rawMaskView_.Get(),
+                cloud,
+            };
+            context->CSSetShader(resolveCompute_.Get(), nullptr, 0);
+            context->CSSetShaderResources(
+                0,
+                static_cast<UINT>(resolveInputs.size()),
+                resolveInputs.data());
+            context->CSSetUnorderedAccessViews(
+                0,
+                1,
+                &resolvedOutput,
+                nullptr);
+            context->CSSetSamplers(
+                kCloudSamplerSlot,
+                1,
+                &cloudSampler);
+            context->Dispatch(dispatchWidth, dispatchHeight, 1);
         }
-
         const std::array<ID3D11UnorderedAccessView*, 2> noOutputs{};
         context->CSSetUnorderedAccessViews(
             0,
             static_cast<UINT>(noOutputs.size()),
             noOutputs.data(),
             nullptr);
-        const std::array<ID3D11ShaderResourceView*, 3> resolveInputs{
-            depthView,
-            rawMaskView_.Get(),
-            cloud,
-        };
-        context->CSSetShader(resolveCompute_.Get(), nullptr, 0);
-        context->CSSetShaderResources(
-            0,
-            static_cast<UINT>(resolveInputs.size()),
-            resolveInputs.data());
-        context->CSSetUnorderedAccessViews(
-            0,
-            1,
-            &resolvedOutput,
-            nullptr);
-        context->CSSetSamplers(
-            kCloudSamplerSlot,
-            1,
-            &cloudSampler);
-        context->Dispatch(dispatchWidth, dispatchHeight, 1);
         if (!restore.restore()) {
+            maskValid_.store(false, std::memory_order_release);
+            maskDirty_.store(true, std::memory_order_release);
             if (!firstDispatchFailureLogged_.exchange(
                     true,
                     std::memory_order_relaxed)) {
@@ -825,6 +869,8 @@ namespace community_shaders::contact_shadows
             }
             return false;
         }
+        maskValid_.store(true, std::memory_order_release);
+        maskDirty_.store(false, std::memory_order_release);
         maskDispatches_.fetch_add(1, std::memory_order_relaxed);
         if (!firstDispatchLogged_.exchange(
                 true,
@@ -900,6 +946,7 @@ namespace community_shaders::contact_shadows
         thickness_.store(safe.thickness, std::memory_order_relaxed);
         sampleCount_.store(safe.sampleCount, std::memory_order_relaxed);
         settingsRevision_.fetch_add(1, std::memory_order_release);
+        maskDirty_.store(true, std::memory_order_release);
     }
 
     RuntimeSnapshot Runtime::snapshot() const noexcept

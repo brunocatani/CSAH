@@ -55,6 +55,12 @@ foreach(required IN ITEMS
     "DispatchIndirect"
     "kDispatchRecordCount = 16"
     "uploadedGpuSettings_"
+    "observeDepthTargetBinding"
+    "maskDepthResource_"
+    "maskDirty_"
+    "maskValid_"
+    "contactShadowsActive ? maskOutput_.Get() : rawMaskOutput_.Get()"
+    "maskValid_.load(std::memory_order_acquire)"
     "rawMaskTexture_"
     "rawMaskView_"
     "rawMaskOutput_"
@@ -73,16 +79,6 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Contact Shadows runtime regression: missing '${required}'")
-  endif()
-endforeach()
-
-foreach(forbidden IN ITEMS
-    "TextureCube<float> CloudOcclusion"
-    "CloudVisibility(")
-  string(FIND "${maskShaderSource}" "${forbidden}" found)
-  if(NOT found EQUAL -1)
-    message(FATAL_ERROR
-      "Contact Shadows raw mask must not consume cloud visibility '${forbidden}'")
   endif()
 endforeach()
 
@@ -144,7 +140,9 @@ endforeach()
 foreach(required IN ITEMS
     "Texture2D<float> SceneDepth : register(t0)"
     "StructuredBuffer<DispatchRecord> DispatchRecords : register(t1)"
+    "TextureCube<float> CloudOcclusion : register(t2)"
     "RWTexture2D<unorm float> ContactShadowMask : register(u0)"
+    "SamplerState CloudSampler : register(s0)"
     "ContactShadowSettings : register(b13)"
     "NativeDFLight : register(b2)"
     "NativeStereo : register(b8)"
@@ -155,15 +153,20 @@ foreach(required IN ITEMS
     "static const float kNearDepthValue = 0.0f"
     "groupshared float SharedDepth"
     "groupshared uint SharedDepthDomain"
+    "groupshared uint SharedMaximumSampleCount"
     "ComputeWavefrontExtents"
     "LoadNativeDepth"
     "ReconstructViewPosition"
     "ProjectViewPosition"
+    "CloudVisibility"
     "rawDepth * 100.0f"
     "rawDepth * 1.01f - 0.01f"
     "neighborDomain != baseDomain"
     "abs(kFarDepthValue - baseDepth)"
     "GroupMemoryBarrierWithGroupSync"
+    "InterlockedMax("
+    "const uint activeReadCount"
+    "readIndex < activeReadCount"
     "const float surfaceThickness = max(ContactParams0.z"
     "activeSampleCount = min"
     "const float2 rayPixelDelta"
@@ -172,7 +175,9 @@ foreach(required IN ITEMS
     "clamp(ContactParams0.w, 2.0f, 8.0f)"
     "SharedDepthDomain[sharedIndex] != sampleDomain[0]"
     "shadowValue = saturate(shadowValue * 4.0f - 3.0f)"
-    "const float visibility = dot(shadowValue, 0.25f)"
+    "const float rawVisibility = dot(shadowValue, 0.25f)"
+    "saturate(ContactParams0.x) * distanceScale"
+    "contactVisibility * CloudVisibility(surface, towardLight)"
     "record.eye * eyeWidth"
     "[numthreads(64, 1, 1)]")
   string(FIND "${maskShaderSource}" "${required}" found)
@@ -274,6 +279,7 @@ foreach(required IN ITEMS
     "if (dflightCompositorActive && classInstanceCount == 0)"
     "issueDrawWithContactShadows(context"
     "activeContactShadowsEnabled"
+    "observeDepthTargetBinding"
     "wrappedRuntime.scopeDraw("
     "activeContactShadowBinding.original")
   string(FIND "${hookSource}" "${required}" found)
