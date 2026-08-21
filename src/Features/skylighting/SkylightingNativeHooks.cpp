@@ -286,10 +286,8 @@ namespace community_shaders::skylighting
 
         [[nodiscard]] void* readPointerCell(void** cell) noexcept
         {
-            return cell ? InterlockedCompareExchangePointer(
-                              cell,
-                              nullptr,
-                              nullptr) :
+            return cell ? ReadPointerAcquire(
+                              reinterpret_cast<void* const volatile*>(cell)) :
                           nullptr;
         }
 

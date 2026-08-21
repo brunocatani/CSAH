@@ -72,6 +72,7 @@ foreach(required IN ITEMS
     "resolveNativePrecipitationManager()"
     "nativeSkySingleton()"
     "MH_CreateHook("
+    "ReadPointerAcquire("
     "patchPointerCell("
     "hookLightingPassBuilder"
     "captureDetourIdentity("
