@@ -4,6 +4,7 @@
 #include "render/ComputeStateScope.h"
 #include "support/Logger.h"
 
+#include "ContactShadowDispatchCS.h"
 #include "ContactShadowMaskCS.h"
 #include "ContactShadowResolveCS.h"
 #include "ContactShadowsDFLight.h"
@@ -27,6 +28,9 @@ namespace community_shaders::contact_shadows
         constexpr UINT kCameraConstantSlot = 12;
         constexpr UINT kThreadGroupWidth = 8;
         constexpr UINT kThreadGroupHeight = 8;
+        constexpr UINT kDispatchRecordCount = 16;
+        constexpr UINT kDispatchRecordStride = 32;
+        constexpr UINT kDispatchArgumentStride = sizeof(UINT) * 3;
 
         struct alignas(16) GpuSettings
         {
@@ -130,9 +134,15 @@ namespace community_shaders::contact_shadows
         for (auto& replacement : replacements_) {
             replacement.Reset();
         }
+        dispatchCompute_.Reset();
         maskCompute_.Reset();
         resolveCompute_.Reset();
         constants_.Reset();
+        dispatchRecords_.Reset();
+        dispatchRecordsView_.Reset();
+        dispatchRecordsOutput_.Reset();
+        dispatchArguments_.Reset();
+        dispatchArgumentsOutput_.Reset();
         rawMaskTexture_.Reset();
         rawMaskView_.Reset();
         rawMaskOutput_.Reset();
@@ -155,6 +165,7 @@ namespace community_shaders::contact_shadows
         uploadedMaskActive_ = false;
         uploadedCloudActive_ = false;
         uploadedCloudOpacity_ = 0.0f;
+        uploadedGpuSettings_.fill(0.0f);
         if (!device || !context || !createPixelShader) {
             failures_.fetch_add(1, std::memory_order_relaxed);
             return;
@@ -196,6 +207,22 @@ namespace community_shaders::contact_shadows
             return;
         }
 
+        const auto dispatchResult = device->CreateComputeShader(
+            fo4vr_cs_contact_shadow_dispatch,
+            sizeof(fo4vr_cs_contact_shadow_dispatch),
+            nullptr,
+            dispatchCompute_.ReleaseAndGetAddressOf());
+        if (FAILED(dispatchResult) || !dispatchCompute_) {
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::error(
+                "Contact Shadows wavefront-dispatch compute creation failed (HRESULT=0x{:08X}).",
+                static_cast<std::uint32_t>(dispatchResult));
+            return;
+        }
+
         const auto computeResult = device->CreateComputeShader(
             fo4vr_cs_contact_shadow_mask,
             sizeof(fo4vr_cs_contact_shadow_mask),
@@ -205,6 +232,7 @@ namespace community_shaders::contact_shadows
             for (auto& replacement : replacements_) {
                 replacement.Reset();
             }
+            dispatchCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Contact Shadows mask compute creation failed (HRESULT=0x{:08X}).",
@@ -220,6 +248,7 @@ namespace community_shaders::contact_shadows
             for (auto& replacement : replacements_) {
                 replacement.Reset();
             }
+            dispatchCompute_.Reset();
             maskCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
@@ -240,6 +269,7 @@ namespace community_shaders::contact_shadows
             for (auto& replacement : replacements_) {
                 replacement.Reset();
             }
+            dispatchCompute_.Reset();
             maskCompute_.Reset();
             resolveCompute_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
@@ -248,9 +278,97 @@ namespace community_shaders::contact_shadows
                 static_cast<std::uint32_t>(bufferResult));
             return;
         }
+
+        D3D11_BUFFER_DESC recordDescription{};
+        recordDescription.ByteWidth =
+            kDispatchRecordCount * kDispatchRecordStride;
+        recordDescription.Usage = D3D11_USAGE_DEFAULT;
+        recordDescription.BindFlags =
+            D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        recordDescription.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        recordDescription.StructureByteStride = kDispatchRecordStride;
+        const auto recordBufferResult = device->CreateBuffer(
+            &recordDescription,
+            nullptr,
+            dispatchRecords_.ReleaseAndGetAddressOf());
+        D3D11_SHADER_RESOURCE_VIEW_DESC recordViewDescription{};
+        recordViewDescription.Format = DXGI_FORMAT_UNKNOWN;
+        recordViewDescription.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        recordViewDescription.Buffer.FirstElement = 0;
+        recordViewDescription.Buffer.NumElements = kDispatchRecordCount;
+        const auto recordViewResult =
+            SUCCEEDED(recordBufferResult) && dispatchRecords_ ?
+            device->CreateShaderResourceView(
+                dispatchRecords_.Get(),
+                &recordViewDescription,
+                dispatchRecordsView_.ReleaseAndGetAddressOf()) : E_FAIL;
+        D3D11_UNORDERED_ACCESS_VIEW_DESC recordOutputDescription{};
+        recordOutputDescription.Format = DXGI_FORMAT_UNKNOWN;
+        recordOutputDescription.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        recordOutputDescription.Buffer.FirstElement = 0;
+        recordOutputDescription.Buffer.NumElements = kDispatchRecordCount;
+        const auto recordOutputResult =
+            SUCCEEDED(recordViewResult) ?
+            device->CreateUnorderedAccessView(
+                dispatchRecords_.Get(),
+                &recordOutputDescription,
+                dispatchRecordsOutput_.ReleaseAndGetAddressOf()) : E_FAIL;
+
+        D3D11_BUFFER_DESC argumentDescription{};
+        argumentDescription.ByteWidth =
+            kDispatchRecordCount * kDispatchArgumentStride;
+        argumentDescription.Usage = D3D11_USAGE_DEFAULT;
+        argumentDescription.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+        argumentDescription.MiscFlags =
+            D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS |
+            D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+        const auto argumentBufferResult = device->CreateBuffer(
+            &argumentDescription,
+            nullptr,
+            dispatchArguments_.ReleaseAndGetAddressOf());
+        D3D11_UNORDERED_ACCESS_VIEW_DESC argumentOutputDescription{};
+        argumentOutputDescription.Format = DXGI_FORMAT_R32_TYPELESS;
+        argumentOutputDescription.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        argumentOutputDescription.Buffer.FirstElement = 0;
+        argumentOutputDescription.Buffer.NumElements =
+            argumentDescription.ByteWidth / sizeof(UINT);
+        argumentOutputDescription.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+        const auto argumentOutputResult =
+            SUCCEEDED(argumentBufferResult) && dispatchArguments_ ?
+            device->CreateUnorderedAccessView(
+                dispatchArguments_.Get(),
+                &argumentOutputDescription,
+                dispatchArgumentsOutput_.ReleaseAndGetAddressOf()) : E_FAIL;
+        if (FAILED(recordBufferResult) || FAILED(recordViewResult) ||
+            FAILED(recordOutputResult) || FAILED(argumentBufferResult) ||
+            FAILED(argumentOutputResult) || !dispatchRecords_ ||
+            !dispatchRecordsView_ || !dispatchRecordsOutput_ ||
+            !dispatchArguments_ || !dispatchArgumentsOutput_) {
+            for (auto& replacement : replacements_) {
+                replacement.Reset();
+            }
+            dispatchCompute_.Reset();
+            maskCompute_.Reset();
+            resolveCompute_.Reset();
+            constants_.Reset();
+            dispatchRecords_.Reset();
+            dispatchRecordsView_.Reset();
+            dispatchRecordsOutput_.Reset();
+            dispatchArguments_.Reset();
+            dispatchArgumentsOutput_.Reset();
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::error(
+                "Contact Shadows GPU dispatch infrastructure creation failed (records=0x{:08X}/0x{:08X}/0x{:08X}, arguments=0x{:08X}/0x{:08X}).",
+                static_cast<std::uint32_t>(recordBufferResult),
+                static_cast<std::uint32_t>(recordViewResult),
+                static_cast<std::uint32_t>(recordOutputResult),
+                static_cast<std::uint32_t>(argumentBufferResult),
+                static_cast<std::uint32_t>(argumentOutputResult));
+            return;
+        }
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Contact Shadows raw-mask and depth-aware directional-resolve pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
+            "Contact Shadows Bend wavefront raymarch and GPU indirect-dispatch pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
             fo4vr_cs_contact_shadow_dflight_contracts.size());
     }
 
@@ -362,6 +480,11 @@ namespace community_shaders::contact_shadows
             .cloudEnabled = cloudShadowsActive ? 1.0f : 0.0f,
             .cloudOpacity = cloudOpacity,
         };
+        static_assert(sizeof(data) == sizeof(uploadedGpuSettings_));
+        std::memcpy(
+            uploadedGpuSettings_.data(),
+            &data,
+            sizeof(data));
         context->UpdateSubresource(constants_.Get(), 0, nullptr, &data, 0, 0);
         uploadedRevision_ = revision;
         uploadedContactActive_ = contactShadowsActive;
@@ -486,7 +609,10 @@ namespace community_shaders::contact_shadows
         bool& maskActive) noexcept
     {
         maskActive = false;
-        if (!context || !maskCompute_ || !resolveCompute_ || !constants_) {
+        if (!context || !dispatchCompute_ || !maskCompute_ ||
+            !resolveCompute_ || !constants_ || !dispatchRecords_ ||
+            !dispatchRecordsView_ || !dispatchRecordsOutput_ ||
+            !dispatchArguments_ || !dispatchArgumentsOutput_) {
             return false;
         }
 
@@ -537,7 +663,10 @@ namespace community_shaders::contact_shadows
                     static_cast<bool>(stereo),
                     static_cast<bool>(camera),
                     rawMaskTexture_ && rawMaskView_ && rawMaskOutput_ &&
-                        maskTexture_ && maskView_ && maskOutput_);
+                        maskTexture_ && maskView_ && maskOutput_ &&
+                        dispatchRecords_ && dispatchRecordsView_ &&
+                        dispatchRecordsOutput_ && dispatchArguments_ &&
+                        dispatchArgumentsOutput_);
             }
             return false;
         }
@@ -547,7 +676,7 @@ namespace community_shaders::contact_shadows
                 .firstShaderResource = 0,
                 .shaderResourceCount = 3,
                 .firstUnorderedAccess = 0,
-                .unorderedAccessCount = 1,
+                .unorderedAccessCount = 2,
                 .firstSampler = kCloudSamplerSlot,
                 .samplerCount = 1,
                 .firstConstantBuffer = kDFLightConstantSlot,
@@ -591,29 +720,82 @@ namespace community_shaders::contact_shadows
             (maskWidth_ + kThreadGroupWidth - 1) / kThreadGroupWidth;
         const auto dispatchHeight =
             (maskHeight_ + kThreadGroupHeight - 1) / kThreadGroupHeight;
+        constexpr std::array<float, 4> fullyVisible{
+            1.0f,
+            1.0f,
+            1.0f,
+            1.0f,
+        };
+        context->ClearUnorderedAccessViewFloat(
+            rawMaskOutput_.Get(),
+            fullyVisible.data());
         if (contactShadowsActive) {
-            context->CSSetShader(maskCompute_.Get(), nullptr, 0);
+            const std::array<ID3D11UnorderedAccessView*, 2> setupOutputs{
+                dispatchRecordsOutput_.Get(),
+                dispatchArgumentsOutput_.Get(),
+            };
+            context->CSSetShader(dispatchCompute_.Get(), nullptr, 0);
             context->CSSetShaderResources(0, 1, &depthView);
+            context->CSSetUnorderedAccessViews(
+                0,
+                static_cast<UINT>(setupOutputs.size()),
+                setupOutputs.data(),
+                nullptr);
+            context->Dispatch(1, 1, 1);
+
+            const std::array<ID3D11UnorderedAccessView*, 2> noSetupOutputs{};
+            context->CSSetUnorderedAccessViews(
+                0,
+                static_cast<UINT>(noSetupOutputs.size()),
+                noSetupOutputs.data(),
+                nullptr);
+
+            const std::array<ID3D11ShaderResourceView*, 2> raymarchInputs{
+                depthView,
+                dispatchRecordsView_.Get(),
+            };
+            context->CSSetShader(maskCompute_.Get(), nullptr, 0);
+            context->CSSetShaderResources(
+                0,
+                static_cast<UINT>(raymarchInputs.size()),
+                raymarchInputs.data());
             context->CSSetUnorderedAccessViews(
                 0,
                 1,
                 &rawOutput,
                 nullptr);
-            context->Dispatch(dispatchWidth, dispatchHeight, 1);
-        } else {
-            constexpr std::array<float, 4> fullyVisible{
-                1.0f,
-                1.0f,
-                1.0f,
-                1.0f,
-            };
-            context->ClearUnorderedAccessViewFloat(
-                rawMaskOutput_.Get(),
-                fullyVisible.data());
+            auto indexedSettings = uploadedGpuSettings_;
+            for (UINT dispatchIndex = 0;
+                 dispatchIndex < kDispatchRecordCount;
+                 ++dispatchIndex) {
+                indexedSettings[11] = static_cast<float>(dispatchIndex);
+                context->UpdateSubresource(
+                    constants_.Get(),
+                    0,
+                    nullptr,
+                    indexedSettings.data(),
+                    0,
+                    0);
+                context->DispatchIndirect(
+                    dispatchArguments_.Get(),
+                    dispatchIndex * kDispatchArgumentStride);
+            }
+            indexedSettings[11] = 0.0f;
+            context->UpdateSubresource(
+                constants_.Get(),
+                0,
+                nullptr,
+                indexedSettings.data(),
+                0,
+                0);
         }
 
-        ID3D11UnorderedAccessView* noOutput{};
-        context->CSSetUnorderedAccessViews(0, 1, &noOutput, nullptr);
+        const std::array<ID3D11UnorderedAccessView*, 2> noOutputs{};
+        context->CSSetUnorderedAccessViews(
+            0,
+            static_cast<UINT>(noOutputs.size()),
+            noOutputs.data(),
+            nullptr);
         const std::array<ID3D11ShaderResourceView*, 3> resolveInputs{
             depthView,
             rawMaskView_.Get(),

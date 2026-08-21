@@ -85,6 +85,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--header", type=Path, required=True)
     parser.add_argument("--compute-binary", type=Path, required=True)
     parser.add_argument("--compute-header", type=Path, required=True)
+    parser.add_argument("--dispatch-binary", type=Path, required=True)
+    parser.add_argument("--dispatch-header", type=Path, required=True)
     parser.add_argument("--resolve-binary", type=Path, required=True)
     parser.add_argument("--resolve-header", type=Path, required=True)
     return parser.parse_args()
@@ -877,16 +879,62 @@ def compile_compute_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
     text = assembly.read_text(encoding="utf-8")
     for required in (
         "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_resource_structured t1, 32",
         "dcl_uav_typed_texture2d (unorm,unorm,unorm,unorm) u0",
-        "dcl_constantbuffer CB2[46], dynamicIndexed",
-        "dcl_constantbuffer CB8[1], immediateIndexed",
-        "dcl_constantbuffer CB12[48], dynamicIndexed",
         "dcl_constantbuffer CB13[3], immediateIndexed",
-        "dcl_thread_group 8, 8, 1",
+        "dcl_tgsm_structured g0, 4, 384",
+        "dcl_tgsm_structured g1, 4, 384",
+        "dcl_thread_group 64, 1, 1",
     ):
         if required not in text:
             raise ContractError(
                 "contact-shadow mask compute assembly changed: " + required
+            )
+    return output.read_bytes()
+
+
+def compile_dispatch_shader(root: Path, fxc: Path, temporary: Path) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "ContactShadows"
+        / "ContactShadowDispatchCS.hlsl"
+    )
+    output = temporary / "ContactShadowDispatchCS.dxbc"
+    assembly = temporary / "ContactShadowDispatchCS.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "cs_5_0",
+            "/E",
+            "CSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "contact-shadow dispatch compute compilation",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_constantbuffer CB2[3], immediateIndexed",
+        "dcl_constantbuffer CB12[12], immediateIndexed",
+        "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_uav_structured u0, 32",
+        "dcl_uav_raw u1",
+        "dcl_thread_group 1, 1, 1",
+    ):
+        if required not in text:
+            raise ContractError(
+                "contact-shadow dispatch compute assembly changed: " + required
             )
     return output.read_bytes()
 
@@ -1011,6 +1059,8 @@ def main() -> int:
     args.header.parent.mkdir(parents=True, exist_ok=True)
     args.compute_binary.parent.mkdir(parents=True, exist_ok=True)
     args.compute_header.parent.mkdir(parents=True, exist_ok=True)
+    args.dispatch_binary.parent.mkdir(parents=True, exist_ok=True)
+    args.dispatch_header.parent.mkdir(parents=True, exist_ok=True)
     args.resolve_binary.parent.mkdir(parents=True, exist_ok=True)
     args.resolve_header.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="fo4vr-contact-shadows-") as folder:
@@ -1034,6 +1084,11 @@ def main() -> int:
             temporary,
         )
         compute = compile_compute_shader(root, args.fxc.resolve(), temporary)
+        dispatch = compile_dispatch_shader(
+            root,
+            args.fxc.resolve(),
+            temporary,
+        )
         resolve = compile_resolve_shader(
             root,
             args.fxc.resolve(),
@@ -1123,6 +1178,12 @@ def main() -> int:
             args.compute_header,
             compute,
             "fo4vr_cs_contact_shadow_mask",
+        )
+        args.dispatch_binary.write_bytes(dispatch)
+        write_header(
+            args.dispatch_header,
+            dispatch,
+            "fo4vr_cs_contact_shadow_dispatch",
         )
         args.resolve_binary.write_bytes(resolve)
         write_header(

@@ -130,9 +130,18 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumShaderContracts> replacements_{};
+        Microsoft::WRL::ComPtr<ID3D11ComputeShader> dispatchCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolveCompute_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> dispatchRecords_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            dispatchRecordsView_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+            dispatchRecordsOutput_;
+        Microsoft::WRL::ComPtr<ID3D11Buffer> dispatchArguments_;
+        Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView>
+            dispatchArgumentsOutput_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> rawMaskTexture_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rawMaskView_;
         Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> rawMaskOutput_;
@@ -156,6 +165,7 @@ namespace community_shaders::contact_shadows
         bool uploadedMaskActive_{};
         bool uploadedCloudActive_{};
         float uploadedCloudOpacity_{};
+        std::array<float, 16> uploadedGpuSettings_{};
         std::atomic_uint32_t matchingShaders_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_uint64_t replacementBinds_{};

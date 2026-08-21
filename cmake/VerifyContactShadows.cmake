@@ -6,6 +6,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SETTINGS_STORE_HEADER
     CONTACT_SHADOW_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
+    CONTACT_SHADOW_DISPATCH_SHADER_SOURCE
     CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
     CONTACT_SHADOW_SHADER_GENERATOR
     D3D11_HOOK_SOURCE
@@ -23,6 +24,7 @@ file(READ "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}" settingsStoreSource)
 file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
+file(READ "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}" dispatchShaderSource)
 file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
 file(READ "${CONTACT_SHADOW_SHADER_GENERATOR}" generatorSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
@@ -43,7 +45,16 @@ foreach(required IN ITEMS
     "PSGetShaderResources("
     "PSSetShaderResources(kMaskSlot"
     "dispatchMask"
+    "dispatchCompute_"
     "resolveCompute_"
+    "dispatchRecords_"
+    "dispatchRecordsView_"
+    "dispatchRecordsOutput_"
+    "dispatchArguments_"
+    "dispatchArgumentsOutput_"
+    "DispatchIndirect"
+    "kDispatchRecordCount = 16"
+    "uploadedGpuSettings_"
     "rawMaskTexture_"
     "rawMaskView_"
     "rawMaskOutput_"
@@ -85,21 +96,27 @@ foreach(required IN ITEMS
     "NativeStereo : register(b8)"
     "NativeCamera : register(b12)"
     "ContactShadowSettings : register(b13)"
-    "LoadSameReceiverShadow"
-    "visibility >= 0.999f"
-    "relativeDifference > 0.03f"
-    "DirectionalClosure"
-    "searchIndex <= 4u"
-    "averageStep * ((float)searchIndex * 0.25f)"
-    "negativeFound && positiveFound"
-    "max(negativeVisibility, positiveVisibility)"
-    "contactVisibility = min(contactVisibility, closureVisibility)"
+    "const float rawVisibility"
+    "const float viewDepth = abs(surface.z)"
+    "1.0f - smoothstep(0.0f, fadeDistance, viewDepth)"
+    "saturate(ContactParams0.x) * distanceScale"
     "contactVisibility * cloudVisibility"
     "[numthreads(8, 8, 1)]")
   string(FIND "${resolveShaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "Contact Shadows directional resolve regression: missing '${required}'")
+      "Contact Shadows wavefront resolve regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(forbidden IN ITEMS
+    "LoadSameReceiverShadow"
+    "DirectionalClosure"
+    "searchIndex")
+  string(FIND "${resolveShaderSource}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows resolve restored obsolete silhouette closure '${forbidden}'")
   endif()
 endforeach()
 
@@ -126,60 +143,54 @@ endforeach()
 
 foreach(required IN ITEMS
     "Texture2D<float> SceneDepth : register(t0)"
+    "StructuredBuffer<DispatchRecord> DispatchRecords : register(t1)"
     "RWTexture2D<unorm float> ContactShadowMask : register(u0)"
-    "NativeDFLight : register(b2)"
-    "NativeStereo : register(b8)"
-    "NativeCamera : register(b12)"
     "ContactShadowSettings : register(b13)"
-    "const float3 towardLight = normalize(DFLight[eye + 1u].xyz)"
-    "eyeFirstPixel"
-    "eyeLastPixel"
-    "sampleEyeUv <= 0.0f"
-    "sampleEyeUv >= 1.0f"
-    "(sampleDepth <= 0.01f) != (centerDepth <= 0.01f)"
-    "ReconstructViewDepth"
-    "const float viewDepth = abs(surface.z)"
-    "1.0f - smoothstep(0.0f, fadeDistance, viewDepth)"
-    "LoadCompatibleViewPosition"
-    "SampleEdgeAwareViewPosition"
-    "const float relativeDifference"
-    "relativeDifference > kBilinearThreshold"
-    "EstimateReceiverNormal"
-    "ClosestSurfaceTangent"
-    "const float normalTowardLight"
-    "const float receiverPlaneBias"
-    "viewDepth * 1.0e-6f"
-    "const float orientedPlaneSeparation"
-    "BlockerOcclusion"
-    "const float entry = smoothstep"
-    "const float exit = 1.0f - smoothstep"
-    "SegmentBlockerOcclusion"
-    "const float validRange = thickness - bias"
-    "separation <= previousSeparation"
-    "const float segmentMinimum"
-    "const float segmentMaximum"
-    "float inferenceConfidence"
-    "const float spanInThicknesses"
-    "const float spanConfidence"
-    "smoothstep(16.0f, 64.0f, spanInThicknesses)"
-    "const float intervalProbe"
-    "spanConfidence * inferenceConfidence"
-    "const uint stableSampleFloor = min(sampleCount, 8u)"
-    "uint selectionAccumulator = 0u"
-    "selectionAccumulator += activeSampleCount"
-    "selectionAccumulator -= sampleCount"
-    "for (uint sampleSlot = 0u; sampleSlot < 16u; ++sampleSlot)"
-    "bool previousSeparationValid = true"
-    "previousSeparationValid = false"
-    "const float inferenceConfidence = 1.0f - smoothstep"
-    "rayFraction"
-    "occlusion = max(occlusion, hit)"
-    "occlusion * distanceScale"
-    "sampleSlot < 16u")
+    "static const uint kWaveSize = 64u"
+    "static const uint kMaximumSampleCount = 256u"
+    "static const float kFarDepthValue = 1.0f"
+    "static const float kNearDepthValue = 0.0f"
+    "groupshared float SharedDepth"
+    "groupshared uint SharedDepthDomain"
+    "ComputeWavefrontExtents"
+    "LoadNativeDepth"
+    "rawDepth * 100.0f"
+    "rawDepth * 1.01f - 0.01f"
+    "neighborDomain != baseDomain"
+    "abs(kFarDepthValue - baseDepth)"
+    "GroupMemoryBarrierWithGroupSync"
+    "const float surfaceThickness = max(ContactParams0.z"
+    "activeSampleCount = min"
+    "SharedDepthDomain[sharedIndex] != sampleDomain[0]"
+    "shadowValue = saturate(shadowValue * 4.0f - 3.0f)"
+    "const float visibility = dot(shadowValue, 0.25f)"
+    "record.eye * eyeWidth"
+    "[numthreads(64, 1, 1)]")
   string(FIND "${maskShaderSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "Contact Shadows mask shader regression: missing '${required}'")
+      "Contact Shadows Bend mask regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "Texture2D<float> SceneDepth : register(t0)"
+    "NativeDFLight : register(b2)"
+    "NativeCamera : register(b12)"
+    "RWStructuredBuffer<DispatchRecord> DispatchRecords : register(u0)"
+    "RWByteAddressBuffer DispatchArguments : register(u1)"
+    "ProjectViewDirection"
+    "BuildEyeDispatches"
+    "const uint kWaveSize = 64u"
+    "const uint kDispatchesPerEye = 8u"
+    "DispatchArguments.Store"
+    "BuildEyeDispatches(0u, viewportSize)"
+    "BuildEyeDispatches(1u, viewportSize)"
+    "[numthreads(1, 1, 1)]")
+  string(FIND "${dispatchShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Contact Shadows GPU dispatch regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -201,7 +212,8 @@ foreach(forbidden IN ITEMS
     "sampleStride"
     "(index * sampleStride) % sampleCount"
     "ContactParams1.x * 0.25f"
-    "viewDepth * 5.0e-4f")
+    "viewDepth * 5.0e-4f"
+    "DirectionalClosure")
   string(FIND "${maskShaderSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
@@ -229,6 +241,8 @@ foreach(required IN ITEMS
     "contains an injected early return"
     "contact-shadow mask compute assembly changed"
     "compile_resolve_shader"
+    "compile_dispatch_shader"
+    "fo4vr_cs_contact_shadow_dispatch"
     "contact-shadow resolve assembly changed"
     "fo4vr_cs_contact_shadow_resolve"
     "multiply_rgb(1, visibility_scratch)"

@@ -54,17 +54,6 @@ float3 ReconstructViewPosition(float2 packedUv, float depth, uint eye)
     return homogeneous.xyz / max(abs(homogeneous.w), 1.0e-7f);
 }
 
-float4 ProjectViewPosition(float3 position, uint eye)
-{
-    const uint row = 4u + eye * 4u;
-    const float4 homogeneousPoint = float4(position, 1.0f);
-    return float4(
-        dot(Camera[row + 0u], homogeneousPoint),
-        dot(Camera[row + 1u], homogeneousPoint),
-        dot(Camera[row + 2u], homogeneousPoint),
-        dot(Camera[row + 3u], homogeneousPoint));
-}
-
 float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
 {
     if (CloudParams.x <= 0.5f) {
@@ -89,105 +78,6 @@ float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
     return saturate(1.0f - cloud * saturate(CloudParams.y));
 }
 
-bool LoadSameReceiverShadow(
-    int2 requestedPixel,
-    float centerDepth,
-    float centerViewDepth,
-    uint eye,
-    uint eyeFirstPixel,
-    uint eyeLastPixel,
-    uint height,
-    float2 dimensions,
-    out float visibility)
-{
-    const int2 samplePixel = int2(
-        clamp(requestedPixel.x, (int)eyeFirstPixel, (int)eyeLastPixel),
-        clamp(requestedPixel.y, 0, (int)height - 1));
-    visibility = saturate(RawContactShadow.Load(int3(samplePixel, 0)));
-    if (visibility >= 0.999f) {
-        return false;
-    }
-    const float sampleDepth = SceneDepth.Load(int3(samplePixel, 0));
-    if (sampleDepth <= 1.0e-6f ||
-        (sampleDepth <= 0.01f) != (centerDepth <= 0.01f)) {
-        visibility = 1.0f;
-        return false;
-    }
-    const float sampleViewDepth = abs(ReconstructViewPosition(
-        (float2(samplePixel) + 0.5f) / dimensions,
-        sampleDepth,
-        eye).z);
-    const float relativeDifference =
-        abs(sampleViewDepth - centerViewDepth) /
-        max(min(sampleViewDepth, centerViewDepth), 1.0f);
-    if (relativeDifference > 0.03f) {
-        visibility = 1.0f;
-        return false;
-    }
-    return true;
-}
-
-float DirectionalClosure(
-    uint2 pixel,
-    float2 averageStep,
-    float centerDepth,
-    float centerViewDepth,
-    uint eye,
-    uint eyeFirstPixel,
-    uint eyeLastPixel,
-    uint height,
-    float2 dimensions)
-{
-    float negativeVisibility = 1.0f;
-    float positiveVisibility = 1.0f;
-    bool negativeFound = false;
-    bool positiveFound = false;
-    [unroll]
-    for (uint searchIndex = 1u; searchIndex <= 4u; ++searchIndex) {
-        const float2 offset =
-            averageStep * ((float)searchIndex * 0.25f);
-        if (!negativeFound) {
-            const int2 negativePixel = int2(round(
-                float2(pixel) - offset));
-            if (!all(negativePixel == int2(pixel))) {
-                negativeFound = LoadSameReceiverShadow(
-                    negativePixel,
-                    centerDepth,
-                    centerViewDepth,
-                    eye,
-                    eyeFirstPixel,
-                    eyeLastPixel,
-                    height,
-                    dimensions,
-                    negativeVisibility);
-            }
-        }
-        if (!positiveFound) {
-            const int2 positivePixel = int2(round(
-                float2(pixel) + offset));
-            if (!all(positivePixel == int2(pixel))) {
-                positiveFound = LoadSameReceiverShadow(
-                    positivePixel,
-                    centerDepth,
-                    centerViewDepth,
-                    eye,
-                    eyeFirstPixel,
-                    eyeLastPixel,
-                    height,
-                    dimensions,
-                    positiveVisibility);
-            }
-        }
-        if (negativeFound && positiveFound) {
-            break;
-        }
-    }
-    // Visibility is lower in shadow. Requiring a shadow on each side closes
-    // only an internal repeated-ray gap and cannot dilate an exterior edge.
-    return negativeFound && positiveFound ?
-        max(negativeVisibility, positiveVisibility) : 1.0f;
-}
-
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
@@ -204,9 +94,8 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         ResolvedShadowMask[pixel] = 1.0f;
         return;
     }
+
     const uint eye = min(pixel.x / max(width / 2u, 1u), 1u);
-    const uint eyeFirstPixel = eye * (width / 2u);
-    const uint eyeLastPixel = (eye + 1u) * (width / 2u) - 1u;
     const float2 dimensions = float2(width, height);
     const float2 packedUv = (float2(pixel) + 0.5f) / dimensions;
     const float3 surface = ReconstructViewPosition(
@@ -215,38 +104,21 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         eye);
     const float3 towardLight = normalize(DFLight[eye + 1u].xyz);
     const float cloudVisibility = CloudVisibility(surface, towardLight);
-    float contactVisibility = saturate(
-        RawContactShadow.Load(int3(pixel, 0)));
 
+    float contactVisibility = 1.0f;
     const bool contactEnabled =
         ContactParams2.z > 0.5f && ContactParams0.x > 0.0f;
     if (contactEnabled) {
-        const float rayLength = ContactParams0.y;
-        const float4 startClip = ProjectViewPosition(surface, eye);
-        const float4 endClip = ProjectViewPosition(
-            surface + towardLight * rayLength,
-            eye);
-        const float2 startNdc = startClip.xy /
-            max(abs(startClip.w), 1.0e-7f);
-        const float2 endNdc = endClip.xy /
-            max(abs(endClip.w), 1.0e-7f);
-        const float2 rayPixelDelta = float2(
-            (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
-            (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
-        const float sampleCount = clamp(ContactParams0.w, 2.0f, 16.0f);
-        const float2 averageStep = rayPixelDelta / sampleCount;
-        const float centerViewDepth = abs(surface.z);
-        const float closureVisibility = DirectionalClosure(
-            pixel,
-            averageStep,
-            centerDepth,
-            centerViewDepth,
-            eye,
-            eyeFirstPixel,
-            eyeLastPixel,
-            height,
-            dimensions);
-        contactVisibility = min(contactVisibility, closureVisibility);
+        const float rawVisibility = saturate(
+            RawContactShadow.Load(int3(pixel, 0)));
+        const float viewDepth = abs(surface.z);
+        const float fadeDistance = max(ContactParams2.x, 1.0f);
+        const float distanceScale =
+            1.0f - smoothstep(0.0f, fadeDistance, viewDepth);
+        contactVisibility = lerp(
+            1.0f,
+            rawVisibility,
+            saturate(ContactParams0.x) * distanceScale);
     }
 
     ResolvedShadowMask[pixel] =
