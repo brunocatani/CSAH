@@ -248,6 +248,9 @@ namespace community_shaders::linear_lighting
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
+        [[nodiscard]] PixelShaderSelection selectDFLightAmbientPixelShader(
+            ID3D11DeviceContext* context,
+            ID3D11PixelShader* requested) noexcept;
         [[nodiscard]] PixelShaderSelection
             selectPixelShaderForDFPrePassDescriptor(
                 ID3D11DeviceContext* context,

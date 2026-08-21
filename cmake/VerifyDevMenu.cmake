@@ -74,13 +74,15 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 87)
+if(NOT controlCount EQUAL 92)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 87 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 92 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
-    linear-lighting native-darkness ibl diffuse-ibl filmic-tonemapping
+    linear-lighting native-darkness ibl diffuse-ibl skylighting
+    skylighting-quality skylighting-diffuse-min skylighting-specular-min
+    skylighting-zenith filmic-tonemapping
     cloud-shadows complex-environment complex-parallax wrapped-grass
     hair-specular subsurface-scattering basic-wetness contact-shadows
     contact-foveated dlaa vanilla-fixes native-auto-exposure exposure-ev
@@ -114,7 +116,8 @@ foreach(required IN ITEMS
     "wrapped_grass::Runtime::get().applySettings"
     "hair_specular::Runtime::get().applySettings"
     "subsurface_scattering::Runtime::get().applySettings"
-    "basic_wetness::Runtime::get().applySettings")
+    "basic_wetness::Runtime::get().applySettings"
+    "skylighting::Runtime::get().applySettings")
   string(FIND "${pluginSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -134,6 +137,7 @@ foreach(required IN ITEMS
     "subsurface_scattering::Runtime::get().applySettings"
     "basic_wetness::Runtime::get().applySettings"
     "cloud_shadows::Runtime::get().applySettings"
+    "skylighting::Runtime::get().applySettings"
     "vanilla_fixes::applySettings")
   string(FIND "${sharedSettingsSource}" "${required}" found)
   if(found EQUAL -1)
@@ -202,4 +206,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 87 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 92 shared-INI controls, direct runtime publication, no wrist provider or assets")

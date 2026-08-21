@@ -26,6 +26,7 @@
 #include "SurfaceClassComplexParallaxLandscapeBase.h"
 #include "SurfaceClassComplexParallaxLandscapeInstancedLod.h"
 #include "SurfaceClassComplexParallaxLandscapeLod.h"
+#include "SkylightingAmbient.h"
 
 namespace community_shaders::linear_lighting
 {
@@ -155,6 +156,10 @@ namespace community_shaders::linear_lighting
         #include "Features/linear_lighting/GeneratedEffectLinearLightingContracts.inl"
         #include "Features/linear_lighting/GeneratedDFLightAmbientContracts.inl"
         #include "Features/surface_classification/GeneratedSurfaceClassContracts.inl"
+
+        static_assert(
+            fo4vr_cs_skylighting_ambient_contracts.size() ==
+            kDFLightAmbientContracts.size());
 
         [[nodiscard]] const SurfaceClassDescriptorContract*
             surfaceClassDescriptorContract(
@@ -1010,14 +1015,20 @@ namespace community_shaders::linear_lighting
         }
 
         try {
+            const auto& skylightingContract =
+                fo4vr_cs_skylighting_ambient_contracts[contractIndex];
+            const auto* replacementBegin = reinterpret_cast<const std::byte*>(
+                skylightingContract.replacementBytecode);
             std::vector<std::byte> patched(
-                originalBytecode.begin(), originalBytecode.end());
+                replacementBegin,
+                replacementBegin +
+                    skylightingContract.replacementBytecodeLength);
             if (!patchDFLightAmbientGamma(
                     patched,
-                    contract.gammaOffsets,
+                    skylightingContract.gammaOffsets,
                     ambientGamma)) {
                 logging::error(
-                    "DFLight ambient replacement '{}' failed its six-offset gamma identity gate.",
+                    "DFLight ambient/Skylighting replacement '{}' failed its transformed six-offset gamma identity gate.",
                     contract.name);
                 return false;
             }
@@ -1694,6 +1705,25 @@ namespace community_shaders::linear_lighting
         ID3D11PixelShader* requested) noexcept
     {
         return selectPixelShaderImpl(context, requested, 0, false, false);
+    }
+
+    PixelShaderSelection Runtime::selectDFLightAmbientPixelShader(
+        ID3D11DeviceContext* context,
+        ID3D11PixelShader* requested) noexcept
+    {
+        if (!requested || context != context_.Get() ||
+            !gpuResourcesReady_.load(std::memory_order_acquire)) {
+            return { requested, {} };
+        }
+        const auto binding = decodeShaderBinding(
+            shaderBindingLookup_.find(requested));
+        if (binding.family != ReplacementShaderFamily::dFLightAmbient ||
+            binding.contractPlusOne == 0) {
+            return { requested, {} };
+        }
+        return selectDFLightAmbientShader(
+            requested,
+            binding.contractPlusOne - 1);
     }
 
     PixelShaderSelection Runtime::selectPixelShaderForDFPrePassDescriptor(

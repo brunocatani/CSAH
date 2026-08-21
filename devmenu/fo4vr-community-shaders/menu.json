@@ -24,6 +24,7 @@
                 { "id": "native-darkness", "type": "toggle", "label": "Preserve Native Darkness", "help": "Keeps native light, ambient, fog, and sky producers at Fallout's darker response floor.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "LinearLighting", "key": "bPreserveNativeDarkness" } },
                 { "id": "ibl", "type": "toggle", "label": "Image Based Lighting", "help": "Enables validated environment lighting and material reflections.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bEnabled" } },
                 { "id": "diffuse-ibl", "type": "toggle", "label": "Diffuse IBL", "help": "Adds environment-derived diffuse bounce lighting.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bDiffuseEnabled" } },
+                { "id": "skylighting", "type": "toggle", "label": "Skylighting", "help": "Uses a shared stereo world-space probe field to occlude sky diffuse and specular light beneath roofs, trees, and overhangs.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "bEnabled" } },
                 { "id": "filmic-tonemapping", "type": "toggle", "label": "Filmic Tonemapping", "help": "Replaces the exact native HDR blend with hue-preserving highlight compression while retaining bloom, cinematic state, fade, and engine adaptation.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "bEnabled" } },
                 { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CloudShadows", "key": "bEnabled" } }
               ]
@@ -164,6 +165,23 @@
       "id": "tuning",
       "label": "Tuning",
       "pages": [
+        {
+          "id": "skylighting-tuning",
+          "label": "Skylighting",
+          "groups": [
+            {
+              "id": "skylighting-response",
+              "label": "World-space sky visibility",
+              "description": "Both eyes share one rolling probe volume. Quality changes its fixed resolution and requires a restart; visibility and zenith controls apply live.",
+              "controls": [
+                { "id": "skylighting-quality", "type": "choice", "label": "Probe Quality", "help": "Selects the fixed 3D probe resolution. Restart Fallout 4 VR after changing this value.", "default": 2, "choices": [ { "label": "Low", "value": 0 }, { "label": "Medium", "value": 1 }, { "label": "High", "value": 2 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "iQuality" } },
+                { "id": "skylighting-diffuse-min", "type": "slider", "label": "Minimum Diffuse Visibility", "help": "Sets the darkest allowed sky-diffuse response in fully occluded areas.", "default": 0.1, "min": 0.01, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "fMinDiffuseVisibility" } },
+                { "id": "skylighting-specular-min", "type": "slider", "label": "Minimum Specular Visibility", "help": "Sets the darkest allowed sky-specular response in fully occluded areas.", "default": 0.1, "min": 0.01, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "fMinSpecularVisibility" } },
+                { "id": "skylighting-zenith", "type": "slider", "label": "Maximum Zenith Angle", "help": "Narrows or widens the sky directions sampled by the occlusion field.", "default": 90.0, "min": 0.0, "max": 90.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "fMaxZenithDegrees" } }
+              ]
+            }
+          ]
+        },
         {
           "id": "surfaces",
           "label": "Surfaces",

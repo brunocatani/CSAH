@@ -69,6 +69,9 @@ int main()
     verifyLive(
         [](Snapshot& value) { value.vanillaFixes.enabled = false; },
         "Vanilla Fixes diff");
+    verifyLive(
+        [](Snapshot& value) { value.skylighting.enabled = false; },
+        "Skylighting diff");
 
     auto native = baseline;
     native.nativeShadows.directionalShadowDistance += 250.0f;

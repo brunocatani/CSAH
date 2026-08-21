@@ -11,6 +11,8 @@
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "Features/skylighting/SkylightingNativeHooks.h"
+#include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "Features/vanilla_fixes/FocusShadowRuntime.h"
@@ -1121,8 +1123,13 @@ namespace community_shaders::render
         void retireDisabledFeatureBindings(
             ID3D11DeviceContext* context) noexcept
         {
+            const auto skylightingOwnsAmbient =
+                activeReplacementBinding.family ==
+                    linear_lighting::ReplacementShaderFamily::dFLightAmbient &&
+                skylighting::Runtime::get().requested();
             if (activeReplacementBinding.family !=
                     linear_lighting::ReplacementShaderFamily::none &&
+                !skylightingOwnsAmbient &&
                 !linear_lighting::Runtime::get()
                      .replacementFeaturesEnabled()) {
                 if (originalPSSetShader && activeReplacementOriginal) {
@@ -1806,6 +1813,20 @@ namespace community_shaders::render
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
+            auto& skylightingRuntime = skylighting::Runtime::get();
+            auto* effectiveDepthStencil =
+                skylightingRuntime.substituteDepthStencil(
+                    context,
+                    depthStencil);
+            if (skylightingRuntime.privateCaptureActive()) {
+                original(
+                    context,
+                    renderTargetCount,
+                    renderTargets,
+                    effectiveDepthStencil);
+                return;
+            }
+
             auto& surfaceRuntime = surface_classification::Runtime::get();
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 linear_lighting::Runtime::get().linearLightingEnabled() &&
@@ -1819,7 +1840,7 @@ namespace community_shaders::render
                         context,
                         binding.renderTargetCount,
                         binding.renderTargets.data(),
-                        depthStencil);
+                        effectiveDepthStencil);
                     return;
                 }
             }
@@ -1827,7 +1848,7 @@ namespace community_shaders::render
                 context,
                 renderTargetCount,
                 renderTargets,
-                depthStencil);
+                effectiveDepthStencil);
         }
 
         void STDMETHODCALLTYPE hookOMSetRenderTargetsAndUnorderedAccessViews(
@@ -1850,6 +1871,24 @@ namespace community_shaders::render
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
 
+            auto& skylightingRuntime = skylighting::Runtime::get();
+            auto* effectiveDepthStencil =
+                skylightingRuntime.substituteDepthStencil(
+                    context,
+                    depthStencil);
+            if (skylightingRuntime.privateCaptureActive()) {
+                original(
+                    context,
+                    renderTargetCount,
+                    renderTargets,
+                    effectiveDepthStencil,
+                    unorderedAccessStartSlot,
+                    unorderedAccessViewCount,
+                    unorderedAccessViews,
+                    initialCounts);
+                return;
+            }
+
             auto& surfaceRuntime = surface_classification::Runtime::get();
             const auto appendDoesNotOverlapUavs =
                 unorderedAccessViewCount == 0 ||
@@ -1868,7 +1907,7 @@ namespace community_shaders::render
                         context,
                         binding.renderTargetCount,
                         binding.renderTargets.data(),
-                        depthStencil,
+                        effectiveDepthStencil,
                         unorderedAccessStartSlot,
                         unorderedAccessViewCount,
                         unorderedAccessViews,
@@ -1880,7 +1919,7 @@ namespace community_shaders::render
                 context,
                 renderTargetCount,
                 renderTargets,
-                depthStencil,
+                effectiveDepthStencil,
                 unorderedAccessStartSlot,
                 unorderedAccessViewCount,
                 unorderedAccessViews,
@@ -1943,6 +1982,7 @@ namespace community_shaders::render
             const RecursionGuard recursionGuard(insidePSSetShaderHook);
             activatePendingQualificationSession();
             auto& replacementRuntime = linear_lighting::Runtime::get();
+            auto& skylightingRuntime = skylighting::Runtime::get();
             auto& iblRuntime = ibl::Runtime::get();
             auto& contactShadowRuntime = contact_shadows::Runtime::get();
             auto& wrappedGrassRuntime = wrapped_grass::Runtime::get();
@@ -1957,6 +1997,8 @@ namespace community_shaders::render
                 qualificationSessionActive.load(std::memory_order_acquire);
             const auto replacementFeaturesActive =
                 replacementRuntime.replacementFeaturesEnabled();
+            const auto skylightingFeatureActive =
+                skylightingRuntime.requested();
             const auto iblFeatureActive = iblRuntime.featureEnabled();
             const auto contactShadowFeatureActive =
                 contactShadowRuntime.featureEnabled();
@@ -1992,6 +2034,7 @@ namespace community_shaders::render
                     dflightCompositorActive);
             }
             if (!replacementFeaturesActive && !iblFeatureActive &&
+                !skylightingFeatureActive &&
                 !dflightCompositorActive &&
                 !filmicTonemappingFeatureActive &&
                 !qualificationActive) {
@@ -2051,24 +2094,38 @@ namespace community_shaders::render
             const auto selectedDescriptor = descriptorPending ?
                 pendingDFPrePassDescriptor.descriptor :
                 activeDescriptor.descriptor;
-            const auto selection =
-                !contactShadowSelection.binding &&
-                    (replacementFeaturesActive || qualificationActive) ?
-                (activeGrassVertexShader ?
-                    replacementRuntime.selectPixelShaderForGrassVertex(
-                        context,
-                        shader) :
-                    (descriptorAvailable ?
-                    replacementRuntime
-                        .selectPixelShaderForDFPrePassDescriptor(
+            const auto selection = [&]() noexcept {
+                auto selected =
+                    !contactShadowSelection.binding &&
+                        (replacementFeaturesActive || qualificationActive) ?
+                    (activeGrassVertexShader ?
+                        replacementRuntime.selectPixelShaderForGrassVertex(
                             context,
-                            shader,
-                            selectedDescriptor) :
-                    replacementRuntime.selectPixelShader(context, shader))) :
-                linear_lighting::PixelShaderSelection{
-                    contactShadowSelection.shader,
-                    {},
-                };
+                            shader) :
+                        (descriptorAvailable ?
+                        replacementRuntime
+                            .selectPixelShaderForDFPrePassDescriptor(
+                                context,
+                                shader,
+                                selectedDescriptor) :
+                        replacementRuntime.selectPixelShader(
+                            context,
+                            shader))) :
+                    linear_lighting::PixelShaderSelection{
+                        contactShadowSelection.shader,
+                        {},
+                    };
+                if (!contactShadowSelection.binding &&
+                    skylightingFeatureActive && classInstanceCount == 0 &&
+                    selected.binding.family ==
+                        linear_lighting::ReplacementShaderFamily::none) {
+                    selected =
+                        replacementRuntime.selectDFLightAmbientPixelShader(
+                            context,
+                            shader);
+                }
+                return selected;
+            }();
             if (descriptorPending &&
                 selection.binding.family ==
                     linear_lighting::ReplacementShaderFamily::material) {
@@ -2192,6 +2249,12 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto skylightingBindings =
+                skylighting::Runtime::get().scopeAmbientDraw(
+                    context,
+                    activeReplacementBinding.family ==
+                        linear_lighting::ReplacementShaderFamily::
+                            dFLightAmbient);
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2240,6 +2303,12 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto skylightingBindings =
+                skylighting::Runtime::get().scopeAmbientDraw(
+                    context,
+                    activeReplacementBinding.family ==
+                        linear_lighting::ReplacementShaderFamily::
+                            dFLightAmbient);
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2292,6 +2361,12 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto skylightingBindings =
+                skylighting::Runtime::get().scopeAmbientDraw(
+                    context,
+                    activeReplacementBinding.family ==
+                        linear_lighting::ReplacementShaderFamily::
+                            dFLightAmbient);
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2349,6 +2424,12 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const auto skylightingBindings =
+                skylighting::Runtime::get().scopeAmbientDraw(
+                    context,
+                    activeReplacementBinding.family ==
+                        linear_lighting::ReplacementShaderFamily::
+                            dFLightAmbient);
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -3049,6 +3130,13 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            skylighting::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            if (!skylighting::installNativeHooks()) {
+                logging::warn(
+                    "Verified Skylighting precipitation capture hook remains unavailable; Skylighting stays fail-closed while other renderer features continue.");
+            }
             surface_classification::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext);

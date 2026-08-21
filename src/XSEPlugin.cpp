@@ -22,6 +22,9 @@
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/native_shadows/NativeShadowRuntime.h"
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
+#include "Features/skylighting/SkylightingNativeHooks.h"
+#include "Features/skylighting/SkylightingRuntime.h"
+#include "Features/skylighting/SkylightingSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
@@ -101,6 +104,8 @@ namespace
                 validateBSDFPrePassShaderHook("GameDataReady");
             (void)community_shaders::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
+            (void)community_shaders::skylighting::validateNativeHooks(
+                "GameDataReady");
             (void)community_shaders::dlaa::validateEngineHooks(
                 "GameDataReady");
             (void)community_shaders::dlaa::validateD3D11Hooks(
@@ -119,6 +124,8 @@ namespace
                 community_shaders::dlaa::engineHookSnapshot();
             const auto dlaaD3d =
                 community_shaders::dlaa::d3d11HookSnapshot();
+            const auto skylighting =
+                community_shaders::skylighting::Runtime::get().snapshot();
             community_shaders::logging::info(
                 "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, grassVsMask=0x{:02X}, grassVsCreated={}, grassVsTracked={}, grassClassSelections={}, ambientContractMask=0x{:010X}, ambientReadyMask=0x{:010X}, ambientShaders={}, ambientTracked={}, ambientBuilds={}, ambientBuildFailures={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, ambientReplacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightProducerOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientTransformPrepared={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
@@ -183,6 +190,24 @@ namespace
                 dlaa.stereoEvaluations,
                 dlaa.stereoEvaluationFailures,
                 dlaa.committedFrames);
+            community_shaders::logging::info(
+                "F4SE GameDataReady: Skylighting requested={}, gpuReady={}, nativeHookOwned={}, exteriorActive={}, privateDepthReady={}, probeValid={}, quality={} ({}x{}x{}), captures={}, depthBinds={}, dispatches={}, rejectedCaptures={}, ambientBinds={}.",
+                skylighting.requested,
+                skylighting.gpuResourcesReady,
+                skylighting.nativeHookOwned,
+                skylighting.exteriorActive,
+                skylighting.privateDepthReady,
+                skylighting.probeDataValid,
+                community_shaders::skylighting::qualityName(
+                    skylighting.activeQuality),
+                skylighting.probeWidth,
+                skylighting.probeHeight,
+                skylighting.probeDepth,
+                skylighting.captureCalls,
+                skylighting.privateDepthBinds,
+                skylighting.probeDispatches,
+                skylighting.rejectedCaptures,
+                skylighting.ambientBinds);
             break;
         }
         case F4SE::MessagingInterface::kPostLoadGame:
@@ -191,6 +216,8 @@ namespace
                 validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
+            community_shaders::skylighting::Runtime::get()
+                .beginWorldSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("PostLoadGame");
             community_shaders::dlaa::Runtime::get().beginQualificationSession(
@@ -202,6 +229,8 @@ namespace
                 validateD3D11ShaderHooks("GameSessionReady");
             community_shaders::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
+            community_shaders::skylighting::Runtime::get()
+                .beginWorldSession();
             community_shaders::diagnostics::
                 beginLinearLightingQualificationSession("NewGame");
             community_shaders::dlaa::Runtime::get().beginQualificationSession(
@@ -308,6 +337,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::vanilla_fixes::loadSettings();
         const auto nativeShadowSettings =
             community_shaders::native_shadows::loadSettings();
+        const auto skylightingSettings =
+            community_shaders::skylighting::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
@@ -328,6 +359,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             subsurfaceScatteringSettings);
         community_shaders::basic_wetness::Runtime::get().applySettings(
             basicWetnessSettings);
+        community_shaders::skylighting::Runtime::get().applySettings(
+            skylightingSettings);
         if (!community_shaders::native_shadows::startRuntime(
                 nativeShadowSettings)) {
             community_shaders::logging::warn(
@@ -369,7 +402,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             community_shaders::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
@@ -379,6 +412,9 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             iblSettings.enabled,
             iblSettings.diffuseEnabled,
             iblSettings.diffuseLevel,
+            skylightingSettings.enabled,
+            community_shaders::skylighting::qualityName(
+                skylightingSettings.quality),
             contactShadowSettings.enabled,
             contactShadowSettings.sampleCount,
             wrappedGrassSettings.enabled,
