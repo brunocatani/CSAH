@@ -187,16 +187,13 @@ foreach(required IN ITEMS
     "Texture3D<float4> SkylightingProbeArray"
     "RWByteAddressBuffer SkylightingAmbientDiagnostic"
     "ReconstructRelativeWorldPosition"
-    "screenPosition * DFLight[0].xy"
-    "DFLight[45].xy * DFLight[0].xy"
+    "const float2 screenUv = input.Position.xy /"
     "NativeDepth.SampleLevel("
-    "const float depth = sampledDepth.y"
+    "const float depth = loadedDepth.x"
     "NativeDepth.Load("
     "Texture2D<float4> NativeDepth"
-    "NativeNormal.Sample("
-    "NativeMaterial.Sample("
-    "register(s1)"
-    "register(s2)"
+    "NativeNormal.Load("
+    "NativeMaterial.Load("
     "register(s3)"
     "insideVolume"
     "FauxSpecularLobe"
@@ -209,11 +206,17 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
-string(FIND "${ambientShader}" "/ DFLight[45]" staleAmbientCoordinate)
-if(NOT staleAmbientCoordinate EQUAL -1)
-  message(FATAL_ERROR
-    "Skylighting ambient shader retained the disproven texture-ratio clip reconstruction")
-endif()
+foreach(stale IN ITEMS
+    "DFLight[0]"
+    "DFLight[45]"
+    "NativeNormal.Sample("
+    "NativeMaterial.Sample(")
+  string(FIND "${ambientShader}" "${stale}" staleAmbientCoordinate)
+  if(NOT staleAmbientCoordinate EQUAL -1)
+    message(FATAL_ERROR
+      "Skylighting ambient shader retained disproven native addressing '${stale}'")
+  endif()
+endforeach()
 
 foreach(required IN ITEMS
     "register(t0)"

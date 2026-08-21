@@ -1202,7 +1202,7 @@ namespace community_shaders::skylighting
         std::memcpy(stats.data(), mapped.pData, kAmbientDiagnosticByteWidth);
         context_->Unmap(ambientDiagnosticStaging_.Get(), 0);
         logging::info(
-            "Skylighting ambient-consumer trace: sparsePixels={}, depthValid={}, finitePosition={}, insideVolume={}, weightedSample={}, positiveFade={}, diffuseNonNeutral={}, specularNonNeutral={}, diffuseRange={:.6f}..{:.6f}, specularRange={:.6f}..{:.6f}, fadeRange={:.6f}..{:.6f}, sampledDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}), nativeUv=({:.6f}..{:.6f}, {:.6f}..{:.6f}), loadedDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}).",
+            "Skylighting ambient-consumer trace: sparsePixels={}, depthValid={}, finitePosition={}, insideVolume={}, weightedSample={}, positiveFade={}, diffuseNonNeutral={}, specularNonNeutral={}, diffuseRange={:.6f}..{:.6f}, specularRange={:.6f}..{:.6f}, fadeRange={:.6f}..{:.6f}, sampledDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}), screenUv=({:.6f}..{:.6f}, {:.6f}..{:.6f}), loadedDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}).",
             stats[0],
             stats[1],
             stats[2],
