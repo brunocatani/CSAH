@@ -103,48 +103,6 @@ float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
     return saturate(1.0f - cloud * saturate(CloudParams.y));
 }
 
-uint StableRayStride(uint sampleCount)
-{
-    // Each stride is coprime with its matching sample count, so the complete
-    // sequence visits the original midpoint lattice exactly once. The order
-    // spreads every prefix across the ray. Distance fading and foveation can
-    // therefore reduce work without moving surviving taps with headset motion.
-    switch (sampleCount) {
-    case 2u:
-        return 1u;
-    case 3u:
-        return 2u;
-    case 4u:
-        return 3u;
-    case 5u:
-        return 3u;
-    case 6u:
-        return 5u;
-    case 7u:
-        return 4u;
-    case 8u:
-        return 5u;
-    case 9u:
-        return 5u;
-    case 10u:
-        return 7u;
-    case 11u:
-        return 6u;
-    case 12u:
-        return 7u;
-    case 13u:
-        return 7u;
-    case 14u:
-        return 9u;
-    case 15u:
-        return 8u;
-    case 16u:
-        return 9u;
-    default:
-        return 1u;
-    }
-}
-
 bool LoadCompatibleViewPosition(
     int2 requestedPixel,
     float centerDepth,
@@ -364,6 +322,38 @@ float BlockerOcclusion(float separation, float bias, float thickness)
     return entry * exit;
 }
 
+float SegmentBlockerOcclusion(
+    float previousSeparation,
+    float separation,
+    float bias,
+    float thickness)
+{
+    const float endpointOcclusion = max(
+        BlockerOcclusion(previousSeparation, bias, thickness),
+        BlockerOcclusion(separation, bias, thickness));
+    if (thickness - bias <= 1.0e-5f) {
+        return endpointOcclusion;
+    }
+
+    // Sparse point tests detect only the contour where a tap happens to land
+    // inside the blocker slab. The ordered ray segment between two fixed taps
+    // is continuous: if its separation interval crosses the slab, evaluate
+    // the strongest point in that interval. This fills the projected blocker
+    // without increasing depth reads or inventing screen-space dilation.
+    const float segmentMinimum = min(previousSeparation, separation);
+    const float segmentMaximum = max(previousSeparation, separation);
+    if (segmentMaximum <= bias || segmentMinimum >= thickness) {
+        return endpointOcclusion;
+    }
+    const float intervalProbe = clamp(
+        0.5f * (bias + thickness),
+        segmentMinimum,
+        segmentMaximum);
+    return max(
+        endpointOcclusion,
+        BlockerOcclusion(intervalProbe, bias, thickness));
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
 {
@@ -469,7 +459,6 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
     }
 
     const float rayLength = ContactParams0.y;
-    const uint sampleStride = StableRayStride(sampleCount);
     const float4 startClip = ProjectViewPosition(surface, eye);
     const float4 endClip = ProjectViewPosition(
         surface + towardLight * rayLength,
@@ -482,12 +471,22 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         (endNdc.x - startNdc.x) * 0.25f * dimensions.x,
         (startNdc.y - endNdc.y) * 0.5f * dimensions.y);
     float occlusion = 0.0f;
+    float previousSeparation = 0.0f;
+    bool previousSeparationValid = true;
+    uint selectionAccumulator = 0u;
     [loop]
-    for (uint index = 0u; index < 16u; ++index) {
-        if (index >= activeSampleCount) {
+    for (uint sampleSlot = 0u; sampleSlot < 16u; ++sampleSlot) {
+        if (sampleSlot >= sampleCount) {
             break;
         }
-        const uint sampleSlot = (index * sampleStride) % sampleCount;
+        // Select a fixed, ordered subset of the requested lattice. The integer
+        // accumulator distributes the foveated budget across the full ray;
+        // surviving taps never move when the budget changes.
+        selectionAccumulator += activeSampleCount;
+        if (selectionAccumulator < sampleCount) {
+            continue;
+        }
+        selectionAccumulator -= sampleCount;
         const float rayStep =
             ((float)sampleSlot + 0.5f) / (float)sampleCount;
         const float rayFraction =
@@ -519,6 +518,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
                 height,
                 dimensions,
                 sampledPosition)) {
+            previousSeparationValid = false;
             continue;
         }
 
@@ -531,6 +531,8 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             dot(sampledPosition - surface, receiverNormal) *
             planeOrientation;
         if (orientedPlaneSeparation <= receiverPlaneBias) {
+            previousSeparation = 0.0f;
+            previousSeparationValid = true;
             continue;
         }
 
@@ -541,10 +543,18 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float thickness = max(
             ContactParams1.x,
             candidateDepth * ContactParams0.z);
-        const float hit = BlockerOcclusion(
-            separation,
-            ContactParams1.y,
-            thickness);
+        const float hit = previousSeparationValid ?
+            SegmentBlockerOcclusion(
+                previousSeparation,
+                separation,
+                ContactParams1.y,
+                thickness) :
+            BlockerOcclusion(
+                separation,
+                ContactParams1.y,
+                thickness);
+        previousSeparation = separation;
+        previousSeparationValid = true;
         occlusion = max(occlusion, hit);
         if (occlusion >= 0.999f) {
             break;
