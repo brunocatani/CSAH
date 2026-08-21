@@ -89,7 +89,7 @@ float CloudVisibility(float3 relativeWorldPosition, float3 towardLight)
     return saturate(1.0f - cloud * saturate(CloudParams.y));
 }
 
-bool LoadSameReceiverVisibility(
+bool LoadSameReceiverShadow(
     int2 requestedPixel,
     float centerDepth,
     float centerViewDepth,
@@ -103,6 +103,10 @@ bool LoadSameReceiverVisibility(
     const int2 samplePixel = int2(
         clamp(requestedPixel.x, (int)eyeFirstPixel, (int)eyeLastPixel),
         clamp(requestedPixel.y, 0, (int)height - 1));
+    visibility = saturate(RawContactShadow.Load(int3(samplePixel, 0)));
+    if (visibility >= 0.999f) {
+        return false;
+    }
     const float sampleDepth = SceneDepth.Load(int3(samplePixel, 0));
     if (sampleDepth <= 1.0e-6f ||
         (sampleDepth <= 0.01f) != (centerDepth <= 0.01f)) {
@@ -120,13 +124,12 @@ bool LoadSameReceiverVisibility(
         visibility = 1.0f;
         return false;
     }
-    visibility = saturate(RawContactShadow.Load(int3(samplePixel, 0)));
     return true;
 }
 
-float TwoSidedBridge(
+float DirectionalClosure(
     uint2 pixel,
-    float2 offset,
+    float2 averageStep,
     float centerDepth,
     float centerViewDepth,
     uint eye,
@@ -135,37 +138,53 @@ float TwoSidedBridge(
     uint height,
     float2 dimensions)
 {
-    const int2 negativePixel = int2(round(float2(pixel) - offset));
-    const int2 positivePixel = int2(round(float2(pixel) + offset));
-    if (all(negativePixel == int2(pixel)) ||
-        all(positivePixel == int2(pixel))) {
-        return 1.0f;
+    float negativeVisibility = 1.0f;
+    float positiveVisibility = 1.0f;
+    bool negativeFound = false;
+    bool positiveFound = false;
+    [unroll]
+    for (uint searchIndex = 1u; searchIndex <= 4u; ++searchIndex) {
+        const float2 offset =
+            averageStep * ((float)searchIndex * 0.25f);
+        if (!negativeFound) {
+            const int2 negativePixel = int2(round(
+                float2(pixel) - offset));
+            if (!all(negativePixel == int2(pixel))) {
+                negativeFound = LoadSameReceiverShadow(
+                    negativePixel,
+                    centerDepth,
+                    centerViewDepth,
+                    eye,
+                    eyeFirstPixel,
+                    eyeLastPixel,
+                    height,
+                    dimensions,
+                    negativeVisibility);
+            }
+        }
+        if (!positiveFound) {
+            const int2 positivePixel = int2(round(
+                float2(pixel) + offset));
+            if (!all(positivePixel == int2(pixel))) {
+                positiveFound = LoadSameReceiverShadow(
+                    positivePixel,
+                    centerDepth,
+                    centerViewDepth,
+                    eye,
+                    eyeFirstPixel,
+                    eyeLastPixel,
+                    height,
+                    dimensions,
+                    positiveVisibility);
+            }
+        }
+        if (negativeFound && positiveFound) {
+            break;
+        }
     }
-    float negativeVisibility;
-    float positiveVisibility;
-    const bool negativeValid = LoadSameReceiverVisibility(
-        negativePixel,
-        centerDepth,
-        centerViewDepth,
-        eye,
-        eyeFirstPixel,
-        eyeLastPixel,
-        height,
-        dimensions,
-        negativeVisibility);
-    const bool positiveValid = LoadSameReceiverVisibility(
-        positivePixel,
-        centerDepth,
-        centerViewDepth,
-        eye,
-        eyeFirstPixel,
-        eyeLastPixel,
-        height,
-        dimensions,
-        positiveVisibility);
-    // Visibility is lower in shadow. max() requires both sides to be dark,
-    // so this closes an internal gap without dilating either outer edge.
-    return negativeValid && positiveValid ?
+    // Visibility is lower in shadow. Requiring a shadow on each side closes
+    // only an internal repeated-ray gap and cannot dilate an exterior edge.
+    return negativeFound && positiveFound ?
         max(negativeVisibility, positiveVisibility) : 1.0f;
 }
 
@@ -217,9 +236,9 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
         const float sampleCount = clamp(ContactParams0.w, 2.0f, 16.0f);
         const float2 averageStep = rayPixelDelta / sampleCount;
         const float centerViewDepth = abs(surface.z);
-        const float bridgeQuarter = TwoSidedBridge(
+        const float closureVisibility = DirectionalClosure(
             pixel,
-            averageStep * 0.25f,
+            averageStep,
             centerDepth,
             centerViewDepth,
             eye,
@@ -227,19 +246,7 @@ void CSMain(uint3 dispatchThread : SV_DispatchThreadID)
             eyeLastPixel,
             height,
             dimensions);
-        const float bridgeHalf = TwoSidedBridge(
-            pixel,
-            averageStep * 0.5f,
-            centerDepth,
-            centerViewDepth,
-            eye,
-            eyeFirstPixel,
-            eyeLastPixel,
-            height,
-            dimensions);
-        contactVisibility = min(
-            contactVisibility,
-            min(bridgeQuarter, bridgeHalf));
+        contactVisibility = min(contactVisibility, closureVisibility);
     }
 
     ResolvedShadowMask[pixel] =
