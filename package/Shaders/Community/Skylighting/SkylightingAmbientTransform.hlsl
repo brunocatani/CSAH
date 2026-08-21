@@ -241,9 +241,62 @@ PixelOutput PSMain(PixelInput input)
     if (Response.z > 0.5f) {
         const float2 nativeUv = input.Position.xy *
             DFLight[45].xy * DFLight[0].xy;
-        const float depth = NativeDepth.Sample(
+        const float4 sampledDepth = NativeDepth.SampleLevel(
             NativeDepthSampler,
-            nativeUv).y;
+            nativeUv,
+            0.0f);
+        uint depthWidth;
+        uint depthHeight;
+        NativeDepth.GetDimensions(depthWidth, depthHeight);
+        const int2 depthPixel = clamp(
+            int2(input.Position.xy),
+            int2(0, 0),
+            int2((int)depthWidth - 1, (int)depthHeight - 1));
+        const float4 loadedDepth = NativeDepth.Load(
+            int3(depthPixel, 0));
+        if (diagnosticSample) {
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                56u, asuint(sampledDepth.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                60u, asuint(sampledDepth.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                64u, asuint(sampledDepth.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                68u, asuint(sampledDepth.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                72u, asuint(sampledDepth.z), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                76u, asuint(sampledDepth.z), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                80u, asuint(sampledDepth.w), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                84u, asuint(sampledDepth.w), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                88u, asuint(nativeUv.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                92u, asuint(nativeUv.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                96u, asuint(nativeUv.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                100u, asuint(nativeUv.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                104u, asuint(loadedDepth.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                108u, asuint(loadedDepth.x), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                112u, asuint(loadedDepth.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                116u, asuint(loadedDepth.y), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                120u, asuint(loadedDepth.z), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                124u, asuint(loadedDepth.z), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMin(
+                128u, asuint(loadedDepth.w), ignored);
+            SkylightingAmbientDiagnostic.InterlockedMax(
+                132u, asuint(loadedDepth.w), ignored);
+        }
+        const float depth = sampledDepth.y;
         if (depth > 1.0e-6f) {
             if (diagnosticSample) {
                 SkylightingAmbientDiagnostic.InterlockedAdd(

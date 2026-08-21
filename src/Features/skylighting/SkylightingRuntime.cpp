@@ -60,7 +60,7 @@ namespace community_shaders::skylighting
         constexpr std::size_t kDiagnosticStatCount = 10;
         constexpr std::size_t kDiagnosticByteWidth =
             kDiagnosticStatCount * sizeof(std::uint32_t);
-        constexpr std::size_t kAmbientDiagnosticStatCount = 14;
+        constexpr std::size_t kAmbientDiagnosticStatCount = 34;
         constexpr std::size_t kAmbientDiagnosticByteWidth =
             kAmbientDiagnosticStatCount * sizeof(std::uint32_t);
         constexpr UINT kAmbientDiagnosticUavSlot = 7;
@@ -1202,7 +1202,7 @@ namespace community_shaders::skylighting
         std::memcpy(stats.data(), mapped.pData, kAmbientDiagnosticByteWidth);
         context_->Unmap(ambientDiagnosticStaging_.Get(), 0);
         logging::info(
-            "Skylighting ambient-consumer trace: sparsePixels={}, depthValid={}, finitePosition={}, insideVolume={}, weightedSample={}, positiveFade={}, diffuseNonNeutral={}, specularNonNeutral={}, diffuseRange={:.6f}..{:.6f}, specularRange={:.6f}..{:.6f}, fadeRange={:.6f}..{:.6f}.",
+            "Skylighting ambient-consumer trace: sparsePixels={}, depthValid={}, finitePosition={}, insideVolume={}, weightedSample={}, positiveFade={}, diffuseNonNeutral={}, specularNonNeutral={}, diffuseRange={:.6f}..{:.6f}, specularRange={:.6f}..{:.6f}, fadeRange={:.6f}..{:.6f}, sampledDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}), nativeUv=({:.6f}..{:.6f}, {:.6f}..{:.6f}), loadedDepthRgba=({:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}, {:.6f}..{:.6f}).",
             stats[0],
             stats[1],
             stats[2],
@@ -1216,7 +1216,27 @@ namespace community_shaders::skylighting
             std::bit_cast<float>(stats[10]),
             std::bit_cast<float>(stats[11]),
             std::bit_cast<float>(stats[12]),
-            std::bit_cast<float>(stats[13]));
+            std::bit_cast<float>(stats[13]),
+            std::bit_cast<float>(stats[14]),
+            std::bit_cast<float>(stats[15]),
+            std::bit_cast<float>(stats[16]),
+            std::bit_cast<float>(stats[17]),
+            std::bit_cast<float>(stats[18]),
+            std::bit_cast<float>(stats[19]),
+            std::bit_cast<float>(stats[20]),
+            std::bit_cast<float>(stats[21]),
+            std::bit_cast<float>(stats[22]),
+            std::bit_cast<float>(stats[23]),
+            std::bit_cast<float>(stats[24]),
+            std::bit_cast<float>(stats[25]),
+            std::bit_cast<float>(stats[26]),
+            std::bit_cast<float>(stats[27]),
+            std::bit_cast<float>(stats[28]),
+            std::bit_cast<float>(stats[29]),
+            std::bit_cast<float>(stats[30]),
+            std::bit_cast<float>(stats[31]),
+            std::bit_cast<float>(stats[32]),
+            std::bit_cast<float>(stats[33]));
     }
 
     void Runtime::onNativePrecipitationFrame(
@@ -1508,6 +1528,14 @@ namespace community_shaders::skylighting
             initial[8] = std::bit_cast<std::uint32_t>(1.0f);
             initial[10] = std::bit_cast<std::uint32_t>(1.0f);
             initial[12] = std::bit_cast<std::uint32_t>(1.0f);
+            const auto diagnosticRangeMinimum =
+                std::bit_cast<std::uint32_t>(
+                    std::numeric_limits<float>::max());
+            for (std::size_t index = 14;
+                 index < kAmbientDiagnosticStatCount;
+                 index += 2) {
+                initial[index] = diagnosticRangeMinimum;
+            }
             context_->UpdateSubresource(
                 ambientDiagnosticBuffer_.Get(),
                 0,
