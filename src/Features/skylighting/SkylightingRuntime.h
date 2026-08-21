@@ -135,6 +135,13 @@ namespace community_shaders::skylighting
             std::uint32_t depth{};
         };
 
+        struct ProbeUpdateRegion
+        {
+            std::array<std::uint32_t, 3> origin{};
+            Dimensions extent{};
+            bool resetAccumulation{};
+        };
+
         struct alignas(16) ProbeLevelConstants
         {
             Float4 arraySize{};
@@ -142,7 +149,7 @@ namespace community_shaders::skylighting
             Float4 positionOffset{};
             UInt4 arrayDimensions{};
             UInt4 arrayOrigin{};
-            Int4 validMargin{};
+            Int4 updateRegion{};
         };
         static_assert(sizeof(ProbeLevelConstants) == 96);
 
@@ -184,11 +191,10 @@ namespace community_shaders::skylighting
             ID3D11DepthStencilView* source) noexcept;
         void clearProbeResources() noexcept;
         void publishConstants(bool featureActive) noexcept;
-        void dispatchProbeUpdate(
+        [[nodiscard]] bool dispatchProbeUpdate(
             ProbeResources& level,
             std::uint32_t levelIndex,
-            std::uint32_t sliceStart,
-            std::uint32_t sliceCount) noexcept;
+            const ProbeUpdateRegion& region) noexcept;
         void consumeDiagnosticReadback() noexcept;
         void submitAmbientDiagnostic() noexcept;
         void consumeAmbientDiagnosticReadback() noexcept;
@@ -199,7 +205,8 @@ namespace community_shaders::skylighting
             float captureHeight,
             float x,
             float y,
-            float z) noexcept;
+            float z,
+            std::array<std::int32_t, 3>& movement) noexcept;
 
         Settings startupSettings_{};
         Quality activeQuality_{ Quality::high };

@@ -973,7 +973,8 @@ namespace community_shaders::skylighting
         float captureHeight,
         float x,
         float y,
-        float z) noexcept
+        float z,
+        std::array<std::int32_t, 3>& movement) noexcept
     {
         const std::array<float, 3> position{ x, y, z };
         const std::array<float, 3> cellSize{
@@ -1036,8 +1037,8 @@ namespace community_shaders::skylighting
                 level.dimensions.depth),
             0,
         };
-        levelConstants.validMargin = level.previousCellValid ?
-            Int4{
+        if (level.previousCellValid) {
+            movement = {
                 clampDifference<std::int32_t>(
                     level.previousCell[0] - cell[0],
                     level.dimensions.width),
@@ -1047,14 +1048,15 @@ namespace community_shaders::skylighting
                 clampDifference<std::int32_t>(
                     level.previousCell[2] - cell[2],
                     level.dimensions.depth),
-                0,
-            } :
-            Int4{
+            };
+        } else {
+            movement = {
                 static_cast<std::int32_t>(level.dimensions.width),
                 static_cast<std::int32_t>(level.dimensions.height),
                 static_cast<std::int32_t>(level.dimensions.depth),
-                0,
             };
+        }
+        levelConstants.updateRegion = {};
         const auto moved = !level.previousCellValid ||
             level.previousCell != cell;
         level.previousCell = cell;
@@ -1092,32 +1094,58 @@ namespace community_shaders::skylighting
         publishedFeatureActive_ = featureActive;
     }
 
-    void Runtime::dispatchProbeUpdate(
+    bool Runtime::dispatchProbeUpdate(
         ProbeResources& level,
         std::uint32_t levelIndex,
-        std::uint32_t sliceStart,
-        std::uint32_t sliceCount) noexcept
+        const ProbeUpdateRegion& region) noexcept
     {
         if (!context_ || !privateDepthResource_ || !level.probeOutput ||
             !level.accumulationOutput || !diagnosticBuffer_ ||
             !diagnosticOutput_ || !diagnosticStaging_ ||
             !diagnosticCompletion_ || !updateShader_ ||
             !comparisonSampler_ || !constantsBuffer_) {
-            return;
+            return false;
         }
-        const auto safeSliceStart = (std::min)(
-            sliceStart,
-            level.dimensions.depth - 1u);
-        const auto safeSliceCount = (std::max)(
-            1u,
+        const std::array<std::uint32_t, 3> dimensions{
+            level.dimensions.width,
+            level.dimensions.height,
+            level.dimensions.depth,
+        };
+        std::array<std::uint32_t, 3> safeOrigin{};
+        std::array<std::uint32_t, 3> safeExtent{};
+        for (std::size_t axis = 0; axis < dimensions.size(); ++axis) {
+            safeOrigin[axis] = (std::min)(
+                region.origin[axis],
+                dimensions[axis]);
+        }
+        safeExtent = {
             (std::min)(
-                sliceCount,
-                level.dimensions.depth - safeSliceStart));
+                region.extent.width,
+                dimensions[0] - safeOrigin[0]),
+            (std::min)(
+                region.extent.height,
+                dimensions[1] - safeOrigin[1]),
+            (std::min)(
+                region.extent.depth,
+                dimensions[2] - safeOrigin[2]),
+        };
+        if (safeExtent[0] == 0 || safeExtent[1] == 0 ||
+            safeExtent[2] == 0) {
+            return false;
+        }
         constants_.updateControl = {
             levelIndex,
-            safeSliceStart,
-            safeSliceCount,
-            0,
+            safeOrigin[0],
+            safeOrigin[1],
+            safeOrigin[2],
+        };
+        auto& levelConstants = levelIndex == 0u ?
+            constants_.nearLevel : constants_.farLevel;
+        levelConstants.updateRegion = {
+            static_cast<std::int32_t>(safeExtent[0]),
+            static_cast<std::int32_t>(safeExtent[1]),
+            static_cast<std::int32_t>(safeExtent[2]),
+            region.resetAccumulation ? 1 : 0,
         };
         context_->UpdateSubresource(
             constantsBuffer_.Get(),
@@ -1126,8 +1154,9 @@ namespace community_shaders::skylighting
             &constants_,
             0,
             0);
-        const auto collectDiagnostic =
-            levelIndex == 0 && constants_.response.w > 0.5f;
+        const auto collectDiagnostic = levelIndex == 0 &&
+            constants_.response.w > 0.5f && !diagnosticSubmitted_ &&
+            !diagnosticPending_ && !diagnosticLogged_;
         if (collectDiagnostic) {
             std::array<std::uint32_t, kDiagnosticStatCount> initial{};
             initial[8] = std::bit_cast<std::uint32_t>(1.0f);
@@ -1153,7 +1182,7 @@ namespace community_shaders::skylighting
                     .constantBufferCount = 1,
                 });
             if (!state.captured()) {
-                return;
+                return false;
             }
             ID3D11ShaderResourceView* resource = privateDepthResource_.Get();
             std::array<ID3D11UnorderedAccessView*, 3> outputs{
@@ -1173,9 +1202,9 @@ namespace community_shaders::skylighting
             context_->CSSetConstantBuffers(13, 1, &constants);
             context_->CSSetShader(updateShader_.Get(), nullptr, 0);
             context_->Dispatch(
-                (level.dimensions.width + 7u) / 8u,
-                (level.dimensions.height + 7u) / 8u,
-                safeSliceCount);
+                (safeExtent[0] + 7u) / 8u,
+                (safeExtent[1] + 7u) / 8u,
+                safeExtent[2]);
         }
         if (collectDiagnostic) {
             context_->CopyResource(
@@ -1188,16 +1217,16 @@ namespace community_shaders::skylighting
         const auto previousDispatches = probeDispatches_.fetch_add(
             1,
             std::memory_order_relaxed);
-        level.dataValid = true;
-        probeDataValid_.store(
-            nearProbes_.dataValid,
-            std::memory_order_release);
         if (previousDispatches == 0) {
             logging::info(
-                "Skylighting completed its first exterior near-probe update (captures={}, depthBinds={}, slices={} of {}).",
+                "Skylighting completed its first exterior near-probe update (captures={}, depthBinds={}, region={}x{}x{} of {}x{}x{}).",
                 captureCalls_.load(std::memory_order_relaxed),
                 privateDepthBinds_.load(std::memory_order_relaxed),
-                safeSliceCount,
+                safeExtent[0],
+                safeExtent[1],
+                safeExtent[2],
+                level.dimensions.width,
+                level.dimensions.height,
                 level.dimensions.depth);
         }
         if (levelIndex == 1u &&
@@ -1205,14 +1234,16 @@ namespace community_shaders::skylighting
                 true,
                 std::memory_order_relaxed)) {
             logging::info(
-                "Skylighting completed its first far-probe update ({}x{}x{}, slices={} of {}, field={:.0f} units).",
+                "Skylighting completed its first far-probe update (grid={}x{}x{}, region={}x{}x{}, field={:.0f} units).",
                 level.dimensions.width,
                 level.dimensions.height,
                 level.dimensions.depth,
-                safeSliceCount,
-                level.dimensions.depth,
+                safeExtent[0],
+                safeExtent[1],
+                safeExtent[2],
                 kFarCaptureDistance);
         }
+        return true;
     }
 
     void Runtime::consumeDiagnosticReadback() noexcept
@@ -1626,6 +1657,8 @@ namespace community_shaders::skylighting
             return;
         }
         const auto& cameraPosition = playerCamera->cameraRoot->world.translate;
+        const auto hadPreviousCell = targetLevel.previousCellValid;
+        std::array<std::int32_t, 3> movement{};
         const auto volumeMoved = updateRollingVolume(
             targetLevel,
             targetConstants,
@@ -1633,33 +1666,134 @@ namespace community_shaders::skylighting
             targetHeight,
             cameraPosition.x,
             cameraPosition.y,
-            cameraPosition.z);
+            cameraPosition.z,
+            movement);
         const auto stableSlices = updateFarLevel ?
             8u :
             (activeQuality_ == Quality::high ?
                     13u :
                     (activeQuality_ == Quality::medium ? 11u : 8u));
-        std::uint32_t sliceStart{};
-        std::uint32_t sliceCount{};
-        if (volumeMoved || !targetLevel.dataValid) {
-            sliceCount = targetLevel.dimensions.depth;
-            targetLevel.updateSliceCursor = 0;
+        const auto initialDataPending = !targetLevel.dataValid;
+        const auto sliceStart = targetLevel.updateSliceCursor;
+        const auto sliceCount = (std::min)(
+            stableSlices,
+            targetLevel.dimensions.depth - sliceStart);
+        std::uint32_t nextSliceCursor{};
+        auto completesInitialData = false;
+        if (initialDataPending) {
+            nextSliceCursor = sliceStart + sliceCount;
+            if (nextSliceCursor >= targetLevel.dimensions.depth) {
+                completesInitialData = true;
+                nextSliceCursor = 0;
+            }
         } else {
-            sliceStart = targetLevel.updateSliceCursor;
-            sliceCount = (std::min)(
-                stableSlices,
-                targetLevel.dimensions.depth - sliceStart);
-            targetLevel.updateSliceCursor =
+            nextSliceCursor =
                 (sliceStart + sliceCount) %
                 targetLevel.dimensions.depth;
         }
+
+        const std::array<std::uint32_t, 3> dimensions{
+            targetLevel.dimensions.width,
+            targetLevel.dimensions.height,
+            targetLevel.dimensions.depth,
+        };
+        std::array<std::uint32_t, 3> validMinimum{};
+        std::array<std::uint32_t, 3> validEnd = dimensions;
+        if (hadPreviousCell) {
+            for (std::size_t axis = 0; axis < movement.size(); ++axis) {
+                validMinimum[axis] = static_cast<std::uint32_t>(
+                    (std::max)(movement[axis], 0));
+                validEnd[axis] = static_cast<std::uint32_t>(
+                    static_cast<std::int32_t>(dimensions[axis]) +
+                    (std::min)(movement[axis], 0));
+            }
+        }
+
         exteriorActive_.store(true, std::memory_order_release);
         publishConstants(true);
-        dispatchProbeUpdate(
-            targetLevel,
-            updateFarLevel ? 1u : 0u,
-            sliceStart,
-            sliceCount);
+        const auto levelIndex = updateFarLevel ? 1u : 0u;
+        auto dispatchSucceeded = true;
+        const auto dispatchRegion = [&](const ProbeUpdateRegion& region) {
+            if (!dispatchProbeUpdate(targetLevel, levelIndex, region)) {
+                dispatchSucceeded = false;
+            }
+        };
+        const auto dispatchExposed = [&](std::array<std::uint32_t, 3> origin,
+                                         Dimensions extent) {
+            if (extent.width != 0 && extent.height != 0 &&
+                extent.depth != 0) {
+                dispatchRegion({
+                    .origin = origin,
+                    .extent = extent,
+                    .resetAccumulation = true,
+                });
+            }
+        };
+
+        if (hadPreviousCell && volumeMoved) {
+            const auto validWidth = validEnd[0] - validMinimum[0];
+            const auto validHeight = validEnd[1] - validMinimum[1];
+            dispatchExposed(
+                { 0, 0, 0 },
+                { validMinimum[0], dimensions[1], dimensions[2] });
+            dispatchExposed(
+                { validEnd[0], 0, 0 },
+                { dimensions[0] - validEnd[0],
+                    dimensions[1], dimensions[2] });
+            dispatchExposed(
+                { validMinimum[0], 0, 0 },
+                { validWidth, validMinimum[1], dimensions[2] });
+            dispatchExposed(
+                { validMinimum[0], validEnd[1], 0 },
+                { validWidth,
+                    dimensions[1] - validEnd[1], dimensions[2] });
+            dispatchExposed(
+                { validMinimum[0], validMinimum[1], 0 },
+                { validWidth, validHeight, validMinimum[2] });
+            dispatchExposed(
+                { validMinimum[0], validMinimum[1], validEnd[2] },
+                { validWidth, validHeight,
+                    dimensions[2] - validEnd[2] });
+        }
+
+        auto stableMinimum = validMinimum;
+        auto stableEnd = validEnd;
+        if (!hadPreviousCell) {
+            stableMinimum = {};
+            stableEnd = dimensions;
+        }
+        stableMinimum[2] = (std::max)(stableMinimum[2], sliceStart);
+        stableEnd[2] = (std::min)(
+            stableEnd[2],
+            sliceStart + sliceCount);
+        if (stableEnd[0] > stableMinimum[0] &&
+            stableEnd[1] > stableMinimum[1] &&
+            stableEnd[2] > stableMinimum[2]) {
+            dispatchRegion({
+                .origin = stableMinimum,
+                .extent = {
+                    stableEnd[0] - stableMinimum[0],
+                    stableEnd[1] - stableMinimum[1],
+                    stableEnd[2] - stableMinimum[2],
+                },
+                .resetAccumulation = initialDataPending,
+            });
+        }
+
+        if (!dispatchSucceeded) {
+            targetLevel.dataValid = false;
+            probeDataValid_.store(false, std::memory_order_release);
+            exteriorActive_.store(false, std::memory_order_release);
+            resetRequested_.store(true, std::memory_order_release);
+            return;
+        }
+        targetLevel.updateSliceCursor = nextSliceCursor;
+        if (completesInitialData) {
+            targetLevel.dataValid = true;
+        }
+        probeDataValid_.store(
+            nearProbes_.dataValid,
+            std::memory_order_release);
     }
 
     bool Runtime::requested() const noexcept
