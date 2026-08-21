@@ -187,6 +187,8 @@ foreach(required IN ITEMS
     "Texture3D<float4> SkylightingProbeArray"
     "RWByteAddressBuffer SkylightingAmbientDiagnostic"
     "ReconstructRelativeWorldPosition"
+    "screenPosition * DFLight[0].xy"
+    "DFLight[45].xy * DFLight[0].xy"
     "insideVolume"
     "FauxSpecularLobe"
     "output.DiffuseVisibility"
@@ -197,6 +199,12 @@ foreach(required IN ITEMS
       "Skylighting ambient shader is missing '${required}'")
   endif()
 endforeach()
+
+string(FIND "${ambientShader}" "/ DFLight[45]" staleAmbientCoordinate)
+if(NOT staleAmbientCoordinate EQUAL -1)
+  message(FATAL_ERROR
+    "Skylighting ambient shader retained the disproven texture-ratio clip reconstruction")
+endif()
 
 foreach(required IN ITEMS
     "register(t0)"

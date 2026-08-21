@@ -48,28 +48,29 @@ struct PixelOutput
 
 static const float kPi = 3.14159265358979323846f;
 
-float4 NativeClip(float2 packedUv, float depth, uint eye)
+float4 NativeClip(float2 screenPosition, float depth, uint eye)
 {
     const bool compressedNearDepth = depth <= 0.01f;
     const float nativeDepth = compressedNearDepth ?
         depth * 100.0f : depth * 1.01f - 0.01f;
-    const float baseClipX = packedUv.x / DFLight[45].x * 2.0f - 1.0f;
+    const float2 clipUv = screenPosition * DFLight[0].xy;
+    const float baseClipX = clipUv.x * 2.0f - 1.0f;
     const float eyeClipOffset = eye == 0u ? 0.5f : -0.5f;
     return float4(
         (baseClipX + eyeClipOffset * Stereo[0].x) *
             (Stereo[0].x + 1.0f),
-        1.0f - packedUv.y / DFLight[45].y * 2.0f,
+        1.0f - clipUv.y * 2.0f,
         nativeDepth,
         1.0f);
 }
 
 float3 ReconstructRelativeWorldPosition(
-    float2 packedUv,
+    float2 screenPosition,
     float depth,
     uint eye)
 {
     const uint row = eye * 4u + (depth <= 0.01f ? 40u : 32u);
-    const float4 clip = NativeClip(packedUv, depth, eye);
+    const float4 clip = NativeClip(screenPosition, depth, eye);
     const float4 homogeneous = float4(
         dot(Camera[row + 0u], clip),
         dot(Camera[row + 1u], clip),
@@ -238,8 +239,10 @@ PixelOutput PSMain(PixelInput input)
         uint width;
         uint height;
         NativeDepth.GetDimensions(width, height);
+        const float2 nativeUv = input.Position.xy *
+            DFLight[45].xy * DFLight[0].xy;
         const int2 pixel = clamp(
-            int2(input.Position.xy),
+            int2(nativeUv * float2(width, height)),
             int2(0, 0),
             int2((int)width - 1, (int)height - 1));
         const float depth = NativeDepth.Load(int3(pixel, 0));
@@ -248,11 +251,9 @@ PixelOutput PSMain(PixelInput input)
                 SkylightingAmbientDiagnostic.InterlockedAdd(
                     4u, 1u, ignored);
             }
-            const float2 packedUv =
-                (float2(pixel) + 0.5f) / float2(width, height);
             const float3 relativeWorldPosition =
                 ReconstructRelativeWorldPosition(
-                    packedUv,
+                    input.Position.xy,
                     depth,
                     input.Eye);
             if (all(abs(relativeWorldPosition) <= 1.0e8f)) {
