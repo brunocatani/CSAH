@@ -19,6 +19,7 @@ namespace
     using Microsoft::WRL::ComPtr;
     using community_shaders::render::ComputeStateFootprint;
     using community_shaders::ibl::EnvironmentCubeFace;
+    using community_shaders::ibl::EnvironmentProbeOrigin;
     using community_shaders::ibl::EnvironmentProvider;
     using community_shaders::ibl::EnvironmentProviderState;
     using community_shaders::ibl::EnvironmentUpdateCoverage;
@@ -289,7 +290,13 @@ namespace
                 provider.writablePositionTexture() != nullptr,
             "active update did not expose private position history");
         markCompleteGeneration(provider);
-        require(provider.publishUpdate(), "complete update did not publish");
+        const EnvironmentProbeOrigin firstOrigin{
+            .position = { 1.0F, 2.0F, 3.0F },
+            .valid = true,
+        };
+        require(
+            provider.publishUpdate(firstOrigin),
+            "complete update did not publish");
         auto* firstPublishedView = provider.publishedEnvironment();
         auto* firstPublishedValidity = provider.publishedValidity();
         auto* firstPublishedPosition = provider.publishedPosition();
@@ -317,8 +324,14 @@ namespace
             "first generation identity changed");
         require(
             provider.previousEnvironment() == nullptr &&
-                provider.previousValidity() == nullptr,
+                provider.previousValidity() == nullptr &&
+                provider.previousPosition() == nullptr,
             "first publication exposed uninitialized transition history");
+        require(
+            provider.publishedProbeOrigin().valid &&
+                provider.publishedProbeOrigin().position.x == 1.0F &&
+                !provider.previousProbeOrigin().valid,
+            "first publication lost its probe origin transaction");
 
         require(
             !provider.initialize(d3d.device.Get(), 3),
@@ -344,7 +357,7 @@ namespace
             writableResource.Get() != firstPublishedTexture,
             "update targeted the published front chain");
         require(
-            !provider.publishUpdate(),
+            !provider.publishUpdate({}),
             "incomplete update was published");
         provider.abortUpdate();
         require(
@@ -362,7 +375,13 @@ namespace
 
         require(provider.beginUpdate(), "replacement update did not begin");
         markCompleteGeneration(provider);
-        require(provider.publishUpdate(), "replacement update did not publish");
+        const EnvironmentProbeOrigin replacementOrigin{
+            .position = { 4.0F, 5.0F, 6.0F },
+            .valid = true,
+        };
+        require(
+            provider.publishUpdate(replacementOrigin),
+            "replacement update did not publish");
         require(
             provider.publishedTexture() != firstPublishedTexture,
             "double buffer did not swap after complete publication");
@@ -376,8 +395,13 @@ namespace
             "position buffer did not swap with radiance");
         require(
             provider.previousEnvironment() == firstPublishedView &&
-                provider.previousValidity() == firstPublishedValidity,
+                provider.previousValidity() == firstPublishedValidity &&
+                provider.previousPosition() == firstPublishedPosition,
             "complete publication did not retain the prior environment for transition smoothing");
+        require(
+            provider.publishedProbeOrigin().position.x == 4.0F &&
+                provider.previousProbeOrigin().position.x == 1.0F,
+            "probe origins did not transition with their cube chains");
         require(
             provider.snapshot().publishedGeneration == 3,
             "aborted generation was not kept private");

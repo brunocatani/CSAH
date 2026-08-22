@@ -32,6 +32,7 @@ namespace community_shaders::ibl
         std::uint64_t completedReadbacks{};
         std::uint64_t failedUpdates{};
         std::uint64_t generation{};
+        EnvironmentProbeOrigin probeOrigin{};
         Float3 average{};
         std::array<float, kEnvironmentCubeFaceCount> faceAverageLuminance{};
         std::array<float, kEnvironmentCubeFaceCount> faceAverageValidity{};
@@ -99,8 +100,10 @@ namespace community_shaders::ibl
                 capturedValidityOutput;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingRadiance;
             Microsoft::WRL::ComPtr<ID3D11Texture2D> stagingValidity;
+            Microsoft::WRL::ComPtr<ID3D11Buffer> stagingSceneConstants;
             Microsoft::WRL::ComPtr<ID3D11Query> completionEvent;
             std::uint32_t extent{};
+            UINT sceneConstantsByteWidth{};
         };
 
         struct UpdateConstants
@@ -134,6 +137,8 @@ namespace community_shaders::ibl
             ID3D11Buffer* sceneConstants,
             bool usePublishedHistory,
             D3D11_TEXTURE2D_DESC& radianceDescription) const noexcept;
+        [[nodiscard]] bool prepareSceneConstantsReadback(
+            ID3D11Buffer* sceneConstants) noexcept;
         void recordFailure() noexcept;
 
         Resources resources_{};

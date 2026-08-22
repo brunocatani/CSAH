@@ -24,6 +24,77 @@ namespace community_shaders::ibl
         constexpr float kCoveredThreshold = 1.0e-4f;
         constexpr float kHistoryDecay = 0.98F;
         constexpr float kVisibleDirectionHistoryBlend = 0.8F;
+        constexpr float kMaximumCaptureDistance = 2000000.0F;
+
+        [[nodiscard]] Float3 cross(
+            const Float3& left,
+            const Float3& right) noexcept
+        {
+            return {
+                left.y * right.z - left.z * right.y,
+                left.z * right.x - left.x * right.z,
+                left.x * right.y - left.y * right.x,
+            };
+        }
+
+        [[nodiscard]] float dot(
+            const Float3& left,
+            const Float3& right) noexcept
+        {
+            return left.x * right.x + left.y * right.y +
+                left.z * right.z;
+        }
+
+        [[nodiscard]] bool finiteOrigin(const Float3& origin) noexcept
+        {
+            constexpr auto limit = kMaximumCaptureDistance * 4.0F;
+            return std::isfinite(origin.x) && std::isfinite(origin.y) &&
+                std::isfinite(origin.z) && std::abs(origin.x) < limit &&
+                std::abs(origin.y) < limit && std::abs(origin.z) < limit;
+        }
+
+        [[nodiscard]] bool reconstructCameraOrigin(
+            const std::array<float, 4>* sceneRows,
+            std::uint32_t eye,
+            Float3& origin) noexcept
+        {
+            const auto matrixBase = 63U + eye * 4U;
+            const Float3 planeX{
+                sceneRows[matrixBase][0],
+                sceneRows[matrixBase][1],
+                sceneRows[matrixBase][2],
+            };
+            const Float3 planeY{
+                sceneRows[matrixBase + 1U][0],
+                sceneRows[matrixBase + 1U][1],
+                sceneRows[matrixBase + 1U][2],
+            };
+            const Float3 planeW{
+                sceneRows[matrixBase + 3U][0],
+                sceneRows[matrixBase + 3U][1],
+                sceneRows[matrixBase + 3U][2],
+            };
+            const auto crossYW = cross(planeY, planeW);
+            const auto determinant = dot(planeX, crossYW);
+            if (!(std::abs(determinant) > 1.0e-5F)) {
+                origin = {};
+                return false;
+            }
+            const auto crossWX = cross(planeW, planeX);
+            const auto crossXY = cross(planeX, planeY);
+            const auto xWeight = -sceneRows[matrixBase][3];
+            const auto yWeight = -sceneRows[matrixBase + 1U][3];
+            const auto wWeight = -sceneRows[matrixBase + 3U][3];
+            origin = {
+                (crossYW.x * xWeight + crossWX.x * yWeight +
+                    crossXY.x * wWeight) / determinant,
+                (crossYW.y * xWeight + crossWX.y * yWeight +
+                    crossXY.y * wWeight) / determinant,
+                (crossYW.z * xWeight + crossWX.z * yWeight +
+                    crossXY.z * wWeight) / determinant,
+            };
+            return finiteOrigin(origin);
+        }
 
         [[nodiscard]] bool sameDevice(
             ID3D11DeviceChild* child,
@@ -336,6 +407,37 @@ namespace community_shaders::ibl
             (constantDescription.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0;
     }
 
+    bool EnvironmentUpdater::prepareSceneConstantsReadback(
+        ID3D11Buffer* sceneConstants) noexcept
+    {
+        if (!sceneConstants || !resources_.device) {
+            return false;
+        }
+        D3D11_BUFFER_DESC sourceDescription{};
+        sceneConstants->GetDesc(&sourceDescription);
+        if (resources_.stagingSceneConstants &&
+            resources_.sceneConstantsByteWidth ==
+                sourceDescription.ByteWidth) {
+            return true;
+        }
+
+        D3D11_BUFFER_DESC stagingDescription{};
+        stagingDescription.ByteWidth = sourceDescription.ByteWidth;
+        stagingDescription.Usage = D3D11_USAGE_STAGING;
+        stagingDescription.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Buffer> candidate;
+        if (FAILED(resources_.device->CreateBuffer(
+                &stagingDescription,
+                nullptr,
+                &candidate)) ||
+            !candidate) {
+            return false;
+        }
+        resources_.stagingSceneConstants = std::move(candidate);
+        resources_.sceneConstantsByteWidth = sourceDescription.ByteWidth;
+        return true;
+    }
+
     bool EnvironmentUpdater::dispatchUpdate(
         ID3D11DeviceContext* context,
         EnvironmentProvider& provider,
@@ -354,6 +456,11 @@ namespace community_shaders::ibl
                 usePublishedHistory,
                 sourceDescription) ||
             !provider.beginUpdate()) {
+            recordFailure();
+            return false;
+        }
+        if (!prepareSceneConstantsReadback(sceneConstants)) {
+            provider.abortUpdate();
             recordFailure();
             return false;
         }
@@ -577,6 +684,9 @@ namespace community_shaders::ibl
                 sourceSubresource,
                 nullptr);
         }
+        context->CopyResource(
+            resources_.stagingSceneConstants.Get(),
+            sceneConstants);
         context->End(resources_.completionEvent.Get());
 
         summary_.pending = true;
@@ -618,6 +728,51 @@ namespace community_shaders::ibl
             summary_.pending = false;
             recordFailure();
             return EnvironmentUpdateConsumeResult::failed;
+        }
+        summary_.probeOrigin = {};
+        if (resources_.stagingSceneConstants &&
+            resources_.sceneConstantsByteWidth >=
+                kMinimumSceneConstantRows * sizeof(std::array<float, 4>)) {
+            D3D11_MAPPED_SUBRESOURCE mappedSceneConstants{};
+            const auto mapResult = context->Map(
+                    resources_.stagingSceneConstants.Get(),
+                    0,
+                    D3D11_MAP_READ,
+                    0,
+                    &mappedSceneConstants);
+            if (SUCCEEDED(mapResult)) {
+                if (mappedSceneConstants.pData) {
+                    const auto* rows =
+                        static_cast<const std::array<float, 4>*>(
+                            mappedSceneConstants.pData);
+                    Float3 leftOrigin{};
+                    Float3 rightOrigin{};
+                    const auto leftValid = reconstructCameraOrigin(
+                        rows,
+                        0,
+                        leftOrigin);
+                    const auto rightValid = reconstructCameraOrigin(
+                        rows,
+                        1,
+                        rightOrigin);
+                    if (leftValid || rightValid) {
+                        const auto total = leftValid && rightValid ?
+                            2.0F : 1.0F;
+                        summary_.probeOrigin.position = {
+                            ((leftValid ? leftOrigin.x : 0.0F) +
+                                (rightValid ? rightOrigin.x : 0.0F)) / total,
+                            ((leftValid ? leftOrigin.y : 0.0F) +
+                                (rightValid ? rightOrigin.y : 0.0F)) / total,
+                            ((leftValid ? leftOrigin.z : 0.0F) +
+                                (rightValid ? rightOrigin.z : 0.0F)) / total,
+                        };
+                        summary_.probeOrigin.valid = true;
+                    }
+                }
+                context->Unmap(
+                    resources_.stagingSceneConstants.Get(),
+                    0);
+            }
         }
         const auto validationStart = std::chrono::steady_clock::now();
 
@@ -761,7 +916,8 @@ namespace community_shaders::ibl
             validationCpuMilliseconds_ = 0.0;
             validationCpuSamples_ = 0;
         }
-        if (!validGeneration || !provider.publishUpdate()) {
+        if (!validGeneration ||
+            !provider.publishUpdate(summary_.probeOrigin)) {
             provider.abortUpdate();
             summary_.pending = false;
             recordFailure();

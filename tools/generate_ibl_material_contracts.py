@@ -48,7 +48,11 @@ PUBLISHED_ENVIRONMENT_SLOT = 30
 PUBLISHED_VALIDITY_SLOT = 31
 PREVIOUS_PUBLISHED_ENVIRONMENT_SLOT = 32
 PREVIOUS_PUBLISHED_VALIDITY_SLOT = 33
+PUBLISHED_POSITION_SLOT = 34
+PREVIOUS_PUBLISHED_POSITION_SLOT = 35
 SURFACE_CLASS_SLOT = 47
+SCENE_DEPTH_SLOT = 7
+SCENE_CONSTANT_SLOT = 12
 ENVIRONMENT_SAMPLER_SLOT = 8
 MATERIAL_SAMPLER_SLOT = 3
 FIRST_RESOURCE_ID = 1054
@@ -158,6 +162,9 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "PublishedValidity : register(t31)",
         "PreviousPublishedEnvironment : register(t32)",
         "PreviousPublishedValidity : register(t33)",
+        "PublishedPosition : register(t34)",
+        "PreviousPublishedPosition : register(t35)",
+        "SceneDepth : register(t7)",
         "EnvironmentSampler : register(s8)",
         "MaterialSampler : register(s3)",
         "IblMaterialConstants : register(b5)",
@@ -168,6 +175,10 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "const float3 dynamicDirection = -input.DirectionAndArray.xyz",
         "EnvironmentTransitionWeight",
         "PreviousEnvironmentAvailable",
+        "PublishedProbeOrigin",
+        "PreviousPublishedProbeOrigin",
+        "ReconstructReceiverWorldPosition",
+        "CorrectProbeDirection",
         "lerp(vanilla.xyz, published, weight)",
         "ComplexMaterialWeight",
         "input.EncodedMaterialTag",
@@ -202,16 +213,20 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB5[1], immediateIndexed",
+        "dcl_constantbuffer CB5[3], immediateIndexed",
         "dcl_constantbuffer CB9[2], immediateIndexed",
+        "dcl_constantbuffer CB12[61], dynamicIndexed",
         "dcl_sampler s3, mode_default",
         "dcl_sampler s8, mode_default",
+        "dcl_resource_texture2d (float,float,float,float) t7",
         "dcl_resource_texturecubearray (float,float,float,float) t8",
         "dcl_resource_texture2d (float,float,float,float) t29",
         "dcl_resource_texturecube (float,float,float,float) t30",
         "dcl_resource_texturecube (float,float,float,float) t31",
         "dcl_resource_texturecube (float,float,float,float) t32",
         "dcl_resource_texturecube (float,float,float,float) t33",
+        "dcl_resource_texturecube (float,float,float,float) t34",
+        "dcl_resource_texturecube (float,float,float,float) t35",
         "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if required not in text:
@@ -322,6 +337,18 @@ def template_contract(
             OPCODE_DCL_RESOURCE,
             OPERAND_RESOURCE,
             PREVIOUS_PUBLISHED_VALIDITY_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
+            PUBLISHED_POSITION_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
+            PREVIOUS_PUBLISHED_POSITION_SLOT,
         ),
         declaration_for_slot(
             words,
@@ -440,6 +467,24 @@ def remap_template_instruction(
                                 0,
                             )
                         )
+                    elif component in (2, 3):
+                        if len(material_coordinate) != 2:
+                            raise ContractError(
+                                "DFComposite material coordinate changed shape"
+                            )
+                        coordinate_token = material_coordinate[0]
+                        if ((coordinate_token >> 2) & 0x3) != 1:
+                            raise ContractError(
+                                "DFComposite material coordinate is not swizzled"
+                            )
+                        coordinate_component = (
+                            coordinate_token >>
+                            (4 + (component - 2) * 2)
+                        ) & 0x3
+                        replacements[operand.start] = temp_scalar_operand(
+                            material_coordinate[1],
+                            coordinate_component,
+                        )
                     else:
                         raise ContractError(
                             "IBL material template scalar input packing changed"
@@ -537,6 +582,7 @@ def patch_shader(
 
     occupied_buffers: set[int] = set()
     occupied_resources: set[int] = set()
+    scene_buffer_declaration: tuple[int, int] | None = None
     for start, end in instructions(words):
         opcode = words[start] & 0x7FF
         if opcode == OPCODE_CUSTOMDATA:
@@ -547,21 +593,42 @@ def patch_shader(
         if not operands or not operands[0].immediate_indices:
             continue
         if opcode == OPCODE_DCL_CONSTANT_BUFFER:
-            occupied_buffers.add(int(operands[0].immediate_indices[0]))
+            slot = int(operands[0].immediate_indices[0])
+            occupied_buffers.add(slot)
+            if slot == SCENE_CONSTANT_SLOT:
+                if scene_buffer_declaration is not None:
+                    raise ContractError("DFComposite declares b12 repeatedly")
+                scene_buffer_declaration = (start, end)
         else:
             occupied_resources.add(int(operands[0].immediate_indices[0]))
     if IBL_CONSTANT_SLOT in occupied_buffers:
         raise ContractError("DFComposite unexpectedly owns b5")
+    if scene_buffer_declaration is None:
+        raise ContractError("DFComposite does not expose the verified b12 scene buffer")
+    scene_start, scene_end = scene_buffer_declaration
+    if scene_end - scene_start != 4:
+        raise ContractError("DFComposite b12 declaration changed shape")
+    scene_rows = words[scene_end - 1]
+    if scene_rows not in (51, 61, 77):
+        raise ContractError(
+            f"DFComposite b12 row contract changed: {scene_rows}"
+        )
+    if scene_rows == 51:
+        words[scene_end - 1] = 61
     if {
         DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
         PUBLISHED_VALIDITY_SLOT,
         PREVIOUS_PUBLISHED_ENVIRONMENT_SLOT,
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
+        PUBLISHED_POSITION_SLOT,
+        PREVIOUS_PUBLISHED_POSITION_SLOT,
     } & occupied_resources:
         raise ContractError(
-            "DFComposite unexpectedly owns t29, t30, t31, t32, or t33"
+            "DFComposite unexpectedly owns an injected t29..t35 slot"
         )
+    if SCENE_DEPTH_SLOT not in occupied_resources:
+        raise ContractError("DFComposite does not expose the verified t7 depth")
 
     environment_samples: list[tuple[int, int, list[Operand]]] = []
     for start, end in body:
@@ -789,7 +856,6 @@ def validate_candidate(
     original: bytes,
     candidate: bytes,
     temporary: Path,
-    surface_anchored: bool,
 ) -> None:
     original_path = temporary / f"{name}.vanilla.dxbc"
     candidate_path = temporary / f"{name}.dxbc"
@@ -827,12 +893,12 @@ def validate_candidate(
     candidate_declarations = census.parse_declarations(candidate_text)
     original_buffers = dict(original_declarations.constant_buffers)
     candidate_buffers = dict(candidate_declarations.constant_buffers)
-    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 1:
-        raise ContractError(f"{name} does not add exact b5[1]")
+    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 3:
+        raise ContractError(f"{name} does not add exact b5[3]")
     if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
         raise ContractError(f"{name} does not add exact b9[2]")
     expected_buffers = dict(original_buffers)
-    if surface_anchored and expected_buffers.get(12) == 51:
+    if expected_buffers.get(12) == 51:
         expected_buffers[12] = 61
     if candidate_buffers != expected_buffers:
         raise ContractError(
@@ -847,6 +913,8 @@ def validate_candidate(
         PUBLISHED_VALIDITY_SLOT,
         PREVIOUS_PUBLISHED_ENVIRONMENT_SLOT,
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
+        PUBLISHED_POSITION_SLOT,
+        PREVIOUS_PUBLISHED_POSITION_SLOT,
         SURFACE_CLASS_SLOT,
     } != original_textures or not {
         DFLIGHT_ALBEDO_SLOT,
@@ -854,6 +922,8 @@ def validate_candidate(
         PUBLISHED_VALIDITY_SLOT,
         PREVIOUS_PUBLISHED_ENVIRONMENT_SLOT,
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
+        PUBLISHED_POSITION_SLOT,
+        PREVIOUS_PUBLISHED_POSITION_SLOT,
         SURFACE_CLASS_SLOT,
     }.issubset(candidate_textures):
         raise ContractError(f"{name} changed the texture contract")
@@ -871,6 +941,8 @@ def validate_candidate(
         "dcl_resource_texturecube (float,float,float,float) t31",
         "dcl_resource_texturecube (float,float,float,float) t32",
         "dcl_resource_texturecube (float,float,float,float) t33",
+        "dcl_resource_texturecube (float,float,float,float) t34",
+        "dcl_resource_texturecube (float,float,float,float) t35",
         "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if declaration not in candidate_text:
@@ -883,6 +955,10 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t32 exactly once")
     if len(re.findall(r"\bt33(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t33 exactly once")
+    if len(re.findall(r"\bt34(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t34 exactly once")
+    if len(re.findall(r"\bt35(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t35 exactly once")
     if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t29 exactly once")
     if len(re.findall(r"\bt47(?:\b|\.)", candidate_text)) != 2:
@@ -891,6 +967,10 @@ def validate_candidate(
         re.findall(r"\bt3(?:\b|\.)", original_text)
     ):
         raise ContractError(f"{name} added a redundant material-data sample")
+    if len(re.findall(r"\bt7(?:\b|\.)", candidate_text)) != len(
+        re.findall(r"\bt7(?:\b|\.)", original_text)
+    ) + 1:
+        raise ContractError(f"{name} did not add exactly one receiver-depth sample")
     if candidate_text.count("if_nz") <= original_text.count("if_nz"):
         raise ContractError(f"{name} did not branch around sparse metal work")
     metal_block_start = re.search(
@@ -1038,7 +1118,6 @@ def main() -> int:
                     original.data,
                     candidate,
                     temporary,
-                    surface_anchored,
                 )
                 candidates.append(candidate)
             if anchored_count != len(SURFACE_ANCHORED_IDENTITIES):
@@ -1103,7 +1182,7 @@ def main() -> int:
             "IBL material contracts verified: 41 exact DFComposite identities, "
             "including four surface-anchored cubemap permutations; "
             "vanilla t8/s8 fallback and weight-gated, validity-aware "
-            "direction-corrected t29..t33/b5 consumption."
+            "position-corrected t29..t35/b5 consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)

@@ -30,6 +30,12 @@ namespace community_shaders::ibl
         std::uint64_t rebuildFailures{};
     };
 
+    struct EnvironmentProbeOrigin
+    {
+        Float3 position{};
+        bool valid{};
+    };
+
     // Render-thread-only owner for the shared view-centred environment map.
     // Both cube chains are created transactionally. Updates always target the
     // private back chain and only a complete six-face/all-mip generation can
@@ -53,7 +59,8 @@ namespace community_shaders::ibl
         [[nodiscard]] bool markSubresourceComplete(
             EnvironmentCubeFace face,
             std::uint32_t mipLevel) noexcept;
-        [[nodiscard]] bool publishUpdate() noexcept;
+        [[nodiscard]] bool publishUpdate(
+            EnvironmentProbeOrigin probeOrigin) noexcept;
         void abortUpdate() noexcept;
 
         [[nodiscard]] ID3D11UnorderedAccessView* writableMip(
@@ -77,6 +84,12 @@ namespace community_shaders::ibl
             const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* previousValidity()
             const noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView* previousPosition()
+            const noexcept;
+        [[nodiscard]] EnvironmentProbeOrigin publishedProbeOrigin()
+            const noexcept;
+        [[nodiscard]] EnvironmentProbeOrigin previousProbeOrigin()
+            const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedTexture() const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedValidityTexture()
             const noexcept;
@@ -99,8 +112,9 @@ namespace community_shaders::ibl
         {
             CubeTexture radiance;
             CubeTexture validity;
-            // Position is private temporal metadata. Only mip zero is
-            // required because material consumers never sample it.
+            // Position is shared temporal and material metadata. Only mip
+            // zero is required because parallax correction uses the exact
+            // captured hit shell rather than a filtered position field.
             CubeTexture position;
         };
 
@@ -137,6 +151,8 @@ namespace community_shaders::ibl
         std::uint64_t activeUpdateGeneration_{};
         std::uint64_t publishedGeneration_{};
         std::uint64_t previousPublishedGeneration_{};
+        EnvironmentProbeOrigin publishedProbeOrigin_{};
+        EnvironmentProbeOrigin previousProbeOrigin_{};
         std::uint64_t rebuildFailures_{};
     };
 }

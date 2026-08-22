@@ -163,6 +163,8 @@ namespace community_shaders::ibl
         activeUpdateGeneration_ = 0;
         publishedGeneration_ = 0;
         previousPublishedGeneration_ = 0;
+        publishedProbeOrigin_ = {};
+        previousProbeOrigin_ = {};
         return true;
     }
 
@@ -177,6 +179,8 @@ namespace community_shaders::ibl
         activeUpdateGeneration_ = 0;
         publishedGeneration_ = 0;
         previousPublishedGeneration_ = 0;
+        publishedProbeOrigin_ = {};
+        previousProbeOrigin_ = {};
         rebuildFailures_ = 0;
     }
 
@@ -203,15 +207,18 @@ namespace community_shaders::ibl
             coverage_.markComplete(face, mipLevel, resources_.mipCount);
     }
 
-    bool EnvironmentProvider::publishUpdate() noexcept
+    bool EnvironmentProvider::publishUpdate(
+        EnvironmentProbeOrigin probeOrigin) noexcept
     {
         if (state_ != EnvironmentProviderState::updating ||
             !coverage_.complete(resources_.mipCount)) {
             return false;
         }
         previousPublishedGeneration_ = publishedGeneration_;
+        previousProbeOrigin_ = publishedProbeOrigin_;
         frontChain_ = 1 - frontChain_;
         publishedGeneration_ = activeUpdateGeneration_;
+        publishedProbeOrigin_ = probeOrigin;
         activeUpdateGeneration_ = 0;
         coverage_.reset();
         state_ = EnvironmentProviderState::ready;
@@ -336,6 +343,36 @@ namespace community_shaders::ibl
         }
         return resources_.chains[1 - frontChain_]
             .validity.shaderResource.Get();
+    }
+
+    ID3D11ShaderResourceView* EnvironmentProvider::previousPosition()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::ready ||
+            previousPublishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_]
+            .position.shaderResource.Get();
+    }
+
+    EnvironmentProbeOrigin EnvironmentProvider::publishedProbeOrigin()
+        const noexcept
+    {
+        if (publishedGeneration_ == 0) {
+            return {};
+        }
+        return publishedProbeOrigin_;
+    }
+
+    EnvironmentProbeOrigin EnvironmentProvider::previousProbeOrigin()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::ready ||
+            previousPublishedGeneration_ == 0) {
+            return {};
+        }
+        return previousProbeOrigin_;
     }
 
     ID3D11Texture2D* EnvironmentProvider::publishedTexture() const noexcept

@@ -88,9 +88,13 @@ namespace community_shaders::ibl
             float complexMaterialWeight{};
             float transitionWeight{};
             float previousEnvironmentAvailable{};
+            Float3 publishedProbeOrigin{};
+            float publishedProbeOriginValid{};
+            Float3 previousPublishedProbeOrigin{};
+            float previousPublishedProbeOriginValid{};
         };
 
-        static_assert(sizeof(MaterialEnvironmentConstants) == 16);
+        static_assert(sizeof(MaterialEnvironmentConstants) == 48);
 
         struct TextureViewRange
         {
@@ -466,7 +470,9 @@ namespace community_shaders::ibl
     void Runtime::updateMaterialEnvironmentTransition(
         std::uint64_t tickMilliseconds) noexcept
     {
-        if (!materialEnvironmentTransitionActive_ || !context_ ||
+        if ((!materialEnvironmentTransitionActive_ &&
+                nextMaterialEnvironmentTransitionTickMilliseconds_ != 0) ||
+            !context_ ||
             !materialEnabledConstants_ ||
             tickMilliseconds <
                 nextMaterialEnvironmentTransitionTickMilliseconds_) {
@@ -479,6 +485,10 @@ namespace community_shaders::ibl
         const auto previousAvailable =
             environmentProvider_.previousEnvironment() &&
             environmentProvider_.previousValidity();
+        const auto publishedProbeOrigin =
+            environmentProvider_.publishedProbeOrigin();
+        const auto previousProbeOrigin =
+            environmentProvider_.previousProbeOrigin();
         const auto elapsed = tickMilliseconds >=
                 materialEnvironmentTransitionStartMilliseconds_ ?
             tickMilliseconds -
@@ -495,6 +505,12 @@ namespace community_shaders::ibl
             .complexMaterialWeight = 1.0F,
             .transitionWeight = transitionWeight,
             .previousEnvironmentAvailable = previousAvailable ? 1.0F : 0.0F,
+            .publishedProbeOrigin = publishedProbeOrigin.position,
+            .publishedProbeOriginValid =
+                publishedProbeOrigin.valid ? 1.0F : 0.0F,
+            .previousPublishedProbeOrigin = previousProbeOrigin.position,
+            .previousPublishedProbeOriginValid =
+                previousProbeOrigin.valid ? 1.0F : 0.0F,
         };
         context_->UpdateSubresource(
             materialEnabledConstants_.Get(),
@@ -917,7 +933,8 @@ namespace community_shaders::ibl
                 requestedCaptureProbeSessionId_.load(
                     std::memory_order_acquire) &&
             materialAlbedo_ && environmentProvider_.publishedEnvironment() &&
-            environmentProvider_.publishedValidity();
+            environmentProvider_.publishedValidity() &&
+            environmentProvider_.publishedPosition();
     }
 
     ScopedMaterialBindings Runtime::scopeMaterialBindings(
@@ -943,8 +960,14 @@ namespace community_shaders::ibl
         auto* previousValidity = enabled &&
                 materialEnvironmentTransitionActive_ ?
             environmentProvider_.previousValidity() : nullptr;
+        auto* position = enabled ?
+            environmentProvider_.publishedPosition() : nullptr;
+        auto* previousPosition = enabled &&
+                materialEnvironmentTransitionActive_ ?
+            environmentProvider_.previousPosition() : nullptr;
         auto* albedo = enabled ? materialAlbedo_.Get() : nullptr;
-        if (!constants || (enabled && (!albedo || !radiance || !validity))) {
+        if (!constants || (enabled &&
+                (!albedo || !radiance || !validity || !position))) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
             materialConsumptionFailed_ = true;
             return {};
@@ -957,6 +980,8 @@ namespace community_shaders::ibl
             validity,
             previousRadiance,
             previousValidity,
+            position,
+            previousPosition,
             constants);
         if (!scope.active()) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -1597,7 +1622,8 @@ namespace community_shaders::ibl
         }
 
         D3D11_BUFFER_DESC disabledDescription{};
-        disabledDescription.ByteWidth = 16;
+        disabledDescription.ByteWidth =
+            sizeof(MaterialEnvironmentConstants);
         disabledDescription.Usage = D3D11_USAGE_IMMUTABLE;
         disabledDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         auto enabledDescription = disabledDescription;
@@ -2009,10 +2035,14 @@ namespace community_shaders::ibl
                 lastLoggedEnvironmentUpdateGeneration_ =
                     update.generation;
                 logging::info(
-                    "Dynamic Cubemaps stereo generation {} atomically published for world session {} as one radiance/validity/position environment: positionAwareHistory={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled specular consumers sample it with per-direction vanilla fallback and Diffuse IBL shares the validated generation.",
+                    "Dynamic Cubemaps stereo generation {} atomically published for world session {} as one radiance/validity/position environment: positionAwareHistory={}, probeOriginValid={}, probeOrigin=({}, {}, {}), avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled specular consumers use receiver-position parallax with per-direction vanilla fallback and Diffuse IBL shares the validated generation.",
                     update.generation,
                     publishedEnvironmentSessionId_,
                     update.historyUsed,
+                    update.probeOrigin.valid,
+                    update.probeOrigin.position.x,
+                    update.probeOrigin.position.y,
+                    update.probeOrigin.position.z,
                     update.average.x,
                     update.average.y,
                     update.average.z,
