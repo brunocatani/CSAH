@@ -89,12 +89,6 @@ namespace community_shaders::ibl
             return blackScreenReflectionSrv_.Get();
         }
 
-        [[nodiscard]] ID3D11ShaderResourceView* whiteAmbientOcclusion() const
-            noexcept
-        {
-            return whiteAmbientOcclusionSrv_.Get();
-        }
-
         [[nodiscard]] ID3D11Texture2D* scratchTexture() const noexcept
         {
             return scratchTexture_.Get();
@@ -127,10 +121,6 @@ namespace community_shaders::ibl
             blackScreenReflectionTexture_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
             blackScreenReflectionSrv_;
-        Microsoft::WRL::ComPtr<ID3D11Texture2D>
-            whiteAmbientOcclusionTexture_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
-            whiteAmbientOcclusionSrv_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> scratchTexture_;
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> scratchRenderTarget_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
@@ -140,11 +130,9 @@ namespace community_shaders::ibl
 
     // Render-thread-only transaction used around one duplicate qualified
     // DFComposite draw. It changes only OM-RT0, the depth/stencil state, and
-    // PS t8/t9/t14, validates the applied identities, and restores the exact
-    // retained objects on every exit. t9 is the exact DFComposite SAO scalar;
-    // white removes head-relative screen obscurance from captured radiance.
-    // The retained DSV remains bound while depth and stencil writes are
-    // disabled for the duplicate draw.
+    // PS t8/t14, validates the applied identities, and restores the exact
+    // retained objects on every exit. The retained DSV remains bound while
+    // depth and stencil writes are disabled for the duplicate draw.
     class ScopedReflectionFreeCapture final
     {
     public:
@@ -187,7 +175,6 @@ namespace community_shaders::ibl
             ID3D11DepthStencilState* depthStencilState,
             UINT stencilReference,
             ID3D11ShaderResourceView* environment,
-            ID3D11ShaderResourceView* ambientOcclusion,
             ID3D11ShaderResourceView* screenReflection) const noexcept;
 
         ID3D11DeviceContext* context_{};
@@ -200,7 +187,6 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
             captureDepthStencilState_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> environment_;
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> ambientOcclusion_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> screenReflection_;
         render::GpuTimingProfiler::Scope drawTiming_;
         UINT renderTargetCount_{};

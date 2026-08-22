@@ -29,7 +29,7 @@ namespace community_shaders::vanilla_fixes
     [[nodiscard]] bool sslrSuiteReady() noexcept;
     [[nodiscard]] SslrEnvironmentSnapshot sslrEnvironmentSnapshot() noexcept;
 
-    // Render-thread-only transaction for t4..t7, s4, and b11. The scope
+    // Render-thread-only transaction for t4..t9, s4, and b11. The scope
     // binds either the atomically published shared environment or explicit
     // null history with a zero-availability constant. It always restores the
     // exact previous state.
@@ -53,7 +53,7 @@ namespace community_shaders::vanilla_fixes
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         std::array<
             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>,
-            4>
+            6>
             previousResources_{};
         Microsoft::WRL::ComPtr<ID3D11SamplerState> previousSampler_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousConstants_;

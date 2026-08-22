@@ -257,6 +257,8 @@ foreach(required IN ITEMS
     "kValiditySlot = 31"
     "kPreviousRadianceSlot = 32"
     "kPreviousValiditySlot = 33"
+    "kPositionSlot = 34"
+    "kPreviousPositionSlot = 35"
     "kConstantSlot = 5"
     "PSGetShaderResources"
     "PSSetShaderResources"
@@ -464,7 +466,6 @@ foreach(required IN ITEMS
     "prepareScratch"
     "scratchMatches"
     "blackEnvironment"
-    "whiteAmbientOcclusion"
     "blackScreenReflection"
     "restore() noexcept")
   string(FIND
@@ -477,9 +478,6 @@ endforeach()
 
 foreach(required IN ITEMS
     "kEnvironmentCubeCount = 42"
-    "kAmbientOcclusionSlot = 9"
-    "DXGI_FORMAT_R32_FLOAT"
-    "constexpr float one = 1.0F"
     "D3D11_SRV_DIMENSION_TEXTURECUBEARRAY"
     "D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE"
     "PSGetShaderResources"

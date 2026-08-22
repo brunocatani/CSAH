@@ -296,7 +296,6 @@ VertexOutput main(uint vertexId : SV_VertexID)
 )";
         constexpr auto pixelSource = R"(
 TextureCubeArray<float4> Environment : register(t8);
-Texture2D<float> AmbientOcclusion : register(t9);
 Texture2D<float4> ScreenReflection : register(t14);
 SamplerState LinearSampler : register(s0);
 
@@ -311,11 +310,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         LinearSampler,
         float2(0.5, 0.5),
         0.0);
-    const float ambientOcclusion = AmbientOcclusion.SampleLevel(
-        LinearSampler,
-        float2(0.5, 0.5),
-        0.0);
-    return (base + environment + screen) * ambientOcclusion;
+    return base + environment + screen;
 }
 )";
 
@@ -340,12 +335,8 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             "CreatePixelShader");
 
         constexpr Float4 environmentColor{ 0.5f, 0.25f, 0.125f, 0.0f };
-        constexpr Float4 ambientOcclusionColor{ 0.5f, 0.0f, 0.0f, 0.0f };
         constexpr Float4 screenColor{ 0.25f, 0.5f, 0.75f, 0.0f };
         auto environment = createCube(*d3d.device.Get(), environmentColor);
-        auto ambientOcclusion = createTexture(
-            *d3d.device.Get(),
-            ambientOcclusionColor);
         auto screen = createTexture(*d3d.device.Get(), screenColor);
         auto output = createOutput(*d3d.device.Get());
         auto uavSentinel = createUavSentinel(*d3d.device.Get());
@@ -401,11 +392,9 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             depthStencilState.Get(),
             stencilReference);
         auto* environmentView = environment.Get();
-        auto* ambientOcclusionView = ambientOcclusion.Get();
         auto* screenView = screen.Get();
         auto* samplerView = sampler.Get();
         d3d.context->PSSetShaderResources(8, 1, &environmentView);
-        d3d.context->PSSetShaderResources(9, 1, &ambientOcclusionView);
         d3d.context->PSSetShaderResources(14, 1, &screenView);
         d3d.context->PSSetSamplers(0, 1, &samplerView);
         d3d.context->VSSetShader(vertexShader.Get(), nullptr, 0);
@@ -470,7 +459,6 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
         ID3D11RenderTargetView* restoredOutputRaw{};
         ID3D11ShaderResourceView* restoredEnvironmentRaw{};
-        ID3D11ShaderResourceView* restoredAmbientOcclusionRaw{};
         ID3D11ShaderResourceView* restoredScreenRaw{};
         ID3D11UnorderedAccessView* restoredUavRaw{};
         ID3D11DepthStencilState* restoredDepthStencilStateRaw{};
@@ -480,10 +468,6 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             8,
             1,
             &restoredEnvironmentRaw);
-        d3d.context->PSGetShaderResources(
-            9,
-            1,
-            &restoredAmbientOcclusionRaw);
         d3d.context->PSGetShaderResources(14, 1, &restoredScreenRaw);
         d3d.context->OMGetRenderTargetsAndUnorderedAccessViews(
             0,
@@ -497,13 +481,11 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             &restoredStencilReference);
         ComPtr<ID3D11RenderTargetView> restoredOutput;
         ComPtr<ID3D11ShaderResourceView> restoredEnvironment;
-        ComPtr<ID3D11ShaderResourceView> restoredAmbientOcclusion;
         ComPtr<ID3D11ShaderResourceView> restoredScreen;
         ComPtr<ID3D11UnorderedAccessView> restoredUav;
         ComPtr<ID3D11DepthStencilState> restoredDepthStencilState;
         restoredOutput.Attach(restoredOutputRaw);
         restoredEnvironment.Attach(restoredEnvironmentRaw);
-        restoredAmbientOcclusion.Attach(restoredAmbientOcclusionRaw);
         restoredScreen.Attach(restoredScreenRaw);
         restoredUav.Attach(restoredUavRaw);
         restoredDepthStencilState.Attach(restoredDepthStencilStateRaw);
@@ -513,9 +495,6 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         require(
             restoredEnvironment.Get() == environment.Get(),
             "PS t8 identity was not restored");
-        require(
-            restoredAmbientOcclusion.Get() == ambientOcclusion.Get(),
-            "PS t9 identity was not restored");
         require(
             restoredScreen.Get() == screen.Get(),
             "PS t14 identity was not restored");
@@ -541,9 +520,9 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         requireNear(reflectionFree.x, 0.125f, "reflection-free red");
         requireNear(reflectionFree.y, 0.25f, "reflection-free green");
         requireNear(reflectionFree.z, 0.375f, "reflection-free blue");
-        requireNear(visible.x, 0.4375f, "visible red");
-        requireNear(visible.y, 0.5f, "visible green");
-        requireNear(visible.z, 0.625f, "visible blue");
+        requireNear(visible.x, 0.875f, "visible red");
+        requireNear(visible.y, 1.0f, "visible green");
+        requireNear(visible.z, 1.25f, "visible blue");
 
         D3D11_BLEND_DESC rgbOnlyBlendDescription{};
         rgbOnlyBlendDescription.RenderTarget[0].RenderTargetWriteMask =
