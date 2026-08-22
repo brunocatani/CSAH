@@ -14,6 +14,11 @@ namespace community_shaders::ibl
         // Dynamic Cubemaps owns specular environment substitution while
         // Diffuse IBL may continue to consume the shared environment.
         bool dynamicCubemapsEnabled{ true };
+        // Diagnostic controls are opt-in and fail back to the existing
+        // production path. Freeze allows one valid generation before it
+        // suppresses later capture dispatches.
+        bool freezePublishedCube{};
+        bool geometricLookupNormal{};
         bool diffuseEnabled{ true };
         float diffuseLevel{ 1.0f };
 

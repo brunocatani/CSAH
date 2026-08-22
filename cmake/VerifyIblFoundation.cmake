@@ -164,6 +164,8 @@ endforeach()
 foreach(required IN ITEMS
     "std::atomic_bool enabled_{ true }"
     "std::atomic_bool dynamicCubemapsEnabled_{ true }"
+    "std::atomic_bool freezePublishedCube_{}"
+    "std::atomic_bool geometricLookupNormal_{}"
     "std::atomic_bool diffuseEnabled_{ true }"
     "std::atomic_bool sslrConsumerEnabled_{}"
     "void Runtime::setEnabled(bool enabled) noexcept"
@@ -180,6 +182,8 @@ foreach(required IN ITEMS
     "chooseDiffusePublicationAction"
     "DiffusePublicationAction::retain"
     "kEnvironmentCaptureCadenceMilliseconds = 1000"
+    "publishedCubeFrozen"
+    "static_assert(sizeof(MaterialEnvironmentConstants) == 64)"
     "synchronizeWorldCaptureSession"
     "pendingEnvironmentUpdateSessionId_")
   string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
@@ -221,6 +225,8 @@ foreach(required IN ITEMS
     "kDynamicCubemapsSection = L\"DynamicCubemaps\""
     "kEnabledKey = L\"bEnabled\""
     "kDynamicCubemapsEnabledKey = L\"bEnabled\""
+    "kFreezePublishedCubeKey = L\"bFreezePublishedCube\""
+    "kGeometricLookupNormalKey"
     "kDiffuseEnabledKey = L\"bDiffuseEnabled\""
     "kDiffuseLevelKey = L\"fDiffuseLevel\""
     "GetPrivateProfileStringW"
@@ -239,6 +245,8 @@ endforeach()
 foreach(required IN ITEMS
     "\"id\": \"ibl\""
     "\"id\": \"dynamic-cubemaps\""
+    "\"id\": \"cubemap-freeze\""
+    "\"id\": \"cubemap-geometric-normal\""
     "\"id\": \"diffuse-ibl\""
     "\"id\": \"diffuse-ibl-level\""
     "\"section\": \"ImageBasedLighting\""

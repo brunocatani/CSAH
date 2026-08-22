@@ -91,10 +91,10 @@ namespace
         float value)
     {
         D3D11_BUFFER_DESC description{};
-        description.ByteWidth = 48;
+        description.ByteWidth = 64;
         description.Usage = D3D11_USAGE_IMMUTABLE;
         description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-        std::array<float, 12> values{};
+        std::array<float, 16> values{};
         values[0] = value;
         D3D11_SUBRESOURCE_DATA data{};
         data.pSysMem = values.data();

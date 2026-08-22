@@ -21,6 +21,8 @@ cbuffer IblMaterialConstants : register(b5)
     float PublishedProbeOriginValid : packoffset(c1.w);
     float3 PreviousPublishedProbeOrigin : packoffset(c2.x);
     float PreviousPublishedProbeOriginValid : packoffset(c2.w);
+    float GeometricLookupNormal : packoffset(c3.x);
+    float3 IblDiagnosticPadding : packoffset(c3.y);
 };
 
 // Every exact FO4VR DFComposite material contract owns t7 and b12. The
@@ -50,10 +52,14 @@ struct PixelInput
     float2 ScreenUv : TEXCOORD3;
 };
 
-bool ReconstructReceiverWorldPosition(
+bool ReconstructReceiverGeometry(
     float2 packedUv,
+    out uint eye,
+    out float3 receiverViewPosition,
     out float3 receiverWorldPosition)
 {
+    eye = 0u;
+    receiverViewPosition = 0.0f;
     receiverWorldPosition = 0.0f;
     const float depth = SceneDepth.SampleLevel(
         MaterialSampler,
@@ -64,7 +70,7 @@ bool ReconstructReceiverWorldPosition(
         return false;
     }
 
-    const uint eye = packedUv.x >= 0.5f ? 1u : 0u;
+    eye = packedUv.x >= 0.5f ? 1u : 0u;
     const float localX = frac(packedUv.x * 2.0f);
     const float mappedDepth = depth <= 0.01f ?
         depth * 100.0f : depth * 1.01f - 0.01f;
@@ -97,8 +103,9 @@ bool ReconstructReceiverWorldPosition(
         dot(Scene[0].xyz, eyeToMidpointWorld),
         dot(Scene[1].xyz, eyeToMidpointWorld),
         dot(Scene[2].xyz, eyeToMidpointWorld));
+    receiverViewPosition = homogeneousView.xyz / homogeneousView.w;
     const float3 midpointRelativeView =
-        homogeneousView.xyz / homogeneousView.w + eyeToMidpointView;
+        receiverViewPosition + eyeToMidpointView;
     const float3 midpointRelativeWorld = float3(
         dot(Scene[20].xyz, midpointRelativeView),
         dot(Scene[21].xyz, midpointRelativeView),
@@ -107,6 +114,57 @@ bool ReconstructReceiverWorldPosition(
         Scene[80u + eye].xyz;
     return all(receiverWorldPosition == receiverWorldPosition) &&
         all(abs(receiverWorldPosition) < 8000000.0f);
+}
+
+bool GeometricReflectionDirection(
+    float2 packedUv,
+    uint eye,
+    float3 receiverViewPosition,
+    out float3 reflectedWorld)
+{
+    reflectedWorld = 0.0f;
+    const float localX = frac(packedUv.x * 2.0f);
+    const float4 rayClipPosition = float4(
+        localX * 2.0f - 1.0f,
+        1.0f - packedUv.y * 2.0f,
+        0.5f,
+        1.0f);
+    const uint inverseProjectionBase = 32u + eye * 4u;
+    const float4 eyeRayH = float4(
+        dot(Scene[inverseProjectionBase + 0u], rayClipPosition),
+        dot(Scene[inverseProjectionBase + 1u], rayClipPosition),
+        dot(Scene[inverseProjectionBase + 2u], rayClipPosition),
+        dot(Scene[inverseProjectionBase + 3u], rayClipPosition));
+    if (!all(isfinite(eyeRayH)) || abs(eyeRayH.w) <= 1.0e-6f)
+    {
+        return false;
+    }
+    const float3 incidentView = normalize(eyeRayH.xyz / eyeRayH.w);
+    const float3 geometricCandidate = cross(
+        ddx(receiverViewPosition),
+        ddy(receiverViewPosition));
+    const float geometricLengthSquared = dot(
+        geometricCandidate,
+        geometricCandidate);
+    if (!all(isfinite(incidentView)) ||
+        !all(isfinite(geometricCandidate)) ||
+        !isfinite(geometricLengthSquared) ||
+        geometricLengthSquared <= 1.0e-8f)
+    {
+        return false;
+    }
+    const float3 geometricView =
+        geometricCandidate * rsqrt(geometricLengthSquared);
+    const float3 geometricWorld = normalize(float3(
+        dot(Scene[20u].xyz, geometricView),
+        dot(Scene[21u].xyz, geometricView),
+        dot(Scene[22u].xyz, geometricView)));
+    const float3 incidentWorld = normalize(float3(
+        dot(Scene[20u].xyz, incidentView),
+        dot(Scene[21u].xyz, incidentView),
+        dot(Scene[22u].xyz, incidentView)));
+    reflectedWorld = normalize(reflect(incidentWorld, geometricWorld));
+    return all(isfinite(reflectedWorld));
 }
 
 float3 CorrectProbeDirection(
@@ -178,12 +236,29 @@ float4 PSMain(PixelInput input) : SV_Target0
         // dynamic specular consumption must use the opposite direction. This
         // sign is deliberately local to specular materials; Diffuse IBL keeps
         // the provider's proven world-direction convention.
-        const float3 dynamicDirection = -input.DirectionAndArray.xyz;
+        float3 dynamicDirection = -input.DirectionAndArray.xyz;
+        uint receiverEye;
+        float3 receiverViewPosition;
         float3 receiverWorldPosition;
         const bool receiverPositionValid =
-            ReconstructReceiverWorldPosition(
+            ReconstructReceiverGeometry(
                 input.ScreenUv,
+                receiverEye,
+                receiverViewPosition,
                 receiverWorldPosition);
+        [branch]
+        if (GeometricLookupNormal > 0.5 && receiverPositionValid)
+        {
+            float3 geometricDirection;
+            if (GeometricReflectionDirection(
+                    input.ScreenUv,
+                    receiverEye,
+                    receiverViewPosition,
+                    geometricDirection))
+            {
+                dynamicDirection = geometricDirection;
+            }
+        }
         const float3 publishedDirection = receiverPositionValid ?
             CorrectProbeDirection(
                 PublishedPosition,

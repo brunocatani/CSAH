@@ -47,6 +47,12 @@ int main()
         },
         "Dynamic Cubemaps diff");
     verifyLive(
+        [](Snapshot& value) { value.ibl.freezePublishedCube = true; },
+        "Dynamic Cubemaps freeze diff");
+    verifyLive(
+        [](Snapshot& value) { value.ibl.geometricLookupNormal = true; },
+        "Dynamic Cubemaps geometric lookup diff");
+    verifyLive(
         [](Snapshot& value) {
             value.complexMaterials.parallaxEnabled = false;
         },

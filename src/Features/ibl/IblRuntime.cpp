@@ -92,9 +92,11 @@ namespace community_shaders::ibl
             float publishedProbeOriginValid{};
             Float3 previousPublishedProbeOrigin{};
             float previousPublishedProbeOriginValid{};
+            float geometricLookupNormal{};
+            std::array<float, 3> reserved{};
         };
 
-        static_assert(sizeof(MaterialEnvironmentConstants) == 48);
+        static_assert(sizeof(MaterialEnvironmentConstants) == 64);
 
         struct TextureViewRange
         {
@@ -473,12 +475,17 @@ namespace community_shaders::ibl
     void Runtime::updateMaterialEnvironmentTransition(
         std::uint64_t tickMilliseconds) noexcept
     {
+        const auto geometricLookupNormal =
+            geometricLookupNormal_.load(std::memory_order_acquire);
+        const auto diagnosticChanged = geometricLookupNormal !=
+            materialGeometricLookupApplied_;
         if ((!materialEnvironmentTransitionActive_ &&
-                nextMaterialEnvironmentTransitionTickMilliseconds_ != 0) ||
+                nextMaterialEnvironmentTransitionTickMilliseconds_ != 0 &&
+                !diagnosticChanged) ||
             !context_ ||
             !materialEnabledConstants_ ||
-            tickMilliseconds <
-                nextMaterialEnvironmentTransitionTickMilliseconds_) {
+            (!diagnosticChanged && tickMilliseconds <
+                nextMaterialEnvironmentTransitionTickMilliseconds_)) {
             return;
         }
         nextMaterialEnvironmentTransitionTickMilliseconds_ =
@@ -515,6 +522,7 @@ namespace community_shaders::ibl
             .previousPublishedProbeOrigin = previousProbeOrigin.position,
             .previousPublishedProbeOriginValid =
                 previousProbeOrigin.valid ? 1.0F : 0.0F,
+            .geometricLookupNormal = geometricLookupNormal ? 1.0F : 0.0F,
         };
         context_->UpdateSubresource(
             materialEnabledConstants_.Get(),
@@ -523,6 +531,7 @@ namespace community_shaders::ibl
             &constants,
             0,
             0);
+        materialGeometricLookupApplied_ = geometricLookupNormal;
         if (transitionWeight >= 1.0F) {
             materialEnvironmentTransitionActive_ = false;
         }
@@ -645,6 +654,10 @@ namespace community_shaders::ibl
         const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
         const auto previousDynamic = dynamicCubemapsEnabled_.load(
             std::memory_order_acquire);
+        const auto previousFreeze = freezePublishedCube_.load(
+            std::memory_order_acquire);
+        const auto previousGeometric = geometricLookupNormal_.load(
+            std::memory_order_acquire);
         diffuseLevelBits_.store(
             std::bit_cast<std::uint32_t>(safe.diffuseLevel),
             std::memory_order_release);
@@ -653,6 +666,12 @@ namespace community_shaders::ibl
             std::memory_order_release);
         dynamicCubemapsEnabled_.store(
             safe.dynamicCubemapsEnabled,
+            std::memory_order_release);
+        freezePublishedCube_.store(
+            safe.freezePublishedCube,
+            std::memory_order_release);
+        geometricLookupNormal_.store(
+            safe.geometricLookupNormal,
             std::memory_order_release);
         enabled_.store(safe.enabled, std::memory_order_release);
         refreshComplexMaterialProducerGate();
@@ -664,6 +683,24 @@ namespace community_shaders::ibl
                 "Dynamic Cubemaps {} live; specular environment substitution is {}, and the shared IBL capture remains active only while a diffuse or specular consumer requires it.",
                 safe.dynamicCubemapsEnabled ? "enabled" : "disabled",
                 safe.dynamicCubemapsEnabled ? "armed" : "retired");
+        }
+        if (previousFreeze != safe.freezePublishedCube) {
+            if (!safe.freezePublishedCube) {
+                nextEnvironmentCaptureTickMilliseconds_.store(
+                    0,
+                    std::memory_order_release);
+            }
+            logging::info(
+                "Dynamic Cubemaps published-cube freeze {}; {}.",
+                safe.freezePublishedCube ? "enabled" : "disabled",
+                safe.freezePublishedCube ?
+                    "the first/current valid generation remains selected and later capture dispatches stop" :
+                    "live capture dispatches resume");
+        }
+        if (previousGeometric != safe.geometricLookupNormal) {
+            logging::info(
+                "Dynamic Cubemaps geometric lookup normal {}; material normal maps remain active in ordinary lighting.",
+                safe.geometricLookupNormal ? "enabled" : "disabled");
         }
     }
 
@@ -1264,8 +1301,17 @@ namespace community_shaders::ibl
         const auto now = GetTickCount64();
         const auto diagnosticMayBeRequested = worldCaptureReady &&
             featureEnabled && !captureProbeSessionComplete_;
+        const auto publishedGenerationAvailable =
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ == activeCaptureProbeSessionId_ &&
+            environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity();
+        const auto publishedCubeFrozen =
+            freezePublishedCube_.load(std::memory_order_acquire) &&
+            publishedGenerationAvailable;
         const auto productionMayBeRequested = worldCaptureReady &&
-            featureEnabled && !environmentUpdater_.snapshot().pending &&
+            featureEnabled && !publishedCubeFrozen &&
+            !environmentUpdater_.snapshot().pending &&
             now >= nextEnvironmentCaptureTickMilliseconds_.load(
                        std::memory_order_acquire);
         if (!diagnosticMayBeRequested && !productionMayBeRequested) {
@@ -2253,6 +2299,10 @@ namespace community_shaders::ibl
             .enabled = enabled_.load(std::memory_order_acquire),
             .dynamicCubemapsEnabled = dynamicCubemapsEnabled_.load(
                 std::memory_order_acquire),
+            .freezePublishedCube = freezePublishedCube_.load(
+                std::memory_order_acquire),
+            .geometricLookupNormal = geometricLookupNormal_.load(
+                std::memory_order_acquire),
             .diffuseEnabled = diffuseEnabled_.load(
                 std::memory_order_acquire),
             .resourcesReady = resourcesReady_.load(std::memory_order_acquire),
@@ -2402,6 +2452,7 @@ namespace community_shaders::ibl
         loggedMaterialBindingFailure_ = false;
         materialConsumptionFailed_ = false;
         materialEnvironmentTransitionActive_ = false;
+        materialGeometricLookupApplied_ = false;
         materialEnvironmentTransitionWeight_ = 1.0f;
         materialEnvironmentTransitionStartMilliseconds_ = 0;
         nextMaterialEnvironmentTransitionTickMilliseconds_ = 0;
