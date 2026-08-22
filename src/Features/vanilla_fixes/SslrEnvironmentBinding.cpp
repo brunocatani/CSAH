@@ -426,14 +426,20 @@ namespace community_shaders::vanilla_fixes
         context->PSSetConstantBuffers(kConstantSlot, 1, &constants);
         if (!appliedMatches(context, resources, sampler, constants)) {
             Service::get().recordBindingFailure("state application");
-            // D3D setters are void. Reapply the known-safe transaction once
-            // for this draw, then retire the corrected pair for later binds.
+            // D3D setters are void. Retry the complete transaction once. If
+            // the state still does not match, restore the captured stock state
+            // and leave this scope inactive so the draw hook can rebind the
+            // retained stock shader before issuing the draw.
             context->PSSetShaderResources(
                 kFirstResourceSlot,
                 kResourceCount,
                 resources.data());
             context->PSSetSamplers(kSamplerSlot, 1, &sampler);
             context->PSSetConstantBuffers(kConstantSlot, 1, &constants);
+            if (!appliedMatches(context, resources, sampler, constants)) {
+                (void)restore();
+                return;
+            }
         }
         active_ = true;
         Service::get().recordBinding(historyAvailable);
@@ -471,13 +477,26 @@ namespace community_shaders::vanilla_fixes
             resources.data());
         context_->PSSetSamplers(kSamplerSlot, 1, &sampler);
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
-        const auto restored = appliedMatches(
+        auto restored = appliedMatches(
             context_.Get(),
             resources,
             sampler,
             constants);
         if (!restored) {
-            Service::get().recordRestoreFailure();
+            context_->PSSetShaderResources(
+                kFirstResourceSlot,
+                kResourceCount,
+                resources.data());
+            context_->PSSetSamplers(kSamplerSlot, 1, &sampler);
+            context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
+            restored = appliedMatches(
+                context_.Get(),
+                resources,
+                sampler,
+                constants);
+            if (!restored) {
+                Service::get().recordRestoreFailure();
+            }
         }
         restored_ = true;
         active_ = false;

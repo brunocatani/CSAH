@@ -75,6 +75,8 @@ namespace community_shaders::vanilla_fixes
         ShaderFix fix) noexcept;
     [[nodiscard]] ID3D11PixelShader* selectSslrPixelShaderForBinding(
         ID3D11PixelShader* engineShader) noexcept;
+    [[nodiscard]] ID3D11PixelShader* retainedStockSslrPixelShader(
+        ID3D11PixelShader* correctedShader) noexcept;
     [[nodiscard]] bool isSslrRaytracePixelShader(
         ID3D11PixelShader* shader) noexcept;
     void reportShaderCreationResult(

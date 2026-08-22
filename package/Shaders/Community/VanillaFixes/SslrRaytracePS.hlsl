@@ -337,6 +337,24 @@ float3 loadWorldRadiance(
     return radiance;
 }
 
+float3 loadWorldRadianceForReceiver(
+    float3 reflectedWorld,
+    float3 receiverView,
+    bool rightEye,
+    out float validity)
+{
+    float3 receiverWorld;
+    const bool receiverWorldValid = receiverWorldPosition(
+        receiverView,
+        rightEye,
+        receiverWorld);
+    return loadWorldRadiance(
+        reflectedWorld,
+        receiverWorld,
+        receiverWorldValid,
+        validity);
+}
+
 float4 main(PixelInput input) : SV_TARGET
 {
     float2 encodedDirection;
@@ -366,18 +384,6 @@ float4 main(PixelInput input) : SV_TARGET
     {
         return 0.0f;
     }
-
-    float3 receiverWorld;
-    const bool receiverWorldValid = receiverWorldPosition(
-        receiver,
-        rightEye,
-        receiverWorld);
-    float worldValidity;
-    const float3 worldRadiance = loadWorldRadiance(
-        reflectedWorld,
-        receiverWorld,
-        receiverWorldValid,
-        worldValidity);
 
     static const uint maximumSteps = 32u;
     static const uint refinementSteps = 5u;
@@ -482,6 +488,19 @@ float4 main(PixelInput input) : SV_TARGET
                     SceneColorSampler,
                     hitUv,
                     0.0f).rgb);
+                // A fully owned current-frame hit is independent of the world
+                // fallback. Avoid its position reconstruction and six cubemap
+                // samples without changing the resulting color or validity.
+                if (confidence >= 1.0f - 1.0e-5f)
+                {
+                    return float4(color, confidence);
+                }
+                float worldValidity;
+                const float3 worldRadiance = loadWorldRadianceForReceiver(
+                    reflectedWorld,
+                    receiver,
+                    rightEye,
+                    worldValidity);
                 if (worldValidity > 0.05f)
                 {
                     // Current visible geometry owns at any hit distance.
@@ -500,5 +519,11 @@ float4 main(PixelInput input) : SV_TARGET
         previousGap = gap;
         previousValid = true;
     }
+    float worldValidity;
+    const float3 worldRadiance = loadWorldRadianceForReceiver(
+        reflectedWorld,
+        receiver,
+        rightEye,
+        worldValidity);
     return float4(worldRadiance, worldValidity);
 }

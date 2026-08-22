@@ -27,9 +27,10 @@ cbuffer EnvironmentUpdateConstants : register(b11)
 };
 
 // The exact FO4VR DFComposite draw binds an 85-float4 buffer at b12. Local
-// material DXBC independently proves rows 63..70 are the current per-eye
-// world-to-clip matrices: left rows 63..66, right rows 67..70. The verified
-// 85-row VR layout carries persistent camera-position adjustments at c80/c81.
+// material DXBC independently proves c59/c60 are the camera-relative per-eye
+// origins and rows 63..70 are the current per-eye world-to-clip matrices: left
+// rows 63..66, right rows 67..70. The verified 85-row VR layout carries
+// persistent camera-position adjustments at c80/c81.
 cbuffer Fo4VrSceneConstants : register(b12)
 {
     float4 Scene[85];
@@ -54,23 +55,11 @@ bool CameraPositionAdjust(uint eye, out float3 adjustment)
 
 bool CameraOrigin(uint eye, out float3 origin)
 {
-    const uint matrixBase = 63u + eye * 4u;
-    const float3 planeX = Scene[matrixBase].xyz;
-    const float3 planeY = Scene[matrixBase + 1u].xyz;
-    const float3 planeW = Scene[matrixBase + 3u].xyz;
-    const float3 crossYW = cross(planeY, planeW);
-    const float determinant = dot(planeX, crossYW);
-    if (!(abs(determinant) > PositionEpsilon))
-    {
-        origin = 0.0f;
-        return false;
-    }
-
-    origin = (
-        -Scene[matrixBase].w * crossYW -
-        Scene[matrixBase + 1u].w * cross(planeW, planeX) -
-        Scene[matrixBase + 3u].w * cross(planeX, planeY)) /
-        determinant;
+    // Exact FO4VR reflection-composite DXBC exposes the live camera-relative
+    // eye origins directly at c59/c60. Matrix inversion of the projection
+    // rows yields the camera-relative coordinate origin and discards headset
+    // translation, which makes position history follow the player.
+    origin = Scene[59u + eye].xyz;
     const bool finite = all(origin == origin) &&
         all(abs(origin) < MaximumCaptureDistance * 4.0f);
     if (!finite)

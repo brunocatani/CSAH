@@ -26,25 +26,6 @@ namespace community_shaders::ibl
         constexpr float kVisibleDirectionHistoryBlend = 0.8F;
         constexpr float kMaximumCaptureDistance = 2000000.0F;
 
-        [[nodiscard]] Float3 cross(
-            const Float3& left,
-            const Float3& right) noexcept
-        {
-            return {
-                left.y * right.z - left.z * right.y,
-                left.z * right.x - left.x * right.z,
-                left.x * right.y - left.y * right.x,
-            };
-        }
-
-        [[nodiscard]] float dot(
-            const Float3& left,
-            const Float3& right) noexcept
-        {
-            return left.x * right.x + left.y * right.y +
-                left.z * right.z;
-        }
-
         [[nodiscard]] bool finiteOrigin(const Float3& origin) noexcept
         {
             constexpr auto limit = kMaximumCaptureDistance * 4.0F;
@@ -58,45 +39,13 @@ namespace community_shaders::ibl
             std::uint32_t eye,
             Float3& origin) noexcept
         {
-            const auto matrixBase = 63U + eye * 4U;
-            const Float3 planeX{
-                sceneRows[matrixBase][0],
-                sceneRows[matrixBase][1],
-                sceneRows[matrixBase][2],
-            };
-            const Float3 planeY{
-                sceneRows[matrixBase + 1U][0],
-                sceneRows[matrixBase + 1U][1],
-                sceneRows[matrixBase + 1U][2],
-            };
-            const Float3 planeW{
-                sceneRows[matrixBase + 3U][0],
-                sceneRows[matrixBase + 3U][1],
-                sceneRows[matrixBase + 3U][2],
-            };
-            const auto crossYW = cross(planeY, planeW);
-            const auto determinant = dot(planeX, crossYW);
-            if (!(std::abs(determinant) > 1.0e-5F)) {
-                origin = {};
-                return false;
-            }
-            const auto crossWX = cross(planeW, planeX);
-            const auto crossXY = cross(planeX, planeY);
-            const auto xWeight = -sceneRows[matrixBase][3];
-            const auto yWeight = -sceneRows[matrixBase + 1U][3];
-            const auto wWeight = -sceneRows[matrixBase + 3U][3];
-            origin = {
-                (crossYW.x * xWeight + crossWX.x * yWeight +
-                    crossXY.x * wWeight) / determinant,
-                (crossYW.y * xWeight + crossWX.y * yWeight +
-                    crossXY.y * wWeight) / determinant,
-                (crossYW.z * xWeight + crossWX.z * yWeight +
-                    crossXY.z * wWeight) / determinant,
-            };
+            const auto& cameraRelativeOrigin = sceneRows[59U + eye];
             const auto& adjustment = sceneRows[80U + eye];
-            origin.x += adjustment[0];
-            origin.y += adjustment[1];
-            origin.z += adjustment[2];
+            origin = {
+                cameraRelativeOrigin[0] + adjustment[0],
+                cameraRelativeOrigin[1] + adjustment[1],
+                cameraRelativeOrigin[2] + adjustment[2],
+            };
             return finiteOrigin(origin);
         }
 

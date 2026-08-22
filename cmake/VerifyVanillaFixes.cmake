@@ -157,6 +157,7 @@ vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "PSGetConstantBuffers"
   "PSSetConstantBuffers"
   "appliedMatches"
+  "(void)restore()"
   "setSslrConsumerEnabled")
 file(READ "${VANILLA_IBL_RUNTIME_SOURCE}" ibl_runtime)
 vanilla_fixes_require_text("${ibl_runtime}" "shared IBL SSLR consumer"
@@ -174,6 +175,8 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
   "vanilla_fixes::isSslrRaytracePixelShader(shader)"
+  "vanilla_fixes::retainedStockSslrPixelShader(shader)"
+  "reconcileSslrDrawShader(context, sslrEnvironment)"
   "ScopedSslrEnvironmentBinding"
   "observeFocusShadowRenderTargets(depthStencil)"
   "vanilla_fixes::isFocusShadowPixelShader(shader)"
@@ -187,7 +190,7 @@ if(NOT focus_draw_binding_count EQUAL 4)
     "Vanilla Fixes focus resource must bind at all four draw boundaries")
 endif()
 string(REGEX MATCHALL
-  "ScopedSslrEnvironmentBinding" sslr_draw_bindings "${d3d11}")
+  "sslrEnvironment\\(" sslr_draw_bindings "${d3d11}")
 list(LENGTH sslr_draw_bindings sslr_draw_binding_count)
 if(NOT sslr_draw_binding_count EQUAL 4)
   message(FATAL_ERROR
@@ -295,10 +298,12 @@ vanilla_fixes_require_text("${sslr_raytrace}" "SSLR raytrace source"
   "viewDepth / eyeRay.z"
   "receiverWorldPosition"
   "correctProbeDirection"
+  "loadWorldRadianceForReceiver"
   "maximumSteps = 32u"
   "refinementSteps = 5u"
   "maximumTravel = 1000.0f"
   "return rightEye ? uv.x > 0.5f : uv.x < 0.5f"
+  "confidence >= 1.0f - 1.0e-5f"
   "confidence - EnvironmentControl.z"
   "return float4(worldRadiance, worldValidity)")
 
@@ -314,7 +319,7 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     "VANILLA_SAO_RAW_BINARY|5936|5a0373b4ac810c4abc392d3887d4bb916a798de6aa63bff140a9d0f49e6a53ee|cs_5_0|dcl_thread_group 16, 16, 1"
     "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
     "VANILLA_SSLR_PREPASS_BINARY|4640|a7526cfc9c67cf62f2719dd7882cef2388c4943d2f22010ddae5c8b8d66c9f80|ps_5_0|dynamicIndexed"
-    "VANILLA_SSLR_RAYTRACE_BINARY|16460|1be9c54bf953b8f244a796d98de3f1d18e3acb54809b475f319c3f1cb5f1089c|ps_5_0|dcl_resource_texturecube")
+    "VANILLA_SSLR_RAYTRACE_BINARY|18572|7098a1469ec96e77eaae57a384c5c1a7e16843351a4b680d61b3d21d0de09159|ps_5_0|dcl_resource_texturecube")
   foreach(spec IN LISTS binary_specs)
     string(REPLACE "|" ";" fields "${spec}")
     list(GET fields 0 path_variable)

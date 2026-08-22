@@ -236,6 +236,8 @@ namespace community_shaders::render
         std::atomic_uint64_t renderTargetAndUnorderedAccessBindCalls{};
         thread_local bool activeFocusShadowPixel{};
         thread_local bool activeCorrectedSslrRaytracePixel{};
+        thread_local ID3D11PixelShader* activeStockSslrRaytracePixel{};
+        std::atomic_bool firstSslrDrawFallbackLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -1358,6 +1360,39 @@ namespace community_shaders::render
                 qualificationSessionActive.load(std::memory_order_acquire);
         }
 
+        void reconcileSslrDrawShader(
+            ID3D11DeviceContext* context,
+            const vanilla_fixes::ScopedSslrEnvironmentBinding& binding)
+            noexcept
+        {
+            if (!activeCorrectedSslrRaytracePixel || binding.active()) {
+                return;
+            }
+            if (!context || !originalPSSetShader ||
+                !activeStockSslrRaytracePixel) {
+                if (!firstSslrDrawFallbackLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    logging::error(
+                        "Vanilla Fixes corrected SSLR draw lost its required private environment state and had no retained stock shader; later exact binds remain fail-closed.");
+                }
+                return;
+            }
+            originalPSSetShader(
+                context,
+                activeStockSslrRaytracePixel,
+                nullptr,
+                0);
+            activeCorrectedSslrRaytracePixel = false;
+            activeStockSslrRaytracePixel = nullptr;
+            if (!firstSslrDrawFallbackLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::warn(
+                    "Vanilla Fixes corrected SSLR draw could not establish its private environment transaction; the retained stock raytrace shader was rebound before drawing.");
+            }
+        }
+
         void recordActiveIblCaptureProbe(
             ID3D11DeviceContext* context) noexcept
         {
@@ -1939,6 +1974,10 @@ namespace community_shaders::render
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
             activeCorrectedSslrRaytracePixel =
                 vanilla_fixes::isSslrRaytracePixelShader(shader);
+            activeStockSslrRaytracePixel =
+                activeCorrectedSslrRaytracePixel ?
+                vanilla_fixes::retainedStockSslrPixelShader(shader) :
+                nullptr;
             activeFocusShadowPixel =
                 vanilla_fixes::isFocusShadowPixelShader(shader);
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
@@ -2256,6 +2295,7 @@ namespace community_shaders::render
                 sslrEnvironment(
                     context,
                     activeCorrectedSslrRaytracePixel);
+            reconcileSslrDrawShader(context, sslrEnvironment);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2315,6 +2355,7 @@ namespace community_shaders::render
                 sslrEnvironment(
                     context,
                     activeCorrectedSslrRaytracePixel);
+            reconcileSslrDrawShader(context, sslrEnvironment);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2378,6 +2419,7 @@ namespace community_shaders::render
                 sslrEnvironment(
                     context,
                     activeCorrectedSslrRaytracePixel);
+            reconcileSslrDrawShader(context, sslrEnvironment);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2446,6 +2488,7 @@ namespace community_shaders::render
                 sslrEnvironment(
                     context,
                     activeCorrectedSslrRaytracePixel);
+            reconcileSslrDrawShader(context, sslrEnvironment);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,

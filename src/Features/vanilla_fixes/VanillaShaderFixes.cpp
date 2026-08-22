@@ -263,6 +263,22 @@ namespace community_shaders::vanilla_fixes
         return engineShader;
     }
 
+    ID3D11PixelShader* retainedStockSslrPixelShader(
+        ID3D11PixelShader* correctedShader) noexcept
+    {
+        if (!correctedShader) {
+            return nullptr;
+        }
+        for (const auto& pair : sslrPixelShaderPairs) {
+            const auto* const published = pair.key.load(
+                std::memory_order_acquire);
+            if (published == correctedShader) {
+                return pair.stock;
+            }
+        }
+        return nullptr;
+    }
+
     bool isSslrRaytracePixelShader(ID3D11PixelShader* shader) noexcept
     {
         if (!shader) {
