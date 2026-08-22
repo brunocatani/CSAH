@@ -14,24 +14,13 @@ namespace community_shaders::vanilla_fixes
         using Microsoft::WRL::ComPtr;
 
         constexpr UINT kFirstResourceSlot = 4;
-        constexpr UINT kResourceCount = 6;
+        constexpr UINT kResourceCount = 4;
         constexpr UINT kSamplerSlot = 4;
         constexpr UINT kConstantSlot = 11;
         constexpr float kCurrentHitMinimumConfidence = 0.65f;
 
-        struct Float3 final
-        {
-            float x{};
-            float y{};
-            float z{};
-        };
-
         struct SslrEnvironmentConstants final
         {
-            Float3 publishedProbeOrigin{};
-            float publishedProbeOriginValid{};
-            Float3 previousProbeOrigin{};
-            float previousProbeOriginValid{};
             float transitionWeight{ 1.0f };
             float previousAvailable{};
             float currentHitMinimumConfidence{
@@ -40,13 +29,7 @@ namespace community_shaders::vanilla_fixes
             float publishedAvailable{};
         };
 
-        static_assert(sizeof(SslrEnvironmentConstants) == 48);
-
-        [[nodiscard]] Float3 copy(
-            const ibl::Float3& value) noexcept
-        {
-            return { value.x, value.y, value.z };
-        }
+        static_assert(sizeof(SslrEnvironmentConstants) == 16);
 
         [[nodiscard]] bool sameDevice(
             ID3D11Device* expected,
@@ -153,7 +136,7 @@ namespace community_shaders::vanilla_fixes
                     0);
                 ready_.store(true, std::memory_order_release);
                 logging::info(
-                    "Vanilla Fixes stable-reflection binding initialized; corrected SSLR consumes Community Shaders' shared environment through private t4..t9/s4/b11 state.");
+                    "Vanilla Fixes stable-reflection binding initialized; corrected SSLR consumes Community Shaders' shared world-direction environment through private t4..t7/s4/b11 state.");
                 return true;
             }
 
@@ -171,7 +154,7 @@ namespace community_shaders::vanilla_fixes
 
             [[nodiscard]] bool prepare(
                 ID3D11DeviceContext* context,
-                std::array<ID3D11ShaderResourceView*, 6>& resources,
+                std::array<ID3D11ShaderResourceView*, 4>& resources,
                 ID3D11SamplerState*& sampler,
                 ID3D11Buffer*& constants,
                 bool& historyAvailable) noexcept
@@ -201,10 +184,8 @@ namespace community_shaders::vanilla_fixes
                 resources = {
                     environment.publishedEnvironment,
                     environment.publishedValidity,
-                    environment.publishedPosition,
                     environment.previousEnvironment,
                     environment.previousValidity,
-                    environment.previousPosition,
                 };
                 for (auto* resource : resources) {
                     if (resource && !sameDevice(device_.Get(), resource)) {
@@ -215,14 +196,6 @@ namespace community_shaders::vanilla_fixes
                 }
 
                 const SslrEnvironmentConstants values{
-                    .publishedProbeOrigin = copy(
-                        environment.publishedProbeOrigin.position),
-                    .publishedProbeOriginValid =
-                        environment.publishedProbeOrigin.valid ? 1.0f : 0.0f,
-                    .previousProbeOrigin = copy(
-                        environment.previousProbeOrigin.position),
-                    .previousProbeOriginValid =
-                        environment.previousProbeOrigin.valid ? 1.0f : 0.0f,
                     .transitionWeight = environment.transitionWeight,
                     .previousAvailable =
                         environment.previousAvailable ? 1.0f : 0.0f,
@@ -253,7 +226,7 @@ namespace community_shaders::vanilla_fixes
                             true,
                             std::memory_order_relaxed)) {
                         logging::info(
-                            "Vanilla Fixes corrected SSLR consumed its first atomically published Community Shaders radiance/validity/position environment; visible hits remain confidence-owned and misses now retain world radiance.");
+                            "Vanilla Fixes corrected SSLR consumed its first atomically published Community Shaders world-direction radiance/validity environment; visible hits remain confidence-owned and misses retain stable world radiance.");
                     }
                 }
             }
@@ -322,11 +295,11 @@ namespace community_shaders::vanilla_fixes
 
         [[nodiscard]] bool appliedMatches(
             ID3D11DeviceContext* context,
-            const std::array<ID3D11ShaderResourceView*, 6>& resources,
+            const std::array<ID3D11ShaderResourceView*, 4>& resources,
             ID3D11SamplerState* sampler,
             ID3D11Buffer* constants) noexcept
         {
-            std::array<ID3D11ShaderResourceView*, 6> appliedResources{};
+            std::array<ID3D11ShaderResourceView*, 4> appliedResources{};
             context->PSGetShaderResources(
                 kFirstResourceSlot,
                 kResourceCount,
@@ -385,7 +358,7 @@ namespace community_shaders::vanilla_fixes
             return;
         }
 
-        std::array<ID3D11ShaderResourceView*, 6> resources{};
+        std::array<ID3D11ShaderResourceView*, 4> resources{};
         ID3D11SamplerState* sampler{};
         ID3D11Buffer* constants{};
         bool historyAvailable{};
@@ -399,7 +372,7 @@ namespace community_shaders::vanilla_fixes
         }
 
         context_ = context;
-        std::array<ID3D11ShaderResourceView*, 6> previousResources{};
+        std::array<ID3D11ShaderResourceView*, 4> previousResources{};
         context->PSGetShaderResources(
             kFirstResourceSlot,
             kResourceCount,
@@ -465,7 +438,7 @@ namespace community_shaders::vanilla_fixes
             active_ = false;
             return false;
         }
-        std::array<ID3D11ShaderResourceView*, 6> resources{};
+        std::array<ID3D11ShaderResourceView*, 4> resources{};
         for (std::size_t index = 0; index < resources.size(); ++index) {
             resources[index] = previousResources_[index].Get();
         }

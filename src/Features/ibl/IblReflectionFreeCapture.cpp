@@ -16,6 +16,7 @@ namespace community_shaders::ibl
         constexpr UINT kEnvironmentCubeCount = 42;
         constexpr UINT kEnvironmentFaceCount = kEnvironmentCubeCount * 6;
         constexpr UINT kEnvironmentSlot = 8;
+        constexpr UINT kAmbientOcclusionSlot = 9;
         constexpr UINT kScreenReflectionSlot = 14;
 
         [[nodiscard]] bool sameDevice(
@@ -123,6 +124,34 @@ namespace community_shaders::ibl
                 &environmentTexture))) {
             return false;
         }
+
+        ComPtr<ID3D11Texture2D> ambientOcclusionTexture;
+        ComPtr<ID3D11ShaderResourceView> ambientOcclusionSrv;
+        D3D11_TEXTURE2D_DESC ambientOcclusionDescription{};
+        ambientOcclusionDescription.Width = 1;
+        ambientOcclusionDescription.Height = 1;
+        ambientOcclusionDescription.MipLevels = 1;
+        ambientOcclusionDescription.ArraySize = 1;
+        ambientOcclusionDescription.Format = DXGI_FORMAT_R32_FLOAT;
+        ambientOcclusionDescription.SampleDesc.Count = 1;
+        ambientOcclusionDescription.Usage = D3D11_USAGE_IMMUTABLE;
+        ambientOcclusionDescription.BindFlags =
+            D3D11_BIND_SHADER_RESOURCE;
+        constexpr float one = 1.0F;
+        D3D11_SUBRESOURCE_DATA ambientOcclusionData{};
+        ambientOcclusionData.pSysMem = &one;
+        ambientOcclusionData.SysMemPitch = sizeof(one);
+        ambientOcclusionData.SysMemSlicePitch = sizeof(one);
+        if (FAILED(device->CreateTexture2D(
+                &ambientOcclusionDescription,
+                &ambientOcclusionData,
+                &ambientOcclusionTexture)) ||
+            FAILED(device->CreateShaderResourceView(
+                ambientOcclusionTexture.Get(),
+                nullptr,
+                &ambientOcclusionSrv))) {
+            return false;
+        }
         D3D11_SHADER_RESOURCE_VIEW_DESC environmentViewDescription{};
         environmentViewDescription.Format = environmentDescription.Format;
         environmentViewDescription.ViewDimension =
@@ -171,6 +200,9 @@ namespace community_shaders::ibl
         blackScreenReflectionTexture_ =
             std::move(screenReflectionTexture);
         blackScreenReflectionSrv_ = std::move(screenReflectionSrv);
+        whiteAmbientOcclusionTexture_ =
+            std::move(ambientOcclusionTexture);
+        whiteAmbientOcclusionSrv_ = std::move(ambientOcclusionSrv);
         return true;
     }
 
@@ -180,6 +212,8 @@ namespace community_shaders::ibl
         scratchRenderTarget_.Reset();
         scratchTexture_.Reset();
         scratchDescription_ = {};
+        whiteAmbientOcclusionSrv_.Reset();
+        whiteAmbientOcclusionTexture_.Reset();
         blackScreenReflectionSrv_.Reset();
         blackScreenReflectionTexture_.Reset();
         blackEnvironmentSrv_.Reset();
@@ -201,6 +235,7 @@ namespace community_shaders::ibl
         ID3D11RenderTargetView* outputView) noexcept
     {
         if (!device_ || !blackEnvironmentSrv_ ||
+            !whiteAmbientOcclusionSrv_ ||
             !blackScreenReflectionSrv_) {
             return false;
         }
@@ -248,6 +283,7 @@ namespace community_shaders::ibl
         if (!context_ || !resources.device() ||
             !resources.scratchRenderTarget() ||
             !resources.blackEnvironment() ||
+            !resources.whiteAmbientOcclusion() ||
             !resources.blackScreenReflection()) {
             rejection_ = ReflectionFreeCaptureRejection::invalidResources;
             context_ = nullptr;
@@ -346,16 +382,22 @@ namespace community_shaders::ibl
         }
 
         ID3D11ShaderResourceView* rawEnvironment{};
+        ID3D11ShaderResourceView* rawAmbientOcclusion{};
         ID3D11ShaderResourceView* rawScreenReflection{};
         context_->PSGetShaderResources(
             kEnvironmentSlot,
             1,
             &rawEnvironment);
         context_->PSGetShaderResources(
+            kAmbientOcclusionSlot,
+            1,
+            &rawAmbientOcclusion);
+        context_->PSGetShaderResources(
             kScreenReflectionSlot,
             1,
             &rawScreenReflection);
         environment_.Attach(rawEnvironment);
+        ambientOcclusion_.Attach(rawAmbientOcclusion);
         screenReflection_.Attach(rawScreenReflection);
         ID3D11DepthStencilState* rawDepthStencilState{};
         context_->OMGetDepthStencilState(
@@ -405,12 +447,17 @@ namespace community_shaders::ibl
         stateCaptured_ = true;
 
         auto* blackEnvironment = resources.blackEnvironment();
+        auto* whiteAmbientOcclusion = resources.whiteAmbientOcclusion();
         auto* blackScreenReflection = resources.blackScreenReflection();
         auto* scratchRenderTarget = resources.scratchRenderTarget();
         context_->PSSetShaderResources(
             kEnvironmentSlot,
             1,
             &blackEnvironment);
+        context_->PSSetShaderResources(
+            kAmbientOcclusionSlot,
+            1,
+            &whiteAmbientOcclusion);
         context_->PSSetShaderResources(
             kScreenReflectionSlot,
             1,
@@ -433,6 +480,7 @@ namespace community_shaders::ibl
             captureDepthStencilState_.Get(),
             stencilReference_,
             blackEnvironment,
+            whiteAmbientOcclusion,
             blackScreenReflection);
         if (!active_) {
             rejection_ = ReflectionFreeCaptureRejection::
@@ -460,6 +508,7 @@ namespace community_shaders::ibl
         captureDepthStencilState_(
             std::move(other.captureDepthStencilState_)),
         environment_(std::move(other.environment_)),
+        ambientOcclusion_(std::move(other.ambientOcclusion_)),
         screenReflection_(std::move(other.screenReflection_)),
         drawTiming_(std::move(other.drawTiming_)),
         renderTargetCount_(other.renderTargetCount_),
@@ -482,6 +531,7 @@ namespace community_shaders::ibl
         ID3D11DepthStencilState* depthStencilState,
         UINT stencilReference,
         ID3D11ShaderResourceView* environment,
+        ID3D11ShaderResourceView* ambientOcclusion,
         ID3D11ShaderResourceView* screenReflection) const noexcept
     {
         if (!context_) {
@@ -490,6 +540,7 @@ namespace community_shaders::ibl
         ID3D11RenderTargetView* rawRenderTarget{};
         ID3D11DepthStencilView* rawDepthStencil{};
         ID3D11ShaderResourceView* rawEnvironment{};
+        ID3D11ShaderResourceView* rawAmbientOcclusion{};
         ID3D11ShaderResourceView* rawScreenReflection{};
         ID3D11DepthStencilState* rawDepthStencilState{};
         UINT observedStencilReference{};
@@ -502,6 +553,10 @@ namespace community_shaders::ibl
             1,
             &rawEnvironment);
         context_->PSGetShaderResources(
+            kAmbientOcclusionSlot,
+            1,
+            &rawAmbientOcclusion);
+        context_->PSGetShaderResources(
             kScreenReflectionSlot,
             1,
             &rawScreenReflection);
@@ -511,16 +566,19 @@ namespace community_shaders::ibl
         ComPtr<ID3D11RenderTargetView> retainedRenderTarget;
         ComPtr<ID3D11DepthStencilView> retainedDepthStencil;
         ComPtr<ID3D11ShaderResourceView> retainedEnvironment;
+        ComPtr<ID3D11ShaderResourceView> retainedAmbientOcclusion;
         ComPtr<ID3D11ShaderResourceView> retainedScreenReflection;
         ComPtr<ID3D11DepthStencilState> retainedDepthStencilState;
         retainedRenderTarget.Attach(rawRenderTarget);
         retainedDepthStencil.Attach(rawDepthStencil);
         retainedEnvironment.Attach(rawEnvironment);
+        retainedAmbientOcclusion.Attach(rawAmbientOcclusion);
         retainedScreenReflection.Attach(rawScreenReflection);
         retainedDepthStencilState.Attach(rawDepthStencilState);
         return retainedRenderTarget.Get() == renderTarget &&
             retainedDepthStencil.Get() == depthStencil &&
             retainedEnvironment.Get() == environment &&
+            retainedAmbientOcclusion.Get() == ambientOcclusion &&
             retainedScreenReflection.Get() == screenReflection &&
             retainedDepthStencilState.Get() == depthStencilState &&
             observedStencilReference == stencilReference;
@@ -540,6 +598,7 @@ namespace community_shaders::ibl
             rawRenderTargets[index] = renderTargets_[index].Get();
         }
         auto* environment = environment_.Get();
+        auto* ambientOcclusion = ambientOcclusion_.Get();
         auto* screenReflection = screenReflection_.Get();
         context_->OMSetRenderTargetsAndUnorderedAccessViews(
             renderTargetCount_,
@@ -553,6 +612,10 @@ namespace community_shaders::ibl
             kEnvironmentSlot,
             1,
             &environment);
+        context_->PSSetShaderResources(
+            kAmbientOcclusionSlot,
+            1,
+            &ambientOcclusion);
         context_->PSSetShaderResources(
             kScreenReflectionSlot,
             1,
@@ -569,6 +632,7 @@ namespace community_shaders::ibl
             depthStencilState_.Get(),
             stencilReference_,
             environment_.Get(),
+            ambientOcclusion_.Get(),
             screenReflection_.Get());
         stateCaptured_ = false;
         drawTiming_.finish();

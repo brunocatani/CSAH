@@ -33,12 +33,8 @@ namespace community_shaders::ibl
     {
         ID3D11ShaderResourceView* publishedEnvironment{};
         ID3D11ShaderResourceView* publishedValidity{};
-        ID3D11ShaderResourceView* publishedPosition{};
         ID3D11ShaderResourceView* previousEnvironment{};
         ID3D11ShaderResourceView* previousValidity{};
-        ID3D11ShaderResourceView* previousPosition{};
-        EnvironmentProbeOrigin publishedProbeOrigin{};
-        EnvironmentProbeOrigin previousProbeOrigin{};
         float transitionWeight{ 1.0f };
         bool publishedAvailable{};
         bool previousAvailable{};

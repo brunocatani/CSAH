@@ -147,7 +147,7 @@ vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "kFirstResourceSlot = 4"
-  "kResourceCount = 6"
+  "kResourceCount = 4"
   "kSamplerSlot = 4"
   "kConstantSlot = 11"
   "kCurrentHitMinimumConfidence = 0.65f"
@@ -290,15 +290,14 @@ file(READ "${VANILLA_SSLR_RAYTRACE_SOURCE}" sslr_raytrace)
 vanilla_fixes_require_text("${sslr_raytrace}" "SSLR raytrace source"
   "CameraData[85]"
   "PublishedEnvironment : register(t4)"
-  "PreviousPosition : register(t9)"
+  "PreviousEnvironment : register(t6)"
+  "PreviousValidity : register(t7)"
   "SslrEnvironmentParameters : register(b11)"
   "DirectionTexture.Load"
   "ViewDepthTexture.Load"
   "reconstructLinearPosition"
   "viewDepth / eyeRay.z"
-  "receiverWorldPosition"
-  "correctProbeDirection"
-  "loadWorldRadianceForReceiver"
+  "loadWorldRadiance"
   "maximumSteps = 32u"
   "refinementSteps = 5u"
   "maximumTravel = 1000.0f"
@@ -319,7 +318,7 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     "VANILLA_SAO_RAW_BINARY|5936|5a0373b4ac810c4abc392d3887d4bb916a798de6aa63bff140a9d0f49e6a53ee|cs_5_0|dcl_thread_group 16, 16, 1"
     "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
     "VANILLA_SSLR_PREPASS_BINARY|4640|a7526cfc9c67cf62f2719dd7882cef2388c4943d2f22010ddae5c8b8d66c9f80|ps_5_0|dynamicIndexed"
-    "VANILLA_SSLR_RAYTRACE_BINARY|18572|7098a1469ec96e77eaae57a384c5c1a7e16843351a4b680d61b3d21d0de09159|ps_5_0|dcl_resource_texturecube")
+    "VANILLA_SSLR_RAYTRACE_BINARY|13312|ee415ddfd2e88de2cbca774651c9ed9d82401841c03200268bee80f571454596|ps_5_0|dcl_resource_texturecube")
   foreach(spec IN LISTS binary_specs)
     string(REPLACE "|" ";" fields "${spec}")
     list(GET fields 0 path_variable)
@@ -347,8 +346,8 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     endif()
     if(path_variable STREQUAL "VANILLA_SSLR_RAYTRACE_BINARY")
       foreach(required_pattern IN ITEMS
-          "dcl_constantbuffer CB11\\[3\\]"
-          "dcl_constantbuffer CB12\\[82\\], dynamicIndexed"
+          "dcl_constantbuffer CB11\\[1\\]"
+          "dcl_constantbuffer CB12\\[40\\], dynamicIndexed"
           "dcl_sampler s3"
           "dcl_sampler s4"
           "dcl_resource_texture2d.* t0"
@@ -359,8 +358,6 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
           "dcl_resource_texturecube.* t5"
           "dcl_resource_texturecube.* t6"
           "dcl_resource_texturecube.* t7"
-          "dcl_resource_texturecube.* t8"
-          "dcl_resource_texturecube.* t9"
           "dcl_output o0.xyzw"
           "loop")
         if(NOT assembly MATCHES "${required_pattern}")
@@ -371,6 +368,7 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
       foreach(forbidden_pattern IN ITEMS
           "dcl_sampler s[0-2]"
           "dcl_sampler s[5-9]"
+          "dcl_resource_[^\n]* t[89]"
           "dcl_resource_[^\n]* t1[0-9]"
           "dcl_uav")
         if(assembly MATCHES "${forbidden_pattern}")

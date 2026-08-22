@@ -1,7 +1,7 @@
 // FO4VR ImageSpace[129] / BSImagespaceShaderSSLRRaytracing replacement.
 // March one reflected ray in the selected eye's linear view space. Valid
 // current hits own by geometric confidence at every distance. Misses and
-// weak hits use Community Shaders' shared position-aware environment.
+// weak hits use Community Shaders' shared world-direction environment.
 
 cbuffer SslrParameters : register(b0)
 {
@@ -10,8 +10,6 @@ cbuffer SslrParameters : register(b0)
 
 cbuffer SslrEnvironmentParameters : register(b11)
 {
-    float4 PublishedProbeOriginAndValid;
-    float4 PreviousProbeOriginAndValid;
     // x=environment transition, y=previous available,
     // z=current-hit minimum confidence, w=current environment available.
     float4 EnvironmentControl;
@@ -28,10 +26,8 @@ Texture2D<float> ViewDepthTexture : register(t2);
 Texture2D<float4> SceneColorTexture : register(t3);
 TextureCube<float3> PublishedEnvironment : register(t4);
 TextureCube<float> PublishedValidity : register(t5);
-TextureCube<float4> PublishedPosition : register(t6);
-TextureCube<float3> PreviousEnvironment : register(t7);
-TextureCube<float> PreviousValidity : register(t8);
-TextureCube<float4> PreviousPosition : register(t9);
+TextureCube<float3> PreviousEnvironment : register(t6);
+TextureCube<float> PreviousValidity : register(t7);
 SamplerState SceneColorSampler : register(s3);
 SamplerState EnvironmentSampler : register(s4);
 
@@ -211,80 +207,8 @@ float viewDepthGap(
     return rayPosition.z - scenePosition.z;
 }
 
-bool receiverWorldPosition(
-    float3 receiverView,
-    bool rightEye,
-    out float3 receiverWorld)
-{
-    const float3 leftOrigin = CameraData[59u].xyz;
-    const float3 rightOrigin = CameraData[60u].xyz;
-    const float3 midpointOrigin = (leftOrigin + rightOrigin) * 0.5f;
-    const float3 eyeOrigin = rightEye ? rightOrigin : leftOrigin;
-    if (!all(isfinite(midpointOrigin)) || !all(isfinite(eyeOrigin)))
-    {
-        receiverWorld = 0.0f;
-        return false;
-    }
-
-    const float3 eyeToMidpointWorld = eyeOrigin - midpointOrigin;
-    const float3 eyeToMidpointView = transformRows(
-        0u,
-        eyeToMidpointWorld);
-    const float3 midpointRelativeWorld = transformRows(
-        20u,
-        receiverView + eyeToMidpointView);
-    float3 persistentAdjust = CameraData[80u + (rightEye ? 1u : 0u)].xyz;
-    if (!all(isfinite(persistentAdjust)) ||
-        any(abs(persistentAdjust) >= 8000000.0f))
-    {
-        persistentAdjust = 0.0f;
-    }
-    receiverWorld = midpointOrigin + midpointRelativeWorld +
-        persistentAdjust;
-    return all(isfinite(receiverWorld)) &&
-        all(abs(receiverWorld) < 8000000.0f);
-}
-
-float3 correctProbeDirection(
-    TextureCube<float4> positionTexture,
-    float3 direction,
-    float3 receiverWorld,
-    float3 probeOrigin,
-    float originValid)
-{
-    if (!(originValid > 0.5f))
-    {
-        return direction;
-    }
-    const float4 hit = positionTexture.SampleLevel(
-        EnvironmentSampler,
-        direction,
-        0.0f);
-    const float3 probeToHit = hit.xyz - probeOrigin;
-    const float radius = length(probeToHit);
-    const float3 probeToReceiver = receiverWorld - probeOrigin;
-    const float receiverDistanceSquared = dot(
-        probeToReceiver,
-        probeToReceiver);
-    const float projection = dot(probeToReceiver, direction);
-    const float discriminant = projection * projection -
-        (receiverDistanceSquared - radius * radius);
-    if (!(hit.w > 1.0e-4f && radius > 16.5f &&
-          receiverDistanceSquared < radius * radius &&
-          discriminant > 1.0e-4f))
-    {
-        return direction;
-    }
-    const float travel = -projection + sqrt(discriminant);
-    const float3 corrected = normalize(
-        probeToReceiver + direction * travel);
-    return normalize(lerp(direction, corrected, saturate(hit.w)));
-}
-
 float3 loadWorldRadiance(
     float3 reflectedWorld,
-    float3 receiverWorld,
-    bool receiverValid,
     out float validity)
 {
     validity = 0.0f;
@@ -295,64 +219,32 @@ float3 loadWorldRadiance(
     }
 
     const float3 direction = normalize(reflectedWorld);
-    const float3 publishedDirection = receiverValid ?
-        correctProbeDirection(
-            PublishedPosition,
-            direction,
-            receiverWorld,
-            PublishedProbeOriginAndValid.xyz,
-            PublishedProbeOriginAndValid.w) : direction;
     float3 radiance = max(0.0f, PublishedEnvironment.SampleLevel(
         EnvironmentSampler,
-        publishedDirection,
+        direction,
         0.0f));
     validity = saturate(PublishedValidity.SampleLevel(
         EnvironmentSampler,
-        publishedDirection,
+        direction,
         0.0f));
 
     if (EnvironmentControl.y > 0.5f && EnvironmentControl.x < 1.0f)
     {
-        const float3 previousDirection = receiverValid ?
-            correctProbeDirection(
-                PreviousPosition,
-                direction,
-                receiverWorld,
-                PreviousProbeOriginAndValid.xyz,
-                PreviousProbeOriginAndValid.w) : direction;
         const float3 previousRadiance = max(0.0f,
             PreviousEnvironment.SampleLevel(
                 EnvironmentSampler,
-                previousDirection,
+                direction,
                 0.0f));
         const float previousValidity = saturate(
             PreviousValidity.SampleLevel(
                 EnvironmentSampler,
-                previousDirection,
+                direction,
                 0.0f));
         const float transition = saturate(EnvironmentControl.x);
         radiance = lerp(previousRadiance, radiance, transition);
         validity = lerp(previousValidity, validity, transition);
     }
     return radiance;
-}
-
-float3 loadWorldRadianceForReceiver(
-    float3 reflectedWorld,
-    float3 receiverView,
-    bool rightEye,
-    out float validity)
-{
-    float3 receiverWorld;
-    const bool receiverWorldValid = receiverWorldPosition(
-        receiverView,
-        rightEye,
-        receiverWorld);
-    return loadWorldRadiance(
-        reflectedWorld,
-        receiverWorld,
-        receiverWorldValid,
-        validity);
 }
 
 float4 main(PixelInput input) : SV_TARGET
@@ -496,10 +388,8 @@ float4 main(PixelInput input) : SV_TARGET
                     return float4(color, confidence);
                 }
                 float worldValidity;
-                const float3 worldRadiance = loadWorldRadianceForReceiver(
+                const float3 worldRadiance = loadWorldRadiance(
                     reflectedWorld,
-                    receiver,
-                    rightEye,
                     worldValidity);
                 if (worldValidity > 0.05f)
                 {
@@ -520,10 +410,8 @@ float4 main(PixelInput input) : SV_TARGET
         previousValid = true;
     }
     float worldValidity;
-    const float3 worldRadiance = loadWorldRadianceForReceiver(
+    const float3 worldRadiance = loadWorldRadiance(
         reflectedWorld,
-        receiver,
-        rightEye,
         worldValidity);
     return float4(worldRadiance, worldValidity);
 }

@@ -45,8 +45,6 @@ namespace community_shaders::ibl
         ID3D11ShaderResourceView* validity,
         ID3D11ShaderResourceView* previousRadiance,
         ID3D11ShaderResourceView* previousValidity,
-        ID3D11ShaderResourceView* position,
-        ID3D11ShaderResourceView* previousPosition,
         ID3D11Buffer* constants) noexcept
     {
         if (!context) {
@@ -66,16 +64,13 @@ namespace community_shaders::ibl
             (previousRadiance &&
                 !sameDevice(device.Get(), previousRadiance)) ||
             (previousValidity &&
-                !sameDevice(device.Get(), previousValidity)) ||
-            (position && !sameDevice(device.Get(), position)) ||
-            (previousPosition &&
-                !sameDevice(device.Get(), previousPosition))) {
+                !sameDevice(device.Get(), previousValidity))) {
             rejection_ = MaterialBindingRejection::deviceMismatch;
             return;
         }
 
         context_ = context;
-        std::array<ID3D11ShaderResourceView*, 7> previousResources{};
+        std::array<ID3D11ShaderResourceView*, 5> previousResources{};
         context_->PSGetShaderResources(
             kAlbedoSlot,
             static_cast<UINT>(previousResources.size()),
@@ -91,14 +86,12 @@ namespace community_shaders::ibl
         previousConstants_.Attach(previousConstants);
         captured_ = true;
 
-        std::array<ID3D11ShaderResourceView*, 7> resources{
+        std::array<ID3D11ShaderResourceView*, 5> resources{
             albedo,
             radiance,
             validity,
             previousRadiance,
             previousValidity,
-            position,
-            previousPosition,
         };
         context_->PSSetShaderResources(
             kAlbedoSlot,
@@ -106,7 +99,7 @@ namespace community_shaders::ibl
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
 
-        std::array<ID3D11ShaderResourceView*, 7> appliedResources{};
+        std::array<ID3D11ShaderResourceView*, 5> appliedResources{};
         context_->PSGetShaderResources(
             kAlbedoSlot,
             static_cast<UINT>(appliedResources.size()),
@@ -121,8 +114,6 @@ namespace community_shaders::ibl
             appliedResources[2] == validity &&
             appliedResources[3] == previousRadiance &&
             appliedResources[4] == previousValidity &&
-            appliedResources[5] == position &&
-            appliedResources[6] == previousPosition &&
             appliedConstants == constants;
         for (auto* resource : appliedResources) {
             if (resource) {
@@ -198,14 +189,12 @@ namespace community_shaders::ibl
         if (!context_ || !captured_) {
             return false;
         }
-        std::array<ID3D11ShaderResourceView*, 7> resources{
+        std::array<ID3D11ShaderResourceView*, 5> resources{
             previousResources_[0].Get(),
             previousResources_[1].Get(),
             previousResources_[2].Get(),
             previousResources_[3].Get(),
             previousResources_[4].Get(),
-            previousResources_[5].Get(),
-            previousResources_[6].Get(),
         };
         auto* constants = previousConstants_.Get();
         context_->PSSetShaderResources(
@@ -214,7 +203,7 @@ namespace community_shaders::ibl
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
 
-        std::array<ID3D11ShaderResourceView*, 7> restoredResources{};
+        std::array<ID3D11ShaderResourceView*, 5> restoredResources{};
         context_->PSGetShaderResources(
             kAlbedoSlot,
             static_cast<UINT>(restoredResources.size()),
@@ -230,8 +219,6 @@ namespace community_shaders::ibl
             restoredResources[2] == resources[2] &&
             restoredResources[3] == resources[3] &&
             restoredResources[4] == resources[4] &&
-            restoredResources[5] == resources[5] &&
-            restoredResources[6] == resources[6] &&
             restoredConstants == constants;
         for (auto* resource : restoredResources) {
             if (resource) {
