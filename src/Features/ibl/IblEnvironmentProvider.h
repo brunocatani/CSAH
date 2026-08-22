@@ -73,6 +73,10 @@ namespace community_shaders::ibl
             const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* publishedPosition()
             const noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView* previousEnvironment()
+            const noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView* previousValidity()
+            const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedTexture() const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedValidityTexture()
             const noexcept;
@@ -132,6 +136,7 @@ namespace community_shaders::ibl
         std::uint64_t nextUpdateGeneration_{ 1 };
         std::uint64_t activeUpdateGeneration_{};
         std::uint64_t publishedGeneration_{};
+        std::uint64_t previousPublishedGeneration_{};
         std::uint64_t rebuildFailures_{};
     };
 }

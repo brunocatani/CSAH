@@ -149,7 +149,11 @@ foreach(required IN ITEMS
     "publishedEnvironmentSessionId_ == requestedSession"
     "createMaterialResources"
     "materialDisabledConstants_"
-    "materialEnabledConstants_")
+    "materialEnabledConstants_"
+    "beginMaterialEnvironmentTransition"
+    "updateMaterialEnvironmentTransition"
+    "previousEnvironment()"
+    "previousValidity()")
   string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -247,6 +251,8 @@ foreach(required IN ITEMS
     "kAlbedoSlot = 29"
     "kRadianceSlot = 30"
     "kValiditySlot = 31"
+    "kPreviousRadianceSlot = 32"
+    "kPreviousValiditySlot = 33"
     "kConstantSlot = 5"
     "PSGetShaderResources"
     "PSSetShaderResources"

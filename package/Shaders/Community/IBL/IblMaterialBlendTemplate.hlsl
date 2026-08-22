@@ -2,6 +2,8 @@ TextureCubeArray<float4> VanillaEnvironment : register(t8);
 Texture2D<float3> DFLightAlbedo : register(t29);
 TextureCube<float3> PublishedEnvironment : register(t30);
 TextureCube<float> PublishedValidity : register(t31);
+TextureCube<float3> PreviousPublishedEnvironment : register(t32);
+TextureCube<float> PreviousPublishedValidity : register(t33);
 Texture2D<float> SurfaceClass : register(t47);
 SamplerState EnvironmentSampler : register(s8);
 SamplerState MaterialSampler : register(s3);
@@ -10,6 +12,8 @@ cbuffer IblMaterialConstants : register(b5)
 {
     float IblWeight : packoffset(c0.x);
     float ComplexMaterialWeight : packoffset(c0.y);
+    float EnvironmentTransitionWeight : packoffset(c0.z);
+    float PreviousEnvironmentAvailable : packoffset(c0.w);
 };
 
 cbuffer BasicWetnessSettings : register(b9)
@@ -51,14 +55,43 @@ float4 PSMain(PixelInput input) : SV_Target0
     [branch]
     if (IblWeight > 1.0 / 255.0)
     {
+        // FO4VR's vanilla cube coordinate is an incident lookup direction.
+        // The view-derived environment stores outgoing world directions, so
+        // dynamic specular consumption must use the opposite direction. This
+        // sign is deliberately local to specular materials; Diffuse IBL keeps
+        // the provider's proven world-direction convention.
+        const float3 dynamicDirection = -input.DirectionAndArray.xyz;
         float3 published = PublishedEnvironment.SampleLevel(
             EnvironmentSampler,
-            input.DirectionAndArray.xyz,
+            dynamicDirection,
             input.Lod);
         float validity = PublishedValidity.SampleLevel(
             EnvironmentSampler,
-            input.DirectionAndArray.xyz,
+            dynamicDirection,
             input.Lod);
+        [branch]
+        if (PreviousEnvironmentAvailable > 0.5 &&
+            EnvironmentTransitionWeight < 1.0)
+        {
+            const float3 previousPublished =
+                PreviousPublishedEnvironment.SampleLevel(
+                    EnvironmentSampler,
+                    dynamicDirection,
+                    input.Lod);
+            const float previousValidity =
+                PreviousPublishedValidity.SampleLevel(
+                    EnvironmentSampler,
+                    dynamicDirection,
+                    input.Lod);
+            published = lerp(
+                previousPublished,
+                published,
+                saturate(EnvironmentTransitionWeight));
+            validity = lerp(
+                previousValidity,
+                validity,
+                saturate(EnvironmentTransitionWeight));
+        }
         float weight = saturate(validity * IblWeight);
         vanilla.xyz = lerp(vanilla.xyz, published, weight);
     }

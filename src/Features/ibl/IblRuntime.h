@@ -278,6 +278,10 @@ namespace community_shaders::ibl
             std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool environmentAcquisitionEnabled() const noexcept;
         void refreshComplexMaterialProducerGate() noexcept;
+        void beginMaterialEnvironmentTransition(
+            std::uint64_t tickMilliseconds) noexcept;
+        void updateMaterialEnvironmentTransition(
+            std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
         [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
         void resetCaptureProbes() noexcept;
@@ -323,6 +327,9 @@ namespace community_shaders::ibl
         bool loggedFirstMaterialBind_{};
         bool loggedMaterialBindingFailure_{};
         bool materialConsumptionFailed_{};
+        bool materialEnvironmentTransitionActive_{};
+        std::uint64_t materialEnvironmentTransitionStartMilliseconds_{};
+        std::uint64_t nextMaterialEnvironmentTransitionTickMilliseconds_{};
 
         std::atomic_bool resourcesReady_{};
         std::atomic_bool enabled_{ true };

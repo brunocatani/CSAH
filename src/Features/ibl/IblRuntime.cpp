@@ -58,6 +58,10 @@ namespace community_shaders::ibl
         constexpr std::uint64_t kRuntimePollCadenceMilliseconds = 250;
         constexpr std::uint64_t kEnvironmentCaptureCadenceMilliseconds = 1000;
         constexpr std::uint64_t kWorldCaptureProbeSettleMilliseconds = 5000;
+        constexpr std::uint64_t kMaterialEnvironmentTransitionMilliseconds =
+            250;
+        constexpr std::uint64_t
+            kMaterialEnvironmentTransitionCadenceMilliseconds = 8;
         constexpr UINT kCaptureShaderResourceCount = 16;
         // Exact DFComposite DXBC samples t5/t6 in the final lighting path and
         // repeatedly samples t10 in the complex path. Live world evidence
@@ -77,6 +81,16 @@ namespace community_shaders::ibl
             DXGI_FORMAT_R11G11B10_FLOAT,
             DXGI_FORMAT_R8G8B8A8_UNORM,
         };
+
+        struct MaterialEnvironmentConstants
+        {
+            float iblWeight{};
+            float complexMaterialWeight{};
+            float transitionWeight{};
+            float previousEnvironmentAvailable{};
+        };
+
+        static_assert(sizeof(MaterialEnvironmentConstants) == 16);
 
         struct TextureViewRange
         {
@@ -436,6 +450,62 @@ namespace community_shaders::ibl
         render::setDFPrePassIblEnabled(
             enabled_.load(std::memory_order_acquire) &&
             dynamicCubemapsEnabled_.load(std::memory_order_acquire));
+    }
+
+    void Runtime::beginMaterialEnvironmentTransition(
+        std::uint64_t tickMilliseconds) noexcept
+    {
+        materialEnvironmentTransitionActive_ =
+            environmentProvider_.previousEnvironment() &&
+            environmentProvider_.previousValidity();
+        materialEnvironmentTransitionStartMilliseconds_ = tickMilliseconds;
+        nextMaterialEnvironmentTransitionTickMilliseconds_ = 0;
+        updateMaterialEnvironmentTransition(tickMilliseconds);
+    }
+
+    void Runtime::updateMaterialEnvironmentTransition(
+        std::uint64_t tickMilliseconds) noexcept
+    {
+        if (!materialEnvironmentTransitionActive_ || !context_ ||
+            !materialEnabledConstants_ ||
+            tickMilliseconds <
+                nextMaterialEnvironmentTransitionTickMilliseconds_) {
+            return;
+        }
+        nextMaterialEnvironmentTransitionTickMilliseconds_ =
+            tickMilliseconds +
+            kMaterialEnvironmentTransitionCadenceMilliseconds;
+
+        const auto previousAvailable =
+            environmentProvider_.previousEnvironment() &&
+            environmentProvider_.previousValidity();
+        const auto elapsed = tickMilliseconds >=
+                materialEnvironmentTransitionStartMilliseconds_ ?
+            tickMilliseconds -
+                materialEnvironmentTransitionStartMilliseconds_ :
+            kMaterialEnvironmentTransitionMilliseconds;
+        const auto transitionWeight = previousAvailable &&
+                elapsed < kMaterialEnvironmentTransitionMilliseconds ?
+            static_cast<float>(elapsed) /
+                static_cast<float>(
+                    kMaterialEnvironmentTransitionMilliseconds) :
+            1.0F;
+        const MaterialEnvironmentConstants constants{
+            .iblWeight = 1.0F,
+            .complexMaterialWeight = 1.0F,
+            .transitionWeight = transitionWeight,
+            .previousEnvironmentAvailable = previousAvailable ? 1.0F : 0.0F,
+        };
+        context_->UpdateSubresource(
+            materialEnabledConstants_.Get(),
+            0,
+            nullptr,
+            &constants,
+            0,
+            0);
+        if (transitionWeight >= 1.0F) {
+            materialEnvironmentTransitionActive_ = false;
+        }
     }
 
     void Runtime::setEnabled(bool enabled) noexcept
@@ -867,6 +937,12 @@ namespace community_shaders::ibl
             environmentProvider_.publishedEnvironment() : nullptr;
         auto* validity = enabled ?
             environmentProvider_.publishedValidity() : nullptr;
+        auto* previousRadiance = enabled &&
+                materialEnvironmentTransitionActive_ ?
+            environmentProvider_.previousEnvironment() : nullptr;
+        auto* previousValidity = enabled &&
+                materialEnvironmentTransitionActive_ ?
+            environmentProvider_.previousValidity() : nullptr;
         auto* albedo = enabled ? materialAlbedo_.Get() : nullptr;
         if (!constants || (enabled && (!albedo || !radiance || !validity))) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -879,6 +955,8 @@ namespace community_shaders::ibl
             albedo,
             radiance,
             validity,
+            previousRadiance,
+            previousValidity,
             constants);
         if (!scope.active()) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -1286,6 +1364,7 @@ namespace community_shaders::ibl
                     depth.Get(),
                     sceneConstants.Get(),
                     useHistory)) {
+                updateMaterialEnvironmentTransition(GetTickCount64());
                 pendingEnvironmentUpdateSessionId_ =
                     activeCaptureProbeSessionId_;
                 const auto update = environmentUpdater_.snapshot();
@@ -1517,29 +1596,35 @@ namespace community_shaders::ibl
             }
         }
 
-        D3D11_BUFFER_DESC description{};
-        description.ByteWidth = 16;
-        description.Usage = D3D11_USAGE_IMMUTABLE;
-        description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-        constexpr std::array<float, 4> disabled{};
-        constexpr std::array<float, 4> enabled{ 1.0F, 1.0F, 0.0F, 0.0F };
+        D3D11_BUFFER_DESC disabledDescription{};
+        disabledDescription.ByteWidth = 16;
+        disabledDescription.Usage = D3D11_USAGE_IMMUTABLE;
+        disabledDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        auto enabledDescription = disabledDescription;
+        enabledDescription.Usage = D3D11_USAGE_DEFAULT;
+        constexpr MaterialEnvironmentConstants disabled{};
+        constexpr MaterialEnvironmentConstants enabled{
+            .iblWeight = 1.0F,
+            .complexMaterialWeight = 1.0F,
+            .transitionWeight = 1.0F,
+        };
         D3D11_SUBRESOURCE_DATA disabledData{};
-        disabledData.pSysMem = disabled.data();
+        disabledData.pSysMem = &disabled;
         D3D11_SUBRESOURCE_DATA enabledData{};
-        enabledData.pSysMem = enabled.data();
+        enabledData.pSysMem = &enabled;
         ComPtr<ID3D11Buffer> disabledConstants;
         ComPtr<ID3D11Buffer> enabledConstants;
         if (FAILED(device_->CreateBuffer(
-                &description,
+                &disabledDescription,
                 &disabledData,
                 &disabledConstants)) ||
             FAILED(device_->CreateBuffer(
-                &description,
+                &enabledDescription,
                 &enabledData,
                 &enabledConstants)) ||
             !disabledConstants || !enabledConstants) {
             logging::error(
-                "IBL material immutable b5 enable/disable constants could not be created.");
+                "IBL material b5 disable and transition constants could not be created.");
             return false;
         }
 
@@ -1852,6 +1937,7 @@ namespace community_shaders::ibl
         }
 
         const auto now = GetTickCount64();
+        updateMaterialEnvironmentTransition(now);
         if (now < nextCadenceTickMilliseconds_) {
             return;
         }
@@ -1866,6 +1952,7 @@ namespace community_shaders::ibl
             publishedEnvironmentSessionId_ =
                 pendingEnvironmentUpdateSessionId_;
             pendingEnvironmentUpdateSessionId_ = 0;
+            beginMaterialEnvironmentTransition(now);
             const auto publicationAction = chooseDiffusePublicationAction(
                 update.diffuseSHState,
                 publishedUsable_.load(std::memory_order_relaxed),
@@ -2207,6 +2294,9 @@ namespace community_shaders::ibl
         loggedFirstMaterialBind_ = false;
         loggedMaterialBindingFailure_ = false;
         materialConsumptionFailed_ = false;
+        materialEnvironmentTransitionActive_ = false;
+        materialEnvironmentTransitionStartMilliseconds_ = 0;
+        nextMaterialEnvironmentTransitionTickMilliseconds_ = 0;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
         publishedUsable_.store(false, std::memory_order_relaxed);
         publishedGeneration_.store(0, std::memory_order_relaxed);

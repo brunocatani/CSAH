@@ -315,6 +315,10 @@ namespace
         require(
             provider.snapshot().publishedGeneration == 1,
             "first generation identity changed");
+        require(
+            provider.previousEnvironment() == nullptr &&
+                provider.previousValidity() == nullptr,
+            "first publication exposed uninitialized transition history");
 
         require(
             !provider.initialize(d3d.device.Get(), 3),
@@ -370,6 +374,10 @@ namespace
             provider.publishedPositionTexture() !=
                 firstPublishedPositionTexture,
             "position buffer did not swap with radiance");
+        require(
+            provider.previousEnvironment() == firstPublishedView &&
+                provider.previousValidity() == firstPublishedValidity,
+            "complete publication did not retain the prior environment for transition smoothing");
         require(
             provider.snapshot().publishedGeneration == 3,
             "aborted generation was not kept private");

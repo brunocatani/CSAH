@@ -162,6 +162,7 @@ namespace community_shaders::ibl
         nextUpdateGeneration_ = 1;
         activeUpdateGeneration_ = 0;
         publishedGeneration_ = 0;
+        previousPublishedGeneration_ = 0;
         return true;
     }
 
@@ -175,6 +176,7 @@ namespace community_shaders::ibl
         nextUpdateGeneration_ = 1;
         activeUpdateGeneration_ = 0;
         publishedGeneration_ = 0;
+        previousPublishedGeneration_ = 0;
         rebuildFailures_ = 0;
     }
 
@@ -207,6 +209,7 @@ namespace community_shaders::ibl
             !coverage_.complete(resources_.mipCount)) {
             return false;
         }
+        previousPublishedGeneration_ = publishedGeneration_;
         frontChain_ = 1 - frontChain_;
         publishedGeneration_ = activeUpdateGeneration_;
         activeUpdateGeneration_ = 0;
@@ -311,6 +314,28 @@ namespace community_shaders::ibl
             return nullptr;
         }
         return resources_.chains[frontChain_].position.shaderResource.Get();
+    }
+
+    ID3D11ShaderResourceView* EnvironmentProvider::previousEnvironment()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::ready ||
+            previousPublishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_]
+            .radiance.shaderResource.Get();
+    }
+
+    ID3D11ShaderResourceView* EnvironmentProvider::previousValidity()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::ready ||
+            previousPublishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_]
+            .validity.shaderResource.Get();
     }
 
     ID3D11Texture2D* EnvironmentProvider::publishedTexture() const noexcept
