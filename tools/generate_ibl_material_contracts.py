@@ -179,6 +179,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "PreviousPublishedProbeOrigin",
         "ReconstructReceiverWorldPosition",
         "CorrectProbeDirection",
+        "Scene[80u + eye].xyz",
         "lerp(vanilla.xyz, published, weight)",
         "ComplexMaterialWeight",
         "input.EncodedMaterialTag",
@@ -215,7 +216,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     for required in (
         "dcl_constantbuffer CB5[3], immediateIndexed",
         "dcl_constantbuffer CB9[2], immediateIndexed",
-        "dcl_constantbuffer CB12[61], dynamicIndexed",
+        "dcl_constantbuffer CB12[82], dynamicIndexed",
         "dcl_sampler s3, mode_default",
         "dcl_sampler s8, mode_default",
         "dcl_resource_texture2d (float,float,float,float) t7",
@@ -609,12 +610,12 @@ def patch_shader(
     if scene_end - scene_start != 4:
         raise ContractError("DFComposite b12 declaration changed shape")
     scene_rows = words[scene_end - 1]
-    if scene_rows not in (51, 61, 77):
+    if scene_rows not in (51, 61, 77, 82):
         raise ContractError(
             f"DFComposite b12 row contract changed: {scene_rows}"
         )
-    if scene_rows == 51:
-        words[scene_end - 1] = 61
+    if scene_rows < 82:
+        words[scene_end - 1] = 82
     if {
         DFLIGHT_ALBEDO_SLOT,
         PUBLISHED_ENVIRONMENT_SLOT,
@@ -898,12 +899,12 @@ def validate_candidate(
     if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
         raise ContractError(f"{name} does not add exact b9[2]")
     expected_buffers = dict(original_buffers)
-    if expected_buffers.get(12) == 51:
-        expected_buffers[12] = 61
+    if expected_buffers.get(12, 0) < 82:
+        expected_buffers[12] = 82
     if candidate_buffers != expected_buffers:
         raise ContractError(
             f"{name} changed vanilla constant buffers outside the "
-            "verified surface-anchor camera extension"
+            "verified camera-position-adjust extension"
         )
     original_textures = set(original_declarations.textures)
     candidate_textures = set(candidate_declarations.textures)

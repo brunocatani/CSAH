@@ -18,7 +18,7 @@ namespace community_shaders::ibl
     {
         using Microsoft::WRL::ComPtr;
 
-        constexpr std::uint32_t kMinimumSceneConstantRows = 71;
+        constexpr std::uint32_t kMinimumSceneConstantRows = 82;
         constexpr UINT kThreadGroupExtent = 8;
         constexpr float kNonBlackThreshold = 1.0e-5f;
         constexpr float kCoveredThreshold = 1.0e-4f;
@@ -93,6 +93,10 @@ namespace community_shaders::ibl
                 (crossYW.z * xWeight + crossWX.z * yWeight +
                     crossXY.z * wWeight) / determinant,
             };
+            const auto& adjustment = sceneRows[80U + eye];
+            origin.x += adjustment[0];
+            origin.y += adjustment[1];
+            origin.z += adjustment[2];
             return finiteOrigin(origin);
         }
 
@@ -519,6 +523,8 @@ namespace community_shaders::ibl
             resources_.captureConstants.Get(),
             sceneConstants,
         };
+        const auto previousProbeOrigin = usePublishedHistory ?
+            provider.publishedProbeOrigin() : EnvironmentProbeOrigin{};
         const UpdateConstants updateConstants{
             sourceDescription.Width,
             sourceDescription.Height,
@@ -527,6 +533,8 @@ namespace community_shaders::ibl
             kHistoryDecay,
             kVisibleDirectionHistoryBlend,
             {},
+            previousProbeOrigin.position,
+            previousProbeOrigin.valid ? 1U : 0U,
         };
         context->UpdateSubresource(
             resources_.captureConstants.Get(),

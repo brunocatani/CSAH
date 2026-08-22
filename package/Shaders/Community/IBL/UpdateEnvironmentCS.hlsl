@@ -22,11 +22,14 @@ cbuffer EnvironmentUpdateConstants : register(b11)
     float HistoryDecay;
     float HistoryBlend;
     uint2 Reserved;
+    float3 PreviousProbeOrigin;
+    uint PreviousProbeOriginValid;
 };
 
 // The exact FO4VR DFComposite draw binds an 85-float4 buffer at b12. Local
 // material DXBC independently proves rows 63..70 are the current per-eye
-// world-to-clip matrices: left rows 63..66, right rows 67..70.
+// world-to-clip matrices: left rows 63..66, right rows 67..70. The verified
+// 85-row VR layout carries persistent camera-position adjustments at c80/c81.
 cbuffer Fo4VrSceneConstants : register(b12)
 {
     float4 Scene[85];
@@ -36,6 +39,18 @@ static const float PositionEpsilon = 1.0e-5f;
 static const float MinimumCaptureDistance = 16.5f;
 static const float MaximumCaptureDistance = 2000000.0f;
 groupshared float4 SharedCameraOrigins[2];
+
+bool CameraPositionAdjust(uint eye, out float3 adjustment)
+{
+    adjustment = Scene[80u + eye].xyz;
+    const bool finite = all(adjustment == adjustment) &&
+        all(abs(adjustment) < MaximumCaptureDistance * 4.0f);
+    if (!finite)
+    {
+        adjustment = 0.0f;
+    }
+    return finite;
+}
 
 bool CameraOrigin(uint eye, out float3 origin)
 {
@@ -166,6 +181,7 @@ bool SampleEye(
     uint eye,
     float3 cameraOrigin,
     bool cameraOriginValid,
+    float3 cameraPositionAdjust,
     out float3 radiance,
     out float weight,
     out float3 worldPosition,
@@ -187,10 +203,9 @@ bool SampleEye(
     packedUv.x = clamp(packedUv.x, eyeMinimum, eyeMaximum);
     packedUv.y = clamp(packedUv.y, halfTexel.y, 1.0f - halfTexel.y);
 
-    // Depth participates in the capture contract now, while positional
-    // history and near-player rejection remain deliberately absent from this
-    // first diagnostic generation. Both zero-depth sky and finite surfaces
-    // are valid radiance; only malformed samples fail closed.
+    // Both zero-depth sky and finite surfaces are valid radiance. Finite
+    // positions are converted from camera-relative to persistent coordinates;
+    // malformed samples fail closed.
     const float depth = SceneDepth.SampleLevel(
         LinearClampSampler, packedUv, 0.0f);
     const bool validDepth = depth == depth && depth >= 0.0f && depth <= 1.0f;
@@ -223,9 +238,51 @@ bool SampleEye(
             worldPosition = 0.0f;
             return false;
         }
+        // FO4VR reconstructs camera-relative world positions. c80/c81 carry
+        // the persistent per-eye position adjustment required to compare
+        // hits across captures made after player translation.
+        worldPosition += cameraPositionAdjust;
         positionWeight = weight;
     }
     return true;
+}
+
+float3 ReprojectHistoryDirection(
+    float3 worldDirection,
+    float3 currentProbeOrigin)
+{
+    if (PreviousProbeOriginValid == 0u)
+    {
+        return worldDirection;
+    }
+
+    const float4 initialHit = PreviousPosition.SampleLevel(
+        LinearClampSampler,
+        worldDirection,
+        0.0f);
+    const float3 previousProbeToHit =
+        initialHit.xyz - PreviousProbeOrigin;
+    const float radius = length(previousProbeToHit);
+    const float3 previousProbeToCurrent =
+        currentProbeOrigin - PreviousProbeOrigin;
+    const float currentDistanceSquared = dot(
+        previousProbeToCurrent,
+        previousProbeToCurrent);
+    const float projection = dot(
+        previousProbeToCurrent,
+        worldDirection);
+    const float discriminant = projection * projection -
+        (currentDistanceSquared - radius * radius);
+    if (!(initialHit.w > PositionEpsilon && radius > MinimumCaptureDistance &&
+          currentDistanceSquared < radius * radius &&
+          discriminant > PositionEpsilon))
+    {
+        return worldDirection;
+    }
+
+    const float travel = -projection + sqrt(discriminant);
+    return normalize(
+        previousProbeToCurrent + worldDirection * travel);
 }
 
 [numthreads(8, 8, 1)]
@@ -257,18 +314,26 @@ void main(
 
     float3 cameraOrigins[2];
     bool cameraOriginValid[2];
+    float3 cameraPositionAdjusts[2];
+    bool cameraPositionAdjustValid[2];
     cameraOrigins[0] = SharedCameraOrigins[0].xyz;
     cameraOrigins[1] = SharedCameraOrigins[1].xyz;
     cameraOriginValid[0] = SharedCameraOrigins[0].w > 0.0f;
     cameraOriginValid[1] = SharedCameraOrigins[1].w > 0.0f;
+    cameraPositionAdjustValid[0] = CameraPositionAdjust(
+        0u, cameraPositionAdjusts[0]);
+    cameraPositionAdjustValid[1] = CameraPositionAdjust(
+        1u, cameraPositionAdjusts[1]);
     float3 cameraCenter = 0.0f;
     float cameraCount = 0.0f;
     [unroll]
     for (uint cameraIndex = 0u; cameraIndex < 2u; ++cameraIndex)
     {
-        if (cameraOriginValid[cameraIndex])
+        if (cameraOriginValid[cameraIndex] &&
+            cameraPositionAdjustValid[cameraIndex])
         {
-            cameraCenter += cameraOrigins[cameraIndex];
+            cameraCenter += cameraOrigins[cameraIndex] +
+                cameraPositionAdjusts[cameraIndex];
             cameraCount += 1.0f;
         }
     }
@@ -290,7 +355,8 @@ void main(
                 worldDirection,
                 eye,
                 cameraOrigins[eye],
-                cameraOriginValid[eye],
+                cameraOriginValid[eye] && cameraPositionAdjustValid[eye],
+                cameraPositionAdjusts[eye],
                 eyeRadiance,
                 eyeWeight,
                 eyePosition,
@@ -306,12 +372,15 @@ void main(
     const float currentValidity = saturate(totalWeight);
     const float3 normalizedRadiance = totalWeight > 0.0f ?
         accumulated / totalWeight : 0.0f;
+    const float3 historyDirection = HistoryAvailable != 0u ?
+        ReprojectHistoryDirection(worldDirection, cameraCenter) :
+        worldDirection;
     const float previousValidity = HistoryAvailable != 0u ?
         saturate(PreviousValidity.SampleLevel(
-            LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+            LinearClampSampler, historyDirection, 0.0f)) : 0.0f;
     const float4 previousPosition = HistoryAvailable != 0u ?
         PreviousPosition.SampleLevel(
-            LinearClampSampler, worldDirection, 0.0f) : 0.0f;
+            LinearClampSampler, historyDirection, 0.0f) : 0.0f;
     float positionHistoryConfidence = 1.0f;
     if (previousPosition.w > 0.0f)
     {
@@ -338,7 +407,7 @@ void main(
         positionHistoryConfidence;
     float3 previousRadiance = retainedValidity > 0.0f ?
         max(0.0f, PreviousEnvironment.SampleLevel(
-            LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+            LinearClampSampler, historyDirection, 0.0f)) : 0.0f;
     bool inferredHistory = false;
     if (HistoryAvailable != 0u && retainedValidity < 0.02f &&
         currentValidity <= 0.0f)
@@ -348,14 +417,14 @@ void main(
         // cubemap as the dominant fallback for never-observed directions.
         const float inferredValidity = saturate(
             PreviousValidity.SampleLevel(
-                LinearClampSampler, worldDirection, 3.0f)) *
+                LinearClampSampler, historyDirection, 3.0f)) *
             saturate(HistoryDecay) * 0.15f;
         if (inferredValidity > retainedValidity)
         {
             retainedValidity = inferredValidity;
             previousRadiance = max(0.0f,
                 PreviousEnvironment.SampleLevel(
-                    LinearClampSampler, worldDirection, 3.0f));
+                    LinearClampSampler, historyDirection, 3.0f));
             inferredHistory = true;
         }
     }

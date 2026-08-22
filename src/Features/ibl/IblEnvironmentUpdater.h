@@ -115,9 +115,11 @@ namespace community_shaders::ibl
             float historyDecay{};
             float historyBlend{};
             std::array<std::uint32_t, 2> reserved{};
+            Float3 previousProbeOrigin{};
+            std::uint32_t previousProbeOriginValid{};
         };
 
-        static_assert(sizeof(UpdateConstants) == 32);
+        static_assert(sizeof(UpdateConstants) == 48);
 
         struct FilterConstants
         {

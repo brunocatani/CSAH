@@ -23,15 +23,15 @@ cbuffer IblMaterialConstants : register(b5)
     float PreviousPublishedProbeOriginValid : packoffset(c2.w);
 };
 
-// Every exact FO4VR DFComposite material contract owns t7 and b12. Regular
-// permutations declare 51 rows in stock bytecode and are extended to 61 by
-// the generator; conditional permutations already declare 77. Rows 32..39
-// are the two inverse projections, rows 59/60 are the live world-space eye
-// origins, rows 0..2 transform world offsets to view space, and rows 20..22
-// transform view vectors back to the environment's world-space convention.
+// Every exact FO4VR DFComposite material contract owns t7 and b12. The
+// generator extends its declaration to 82 rows. Rows 32..39 are the two
+// inverse projections, rows 59/60 are the live camera-relative eye origins,
+// rows 0..2 transform world offsets to view space, rows 20..22 transform view
+// vectors back to the environment convention, and c80/c81 provide the
+// persistent per-eye position adjustment.
 cbuffer Fo4VrSceneConstants : register(b12)
 {
-    float4 Scene[77];
+    float4 Scene[85];
 };
 
 cbuffer BasicWetnessSettings : register(b9)
@@ -103,7 +103,8 @@ bool ReconstructReceiverWorldPosition(
         dot(Scene[20].xyz, midpointRelativeView),
         dot(Scene[21].xyz, midpointRelativeView),
         dot(Scene[22].xyz, midpointRelativeView));
-    receiverWorldPosition = midpointOrigin + midpointRelativeWorld;
+    receiverWorldPosition = midpointOrigin + midpointRelativeWorld +
+        Scene[80u + eye].xyz;
     return all(receiverWorldPosition == receiverWorldPosition) &&
         all(abs(receiverWorldPosition) < 8000000.0f);
 }
