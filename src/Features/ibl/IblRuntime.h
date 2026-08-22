@@ -29,6 +29,21 @@ namespace community_shaders::ibl
         std::uint64_t generation{};
     };
 
+    struct SslrEnvironmentView
+    {
+        ID3D11ShaderResourceView* publishedEnvironment{};
+        ID3D11ShaderResourceView* publishedValidity{};
+        ID3D11ShaderResourceView* publishedPosition{};
+        ID3D11ShaderResourceView* previousEnvironment{};
+        ID3D11ShaderResourceView* previousValidity{};
+        ID3D11ShaderResourceView* previousPosition{};
+        EnvironmentProbeOrigin publishedProbeOrigin{};
+        EnvironmentProbeOrigin previousProbeOrigin{};
+        float transitionWeight{ 1.0f };
+        bool publishedAvailable{};
+        bool previousAvailable{};
+    };
+
     struct RuntimeSnapshot
     {
         bool enabled{};
@@ -92,7 +107,16 @@ namespace community_shaders::ibl
         void setDynamicCubemapsEnabled(bool enabled) noexcept;
         void setDiffuseEnabled(bool enabled) noexcept;
         void setDiffuseLevel(float level) noexcept;
+        // Vanilla Fixes SSLR is a read-only consumer of the shared
+        // environment. It may keep acquisition active without enabling IBL
+        // material substitution or diffuse ambient lighting.
+        void setSslrConsumerEnabled(bool enabled) noexcept;
         void applySettings(const Settings& settings) noexcept;
+
+        // Render-thread-only immutable view of the currently published
+        // provider generation. Raw pointers remain owned by this runtime.
+        [[nodiscard]] bool tryGetSslrEnvironment(
+            SslrEnvironmentView& view) noexcept;
 
         // Allocation-free DFLight hot-path read. Publication is seqlocked and
         // valid only for the current world capture session. Environment
@@ -328,6 +352,7 @@ namespace community_shaders::ibl
         bool loggedMaterialBindingFailure_{};
         bool materialConsumptionFailed_{};
         bool materialEnvironmentTransitionActive_{};
+        float materialEnvironmentTransitionWeight_{ 1.0f };
         std::uint64_t materialEnvironmentTransitionStartMilliseconds_{};
         std::uint64_t nextMaterialEnvironmentTransitionTickMilliseconds_{};
 
@@ -335,6 +360,7 @@ namespace community_shaders::ibl
         std::atomic_bool enabled_{ true };
         std::atomic_bool dynamicCubemapsEnabled_{ true };
         std::atomic_bool diffuseEnabled_{ true };
+        std::atomic_bool sslrConsumerEnabled_{};
         std::atomic_uint32_t diffuseLevelBits_{
             std::bit_cast<std::uint32_t>(1.0f) };
         std::atomic_uint32_t diffuseSHCoverageBits_{};

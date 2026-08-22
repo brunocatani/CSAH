@@ -1,5 +1,6 @@
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 
+#include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
@@ -230,7 +231,7 @@ namespace community_shaders::vanilla_fixes
                         "Vanilla Fixes INI monitor could not start.");
                 }
                 logging::info(
-                    "Vanilla Fixes owns 8 verified engine gates; shared-INI hot reload active={}.",
+                    "Vanilla Fixes owns 8 verified engine gates plus the coordinated stable-reflection suite; shared-INI hot reload active={}.",
                     hotReloadActive_.load(std::memory_order_acquire));
                 return true;
             }
@@ -245,6 +246,8 @@ namespace community_shaders::vanilla_fixes
                 focusEnabled_.store(
                     settings.enabled && settings.focusShadows,
                     std::memory_order_release);
+                setSslrSuiteRequested(
+                    settings.enabled && settings.screenSpaceReflections);
                 appliedPolicies_.fetch_add(1, std::memory_order_relaxed);
             }
 

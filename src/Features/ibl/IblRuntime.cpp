@@ -444,9 +444,12 @@ namespace community_shaders::ibl
 
     bool Runtime::environmentAcquisitionEnabled() const noexcept
     {
-        return enabled_.load(std::memory_order_acquire) &&
+        const auto iblConsumer =
+            enabled_.load(std::memory_order_acquire) &&
             (dynamicCubemapsEnabled_.load(std::memory_order_acquire) ||
                 diffuseEnabled_.load(std::memory_order_acquire));
+        return iblConsumer ||
+            sslrConsumerEnabled_.load(std::memory_order_acquire);
     }
 
     void Runtime::refreshComplexMaterialProducerGate() noexcept
@@ -500,6 +503,7 @@ namespace community_shaders::ibl
                 static_cast<float>(
                     kMaterialEnvironmentTransitionMilliseconds) :
             1.0F;
+        materialEnvironmentTransitionWeight_ = transitionWeight;
         const MaterialEnvironmentConstants constants{
             .iblWeight = 1.0F,
             .complexMaterialWeight = 1.0F,
@@ -567,6 +571,72 @@ namespace community_shaders::ibl
         diffuseLevelBits_.store(
             std::bit_cast<std::uint32_t>(safe.diffuseLevel),
             std::memory_order_release);
+    }
+
+    void Runtime::setSslrConsumerEnabled(const bool enabled) noexcept
+    {
+        const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
+        const auto previous = sslrConsumerEnabled_.exchange(
+            enabled,
+            std::memory_order_acq_rel);
+        if (!acquisitionWasEnabled && environmentAcquisitionEnabled()) {
+            beginWorldCaptureProbeSession();
+        }
+        if (previous != enabled) {
+            logging::info(
+                "Vanilla Fixes stable-reflection environment consumer {} live; shared IBL capture is {} without changing Dynamic Cubemaps or Diffuse IBL presentation settings.",
+                enabled ? "enabled" : "disabled",
+                environmentAcquisitionEnabled() ? "required" : "not required");
+        }
+    }
+
+    bool Runtime::tryGetSslrEnvironment(
+        SslrEnvironmentView& view) noexcept
+    {
+        view = {};
+        if (!sslrConsumerEnabled_.load(std::memory_order_acquire) ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
+            return false;
+        }
+        updateMaterialEnvironmentTransition(GetTickCount64());
+
+        const auto requestedSession =
+            requestedCaptureProbeSessionId_.load(std::memory_order_acquire);
+        const auto publishedAvailable = publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ == requestedSession &&
+            environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity() &&
+            environmentProvider_.publishedPosition();
+        if (!publishedAvailable) {
+            return true;
+        }
+
+        view.publishedEnvironment =
+            environmentProvider_.publishedEnvironment();
+        view.publishedValidity = environmentProvider_.publishedValidity();
+        view.publishedPosition = environmentProvider_.publishedPosition();
+        view.publishedProbeOrigin =
+            environmentProvider_.publishedProbeOrigin();
+        view.publishedAvailable = true;
+        view.transitionWeight = materialEnvironmentTransitionWeight_;
+
+        const auto previousAvailable =
+            materialEnvironmentTransitionActive_ &&
+            environmentProvider_.previousEnvironment() &&
+            environmentProvider_.previousValidity() &&
+            environmentProvider_.previousPosition();
+        if (previousAvailable) {
+            view.previousEnvironment =
+                environmentProvider_.previousEnvironment();
+            view.previousValidity =
+                environmentProvider_.previousValidity();
+            view.previousPosition =
+                environmentProvider_.previousPosition();
+            view.previousProbeOrigin =
+                environmentProvider_.previousProbeOrigin();
+            view.previousAvailable = true;
+        }
+        return true;
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept
@@ -701,6 +771,13 @@ namespace community_shaders::ibl
                 "IBL could not allocate duplicate-draw GPU timing queries; rendering remains active without performance telemetry.");
         }
         resourcesReady_.store(true, std::memory_order_release);
+        if (environmentAcquisitionEnabled()) {
+            // Settings, including the Vanilla Fixes SSLR consumer, are
+            // published before D3D device creation. resetResources() clears
+            // the pre-device session request, so arm a fresh session only
+            // after the provider and capture resources are ready.
+            beginWorldCaptureProbeSession();
+        }
         const auto environment = environmentProvider_.snapshot();
         logging::info(
             "IBL foundation initialized; transactional radiance/validity/position state={}, extent={}, mips={}, position-aware Dynamic Cubemaps updater ready={}, validity-aware diffuse fitting is staged, and 41 exact material replacements remain fail-closed until publication.",
@@ -2325,6 +2402,7 @@ namespace community_shaders::ibl
         loggedMaterialBindingFailure_ = false;
         materialConsumptionFailed_ = false;
         materialEnvironmentTransitionActive_ = false;
+        materialEnvironmentTransitionWeight_ = 1.0f;
         materialEnvironmentTransitionStartMilliseconds_ = 0;
         nextMaterialEnvironmentTransitionTickMilliseconds_ = 0;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);

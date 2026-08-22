@@ -21,7 +21,8 @@ foreach(input IN ITEMS
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
-    VANILLA_SSLR_RAYTRACE_PATCH_SOURCE
+    VANILLA_SSLR_ENVIRONMENT_SOURCE
+    VANILLA_IBL_RUNTIME_SOURCE
     VANILLA_D3D11_HOOK_SOURCE
     VANILLA_DEVMENU_MANIFEST_SOURCE
     VANILLA_SHARED_SETTINGS_SOURCE
@@ -30,7 +31,8 @@ foreach(input IN ITEMS
     VANILLA_SAO_BLUR_SOURCE
     VANILLA_SAO_RAW_SOURCE
     VANILLA_SSLR_BLUR_SOURCE
-    VANILLA_SSLR_PREPASS_SOURCE)
+    VANILLA_SSLR_PREPASS_SOURCE
+    VANILLA_SSLR_RAYTRACE_SOURCE)
   vanilla_fixes_require_file(${input})
 endforeach()
 
@@ -63,7 +65,9 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "identity.hash == expected.hash"
   "identity.checksum == expected.checksum"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
-  "patchStockSslrRaytracePixel")
+  "fo4vr_cs_vanilla_sslr_raytrace_ps"
+  "publishSslrPixelShaderPair"
+  "selectSslrPixelShaderForBinding")
 
 file(READ "${VANILLA_FOCUS_RUNTIME_SOURCE}" focus_runtime)
 vanilla_fixes_require_text("${focus_runtime}" "focus-shadow native/resource"
@@ -110,6 +114,7 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "writableRange"
   "InterlockedExchange8"
   "preserveStartupCapability"
+  "setSslrSuiteRequested("
   "kPollInterval = std::chrono::milliseconds(250)"
   "reloadIfChanged()")
 foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
@@ -139,17 +144,27 @@ vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
   "recomputeDxbcChecksum"
   "patchedBytecode.swap(candidate)")
-file(READ "${VANILLA_SSLR_RAYTRACE_PATCH_SOURCE}" sslr_patch)
-vanilla_fixes_require_text("${sslr_patch}" "SSLR raytrace transform"
-  "kStockFade"
-  "kStereoFade"
-  "kStockFinalBounds"
-  "kStereoEyeGuard"
-  "localCenteredX = (abs(packedX - 0.5) - 0.25) * 4"
-  "localCenteredY = (packedY - 0.5) * 2"
-  "findUniqueSequence"
-  "recomputeDxbcChecksum"
-  "patchedBytecode.swap(candidate)")
+file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
+vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
+  "kFirstResourceSlot = 4"
+  "kResourceCount = 6"
+  "kSamplerSlot = 4"
+  "kConstantSlot = 11"
+  "kCurrentHitMinimumConfidence = 0.65f"
+  "tryGetSslrEnvironment"
+  "PSGetShaderResources"
+  "PSSetShaderResources"
+  "PSGetConstantBuffers"
+  "PSSetConstantBuffers"
+  "appliedMatches"
+  "setSslrConsumerEnabled")
+file(READ "${VANILLA_IBL_RUNTIME_SOURCE}" ibl_runtime)
+vanilla_fixes_require_text("${ibl_runtime}" "shared IBL SSLR consumer"
+  "sslrConsumerEnabled_"
+  "setSslrConsumerEnabled"
+  "tryGetSslrEnvironment"
+  "materialEnvironmentTransitionWeight_"
+  "publishedEnvironmentSessionId_ == requestedSession")
 
 file(READ "${VANILLA_D3D11_HOOK_SOURCE}" d3d11)
 vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
@@ -157,6 +172,9 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectVertexShader("
   "vanilla_fixes::selectPixelShader("
   "vanilla_fixes::selectComputeShader("
+  "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
+  "vanilla_fixes::isSslrRaytracePixelShader(shader)"
+  "ScopedSslrEnvironmentBinding"
   "observeFocusShadowRenderTargets(depthStencil)"
   "vanilla_fixes::isFocusShadowPixelShader(shader)"
   "ScopedFocusShadowBinding focusShadowBinding"
@@ -167,6 +185,13 @@ list(LENGTH focus_draw_bindings focus_draw_binding_count)
 if(NOT focus_draw_binding_count EQUAL 4)
   message(FATAL_ERROR
     "Vanilla Fixes focus resource must bind at all four draw boundaries")
+endif()
+string(REGEX MATCHALL
+  "ScopedSslrEnvironmentBinding" sslr_draw_bindings "${d3d11}")
+list(LENGTH sslr_draw_bindings sslr_draw_binding_count)
+if(NOT sslr_draw_binding_count EQUAL 4)
+  message(FATAL_ERROR
+    "Vanilla Fixes SSLR environment must bind at all four draw boundaries")
 endif()
 
 file(READ "${VANILLA_DEVMENU_MANIFEST_SOURCE}" devmenu)
@@ -238,13 +263,49 @@ vanilla_fixes_require_text("${sslr_prepass}" "SSLR prepass source"
   "depth <= 0.01f"
   "input.uv.x >= 0.5f"
   "eyeMatrixOffset = rightEye ? 4u : 0u"
-  "eyeLocalX = (input.uv.x - (rightEye ? 0.5f : 0.0f)) * 2.0f"
-  "eyeLocalEndpoint.x * 0.5f + (rightEye ? 0.5f : 0.0f)"
-  "reflected * 1000.0f")
+  "eyeLocalX ="
+  "rayClipPosition"
+  "geometricCandidate = cross("
+  "ddx(viewPosition)"
+  "ddy(viewPosition)"
+  "worldNormal = transformRows(20u, normal)"
+  "reflectedWorld = normalize(reflect("
+  "encodeDirection(reflectedWorld)")
+foreach(forbidden IN ITEMS
+    "reflected.z >"
+    "dot(normal, viewDirection) >= 0.0f"
+    "eyeLocalEndpoint"
+    "reflected * 1000.0f")
+  string(FIND "${sslr_prepass}" "${forbidden}" found)
+  if(NOT found EQUAL -1)
+    message(FATAL_ERROR
+      "Vanilla Fixes SSLR prepass retained stale '${forbidden}'")
+  endif()
+endforeach()
+
+file(READ "${VANILLA_SSLR_RAYTRACE_SOURCE}" sslr_raytrace)
+vanilla_fixes_require_text("${sslr_raytrace}" "SSLR raytrace source"
+  "CameraData[85]"
+  "PublishedEnvironment : register(t4)"
+  "PreviousPosition : register(t9)"
+  "SslrEnvironmentParameters : register(b11)"
+  "DirectionTexture.Load"
+  "ViewDepthTexture.Load"
+  "reconstructLinearPosition"
+  "viewDepth / eyeRay.z"
+  "receiverWorldPosition"
+  "correctProbeDirection"
+  "maximumSteps = 32u"
+  "refinementSteps = 5u"
+  "maximumTravel = 1000.0f"
+  "return rightEye ? uv.x > 0.5f : uv.x < 0.5f"
+  "confidence - EnvironmentControl.z"
+  "return float4(worldRadiance, worldValidity)")
 
 if(DEFINED VANILLA_FXC_EXECUTABLE)
   vanilla_fixes_require_file(VANILLA_FXC_EXECUTABLE)
-  foreach(shader IN ITEMS SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS)
+  foreach(shader IN ITEMS
+      SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS SSLR_RAYTRACE)
     vanilla_fixes_require_file(VANILLA_${shader}_BINARY)
   endforeach()
 
@@ -252,7 +313,8 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     "VANILLA_SAO_BLUR_BINARY|3564|d390578f8f6cea606fed706fcc041c421c5d724e48536544fda83d702feaada9|cs_5_0|dcl_thread_group 972, 1, 1"
     "VANILLA_SAO_RAW_BINARY|5936|5a0373b4ac810c4abc392d3887d4bb916a798de6aa63bff140a9d0f49e6a53ee|cs_5_0|dcl_thread_group 16, 16, 1"
     "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
-    "VANILLA_SSLR_PREPASS_BINARY|4160|3b97e1198285cb2d6134b20f4b006d84b10fec3c201ab83d73683c5778675762|ps_5_0|dynamicIndexed")
+    "VANILLA_SSLR_PREPASS_BINARY|4640|a7526cfc9c67cf62f2719dd7882cef2388c4943d2f22010ddae5c8b8d66c9f80|ps_5_0|dynamicIndexed"
+    "VANILLA_SSLR_RAYTRACE_BINARY|16460|1be9c54bf953b8f244a796d98de3f1d18e3acb54809b475f319c3f1cb5f1089c|ps_5_0|dcl_resource_texturecube")
   foreach(spec IN LISTS binary_specs)
     string(REPLACE "|" ";" fields "${spec}")
     list(GET fields 0 path_variable)
@@ -277,6 +339,40 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
        NOT assembly MATCHES "${contract_pattern}")
       message(FATAL_ERROR
         "Vanilla Fixes shader contract failed for ${path_variable}: ${dump_error}")
+    endif()
+    if(path_variable STREQUAL "VANILLA_SSLR_RAYTRACE_BINARY")
+      foreach(required_pattern IN ITEMS
+          "dcl_constantbuffer CB11\\[3\\]"
+          "dcl_constantbuffer CB12\\[82\\], dynamicIndexed"
+          "dcl_sampler s3"
+          "dcl_sampler s4"
+          "dcl_resource_texture2d.* t0"
+          "dcl_resource_texture2d.* t1"
+          "dcl_resource_texture2d.* t2"
+          "dcl_resource_texture2d.* t3"
+          "dcl_resource_texturecube.* t4"
+          "dcl_resource_texturecube.* t5"
+          "dcl_resource_texturecube.* t6"
+          "dcl_resource_texturecube.* t7"
+          "dcl_resource_texturecube.* t8"
+          "dcl_resource_texturecube.* t9"
+          "dcl_output o0.xyzw"
+          "loop")
+        if(NOT assembly MATCHES "${required_pattern}")
+          message(FATAL_ERROR
+            "Vanilla Fixes SSLR raytrace bytecode is missing '${required_pattern}'")
+        endif()
+      endforeach()
+      foreach(forbidden_pattern IN ITEMS
+          "dcl_sampler s[0-2]"
+          "dcl_sampler s[5-9]"
+          "dcl_resource_[^\n]* t1[0-9]"
+          "dcl_uav")
+        if(assembly MATCHES "${forbidden_pattern}")
+          message(FATAL_ERROR
+            "Vanilla Fixes SSLR raytrace bytecode contains forbidden '${forbidden_pattern}'")
+        endif()
+      endforeach()
     endif()
   endforeach()
 endif()

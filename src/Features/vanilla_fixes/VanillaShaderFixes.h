@@ -1,5 +1,7 @@
 #pragma once
 
+#include <d3d11.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -67,6 +69,14 @@ namespace community_shaders::vanilla_fixes
     [[nodiscard]] ShaderSelection selectComputeShader(
         const void* bytecode,
         std::size_t bytecodeLength) noexcept;
+    [[nodiscard]] bool publishSslrPixelShaderPair(
+        ID3D11PixelShader* fixedShader,
+        ID3D11PixelShader* stockShader,
+        ShaderFix fix) noexcept;
+    [[nodiscard]] ID3D11PixelShader* selectSslrPixelShaderForBinding(
+        ID3D11PixelShader* engineShader) noexcept;
+    [[nodiscard]] bool isSslrRaytracePixelShader(
+        ID3D11PixelShader* shader) noexcept;
     void reportShaderCreationResult(
         const ShaderSelection& selection,
         bool accepted) noexcept;

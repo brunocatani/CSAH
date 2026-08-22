@@ -1,15 +1,17 @@
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 
 #include "Features/vanilla_fixes/ReflectionCompositePatch.h"
-#include "Features/vanilla_fixes/SslrRaytracePatch.h"
+#include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 
 #include "VanillaFixesSaoBlurHCS.h"
 #include "VanillaFixesSaoRawAOCS.h"
 #include "VanillaFixesSslrBlurHVS.h"
 #include "VanillaFixesSslrPrepassPS.h"
+#include "VanillaFixesSslrRaytracePS.h"
 
 #include <atomic>
 #include <cstring>
+#include <ranges>
 #include <span>
 
 namespace community_shaders::vanilla_fixes
@@ -71,6 +73,18 @@ namespace community_shaders::vanilla_fixes
         std::atomic_uint64_t accepted{};
         std::atomic_uint64_t stockFallbacks{};
         std::atomic_uint64_t focusShadersCreated{};
+
+        struct SslrPixelShaderPair final
+        {
+            std::atomic<ID3D11PixelShader*> key{};
+            ID3D11PixelShader* fixed{};
+            ID3D11PixelShader* stock{};
+            ShaderFix fix{ ShaderFix::none };
+        };
+
+        constexpr std::size_t kSslrPixelShaderPairCapacity = 16;
+        std::array<SslrPixelShaderPair, kSslrPixelShaderPairCapacity>
+            sslrPixelShaderPairs{};
 
         [[nodiscard]] bool matches(
             const ShaderIdentity& identity,
@@ -147,18 +161,11 @@ namespace community_shaders::vanilla_fixes
             };
         }
         if (matches(identity, kSslrRaytrace)) {
-            const auto stock = std::span<const std::byte>{
-                static_cast<const std::byte*>(bytecode),
-                bytecodeLength,
-            };
-            const auto ready = patchStockSslrRaytracePixel(
-                stock,
-                patchStorage);
             return {
-                ready ? patchStorage.data() : bytecode,
-                ready ? patchStorage.size() : bytecodeLength,
+                fo4vr_cs_vanilla_sslr_raytrace_ps,
+                sizeof(fo4vr_cs_vanilla_sslr_raytrace_ps),
                 ShaderFix::sslrRaytrace,
-                ready,
+                true,
             };
         }
         for (const auto& candidate : kReflectionComposite) {
@@ -205,6 +212,71 @@ namespace community_shaders::vanilla_fixes
             };
         }
         return { bytecode, bytecodeLength };
+    }
+
+    bool publishSslrPixelShaderPair(
+        ID3D11PixelShader* fixedShader,
+        ID3D11PixelShader* stockShader,
+        const ShaderFix fix) noexcept
+    {
+        if (!fixedShader || !stockShader ||
+            (fix != ShaderFix::sslrPrepass &&
+                fix != ShaderFix::sslrRaytrace)) {
+            return false;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        for (auto& pair : sslrPixelShaderPairs) {
+            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
+            if (!pair.key.compare_exchange_strong(
+                    expected,
+                    busy,
+                    std::memory_order_acq_rel)) {
+                if (expected == fixedShader) {
+                    return false;
+                }
+                continue;
+            }
+            fixedShader->AddRef();
+            stockShader->AddRef();
+            pair.fixed = fixedShader;
+            pair.stock = stockShader;
+            pair.fix = fix;
+            pair.key.store(fixedShader, std::memory_order_release);
+            return true;
+        }
+        return false;
+    }
+
+    ID3D11PixelShader* selectSslrPixelShaderForBinding(
+        ID3D11PixelShader* engineShader) noexcept
+    {
+        if (!engineShader) {
+            return nullptr;
+        }
+        const auto useFixed = sslrSuiteReady();
+        for (const auto& pair : sslrPixelShaderPairs) {
+            if (pair.key.load(std::memory_order_acquire) == engineShader) {
+                return useFixed ? pair.fixed : pair.stock;
+            }
+        }
+        return engineShader;
+    }
+
+    bool isSslrRaytracePixelShader(ID3D11PixelShader* shader) noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        return std::ranges::any_of(
+            sslrPixelShaderPairs,
+            [shader](const SslrPixelShaderPair& pair) noexcept {
+                const auto* key = pair.key.load(
+                    std::memory_order_acquire);
+                return key == shader &&
+                    pair.fix == ShaderFix::sslrRaytrace &&
+                    pair.fixed == shader;
+            });
     }
 
     void reportShaderCreationResult(

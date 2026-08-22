@@ -1,8 +1,8 @@
 // FO4VR ImageSpace[130] / BSImagespaceShaderSSLRPrepass replacement.
-// The stock prepass reconstructs each eye independently, but emits its ray
-// endpoint in eye-local X. The retained flat raytrace shader consumes a packed
-// start UV. Preserve the prepass and repack only its final endpoint X so both
-// values enter the stock 32-step marcher in the same coordinate domain.
+// Reconstruct the receiver and its geometric macro normal in one eye-local
+// view space. Store the reflected direction in a stable world basis. The
+// matching raytrace converts it back to the selected eye only for current
+// depth marching, so HMD rotation cannot change the persistent lookup key.
 
 cbuffer SslrParameters : register(b0)
 {
@@ -29,7 +29,7 @@ struct PixelInput
 
 struct PixelOutput
 {
-    float2 rayEndpoint : SV_Target0;
+    float2 rayDirection : SV_Target0;
     float4 viewDepth : SV_Target1;
 };
 
@@ -41,6 +41,7 @@ float4 multiplyRows(uint firstRow, float4 value)
         dot(CameraData[firstRow + 2], value),
         dot(CameraData[firstRow + 3], value));
 }
+
 float3 transformRows(uint firstRow, float3 value)
 {
     return float3(
@@ -57,6 +58,22 @@ float3 decodeNormal(float2 encoded)
     return normalize(float3(xy, -(1.0f - lengthSquared * 0.5f)));
 }
 
+float2 encodeDirection(float3 direction)
+{
+    direction /= max(
+        abs(direction.x) + abs(direction.y) + abs(direction.z),
+        1.0e-6f);
+    float2 encoded = direction.xy;
+    if (direction.z < 0.0f)
+    {
+        const float2 signs = float2(
+            encoded.x >= 0.0f ? 1.0f : -1.0f,
+            encoded.y >= 0.0f ? 1.0f : -1.0f);
+        encoded = (1.0f - abs(encoded.yx)) * signs;
+    }
+    return encoded;
+}
+
 PixelOutput main(PixelInput input)
 {
     PixelOutput output = (PixelOutput)0;
@@ -71,7 +88,8 @@ PixelOutput main(PixelInput input)
         0.0f).x;
     const bool rightEye = input.uv.x >= 0.5f;
     const uint eyeMatrixOffset = rightEye ? 4u : 0u;
-    const float eyeLocalX = (input.uv.x - (rightEye ? 0.5f : 0.0f)) * 2.0f;
+    const float eyeLocalX =
+        (input.uv.x - (rightEye ? 0.5f : 0.0f)) * 2.0f;
 
     float viewZ;
     float4 viewPositionH;
@@ -81,47 +99,66 @@ PixelOutput main(PixelInput input)
         (1.0f - input.uv.y) * 2.0f - 1.0f,
         lowDepth ? depth * 100.0f : depth * 1.01f - 0.01f,
         1.0f);
-    if (lowDepth) {
-        viewPositionH = multiplyRows(eyeMatrixOffset + 40u, clipPosition);
-    } else {
-        viewPositionH = multiplyRows(eyeMatrixOffset + 32u, clipPosition);
+    const float4 rayClipPosition = float4(
+        clipPosition.xy,
+        0.5f,
+        1.0f);
+    if (lowDepth)
+    {
+        viewPositionH = multiplyRows(
+            eyeMatrixOffset + 40u,
+            clipPosition);
+    }
+    else
+    {
+        viewPositionH = multiplyRows(
+            eyeMatrixOffset + 32u,
+            clipPosition);
     }
     const float3 viewPosition = viewPositionH.xyz / viewPositionH.w;
     viewZ = viewPosition.z;
 
-    const float3 viewDirection = normalize(-viewPosition);
+    // Receiver distance and incident direction have separate contracts.
+    // The fixed clip plane removes the compressed depth path from the
+    // angular key while preserving native receiver distance.
+    const float4 eyeRayH = multiplyRows(
+        eyeMatrixOffset + 32u,
+        rayClipPosition);
+    const float3 incidentView = normalize(eyeRayH.xyz / eyeRayH.w);
+
     float3 normal = decodeNormal(
         NormalTexture.Sample(NormalSampler, input.uv).xy);
+    const float3 geometricCandidate = cross(
+        ddx(viewPosition),
+        ddy(viewPosition));
+    const float geometricLengthSquared = dot(
+        geometricCandidate,
+        geometricCandidate);
+    if (all(isfinite(geometricCandidate)) &&
+        isfinite(geometricLengthSquared) &&
+        geometricLengthSquared > 1.0e-8f)
+    {
+        // Macro geometry owns traversal. Material normal detail remains in
+        // ordinary lighting but cannot bend the screen-space intersection.
+        normal = geometricCandidate * rsqrt(geometricLengthSquared);
+    }
 
-    if (dot(normal, viewDirection) >= 0.0f) {
-        normal = transformRows(20u, normal);
-        normal.z *= SslrParams[2].x;
-        normal = normalize(normal);
-        normal = normalize(transformRows(0u, normal));
-
-        const float3 reflected = reflect(-viewDirection, normal);
-        if (reflected.z > SslrParams[1].y) {
-            const float4 reflectedPosition =
-                float4(viewPosition + reflected * 1000.0f, 1.0f);
-            const float4 projectedH = multiplyRows(
-                eyeMatrixOffset + 4u,
-                reflectedPosition);
-            const float3 projected = projectedH.w == 0.0f ?
-                1.0f.xxx : projectedH.xyz / projectedH.w;
-            const float3 projectedUvDepth = float3(
-                projected.x * 0.5f + 0.5f,
-                projected.y * -0.5f + 0.5f,
-                projected.z);
-            const float3 start = float3(eyeLocalX, input.uv.y, depth);
-            const float3 delta = projectedUvDepth - start;
-            const float2 eyeLocalEndpoint =
-                start.xy - depth * (delta.xy / delta.z);
-
-            output.rayEndpoint = float2(
-                eyeLocalEndpoint.x * 0.5f + (rightEye ? 0.5f : 0.0f),
-                eyeLocalEndpoint.y);
-            output.viewDepth.x = viewZ;
-        }
+    // Reflection is invariant to normal sign. The stock-facing predicate
+    // formed a camera-centred acceptance circle across the wide VR image and
+    // is intentionally absent.
+    float3 worldNormal = transformRows(20u, normal);
+    worldNormal.z *= SslrParams[2].x;
+    worldNormal = normalize(worldNormal);
+    const float3 incidentWorld = normalize(transformRows(
+        20u,
+        incidentView));
+    const float3 reflectedWorld = normalize(reflect(
+        incidentWorld,
+        worldNormal));
+    if (all(isfinite(reflectedWorld)))
+    {
+        output.rayDirection = encodeDirection(reflectedWorld);
+        output.viewDepth.x = viewZ;
     }
     return output;
 }

@@ -16,6 +16,7 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "Features/vanilla_fixes/FocusShadowRuntime.h"
+#include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
@@ -234,6 +235,7 @@ namespace community_shaders::render
         std::atomic_uint64_t renderTargetBindCalls{};
         std::atomic_uint64_t renderTargetAndUnorderedAccessBindCalls{};
         thread_local bool activeFocusShadowPixel{};
+        thread_local bool activeCorrectedSslrRaytracePixel{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -1348,6 +1350,7 @@ namespace community_shaders::render
         {
             return activeReplacementBinding.family !=
                     linear_lighting::ReplacementShaderFamily::none ||
+                activeCorrectedSslrRaytracePixel ||
                 activeIblMaterialBinding ||
                 activeContactShadowBinding ||
                 activeFilmicTonemappingBinding ||
@@ -1701,6 +1704,32 @@ namespace community_shaders::render
                 shader);
             auto replacementAccepted =
                 selection.replaced() && SUCCEEDED(result) && shader && *shader;
+            if (replacementAccepted &&
+                (selection.fix == vanilla_fixes::ShaderFix::sslrPrepass ||
+                    selection.fix ==
+                        vanilla_fixes::ShaderFix::sslrRaytrace)) {
+                ID3D11PixelShader* stockShader{};
+                const auto stockResult = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    &stockShader);
+                const auto pairPublished = SUCCEEDED(stockResult) &&
+                    stockShader &&
+                    vanilla_fixes::publishSslrPixelShaderPair(
+                        *shader,
+                        stockShader,
+                        selection.fix);
+                if (stockShader) {
+                    stockShader->Release();
+                }
+                if (!pairPublished) {
+                    (*shader)->Release();
+                    *shader = nullptr;
+                    replacementAccepted = false;
+                }
+            }
             if (selection.replaced() && !replacementAccepted) {
                 result = original(
                     device,
@@ -1907,6 +1936,9 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
+            activeCorrectedSslrRaytracePixel =
+                vanilla_fixes::isSslrRaytracePixelShader(shader);
             activeFocusShadowPixel =
                 vanilla_fixes::isFocusShadowPixelShader(shader);
             if (!shaderInterceptionActive.load(std::memory_order_acquire)) {
@@ -2220,6 +2252,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const vanilla_fixes::ScopedSslrEnvironmentBinding
+                sslrEnvironment(
+                    context,
+                    activeCorrectedSslrRaytracePixel);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2275,6 +2311,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const vanilla_fixes::ScopedSslrEnvironmentBinding
+                sslrEnvironment(
+                    context,
+                    activeCorrectedSslrRaytracePixel);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2334,6 +2374,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const vanilla_fixes::ScopedSslrEnvironmentBinding
+                sslrEnvironment(
+                    context,
+                    activeCorrectedSslrRaytracePixel);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -2398,6 +2442,10 @@ namespace community_shaders::render
             }
             const auto constants =
                 scopeActiveReplacementPixelConstants(context);
+            const vanilla_fixes::ScopedSslrEnvironmentBinding
+                sslrEnvironment(
+                    context,
+                    activeCorrectedSslrRaytracePixel);
             const auto skylightingBindings =
                 skylighting::Runtime::get().scopeAmbientDraw(
                     context,
@@ -3133,6 +3181,12 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            if (!vanilla_fixes::initializeSslrEnvironmentBinding(
+                    *device,
+                    *immediateContext)) {
+                logging::warn(
+                    "Vanilla Fixes stable-reflection binding resources are unavailable; the retained stock prepass/raytrace pair remains selected.");
+            }
             firstTrackedContactShaderBindLogged.store(
                 false,
                 std::memory_order_relaxed);
