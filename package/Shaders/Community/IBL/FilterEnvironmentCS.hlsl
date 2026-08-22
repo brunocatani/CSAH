@@ -27,22 +27,22 @@ float3 CubeDirection(uint face, float2 coordinate)
     switch (face)
     {
     case 0:
-        direction = float3(1.0f, coordinate.y, -coordinate.x);
+        direction = float3(1.0f, -coordinate.y, -coordinate.x);
         break;
     case 1:
-        direction = float3(-1.0f, coordinate.y, coordinate.x);
+        direction = float3(-1.0f, -coordinate.y, coordinate.x);
         break;
     case 2:
-        direction = float3(coordinate.x, 1.0f, -coordinate.y);
+        direction = float3(coordinate.x, 1.0f, coordinate.y);
         break;
     case 3:
-        direction = float3(coordinate.x, -1.0f, coordinate.y);
+        direction = float3(coordinate.x, -1.0f, -coordinate.y);
         break;
     case 4:
-        direction = float3(coordinate.x, coordinate.y, 1.0f);
+        direction = float3(coordinate.x, -coordinate.y, 1.0f);
         break;
     default:
-        direction = float3(-coordinate.x, coordinate.y, -1.0f);
+        direction = float3(-coordinate.x, -coordinate.y, -1.0f);
         break;
     }
     return normalize(direction);

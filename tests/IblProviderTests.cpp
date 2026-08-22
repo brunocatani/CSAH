@@ -212,8 +212,28 @@ namespace
                 1.0f);
         require(
             positiveYCorner.x > 0.0f && positiveYCorner.y > 0.0f &&
-                positiveYCorner.z < 0.0f,
+                positiveYCorner.z > 0.0f,
             "+Y face orientation changed");
+        const auto positiveXBottomRight =
+            community_shaders::ibl::environmentCubeDirection(
+                EnvironmentCubeFace::positiveX,
+                1.0f,
+                1.0f);
+        require(
+            positiveXBottomRight.x > 0.0f &&
+                positiveXBottomRight.y < 0.0f &&
+                positiveXBottomRight.z < 0.0f,
+            "+X face vertical orientation changed");
+        const auto positiveZBottomRight =
+            community_shaders::ibl::environmentCubeDirection(
+                EnvironmentCubeFace::positiveZ,
+                1.0f,
+                1.0f);
+        require(
+            positiveZBottomRight.x > 0.0f &&
+                positiveZBottomRight.y < 0.0f &&
+                positiveZBottomRight.z > 0.0f,
+            "+Z face vertical orientation changed");
 
         EnvironmentUpdateCoverage coverage;
         constexpr std::uint32_t mipCount = 8;

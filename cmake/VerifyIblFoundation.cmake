@@ -316,6 +316,8 @@ endforeach()
 foreach(required IN ITEMS
     "class EnvironmentUpdateCoverage"
     "environmentCubeDirection"
+    "{ 1.0f, -vertical, -horizontal }"
+    "{ horizontal, 1.0f, vertical }"
     "kEnvironmentCubeFaceCount = 6"
     "kEnvironmentMaximumMipCount = 10")
   string(FIND "${providerModel}" "${required}" found)
@@ -336,14 +338,17 @@ foreach(required IN ITEMS
     "RWTexture2DArray<float4> EnvironmentPosition : register(u2)"
     "EnvironmentUpdateConstants : register(b11)"
     "Fo4VrSceneConstants : register(b12)"
-    "63u + eye * 4u"
+    "dot(Scene[0u].xyz, worldDirection)"
+    "projectionBase = 4u + eye * 4u"
+    "inverseProjectionBase = 32u + eye * 4u"
+    "dot(Scene[20u].xyz, midpointRelativeView)"
     "HistoryAvailable"
     "HistoryDecay"
     "HistoryBlend"
     "retainedValidity"
     "positionHistoryConfidence"
     "inferredHistory"
-    "ReconstructWorldPosition"
+    "ReconstructPersistentWorldPosition"
     "CameraOrigin"
     "Scene[59u + eye].xyz"
     "CameraPositionAdjust"
@@ -355,6 +360,8 @@ foreach(required IN ITEMS
     "historyWeight"
     "currentWeight"
     "blendedRadiance"
+    "float3(1.0f, -coordinate.y, -coordinate.x)"
+    "float3(coordinate.x, 1.0f, coordinate.y)"
     "float2(0.5f, -0.5f)"
     "dispatchId.z >= 6u"
     "numthreads(8, 8, 1)")
@@ -365,12 +372,20 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+string(FIND "${updateShaderSource}" "63u + eye * 4u" compressedProjection)
+if(NOT compressedProjection EQUAL -1)
+  message(FATAL_ERROR
+    "IBL environment-update shader regressed to HMD-relative compressed projection rows")
+endif()
+
 foreach(required IN ITEMS
     "TextureCube<float3> CapturedRadiance : register(t0)"
     "TextureCube<float> CapturedValidity : register(t1)"
     "RWTexture2DArray<float3> FilteredRadiance : register(u0)"
     "RWTexture2DArray<float> FilteredValidity : register(u1)"
     "EnvironmentFilterConstants : register(b11)"
+    "float3(1.0f, -coordinate.y, -coordinate.x)"
+    "float3(coordinate.x, 1.0f, coordinate.y)"
     "SampleCount = 32u"
     "SampleGgx"
     "RadicalInverse"

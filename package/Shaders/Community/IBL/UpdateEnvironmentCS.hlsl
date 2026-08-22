@@ -27,10 +27,13 @@ cbuffer EnvironmentUpdateConstants : register(b11)
 };
 
 // The exact FO4VR DFComposite draw binds an 85-float4 buffer at b12. Local
-// material DXBC independently proves c59/c60 are the camera-relative per-eye
-// origins and rows 63..70 are the current per-eye world-to-clip matrices: left
-// rows 63..66, right rows 67..70. The verified 85-row VR layout carries
-// persistent camera-position adjustments at c80/c81.
+// material DXBC independently proves c0..c2 rotate world vectors into the
+// current view, c4..c11 are the ordinary per-eye projections, c32..c39 are
+// the ordinary per-eye inverse projections, and c59/c60 are the live per-eye
+// origins. The verified 85-row VR layout carries persistent camera-position
+// adjustments at c80/c81. Do not use the compressed c63..c70 rows here: the
+// headset-qualified GPFIX world cache proved that they do not preserve a
+// stable world-direction key under HMD rotation.
 cbuffer Fo4VrSceneConstants : register(b12)
 {
     float4 Scene[85];
@@ -69,9 +72,8 @@ bool CameraOrigin(uint eye, out float3 origin)
     return finite;
 }
 
-bool ReconstructWorldPosition(
-    float3 cameraOrigin,
-    float3 worldDirection,
+bool ReconstructPersistentWorldPosition(
+    float2 localUv,
     float depth,
     uint eye,
     out float3 worldPosition,
@@ -84,23 +86,45 @@ bool ReconstructWorldPosition(
         return false;
     }
 
-    const uint matrixBase = 63u + eye * 4u;
-    const float4 origin = float4(cameraOrigin, 1.0f);
-    const float4 direction = float4(worldDirection, 0.0f);
-    const float clipZOrigin = dot(Scene[matrixBase + 2u], origin);
-    const float clipWOrigin = dot(Scene[matrixBase + 3u], origin);
-    const float clipZDirection = dot(Scene[matrixBase + 2u], direction);
-    const float clipWDirection = dot(Scene[matrixBase + 3u], direction);
-    const float denominator =
-        depth * clipWDirection - clipZDirection;
-    if (!(abs(denominator) > PositionEpsilon))
+    const float mappedDepth = depth <= 0.01f ?
+        depth * 100.0f : depth * 1.01f - 0.01f;
+    const float4 clipPosition = float4(
+        localUv.x * 2.0f - 1.0f,
+        1.0f - localUv.y * 2.0f,
+        mappedDepth,
+        1.0f);
+    const uint inverseProjectionBase = 32u + eye * 4u;
+    const float4 homogeneousView = float4(
+        dot(Scene[inverseProjectionBase + 0u], clipPosition),
+        dot(Scene[inverseProjectionBase + 1u], clipPosition),
+        dot(Scene[inverseProjectionBase + 2u], clipPosition),
+        dot(Scene[inverseProjectionBase + 3u], clipPosition));
+    if (!all(homogeneousView == homogeneousView) ||
+        !(abs(homogeneousView.w) > PositionEpsilon))
     {
         return false;
     }
 
-    distance =
-        (clipZOrigin - depth * clipWOrigin) / denominator;
-    worldPosition = cameraOrigin + worldDirection * distance;
+    const float3 eyeRelativeView =
+        homogeneousView.xyz / homogeneousView.w;
+    distance = length(eyeRelativeView);
+    const float3 leftOrigin = Scene[59u].xyz;
+    const float3 rightOrigin = Scene[60u].xyz;
+    const float3 midpointOrigin = (leftOrigin + rightOrigin) * 0.5f;
+    const float3 eyeOrigin = eye == 0u ? leftOrigin : rightOrigin;
+    const float3 eyeToMidpointWorld = eyeOrigin - midpointOrigin;
+    const float3 eyeToMidpointView = float3(
+        dot(Scene[0u].xyz, eyeToMidpointWorld),
+        dot(Scene[1u].xyz, eyeToMidpointWorld),
+        dot(Scene[2u].xyz, eyeToMidpointWorld));
+    const float3 midpointRelativeView =
+        eyeRelativeView + eyeToMidpointView;
+    const float3 midpointRelativeWorld = float3(
+        dot(Scene[20u].xyz, midpointRelativeView),
+        dot(Scene[21u].xyz, midpointRelativeView),
+        dot(Scene[22u].xyz, midpointRelativeView));
+    worldPosition = midpointOrigin + midpointRelativeWorld +
+        Scene[80u + eye].xyz;
     return distance > 0.0f && distance < MaximumCaptureDistance &&
         all(worldPosition == worldPosition) &&
         all(abs(worldPosition) < MaximumCaptureDistance * 4.0f);
@@ -112,22 +136,22 @@ float3 CubeDirection(uint face, float2 coordinate)
     switch (face)
     {
     case 0:
-        direction = float3(1.0f, coordinate.y, -coordinate.x);
+        direction = float3(1.0f, -coordinate.y, -coordinate.x);
         break;
     case 1:
-        direction = float3(-1.0f, coordinate.y, coordinate.x);
+        direction = float3(-1.0f, -coordinate.y, coordinate.x);
         break;
     case 2:
-        direction = float3(coordinate.x, 1.0f, -coordinate.y);
+        direction = float3(coordinate.x, 1.0f, coordinate.y);
         break;
     case 3:
-        direction = float3(coordinate.x, -1.0f, coordinate.y);
+        direction = float3(coordinate.x, -1.0f, -coordinate.y);
         break;
     case 4:
-        direction = float3(coordinate.x, coordinate.y, 1.0f);
+        direction = float3(coordinate.x, -coordinate.y, 1.0f);
         break;
     default:
-        direction = float3(-coordinate.x, coordinate.y, -1.0f);
+        direction = float3(-coordinate.x, -coordinate.y, -1.0f);
         break;
     }
     return normalize(direction);
@@ -136,19 +160,26 @@ float3 CubeDirection(uint face, float2 coordinate)
 bool ProjectEye(float3 worldDirection, uint eye, out float2 localUv,
     out float edgeWeight)
 {
-    const uint matrixBase = 63u + eye * 4u;
-    const float4 direction = float4(worldDirection, 0.0f);
-    const float clipW = dot(Scene[matrixBase + 3u], direction);
-    if (!(clipW > 1.0e-5f))
+    const float3 viewDirection = float3(
+        dot(Scene[0u].xyz, worldDirection),
+        dot(Scene[1u].xyz, worldDirection),
+        dot(Scene[2u].xyz, worldDirection));
+    const float4 viewVector = float4(viewDirection, 0.0f);
+    const uint projectionBase = 4u + eye * 4u;
+    const float4 clipDirection = float4(
+        dot(Scene[projectionBase + 0u], viewVector),
+        dot(Scene[projectionBase + 1u], viewVector),
+        dot(Scene[projectionBase + 2u], viewVector),
+        dot(Scene[projectionBase + 3u], viewVector));
+    if (!all(clipDirection == clipDirection) ||
+        !(clipDirection.w > PositionEpsilon))
     {
         localUv = 0.0f;
         edgeWeight = 0.0f;
         return false;
     }
 
-    const float2 ndc = float2(
-        dot(Scene[matrixBase], direction),
-        dot(Scene[matrixBase + 1u], direction)) / clipW;
+    const float2 ndc = clipDirection.xy / clipDirection.w;
     const float2 edge = 1.0f - abs(ndc);
     if (min(edge.x, edge.y) <= 0.0f)
     {
@@ -168,9 +199,6 @@ bool ProjectEye(float3 worldDirection, uint eye, out float2 localUv,
 bool SampleEye(
     float3 worldDirection,
     uint eye,
-    float3 cameraOrigin,
-    bool cameraOriginValid,
-    float3 cameraPositionAdjust,
     out float3 radiance,
     out float weight,
     out float3 worldPosition,
@@ -210,9 +238,8 @@ bool SampleEye(
     }
 
     float distance;
-    if (cameraOriginValid && ReconstructWorldPosition(
-            cameraOrigin,
-            worldDirection,
+    if (ReconstructPersistentWorldPosition(
+            localUv,
             depth,
             eye,
             worldPosition,
@@ -227,10 +254,6 @@ bool SampleEye(
             worldPosition = 0.0f;
             return false;
         }
-        // FO4VR reconstructs camera-relative world positions. c80/c81 carry
-        // the persistent per-eye position adjustment required to compare
-        // hits across captures made after player translation.
-        worldPosition += cameraPositionAdjust;
         positionWeight = weight;
     }
     return true;
@@ -343,9 +366,6 @@ void main(
         if (SampleEye(
                 worldDirection,
                 eye,
-                cameraOrigins[eye],
-                cameraOriginValid[eye] && cameraPositionAdjustValid[eye],
-                cameraPositionAdjusts[eye],
                 eyeRadiance,
                 eyeWeight,
                 eyePosition,

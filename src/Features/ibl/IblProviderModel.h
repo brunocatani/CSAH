@@ -34,8 +34,9 @@ namespace community_shaders::ibl
             kEnvironmentCubeFaceCount;
     }
 
-    // DirectX cube-face orientation used by the approved Community Shaders
-    // update path. Inputs are face-local coordinates in [-1, +1].
+    // Exact inverse of the Direct3D TextureCube direction-to-face mapping.
+    // Inputs are UAV array-face coordinates in [-1, +1], with vertical
+    // increasing down the texture.
     [[nodiscard]] inline Float3 environmentCubeDirection(
         EnvironmentCubeFace face,
         float horizontal,
@@ -44,22 +45,22 @@ namespace community_shaders::ibl
         Float3 direction{};
         switch (face) {
         case EnvironmentCubeFace::positiveX:
-            direction = { 1.0f, vertical, -horizontal };
+            direction = { 1.0f, -vertical, -horizontal };
             break;
         case EnvironmentCubeFace::negativeX:
-            direction = { -1.0f, vertical, horizontal };
+            direction = { -1.0f, -vertical, horizontal };
             break;
         case EnvironmentCubeFace::positiveY:
-            direction = { horizontal, 1.0f, -vertical };
+            direction = { horizontal, 1.0f, vertical };
             break;
         case EnvironmentCubeFace::negativeY:
-            direction = { horizontal, -1.0f, vertical };
+            direction = { horizontal, -1.0f, -vertical };
             break;
         case EnvironmentCubeFace::positiveZ:
-            direction = { horizontal, vertical, 1.0f };
+            direction = { horizontal, -vertical, 1.0f };
             break;
         case EnvironmentCubeFace::negativeZ:
-            direction = { -horizontal, vertical, -1.0f };
+            direction = { -horizontal, -vertical, -1.0f };
             break;
         default:
             return {};
