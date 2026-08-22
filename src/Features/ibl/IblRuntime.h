@@ -32,6 +32,7 @@ namespace community_shaders::ibl
     struct RuntimeSnapshot
     {
         bool enabled{};
+        bool dynamicCubemapsEnabled{};
         bool diffuseEnabled{};
         bool resourcesReady{};
         bool diffuseSHUsable{};
@@ -88,6 +89,7 @@ namespace community_shaders::ibl
         // exact vanilla DFComposite selection path. Re-enabling requests a
         // fresh world capture before material consumption can resume.
         void setEnabled(bool enabled) noexcept;
+        void setDynamicCubemapsEnabled(bool enabled) noexcept;
         void setDiffuseEnabled(bool enabled) noexcept;
         void setDiffuseLevel(float level) noexcept;
         void applySettings(const Settings& settings) noexcept;
@@ -274,6 +276,8 @@ namespace community_shaders::ibl
             std::uint64_t generation,
             std::uint64_t session,
             std::uint64_t tickMilliseconds) noexcept;
+        [[nodiscard]] bool environmentAcquisitionEnabled() const noexcept;
+        void refreshComplexMaterialProducerGate() noexcept;
         [[nodiscard]] bool synchronizeWorldCaptureSession() noexcept;
         [[nodiscard]] bool activateWorldCaptureProbeSession() noexcept;
         void resetCaptureProbes() noexcept;
@@ -322,6 +326,7 @@ namespace community_shaders::ibl
 
         std::atomic_bool resourcesReady_{};
         std::atomic_bool enabled_{ true };
+        std::atomic_bool dynamicCubemapsEnabled_{ true };
         std::atomic_bool diffuseEnabled_{ true };
         std::atomic_uint32_t diffuseLevelBits_{
             std::bit_cast<std::uint32_t>(1.0f) };

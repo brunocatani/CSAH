@@ -159,8 +159,11 @@ endforeach()
 
 foreach(required IN ITEMS
     "std::atomic_bool enabled_{ true }"
+    "std::atomic_bool dynamicCubemapsEnabled_{ true }"
     "std::atomic_bool diffuseEnabled_{ true }"
     "void Runtime::setEnabled(bool enabled) noexcept"
+    "void Runtime::setDynamicCubemapsEnabled(bool enabled) noexcept"
+    "environmentAcquisitionEnabled"
     "void Runtime::applySettings(const Settings& settings) noexcept"
     "tryGetDiffuseAmbient"
     "!enabled_.load(std::memory_order_acquire)"
@@ -206,8 +209,10 @@ if(diffuseSessionGate EQUAL -1)
 endif()
 
 foreach(required IN ITEMS
-    "kSection = L\"ImageBasedLighting\""
+    "kIblSection = L\"ImageBasedLighting\""
+    "kDynamicCubemapsSection = L\"DynamicCubemaps\""
     "kEnabledKey = L\"bEnabled\""
+    "kDynamicCubemapsEnabledKey = L\"bEnabled\""
     "kDiffuseEnabledKey = L\"bDiffuseEnabled\""
     "kDiffuseLevelKey = L\"fDiffuseLevel\""
     "GetPrivateProfileStringW"
@@ -225,6 +230,7 @@ endforeach()
 
 foreach(required IN ITEMS
     "\"id\": \"ibl\""
+    "\"id\": \"dynamic-cubemaps\""
     "\"id\": \"diffuse-ibl\""
     "\"id\": \"diffuse-ibl-level\""
     "\"section\": \"ImageBasedLighting\""
@@ -306,8 +312,10 @@ foreach(required IN ITEMS
     "Texture2D<float> SceneDepth : register(t1)"
     "TextureCube<float3> PreviousEnvironment : register(t2)"
     "TextureCube<float> PreviousValidity : register(t3)"
+    "TextureCube<float4> PreviousPosition : register(t4)"
     "RWTexture2DArray<float3> EnvironmentMip : register(u0)"
     "RWTexture2DArray<float> EnvironmentValidity : register(u1)"
+    "RWTexture2DArray<float4> EnvironmentPosition : register(u2)"
     "EnvironmentUpdateConstants : register(b11)"
     "Fo4VrSceneConstants : register(b12)"
     "63u + eye * 4u"
@@ -315,6 +323,12 @@ foreach(required IN ITEMS
     "HistoryDecay"
     "HistoryBlend"
     "retainedValidity"
+    "positionHistoryConfidence"
+    "inferredHistory"
+    "ReconstructWorldPosition"
+    "CameraOrigin"
+    "groupshared float4 SharedCameraOrigins[2]"
+    "GroupMemoryBarrierWithGroupSync"
     "historyWeight"
     "currentWeight"
     "blendedRadiance"
@@ -355,6 +369,8 @@ foreach(required IN ITEMS
     "abortUpdate"
     "publishedEnvironment"
     "publishedValidity"
+    "publishedPosition"
+    "writablePosition"
     "publishedGeneration")
   string(FIND "${environmentProviderHeader}" "${required}" found)
   if(found EQUAL -1)
@@ -370,8 +386,10 @@ foreach(required IN ITEMS
     "D3D11_SRV_DIMENSION_TEXTURECUBE"
     "D3D11_UAV_DIMENSION_TEXTURE2DARRAY"
     "kValidityFormat"
+    "kPositionFormat"
     "chain.radiance"
     "chain.validity"
+    "chain.position"
     "ResourceSet candidate"
     "frontChain_ = 1 - frontChain_"
     "coverage_.complete")

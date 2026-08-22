@@ -84,7 +84,13 @@ namespace community_shaders::ibl
                    extent,
                    mipCount,
                    kValidityFormat,
-                   chain.validity);
+                   chain.validity) &&
+            createCubeTexture(
+                   device,
+                   extent,
+                   1,
+                   kPositionFormat,
+                   chain.position);
     }
 
     bool EnvironmentProvider::initialize(
@@ -105,6 +111,7 @@ namespace community_shaders::ibl
 
         UINT formatSupport{};
         UINT validityFormatSupport{};
+        UINT positionFormatSupport{};
         constexpr UINT requiredFormatSupport =
             D3D11_FORMAT_SUPPORT_TEXTURE2D |
             D3D11_FORMAT_SUPPORT_SHADER_SAMPLE |
@@ -116,6 +123,11 @@ namespace community_shaders::ibl
                 kValidityFormat,
                 &validityFormatSupport)) ||
             (validityFormatSupport & requiredFormatSupport) !=
+                requiredFormatSupport ||
+            FAILED(device->CheckFormatSupport(
+                kPositionFormat,
+                &positionFormatSupport)) ||
+            (positionFormatSupport & requiredFormatSupport) !=
                 requiredFormatSupport) {
             ++rebuildFailures_;
             if (!resources_.device) {
@@ -254,6 +266,26 @@ namespace community_shaders::ibl
         return resources_.chains[1 - frontChain_].validity.texture.Get();
     }
 
+    ID3D11UnorderedAccessView* EnvironmentProvider::writablePosition()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::updating) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_]
+            .position.mipUnorderedAccess[0]
+            .Get();
+    }
+
+    ID3D11Texture2D* EnvironmentProvider::writablePositionTexture()
+        const noexcept
+    {
+        if (state_ != EnvironmentProviderState::updating) {
+            return nullptr;
+        }
+        return resources_.chains[1 - frontChain_].position.texture.Get();
+    }
+
     ID3D11ShaderResourceView* EnvironmentProvider::publishedEnvironment()
         const noexcept
     {
@@ -272,6 +304,15 @@ namespace community_shaders::ibl
         return resources_.chains[frontChain_].validity.shaderResource.Get();
     }
 
+    ID3D11ShaderResourceView* EnvironmentProvider::publishedPosition()
+        const noexcept
+    {
+        if (publishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[frontChain_].position.shaderResource.Get();
+    }
+
     ID3D11Texture2D* EnvironmentProvider::publishedTexture() const noexcept
     {
         if (publishedGeneration_ == 0) {
@@ -287,6 +328,15 @@ namespace community_shaders::ibl
             return nullptr;
         }
         return resources_.chains[frontChain_].validity.texture.Get();
+    }
+
+    ID3D11Texture2D* EnvironmentProvider::publishedPositionTexture()
+        const noexcept
+    {
+        if (publishedGeneration_ == 0) {
+            return nullptr;
+        }
+        return resources_.chains[frontChain_].position.texture.Get();
     }
 
     EnvironmentProviderSnapshot EnvironmentProvider::snapshot() const

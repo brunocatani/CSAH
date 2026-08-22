@@ -68,9 +68,14 @@ int main()
         "[ImageBasedLighting]\n"
         "bEnabled=0\n"
         "bDiffuseEnabled=0\n"
-        "fDiffuseLevel=1.35\n");
+        "fDiffuseLevel=1.35\n"
+        "[DynamicCubemaps]\n"
+        "bEnabled=0\n");
     const auto configured = loadSettings(ini.path());
     require(!configured.enabled, "disabled owned key");
+    require(
+        !configured.dynamicCubemapsEnabled,
+        "disabled Dynamic Cubemaps key");
     require(!configured.diffuseEnabled, "disabled diffuse key");
     require(
         std::abs(configured.diffuseLevel - 1.35f) < 1.0e-6f,
@@ -82,6 +87,9 @@ int main()
     ini.write("[LinearLighting]\nbEnabled=0\n");
     const auto independent = loadSettings(ini.path());
     require(independent.enabled, "independent section");
+    require(
+        independent.dynamicCubemapsEnabled,
+        "Dynamic Cubemaps default");
     require(independent.diffuseEnabled, "diffuse default");
     require(
         std::abs(independent.diffuseLevel - 1.0f) < 1.0e-6f,

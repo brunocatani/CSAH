@@ -198,7 +198,12 @@ namespace
             const auto base = 63 + eye * 4;
             rows[base] = { 1.0f, 0.0f, 0.0f, 0.0f };
             rows[base + 1] = { 0.0f, 1.0f, 0.0f, 0.0f };
-            rows[base + 2] = { 0.0f, 0.0f, 1.0f, 0.0f };
+            rows[base + 2] = {
+                0.0f,
+                0.0f,
+                forwardSign,
+                -1.0f,
+            };
             rows[base + 3] = { 0.0f, 0.0f, forwardSign, 0.0f };
         }
         D3D11_BUFFER_DESC description{};
@@ -400,10 +405,11 @@ namespace
             "left/right packed eyes were not merged symmetrically");
         require(
             provider.snapshot().state == EnvironmentProviderState::ready &&
-                provider.snapshot().publishedGeneration == 1 &&
+            provider.snapshot().publishedGeneration == 1 &&
                 provider.publishedEnvironment() != nullptr &&
-                provider.publishedValidity() != nullptr,
-            "validated radiance/validity pair was not atomically published");
+                provider.publishedValidity() != nullptr &&
+                provider.publishedPosition() != nullptr,
+            "validated radiance/validity/position generation was not atomically published");
         require(
             updater.consumeUpdate(d3d.context.Get(), provider) ==
                 EnvironmentUpdateConsumeResult::idle,

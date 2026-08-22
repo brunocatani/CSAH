@@ -279,6 +279,9 @@ namespace community_shaders::ibl
                  resources_.device.Get()) ||
                 !sameDevice(
                     provider.publishedValidity(),
+                    resources_.device.Get()) ||
+                !sameDevice(
+                    provider.publishedPosition(),
                     resources_.device.Get()))) {
             return false;
         }
@@ -359,9 +362,9 @@ namespace community_shaders::ibl
             context,
             {
                 .firstShaderResource = 0,
-                .shaderResourceCount = 4,
+                .shaderResourceCount = 5,
                 .firstUnorderedAccess = 0,
-                .unorderedAccessCount = 2,
+                .unorderedAccessCount = 3,
                 .firstSampler = 0,
                 .samplerCount = 1,
                 .firstConstantBuffer = 11,
@@ -388,16 +391,23 @@ namespace community_shaders::ibl
         }
         auto timing = gpuTiming_.begin();
 
-        std::array<ID3D11ShaderResourceView*, 4> captureSources{
+        std::array<ID3D11ShaderResourceView*, 5> captureSources{
             reflectionFreeRadiance,
             sceneDepth,
             usePublishedHistory ? provider.publishedEnvironment() : nullptr,
             usePublishedHistory ? provider.publishedValidity() : nullptr,
+            usePublishedHistory ? provider.publishedPosition() : nullptr,
         };
-        std::array<ID3D11UnorderedAccessView*, 2> captureDestinations{
+        std::array<ID3D11UnorderedAccessView*, 3> captureDestinations{
             resources_.capturedRadianceOutput.Get(),
             resources_.capturedValidityOutput.Get(),
+            provider.writablePosition(),
         };
+        if (!captureDestinations[2]) {
+            provider.abortUpdate();
+            recordFailure();
+            return false;
+        }
         std::array<ID3D11Buffer*, 2> captureConstants{
             resources_.captureConstants.Get(),
             sceneConstants,
@@ -441,13 +451,13 @@ namespace community_shaders::ibl
                 kThreadGroupExtent,
             kEnvironmentCubeFaceCount);
 
-        std::array<ID3D11UnorderedAccessView*, 2> nullDestinations{};
+        std::array<ID3D11UnorderedAccessView*, 3> nullDestinations{};
         context->CSSetUnorderedAccessViews(
             0,
             static_cast<UINT>(nullDestinations.size()),
             nullDestinations.data(),
             nullptr);
-        std::array<ID3D11ShaderResourceView*, 4> nullSources{};
+        std::array<ID3D11ShaderResourceView*, 5> nullSources{};
         context->CSSetShaderResources(
             0,
             static_cast<UINT>(nullSources.size()),

@@ -18,8 +18,10 @@ namespace community_shaders::ibl
 {
     namespace
     {
-        constexpr auto kSection = L"ImageBasedLighting";
+        constexpr auto kIblSection = L"ImageBasedLighting";
+        constexpr auto kDynamicCubemapsSection = L"DynamicCubemaps";
         constexpr auto kEnabledKey = L"bEnabled";
+        constexpr auto kDynamicCubemapsEnabledKey = L"bEnabled";
         constexpr auto kDiffuseEnabledKey = L"bDiffuseEnabled";
         constexpr auto kDiffuseLevelKey = L"fDiffuseLevel";
 
@@ -48,12 +50,13 @@ namespace community_shaders::ibl
 
         [[nodiscard]] bool readBoolean(
             const std::filesystem::path& path,
+            const wchar_t* section,
             const wchar_t* key,
             bool fallback) noexcept
         {
             wchar_t value[64]{};
             const auto count = GetPrivateProfileStringW(
-                kSection,
+                section,
                 key,
                 L"",
                 value,
@@ -73,7 +76,7 @@ namespace community_shaders::ibl
         {
             wchar_t value[64]{};
             const auto count = GetPrivateProfileStringW(
-                kSection,
+                kIblSection,
                 key,
                 L"",
                 value,
@@ -93,14 +96,15 @@ namespace community_shaders::ibl
 
         [[nodiscard]] bool writeValue(
             const std::filesystem::path& path,
+            const wchar_t* section,
             const wchar_t* key,
             const wchar_t* value) noexcept
         {
             return WritePrivateProfileStringW(
-                       kSection,
-                       key,
-                       value,
-                       path.c_str()) != FALSE;
+                section,
+                key,
+                value,
+                path.c_str()) != FALSE;
         }
     }
 
@@ -131,9 +135,19 @@ namespace community_shaders::ibl
         }
 
         return sanitize({
-            .enabled = readBoolean(path, kEnabledKey, defaults.enabled),
+            .enabled = readBoolean(
+                path,
+                kIblSection,
+                kEnabledKey,
+                defaults.enabled),
+            .dynamicCubemapsEnabled = readBoolean(
+                path,
+                kDynamicCubemapsSection,
+                kDynamicCubemapsEnabledKey,
+                defaults.dynamicCubemapsEnabled),
             .diffuseEnabled = readBoolean(
                 path,
+                kIblSection,
                 kDiffuseEnabledKey,
                 defaults.diffuseEnabled),
             .diffuseLevel = readFloat(
@@ -148,9 +162,10 @@ namespace community_shaders::ibl
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Image Based Lighting settings loaded from '{}'; enabled={}, diffuse enabled={}, diffuse level={}.",
+            "Image Based Lighting settings loaded from '{}'; enabled={}, Dynamic Cubemaps enabled={}, diffuse enabled={}, diffuse level={}.",
             path.string(),
             result.enabled,
+            result.dynamicCubemapsEnabled,
             result.diffuseEnabled,
             result.diffuseLevel);
         return result;
@@ -175,14 +190,27 @@ namespace community_shaders::ibl
             static_cast<double>(safe.diffuseLevel));
         auto success = writeValue(
             path,
+            kIblSection,
             kEnabledKey,
             safe.enabled ? L"1" : L"0");
         success = writeValue(
                       path,
+                      kDynamicCubemapsSection,
+                      kDynamicCubemapsEnabledKey,
+                      safe.dynamicCubemapsEnabled ? L"1" : L"0") &&
+            success;
+        success = writeValue(
+                      path,
+                      kIblSection,
                       kDiffuseEnabledKey,
                       safe.diffuseEnabled ? L"1" : L"0") &&
             success;
-        success = writeValue(path, kDiffuseLevelKey, diffuseLevel) && success;
+        success = writeValue(
+                      path,
+                      kIblSection,
+                      kDiffuseLevelKey,
+                      diffuseLevel) &&
+            success;
         return success;
     }
 }

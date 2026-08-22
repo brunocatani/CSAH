@@ -284,21 +284,34 @@ namespace
         require(
             provider.writableValidityTexture() != nullptr,
             "active update did not expose private validity");
+        require(
+            provider.writablePosition() != nullptr &&
+                provider.writablePositionTexture() != nullptr,
+            "active update did not expose private position history");
         markCompleteGeneration(provider);
         require(provider.publishUpdate(), "complete update did not publish");
         auto* firstPublishedView = provider.publishedEnvironment();
         auto* firstPublishedValidity = provider.publishedValidity();
+        auto* firstPublishedPosition = provider.publishedPosition();
         auto* firstPublishedTexture = provider.publishedTexture();
         auto* firstPublishedValidityTexture =
             provider.publishedValidityTexture();
+        auto* firstPublishedPositionTexture =
+            provider.publishedPositionTexture();
         require(firstPublishedView != nullptr, "published SRV is null");
         require(
             firstPublishedValidity != nullptr,
             "published validity SRV is null");
+        require(
+            firstPublishedPosition != nullptr,
+            "published position SRV is null");
         require(firstPublishedTexture != nullptr, "published texture is null");
         require(
             firstPublishedValidityTexture != nullptr,
             "published validity texture is null");
+        require(
+            firstPublishedPositionTexture != nullptr,
+            "published position texture is null");
         require(
             provider.snapshot().publishedGeneration == 1,
             "first generation identity changed");
@@ -309,10 +322,13 @@ namespace
         require(
             provider.publishedEnvironment() == firstPublishedView &&
                 provider.publishedValidity() == firstPublishedValidity &&
+                provider.publishedPosition() == firstPublishedPosition &&
                 provider.publishedTexture() == firstPublishedTexture &&
                 provider.publishedValidityTexture() ==
-                    firstPublishedValidityTexture,
-            "failed rebuild replaced the published pair");
+                    firstPublishedValidityTexture &&
+                provider.publishedPositionTexture() ==
+                    firstPublishedPositionTexture,
+            "failed rebuild replaced the published environment generation");
         require(
             provider.snapshot().state == EnvironmentProviderState::ready,
             "failed rebuild disabled valid resources");
@@ -336,6 +352,9 @@ namespace
         require(
             provider.publishedValidity() == firstPublishedValidity,
             "aborted update replaced published validity");
+        require(
+            provider.publishedPosition() == firstPublishedPosition,
+            "aborted update replaced published position history");
 
         require(provider.beginUpdate(), "replacement update did not begin");
         markCompleteGeneration(provider);
@@ -347,6 +366,10 @@ namespace
             provider.publishedValidityTexture() !=
                 firstPublishedValidityTexture,
             "validity buffer did not swap with radiance");
+        require(
+            provider.publishedPositionTexture() !=
+                firstPublishedPositionTexture,
+            "position buffer did not swap with radiance");
         require(
             provider.snapshot().publishedGeneration == 3,
             "aborted generation was not kept private");

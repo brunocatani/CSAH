@@ -43,6 +43,11 @@ int main()
         "IBL diff");
     verifyLive(
         [](Snapshot& value) {
+            value.ibl.dynamicCubemapsEnabled = false;
+        },
+        "Dynamic Cubemaps diff");
+    verifyLive(
+        [](Snapshot& value) {
             value.complexMaterials.parallaxEnabled = false;
         },
         "Complex Materials diff");

@@ -424,20 +424,55 @@ namespace community_shaders::ibl
         return instance;
     }
 
+    bool Runtime::environmentAcquisitionEnabled() const noexcept
+    {
+        return enabled_.load(std::memory_order_acquire) &&
+            (dynamicCubemapsEnabled_.load(std::memory_order_acquire) ||
+                diffuseEnabled_.load(std::memory_order_acquire));
+    }
+
+    void Runtime::refreshComplexMaterialProducerGate() noexcept
+    {
+        render::setDFPrePassIblEnabled(
+            enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire));
+    }
+
     void Runtime::setEnabled(bool enabled) noexcept
     {
-        const auto previous = enabled_.exchange(
+        const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
+        enabled_.store(enabled, std::memory_order_release);
+        refreshComplexMaterialProducerGate();
+        if (!acquisitionWasEnabled && environmentAcquisitionEnabled()) {
+            beginWorldCaptureProbeSession();
+        }
+    }
+
+    void Runtime::setDynamicCubemapsEnabled(bool enabled) noexcept
+    {
+        const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
+        const auto previous = dynamicCubemapsEnabled_.exchange(
             enabled,
             std::memory_order_acq_rel);
-        render::setDFPrePassIblEnabled(enabled);
-        if (!previous && enabled) {
+        refreshComplexMaterialProducerGate();
+        if (!acquisitionWasEnabled && environmentAcquisitionEnabled()) {
             beginWorldCaptureProbeSession();
+        }
+        if (previous != enabled) {
+            logging::info(
+                "Dynamic Cubemaps {} live; specular environment substitution is {}, and the shared IBL capture remains active only while a diffuse or specular consumer requires it.",
+                enabled ? "enabled" : "disabled",
+                enabled ? "armed" : "retired");
         }
     }
 
     void Runtime::setDiffuseEnabled(bool enabled) noexcept
     {
+        const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
         diffuseEnabled_.store(enabled, std::memory_order_release);
+        if (!acquisitionWasEnabled && environmentAcquisitionEnabled()) {
+            beginWorldCaptureProbeSession();
+        }
     }
 
     void Runtime::setDiffuseLevel(float level) noexcept
@@ -451,9 +486,29 @@ namespace community_shaders::ibl
     void Runtime::applySettings(const Settings& settings) noexcept
     {
         const auto safe = sanitize(settings);
-        setDiffuseLevel(safe.diffuseLevel);
-        setDiffuseEnabled(safe.diffuseEnabled);
-        setEnabled(safe.enabled);
+        const auto acquisitionWasEnabled = environmentAcquisitionEnabled();
+        const auto previousDynamic = dynamicCubemapsEnabled_.load(
+            std::memory_order_acquire);
+        diffuseLevelBits_.store(
+            std::bit_cast<std::uint32_t>(safe.diffuseLevel),
+            std::memory_order_release);
+        diffuseEnabled_.store(
+            safe.diffuseEnabled,
+            std::memory_order_release);
+        dynamicCubemapsEnabled_.store(
+            safe.dynamicCubemapsEnabled,
+            std::memory_order_release);
+        enabled_.store(safe.enabled, std::memory_order_release);
+        refreshComplexMaterialProducerGate();
+        if (!acquisitionWasEnabled && environmentAcquisitionEnabled()) {
+            beginWorldCaptureProbeSession();
+        }
+        if (previousDynamic != safe.dynamicCubemapsEnabled) {
+            logging::info(
+                "Dynamic Cubemaps {} live; specular environment substitution is {}, and the shared IBL capture remains active only while a diffuse or specular consumer requires it.",
+                safe.dynamicCubemapsEnabled ? "enabled" : "disabled",
+                safe.dynamicCubemapsEnabled ? "armed" : "retired");
+        }
     }
 
     bool Runtime::tryGetDiffuseAmbient(
@@ -562,7 +617,7 @@ namespace community_shaders::ibl
         resourcesReady_.store(true, std::memory_order_release);
         const auto environment = environmentProvider_.snapshot();
         logging::info(
-            "IBL foundation initialized; transactional radiance/validity state={}, extent={}, mips={}, filtered updater ready={}, validity-aware diffuse fitting is staged, and 41 exact material replacements remain fail-closed until publication.",
+            "IBL foundation initialized; transactional radiance/validity/position state={}, extent={}, mips={}, position-aware Dynamic Cubemaps updater ready={}, validity-aware diffuse fitting is staged, and 41 exact material replacements remain fail-closed until publication.",
             static_cast<unsigned>(environment.state),
             environment.extent,
             environment.mipCount,
@@ -733,6 +788,7 @@ namespace community_shaders::ibl
         MaterialPixelShaderSelection selection{ original, {} };
         if (!context || context != context_.Get() || !original ||
             !enabled_.load(std::memory_order_acquire) ||
+            !dynamicCubemapsEnabled_.load(std::memory_order_acquire) ||
             materialConsumptionFailed_ ||
             !resourcesReady_.load(std::memory_order_acquire) ||
             publishedEnvironmentSessionId_ == 0 ||
@@ -776,13 +832,14 @@ namespace community_shaders::ibl
 
     bool Runtime::featureEnabled() const noexcept
     {
-        return enabled_.load(std::memory_order_acquire);
+        return environmentAcquisitionEnabled();
     }
 
     bool Runtime::materialBindingActive(
         MaterialShaderBinding binding) const noexcept
     {
         return binding && enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
             !materialConsumptionFailed_ &&
             resourcesReady_.load(std::memory_order_acquire) &&
             publishedEnvironmentSessionId_ != 0 &&
@@ -861,7 +918,7 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!enabled_.load(std::memory_order_acquire) || !context ||
+        if (!environmentAcquisitionEnabled() || !context ||
             context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
@@ -1023,7 +1080,7 @@ namespace community_shaders::ibl
             return {};
         }
         const auto worldCaptureReady = synchronizeWorldCaptureSession();
-        const auto featureEnabled = enabled_.load(std::memory_order_acquire);
+        const auto featureEnabled = environmentAcquisitionEnabled();
         const auto now = GetTickCount64();
         const auto diagnosticMayBeRequested = worldCaptureReady &&
             featureEnabled && !captureProbeSessionComplete_;
@@ -1207,8 +1264,7 @@ namespace community_shaders::ibl
             }
         }
 
-        if (productionReserved &&
-            enabled_.load(std::memory_order_acquire) &&
+        if (productionReserved && environmentAcquisitionEnabled() &&
             scratchDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT) {
             ID3D11ShaderResourceView* depthRaw{};
             context->PSGetShaderResources(7, 1, &depthRaw);
@@ -1221,7 +1277,8 @@ namespace community_shaders::ibl
             const auto useHistory = publishedEnvironmentSessionId_ ==
                     activeCaptureProbeSessionId_ &&
                 environmentProvider_.publishedEnvironment() &&
-                environmentProvider_.publishedValidity();
+                environmentProvider_.publishedValidity() &&
+                environmentProvider_.publishedPosition();
             if (environmentUpdater_.dispatchUpdate(
                     context,
                     environmentProvider_,
@@ -1235,7 +1292,7 @@ namespace community_shaders::ibl
                 if (update.dispatches == 1 ||
                     (update.dispatches % 30) == 0) {
                     logging::info(
-                        "IBL stereo environment generation {} dispatched into the private radiance/validity back pair with history={} and bounded scene-linear GGX filtering; publication awaits nonblocking validation.",
+                        "Dynamic Cubemaps stereo generation {} dispatched into the private radiance/validity/position back chain with position-aware history={} and bounded scene-linear GGX filtering; publication awaits nonblocking validation.",
                         update.generation,
                         useHistory);
                 }
@@ -1251,7 +1308,7 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!enabled_.load(std::memory_order_acquire) || !context ||
+        if (!environmentAcquisitionEnabled() || !context ||
             context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
@@ -1381,7 +1438,7 @@ namespace community_shaders::ibl
         ID3D11DeviceContext* context,
         std::uint16_t contractPlusOne) noexcept
     {
-        if (!enabled_.load(std::memory_order_acquire) || !context ||
+        if (!environmentAcquisitionEnabled() || !context ||
             context != context_.Get() || contractPlusOne == 0 ||
             contractPlusOne > kCaptureProbeContracts.size() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
@@ -1774,19 +1831,23 @@ namespace community_shaders::ibl
     void Runtime::onDFLightAmbientBind(ID3D11DeviceContext* context) noexcept
     {
         if (!context || context != context_.Get() ||
-            !resourcesReady_.load(std::memory_order_acquire)) {
+            !resourcesReady_.load(std::memory_order_acquire) ||
+            !environmentAcquisitionEnabled()) {
             return;
         }
 
-        ID3D11ShaderResourceView* albedoRaw{};
-        context->PSGetShaderResources(0, 1, &albedoRaw);
-        ComPtr<ID3D11ShaderResourceView> albedo;
-        albedo.Attach(albedoRaw);
-        if (albedo) {
-            D3D11_SHADER_RESOURCE_VIEW_DESC description{};
-            albedo->GetDesc(&description);
-            if (description.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D) {
-                materialAlbedo_ = std::move(albedo);
+        if (dynamicCubemapsEnabled_.load(std::memory_order_acquire)) {
+            ID3D11ShaderResourceView* albedoRaw{};
+            context->PSGetShaderResources(0, 1, &albedoRaw);
+            ComPtr<ID3D11ShaderResourceView> albedo;
+            albedo.Attach(albedoRaw);
+            if (albedo) {
+                D3D11_SHADER_RESOURCE_VIEW_DESC description{};
+                albedo->GetDesc(&description);
+                if (description.ViewDimension ==
+                    D3D11_SRV_DIMENSION_TEXTURE2D) {
+                    materialAlbedo_ = std::move(albedo);
+                }
             }
         }
 
@@ -1861,7 +1922,7 @@ namespace community_shaders::ibl
                 lastLoggedEnvironmentUpdateGeneration_ =
                     update.generation;
                 logging::info(
-                    "IBL stereo environment generation {} atomically published for world session {} as a radiance/validity pair: history={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled consumers may now sample it with per-direction vanilla fallback.",
+                    "Dynamic Cubemaps stereo generation {} atomically published for world session {} as one radiance/validity/position environment: positionAwareHistory={}, avg=({}, {}, {}), peak={}, validity={}, covered={}/{}, nonBlack={}/{}, diffuseCoverage={}, diffuseState={}, faceValidity=[{},{},{},{},{},{}], faceLuminance=[{},{},{},{},{},{}]; enabled specular consumers sample it with per-direction vanilla fallback and Diffuse IBL shares the validated generation.",
                     update.generation,
                     publishedEnvironmentSessionId_,
                     update.historyUsed,
@@ -1918,6 +1979,7 @@ namespace community_shaders::ibl
             requestedCaptureProbeSessionId_.load(
                 std::memory_order_acquire);
         return enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
             resourcesReady_.load(std::memory_order_acquire) &&
             !materialConsumptionFailed_ && materialAlbedo_ &&
             publishedEnvironmentSessionId_ != 0 &&
@@ -1995,6 +2057,8 @@ namespace community_shaders::ibl
     {
         RuntimeSnapshot result{
             .enabled = enabled_.load(std::memory_order_acquire),
+            .dynamicCubemapsEnabled = dynamicCubemapsEnabled_.load(
+                std::memory_order_acquire),
             .diffuseEnabled = diffuseEnabled_.load(
                 std::memory_order_acquire),
             .resourcesReady = resourcesReady_.load(std::memory_order_acquire),

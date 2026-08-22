@@ -11,6 +11,9 @@ namespace community_shaders::ibl
         // control. The runtime remains fail-closed until a validated
         // environment pair exists even when this setting is enabled.
         bool enabled{ true };
+        // Dynamic Cubemaps owns specular environment substitution while
+        // Diffuse IBL may continue to consume the shared environment.
+        bool dynamicCubemapsEnabled{ true };
         bool diffuseEnabled{ true };
         float diffuseLevel{ 1.0f };
 

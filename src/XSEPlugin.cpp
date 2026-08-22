@@ -416,7 +416,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, diffuse IBL enabled={}, diffuse level={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             community_shaders::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
@@ -424,6 +424,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             dlaaSettings.sharpness,
             settings.enabled,
             iblSettings.enabled,
+            iblSettings.dynamicCubemapsEnabled,
             iblSettings.diffuseEnabled,
             iblSettings.diffuseLevel,
             skylightingSettings.enabled,

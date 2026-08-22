@@ -8,8 +8,10 @@ Texture2D<float3> ReflectionFreeRadiance : register(t0);
 Texture2D<float> SceneDepth : register(t1);
 TextureCube<float3> PreviousEnvironment : register(t2);
 TextureCube<float> PreviousValidity : register(t3);
+TextureCube<float4> PreviousPosition : register(t4);
 RWTexture2DArray<float3> EnvironmentMip : register(u0);
 RWTexture2DArray<float> EnvironmentValidity : register(u1);
+RWTexture2DArray<float4> EnvironmentPosition : register(u2);
 SamplerState LinearClampSampler : register(s0);
 
 cbuffer EnvironmentUpdateConstants : register(b11)
@@ -29,6 +31,76 @@ cbuffer Fo4VrSceneConstants : register(b12)
 {
     float4 Scene[85];
 };
+
+static const float PositionEpsilon = 1.0e-5f;
+static const float MinimumCaptureDistance = 16.5f;
+static const float MaximumCaptureDistance = 2000000.0f;
+groupshared float4 SharedCameraOrigins[2];
+
+bool CameraOrigin(uint eye, out float3 origin)
+{
+    const uint matrixBase = 63u + eye * 4u;
+    const float3 planeX = Scene[matrixBase].xyz;
+    const float3 planeY = Scene[matrixBase + 1u].xyz;
+    const float3 planeW = Scene[matrixBase + 3u].xyz;
+    const float3 crossYW = cross(planeY, planeW);
+    const float determinant = dot(planeX, crossYW);
+    if (!(abs(determinant) > PositionEpsilon))
+    {
+        origin = 0.0f;
+        return false;
+    }
+
+    origin = (
+        -Scene[matrixBase].w * crossYW -
+        Scene[matrixBase + 1u].w * cross(planeW, planeX) -
+        Scene[matrixBase + 3u].w * cross(planeX, planeY)) /
+        determinant;
+    const bool finite = all(origin == origin) &&
+        all(abs(origin) < MaximumCaptureDistance * 4.0f);
+    if (!finite)
+    {
+        origin = 0.0f;
+    }
+    return finite;
+}
+
+bool ReconstructWorldPosition(
+    float3 cameraOrigin,
+    float3 worldDirection,
+    float depth,
+    uint eye,
+    out float3 worldPosition,
+    out float distance)
+{
+    worldPosition = 0.0f;
+    distance = 0.0f;
+    if (!(depth > PositionEpsilon && depth < 1.0f - PositionEpsilon))
+    {
+        return false;
+    }
+
+    const uint matrixBase = 63u + eye * 4u;
+    const float4 origin = float4(cameraOrigin, 1.0f);
+    const float4 direction = float4(worldDirection, 0.0f);
+    const float clipZOrigin = dot(Scene[matrixBase + 2u], origin);
+    const float clipWOrigin = dot(Scene[matrixBase + 3u], origin);
+    const float clipZDirection = dot(Scene[matrixBase + 2u], direction);
+    const float clipWDirection = dot(Scene[matrixBase + 3u], direction);
+    const float denominator =
+        depth * clipWDirection - clipZDirection;
+    if (!(abs(denominator) > PositionEpsilon))
+    {
+        return false;
+    }
+
+    distance =
+        (clipZOrigin - depth * clipWOrigin) / denominator;
+    worldPosition = cameraOrigin + worldDirection * distance;
+    return distance > 0.0f && distance < MaximumCaptureDistance &&
+        all(worldPosition == worldPosition) &&
+        all(abs(worldPosition) < MaximumCaptureDistance * 4.0f);
+}
 
 float3 CubeDirection(uint face, float2 coordinate)
 {
@@ -89,9 +161,18 @@ bool ProjectEye(float3 worldDirection, uint eye, out float2 localUv,
     return true;
 }
 
-bool SampleEye(float3 worldDirection, uint eye, out float3 radiance,
-    out float weight)
+bool SampleEye(
+    float3 worldDirection,
+    uint eye,
+    float3 cameraOrigin,
+    bool cameraOriginValid,
+    out float3 radiance,
+    out float weight,
+    out float3 worldPosition,
+    out float positionWeight)
 {
+    worldPosition = 0.0f;
+    positionWeight = 0.0f;
     float2 localUv;
     if (!ProjectEye(worldDirection, eye, localUv, weight))
     {
@@ -123,12 +204,46 @@ bool SampleEye(float3 worldDirection, uint eye, out float3 radiance,
         weight = 0.0f;
         return false;
     }
+
+    float distance;
+    if (cameraOriginValid && ReconstructWorldPosition(
+            cameraOrigin,
+            worldDirection,
+            depth,
+            eye,
+            worldPosition,
+            distance))
+    {
+        // Hands, weapons, and headset-adjacent geometry must not become the
+        // environment reflected by the world around the player.
+        if (distance < MinimumCaptureDistance)
+        {
+            radiance = 0.0f;
+            weight = 0.0f;
+            worldPosition = 0.0f;
+            return false;
+        }
+        positionWeight = weight;
+    }
     return true;
 }
 
 [numthreads(8, 8, 1)]
-void main(uint3 dispatchId : SV_DispatchThreadID)
+void main(
+    uint3 dispatchId : SV_DispatchThreadID,
+    uint3 groupThreadId : SV_GroupThreadID)
 {
+    if (groupThreadId.x == 0u && groupThreadId.y == 0u)
+    {
+        float3 leftOrigin;
+        float3 rightOrigin;
+        const bool leftValid = CameraOrigin(0u, leftOrigin);
+        const bool rightValid = CameraOrigin(1u, rightOrigin);
+        SharedCameraOrigins[0] = float4(leftOrigin, leftValid ? 1.0f : 0.0f);
+        SharedCameraOrigins[1] = float4(rightOrigin, rightValid ? 1.0f : 0.0f);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
     if (dispatchId.x >= TargetExtent || dispatchId.y >= TargetExtent ||
         dispatchId.z >= 6u)
     {
@@ -140,17 +255,51 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     const float3 worldDirection = CubeDirection(
         dispatchId.z, faceCoordinate);
 
+    float3 cameraOrigins[2];
+    bool cameraOriginValid[2];
+    cameraOrigins[0] = SharedCameraOrigins[0].xyz;
+    cameraOrigins[1] = SharedCameraOrigins[1].xyz;
+    cameraOriginValid[0] = SharedCameraOrigins[0].w > 0.0f;
+    cameraOriginValid[1] = SharedCameraOrigins[1].w > 0.0f;
+    float3 cameraCenter = 0.0f;
+    float cameraCount = 0.0f;
+    [unroll]
+    for (uint cameraIndex = 0u; cameraIndex < 2u; ++cameraIndex)
+    {
+        if (cameraOriginValid[cameraIndex])
+        {
+            cameraCenter += cameraOrigins[cameraIndex];
+            cameraCount += 1.0f;
+        }
+    }
+    cameraCenter = cameraCount > 0.0f ?
+        cameraCenter / cameraCount : 0.0f;
+
     float3 accumulated = 0.0f;
     float totalWeight = 0.0f;
+    float3 accumulatedPosition = 0.0f;
+    float totalPositionWeight = 0.0f;
     [unroll]
     for (uint eye = 0u; eye < 2u; ++eye)
     {
         float3 eyeRadiance;
         float eyeWeight;
-        if (SampleEye(worldDirection, eye, eyeRadiance, eyeWeight))
+        float3 eyePosition;
+        float eyePositionWeight;
+        if (SampleEye(
+                worldDirection,
+                eye,
+                cameraOrigins[eye],
+                cameraOriginValid[eye],
+                eyeRadiance,
+                eyeWeight,
+                eyePosition,
+                eyePositionWeight))
         {
             accumulated += eyeRadiance * eyeWeight;
             totalWeight += eyeWeight;
+            accumulatedPosition += eyePosition * eyePositionWeight;
+            totalPositionWeight += eyePositionWeight;
         }
     }
 
@@ -160,12 +309,58 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     const float previousValidity = HistoryAvailable != 0u ?
         saturate(PreviousValidity.SampleLevel(
             LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
-    const float retainedValidity = previousValidity * saturate(HistoryDecay);
-    const float combinedValidity = saturate(
-        currentValidity + retainedValidity * (1.0f - currentValidity));
-    const float3 previousRadiance = retainedValidity > 0.0f ?
+    const float4 previousPosition = HistoryAvailable != 0u ?
+        PreviousPosition.SampleLevel(
+            LinearClampSampler, worldDirection, 0.0f) : 0.0f;
+    float positionHistoryConfidence = 1.0f;
+    if (previousPosition.w > 0.0f)
+    {
+        positionHistoryConfidence = 0.0f;
+        if (cameraCount > 0.0f && all(previousPosition.xyz ==
+                previousPosition.xyz))
+        {
+            const float3 translated = previousPosition.xyz - cameraCenter;
+            const float translatedDistance = length(translated);
+            if (translatedDistance > MinimumCaptureDistance &&
+                translatedDistance < MaximumCaptureDistance)
+            {
+                const float angularAgreement = dot(
+                    translated / translatedDistance,
+                    worldDirection);
+                positionHistoryConfidence = smoothstep(
+                    0.985f,
+                    0.9995f,
+                    angularAgreement);
+            }
+        }
+    }
+    float retainedValidity = previousValidity * saturate(HistoryDecay) *
+        positionHistoryConfidence;
+    float3 previousRadiance = retainedValidity > 0.0f ?
         max(0.0f, PreviousEnvironment.SampleLevel(
             LinearClampSampler, worldDirection, 0.0f)) : 0.0f;
+    bool inferredHistory = false;
+    if (HistoryAvailable != 0u && retainedValidity < 0.02f &&
+        currentValidity <= 0.0f)
+    {
+        // The coarse prior mip provides a bounded neighbourhood inference.
+        // Its deliberately low confidence preserves the localized vanilla
+        // cubemap as the dominant fallback for never-observed directions.
+        const float inferredValidity = saturate(
+            PreviousValidity.SampleLevel(
+                LinearClampSampler, worldDirection, 3.0f)) *
+            saturate(HistoryDecay) * 0.15f;
+        if (inferredValidity > retainedValidity)
+        {
+            retainedValidity = inferredValidity;
+            previousRadiance = max(0.0f,
+                PreviousEnvironment.SampleLevel(
+                    LinearClampSampler, worldDirection, 3.0f));
+            inferredHistory = true;
+        }
+    }
+    const float combinedValidity = saturate(
+        currentValidity + retainedValidity * (1.0f - currentValidity));
     const float historyBlend = saturate(HistoryBlend);
     const float historyWeight = retainedValidity *
         (currentValidity > 0.0f ? historyBlend : 1.0f);
@@ -181,4 +376,18 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     // cannot darken or amplify the normalized published result.
     EnvironmentMip[dispatchId] = max(0.0f, combinedPremultiplied);
     EnvironmentValidity[dispatchId] = combinedValidity;
+
+    float4 publishedPosition = 0.0f;
+    if (totalPositionWeight > 0.0f)
+    {
+        publishedPosition = float4(
+            accumulatedPosition / totalPositionWeight,
+            saturate(totalPositionWeight));
+    }
+    else if (currentValidity <= 0.0f && retainedValidity > 0.0f &&
+        previousPosition.w > 0.0f && !inferredHistory)
+    {
+        publishedPosition = previousPosition;
+    }
+    EnvironmentPosition[dispatchId] = publishedPosition;
 }

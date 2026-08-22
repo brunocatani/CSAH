@@ -41,6 +41,8 @@ namespace community_shaders::ibl
             DXGI_FORMAT_R11G11B10_FLOAT;
         static constexpr DXGI_FORMAT kValidityFormat =
             DXGI_FORMAT_R32_FLOAT;
+        static constexpr DXGI_FORMAT kPositionFormat =
+            DXGI_FORMAT_R32G32B32A32_FLOAT;
 
         [[nodiscard]] bool initialize(
             ID3D11Device* device,
@@ -61,12 +63,20 @@ namespace community_shaders::ibl
         [[nodiscard]] ID3D11Texture2D* writableTexture() const noexcept;
         [[nodiscard]] ID3D11Texture2D* writableValidityTexture()
             const noexcept;
+        [[nodiscard]] ID3D11UnorderedAccessView* writablePosition()
+            const noexcept;
+        [[nodiscard]] ID3D11Texture2D* writablePositionTexture()
+            const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* publishedEnvironment()
             const noexcept;
         [[nodiscard]] ID3D11ShaderResourceView* publishedValidity()
             const noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView* publishedPosition()
+            const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedTexture() const noexcept;
         [[nodiscard]] ID3D11Texture2D* publishedValidityTexture()
+            const noexcept;
+        [[nodiscard]] ID3D11Texture2D* publishedPositionTexture()
             const noexcept;
         [[nodiscard]] EnvironmentProviderSnapshot snapshot() const noexcept;
 
@@ -85,6 +95,9 @@ namespace community_shaders::ibl
         {
             CubeTexture radiance;
             CubeTexture validity;
+            // Position is private temporal metadata. Only mip zero is
+            // required because material consumers never sample it.
+            CubeTexture position;
         };
 
         struct ResourceSet
