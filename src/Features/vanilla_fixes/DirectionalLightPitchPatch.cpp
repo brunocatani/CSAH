@@ -22,56 +22,55 @@ namespace community_shaders::vanilla_fixes
             0xC065151Fu,
         };
         constexpr std::array<std::uint32_t, 4> kExactPatchedChecksum{
-            0x2B65726Du,
-            0x9676D0E0u,
-            0x3A3DBF34u,
-            0x609D7C67u,
+            0x0F98DC79u,
+            0xEE67FB0Eu,
+            0x330A26E3u,
+            0x97D71A54u,
         };
-        // Exact unique stock suffix beginning at file offset 0x13D4:
-        //   add r0.w, r0.w, l(-1.0)
-        //   mad r0.w, r1.w, r0.w, l(1.0)
-        // The incoming r0.w is the split-blended cascade result and r1.w is
-        // the high-power radial confidence derived from receiver distance.
-        constexpr std::array<std::uint32_t, 16> kStockRadialDistanceFade{
-            0x07000000u,
-            0x00100082u,
-            0x00000000u,
-            0x0010003Au,
-            0x00000000u,
-            0x00004001u,
-            0xBF800000u,
-            0x09000032u,
-            0x00100082u,
-            0x00000000u,
-            0x0010003Au,
-            0x00000001u,
-            0x0010003Au,
-            0x00000000u,
-            0x00004001u,
-            0x3F800000u,
+        // Exact unique stock output suffix beginning at file offset 0x2420:
+        //   mul o1.xyz, r0.wwww, r1.xyzx
+        //   mul r0.xyz, r0.wwww, r0.xyzx
+        //   mov r0.w, l(0)
+        //   div o0.xyzw, r0.xyzw, l(3, 3, 3, 3)
+        //   mov o1.w, l(1)
+        //   ret
+        constexpr std::array<std::uint32_t, 35> kStockFinalOutputs{
+            0x07000038u, 0x00102072u, 0x00000001u, 0x00100FF6u,
+            0x00000000u, 0x00100246u, 0x00000001u, 0x07000038u,
+            0x00100072u, 0x00000000u, 0x00100FF6u, 0x00000000u,
+            0x00100246u, 0x00000000u, 0x05000036u, 0x00100082u,
+            0x00000000u, 0x00004001u, 0x00000000u, 0x0A00000Eu,
+            0x001020F2u, 0x00000000u, 0x00100E46u, 0x00000000u,
+            0x00004002u, 0x40400000u, 0x40400000u, 0x40400000u,
+            0x40400000u, 0x05000036u, 0x00102082u, 0x00000001u,
+            0x00004001u, 0x3F800000u, 0x0100003Eu,
         };
 
-        // Copy the incoming cascade result without the (shadow - 1) + 1
-        // fractional round trip, then publish it while retaining the original
-        // two-instruction token lengths. The computed r1.w is overwritten
-        // before its next read.
-        constexpr std::array<std::uint32_t, 16> kRadialDistanceFadeBypassed{
-            0x07000038u,
-            0x00100082u,
+        // Preserve the exact 35-token suffix length. Both render targets carry
+        // the same diagnostic so the engine's diffuse/specular composition
+        // cannot hide one of the ownership channels. Four one-token NOPs fill
+        // the stock suffix budget without changing any upstream calculation.
+        constexpr std::array<std::uint32_t, 35> kOwnershipDiagnosticOutputs{
+            // mov r0.x, r5.w
+            0x05000036u, 0x00100012u, 0x00000000u, 0x0010003Au,
+            0x00000005u,
+            // mov r0.y, r8.x
+            0x05000036u, 0x00100022u, 0x00000000u, 0x0010000Au,
+            0x00000008u,
+            // mov r0.z, r0.w
+            0x05000036u, 0x00100042u, 0x00000000u, 0x0010003Au,
             0x00000000u,
-            0x0010003Au,
-            0x00000000u,
-            0x00004001u,
+            // mov r0.w, l(1.0)
+            0x05000036u, 0x00100082u, 0x00000000u, 0x00004001u,
             0x3F800000u,
-            0x09000032u,
-            0x00100082u,
+            // mov o0.xyzw, r0.xyzw
+            0x05000036u, 0x001020F2u, 0x00000000u, 0x00100E46u,
             0x00000000u,
-            0x00004001u,
+            // mov o1.xyzw, r0.xyzw
+            0x05000036u, 0x001020F2u, 0x00000001u, 0x00100E46u,
             0x00000000u,
-            0x0010003Au,
-            0x00000000u,
-            0x0010003Au,
-            0x00000000u,
+            0x0100003Au, 0x0100003Au, 0x0100003Au, 0x0100003Au,
+            0x0100003Eu,
         };
 
         [[nodiscard]] bool readU32(
@@ -158,7 +157,7 @@ namespace community_shaders::vanilla_fixes
         }
     }
 
-    bool patchStockDirectionalLightRadialFade(
+    bool patchStockDirectionalLightOwnershipDiagnostic(
         const std::span<const std::byte> stockBytecode,
         std::vector<std::byte>& patchedBytecode) noexcept
     {
@@ -166,10 +165,10 @@ namespace community_shaders::vanilla_fixes
         if (!exactContainer(stockBytecode, kExactStockChecksum)) {
             return false;
         }
-        const auto fadeOffset = findUniqueSequence(
+        const auto outputOffset = findUniqueSequence(
             stockBytecode,
-            kStockRadialDistanceFade);
-        if (!fadeOffset || *fadeOffset != 0x13D4) {
+            kStockFinalOutputs);
+        if (!outputOffset || *outputOffset != 0x2420) {
             return false;
         }
 
@@ -179,20 +178,20 @@ namespace community_shaders::vanilla_fixes
         };
         auto bytes = std::span<std::byte>{ candidate };
         for (std::size_t index = 0;
-             index < kRadialDistanceFadeBypassed.size();
+             index < kOwnershipDiagnosticOutputs.size();
              ++index) {
             if (!writeU32(
                     bytes,
-                    *fadeOffset + index * sizeof(std::uint32_t),
-                    kRadialDistanceFadeBypassed[index])) {
+                    *outputOffset + index * sizeof(std::uint32_t),
+                    kOwnershipDiagnosticOutputs[index])) {
                 return false;
             }
         }
         if (!linear_lighting::recomputeDxbcChecksum(bytes) ||
             !exactContainer(candidate, kExactPatchedChecksum) ||
-            findUniqueSequence(candidate, kStockRadialDistanceFade) ||
-            findUniqueSequence(candidate, kRadialDistanceFadeBypassed) !=
-                fadeOffset) {
+            findUniqueSequence(candidate, kStockFinalOutputs) ||
+            findUniqueSequence(candidate, kOwnershipDiagnosticOutputs) !=
+                outputOffset) {
             return false;
         }
 

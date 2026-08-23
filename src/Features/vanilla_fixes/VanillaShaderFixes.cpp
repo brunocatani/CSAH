@@ -61,7 +61,7 @@ namespace community_shaders::vanilla_fixes
             0xF4EBA56324D74051ull,
             { 0x6C19C7D4u, 0xFF8FE5A6u, 0x94E7B9E2u, 0xC02418F2u },
         };
-        constexpr CompleteIdentity kDirectionalLightRadialFade{
+        constexpr CompleteIdentity kDirectionalLightOwnershipDiagnostic{
             9388,
             0x2BF99E4AE72E5F31ull,
             { 0xEE23B97Eu, 0x314D542Du, 0xE122666Du, 0xC065151Fu },
@@ -106,7 +106,7 @@ namespace community_shaders::vanilla_fixes
         std::array<DirectionalLightPixelShaderPair,
             kDirectionalLightPixelShaderPairCapacity>
             directionalLightPixelShaderPairs{};
-        std::atomic_bool directionalLightPitchFixRequested{ true };
+        std::atomic_bool directionalLightOwnershipDiagnosticRequested{ true };
 
         [[nodiscard]] bool matches(
             const ShaderIdentity& identity,
@@ -190,18 +190,19 @@ namespace community_shaders::vanilla_fixes
                 true,
             };
         }
-        if (matches(identity, kDirectionalLightRadialFade)) {
+        if (matches(identity, kDirectionalLightOwnershipDiagnostic)) {
             const auto stock = std::span<const std::byte>{
                 static_cast<const std::byte*>(bytecode),
                 bytecodeLength,
             };
-            const auto ready = patchStockDirectionalLightRadialFade(
+            const auto ready =
+                patchStockDirectionalLightOwnershipDiagnostic(
                 stock,
                 patchStorage);
             return {
                 ready ? patchStorage.data() : bytecode,
                 ready ? patchStorage.size() : bytecodeLength,
-                ShaderFix::directionalLightRadialFade,
+                ShaderFix::directionalLightOwnershipDiagnostic,
                 ready,
             };
         }
@@ -338,7 +339,7 @@ namespace community_shaders::vanilla_fixes
         const ShaderFix fix) noexcept
     {
         if (!fixedShader || !stockShader ||
-            fix != ShaderFix::directionalLightRadialFade) {
+            fix != ShaderFix::directionalLightOwnershipDiagnostic) {
             return false;
         }
         auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
@@ -370,7 +371,8 @@ namespace community_shaders::vanilla_fixes
         if (!engineShader) {
             return nullptr;
         }
-        const auto useFixed = directionalLightPitchFixRequested.load(
+        const auto useFixed =
+            directionalLightOwnershipDiagnosticRequested.load(
             std::memory_order_acquire);
         for (const auto& pair : directionalLightPixelShaderPairs) {
             if (pair.key.load(std::memory_order_acquire) == engineShader) {
@@ -380,9 +382,10 @@ namespace community_shaders::vanilla_fixes
         return engineShader;
     }
 
-    void setDirectionalLightPitchFixRequested(const bool requested) noexcept
+    void setDirectionalLightOwnershipDiagnosticRequested(
+        const bool requested) noexcept
     {
-        directionalLightPitchFixRequested.store(
+        directionalLightOwnershipDiagnosticRequested.store(
             requested,
             std::memory_order_release);
     }
@@ -397,16 +400,17 @@ namespace community_shaders::vanilla_fixes
         targeted.fetch_add(1, std::memory_order_relaxed);
         (wasAccepted ? accepted : stockFallbacks)
             .fetch_add(1, std::memory_order_relaxed);
-        if (selection.fix == ShaderFix::directionalLightRadialFade &&
+        if (selection.fix ==
+                ShaderFix::directionalLightOwnershipDiagnostic &&
             !directionalLightResultLogged.exchange(
                 true,
                 std::memory_order_relaxed)) {
             if (wasAccepted) {
                 logging::info(
-                    "Vanilla Fixes accepted the exact 9,388-byte peripheral-radial-fade diagnostic and retained its stock pair; the live Vanilla Fixes master toggle owns bind selection.");
+                    "Vanilla Fixes accepted the exact 9,388-byte directional ownership diagnostic (red=N.L, green=N.V, blue=shadow visibility) and retained its stock pair; the live Vanilla Fixes master toggle owns bind selection.");
             } else {
                 logging::error(
-                    "Vanilla Fixes rejected the peripheral-radial-fade diagnostic; the exact stock directional-light shader remains active.");
+                    "Vanilla Fixes rejected the directional ownership diagnostic; the exact stock directional-light shader remains active.");
             }
         }
     }

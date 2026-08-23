@@ -1744,7 +1744,8 @@ namespace community_shaders::render
                     selection.fix ==
                         vanilla_fixes::ShaderFix::sslrRaytrace ||
                     selection.fix ==
-                        vanilla_fixes::ShaderFix::directionalLightRadialFade)) {
+                        vanilla_fixes::ShaderFix::
+                            directionalLightOwnershipDiagnostic)) {
                 ID3D11PixelShader* stockShader{};
                 const auto stockResult = original(
                     device,
@@ -1755,7 +1756,8 @@ namespace community_shaders::render
                 const auto pairPublished = SUCCEEDED(stockResult) &&
                     stockShader &&
                     (selection.fix ==
-                            vanilla_fixes::ShaderFix::directionalLightRadialFade ?
+                            vanilla_fixes::ShaderFix::
+                                directionalLightOwnershipDiagnostic ?
                         vanilla_fixes::publishDirectionalLightPixelShaderPair(
                             *shader,
                             stockShader,

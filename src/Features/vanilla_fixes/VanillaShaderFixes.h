@@ -26,7 +26,7 @@ namespace community_shaders::vanilla_fixes
         sslrPrepass,
         sslrRaytrace,
         surfaceAnchoredCubemap,
-        directionalLightRadialFade,
+        directionalLightOwnershipDiagnostic,
     };
 
     struct ShaderSelection final
@@ -87,7 +87,8 @@ namespace community_shaders::vanilla_fixes
     [[nodiscard]] ID3D11PixelShader*
         selectDirectionalLightPixelShaderForBinding(
             ID3D11PixelShader* engineShader) noexcept;
-    void setDirectionalLightPitchFixRequested(bool requested) noexcept;
+    void setDirectionalLightOwnershipDiagnosticRequested(
+        bool requested) noexcept;
     void reportShaderCreationResult(
         const ShaderSelection& selection,
         bool accepted) noexcept;

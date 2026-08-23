@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     };
     std::vector<std::byte> patched;
     if (!community_shaders::vanilla_fixes::
-            patchStockDirectionalLightRadialFade(stock, patched)) {
+            patchStockDirectionalLightOwnershipDiagnostic(stock, patched)) {
         return 4;
     }
 
