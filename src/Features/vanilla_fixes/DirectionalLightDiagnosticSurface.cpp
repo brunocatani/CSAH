@@ -2,6 +2,8 @@
 
 #include "support/Logger.h"
 
+#include "VanillaFixesDirectionalDiagnosticCompositePS.h"
+
 #include <array>
 #include <utility>
 
@@ -31,6 +33,36 @@ namespace community_shaders::vanilla_fixes
         return *instance;
     }
 
+    bool DirectionalLightDiagnosticSurface::onDeviceCreated(
+        ID3D11Device* device,
+        const CreatePixelShaderFunction createPixelShader) noexcept
+    {
+        resetSurface();
+        compositePixelShader_.Reset();
+        compositeDevice_.Reset();
+        if (!device || !createPixelShader) {
+            return false;
+        }
+        ID3D11PixelShader* shader{};
+        const auto result = createPixelShader(
+            device,
+            fo4vr_cs_vanilla_directional_diagnostic_composite_ps,
+            sizeof(fo4vr_cs_vanilla_directional_diagnostic_composite_ps),
+            nullptr,
+            &shader);
+        if (FAILED(result) || !shader) {
+            logging::error(
+                "Exclusive directional diagnostic composite creation failed (HRESULT=0x{:08X}).",
+                static_cast<unsigned>(result));
+            return false;
+        }
+        compositeDevice_ = device;
+        compositePixelShader_.Attach(shader);
+        logging::info(
+            "Exclusive directional diagnostic armed its generic packed-stereo t5 composite for the complete verified IBL DFComposite family.");
+        return true;
+    }
+
     DirectionalDiagnosticResources
         DirectionalLightDiagnosticSurface::prepareOutput(
             ID3D11DeviceContext* context,
@@ -54,10 +86,22 @@ namespace community_shaders::vanilla_fixes
         ComPtr<ID3D11Device> currentDevice;
         context->GetDevice(&currentDevice);
         if (currentDevice.Get() != device_.Get()) {
-            reset();
+            resetSurface();
             return {};
         }
         return { renderTarget_, shaderResource_ };
+    }
+
+    ID3D11PixelShader*
+        DirectionalLightDiagnosticSurface::compositePixelShader() const noexcept
+    {
+        return compositePixelShader_.Get();
+    }
+
+    bool DirectionalLightDiagnosticSurface::isCompositePixelShader(
+        ID3D11PixelShader* shader) const noexcept
+    {
+        return shader && shader == compositePixelShader_.Get();
     }
 
     bool DirectionalLightDiagnosticSurface::ensureResources(
@@ -91,7 +135,7 @@ namespace community_shaders::vanilla_fixes
             return true;
         }
 
-        reset();
+        resetSurface();
         D3D11_TEXTURE2D_DESC description{};
         description.Width = referenceDescription.Width;
         description.Height = referenceDescription.Height;
@@ -150,7 +194,7 @@ namespace community_shaders::vanilla_fixes
         return true;
     }
 
-    void DirectionalLightDiagnosticSurface::reset() noexcept
+    void DirectionalLightDiagnosticSurface::resetSurface() noexcept
     {
         shaderResource_.Reset();
         renderTarget_.Reset();

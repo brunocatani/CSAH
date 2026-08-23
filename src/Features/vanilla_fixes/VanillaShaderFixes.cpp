@@ -13,7 +13,6 @@
 
 #include <atomic>
 #include <cstring>
-#include <optional>
 #include <ranges>
 #include <span>
 
@@ -76,7 +75,6 @@ namespace community_shaders::vanilla_fixes
         std::atomic_uint64_t accepted{};
         std::atomic_uint64_t stockFallbacks{};
         std::atomic_uint64_t focusShadersCreated{};
-        std::atomic_bool directionalCompositeResultLogged{};
 
         struct SslrPixelShaderPair final
         {
@@ -90,29 +88,6 @@ namespace community_shaders::vanilla_fixes
         std::array<SslrPixelShaderPair, kSslrPixelShaderPairCapacity>
             sslrPixelShaderPairs{};
 
-        struct DirectionalDiagnosticCompositePixelShaderPair final
-        {
-            std::atomic<ID3D11PixelShader*> key{};
-            ID3D11PixelShader* normal{};
-            std::array<ID3D11PixelShader*, 3> diagnostics{};
-        };
-
-        constexpr std::size_t
-            kDirectionalDiagnosticCompositePixelShaderPairCapacity = 8;
-        std::array<DirectionalDiagnosticCompositePixelShaderPair,
-            kDirectionalDiagnosticCompositePixelShaderPairCapacity>
-            directionalDiagnosticCompositePixelShaderPairs{};
-        std::atomic_uint8_t directionalLightDiagnosticMode{};
-
-        [[nodiscard]] std::optional<std::size_t> diagnosticIndex() noexcept
-        {
-            const auto raw = directionalLightDiagnosticMode.load(
-                std::memory_order_acquire);
-            if (raw == 0 || raw > 3) {
-                return std::nullopt;
-            }
-            return static_cast<std::size_t>(raw - 1);
-        }
 
         [[nodiscard]] bool matches(
             const ShaderIdentity& identity,
@@ -321,128 +296,6 @@ namespace community_shaders::vanilla_fixes
                     pair.fix == ShaderFix::sslrRaytrace &&
                     pair.fixed == shader;
             });
-    }
-
-    bool publishDirectionalDiagnosticCompositePixelShaderPair(
-        ID3D11PixelShader* normalShader,
-        const std::array<ID3D11PixelShader*, 3>& diagnosticShaders) noexcept
-    {
-        if (!normalShader || std::ranges::any_of(
-                diagnosticShaders,
-                [](ID3D11PixelShader* shader) noexcept {
-                    return shader == nullptr;
-                })) {
-            return false;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        for (auto& pair : directionalDiagnosticCompositePixelShaderPairs) {
-            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
-            if (!pair.key.compare_exchange_strong(
-                    expected,
-                    busy,
-                    std::memory_order_acq_rel)) {
-                if (expected == normalShader) {
-                    return false;
-                }
-                continue;
-            }
-            normalShader->AddRef();
-            for (auto* shader : diagnosticShaders) {
-                shader->AddRef();
-            }
-            pair.normal = normalShader;
-            pair.diagnostics = diagnosticShaders;
-            pair.key.store(normalShader, std::memory_order_release);
-            return true;
-        }
-        return false;
-    }
-
-    ID3D11PixelShader*
-        selectDirectionalDiagnosticCompositePixelShaderForBinding(
-            ID3D11PixelShader* engineShader) noexcept
-    {
-        if (!engineShader) {
-            return nullptr;
-        }
-        const auto index = diagnosticIndex();
-        for (const auto& pair :
-             directionalDiagnosticCompositePixelShaderPairs) {
-            if (pair.key.load(std::memory_order_acquire) == engineShader) {
-                return index ? pair.diagnostics[*index] : pair.normal;
-            }
-        }
-        return engineShader;
-    }
-
-    bool isDirectionalDiagnosticCompositePixelShader(
-        ID3D11PixelShader* shader) noexcept
-    {
-        if (!shader) {
-            return false;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        return std::ranges::any_of(
-            directionalDiagnosticCompositePixelShaderPairs,
-            [shader, busy](
-                const DirectionalDiagnosticCompositePixelShaderPair& pair)
-                noexcept {
-                const auto* const key = pair.key.load(
-                    std::memory_order_acquire);
-                return key && key != busy &&
-                    std::ranges::find(pair.diagnostics, shader) !=
-                    pair.diagnostics.end();
-            });
-    }
-
-    ID3D11PixelShader*
-        retainedNormalDirectionalDiagnosticCompositePixelShader(
-            ID3D11PixelShader* diagnosticShader) noexcept
-    {
-        if (!diagnosticShader) {
-            return nullptr;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        for (const auto& pair :
-             directionalDiagnosticCompositePixelShaderPairs) {
-            const auto* const key = pair.key.load(
-                std::memory_order_acquire);
-            if (key && key != busy &&
-                std::ranges::find(pair.diagnostics, diagnosticShader) !=
-                pair.diagnostics.end()) {
-                return pair.normal;
-            }
-        }
-        return nullptr;
-    }
-
-    void setDirectionalLightDiagnosticMode(
-        const DirectionalLightDiagnosticMode mode) noexcept
-    {
-        const auto raw = static_cast<std::uint8_t>(mode);
-        directionalLightDiagnosticMode.store(
-            raw <= 3 ? raw : 0,
-            std::memory_order_release);
-    }
-
-    void reportDirectionalDiagnosticCompositeCreationResult(
-        const bool wasAccepted) noexcept
-    {
-        if (directionalCompositeResultLogged.exchange(
-                true,
-                std::memory_order_relaxed)) {
-            return;
-        }
-        if (wasAccepted) {
-            logging::info(
-                "Vanilla Fixes prepared three exclusive DFComposite directional diagnostics; N.L is red, N.V is green, and shadow visibility is blue.");
-        } else {
-            logging::error(
-                "Vanilla Fixes could not prepare the exclusive DFComposite directional diagnostics; normal composite rendering remains active.");
-        }
     }
 
     void reportShaderCreationResult(

@@ -278,7 +278,6 @@ namespace community_shaders::vanilla_fixes
                 const auto previousDiagnosticMode = diagnosticMode_.exchange(
                     rawDiagnosticMode,
                     std::memory_order_acq_rel);
-                setDirectionalLightDiagnosticMode(diagnosticMode);
                 if (previousDiagnosticMode != rawDiagnosticMode) {
                     logging::info(
                         "Exclusive directional diagnostic mode transition: {} -> {}; saved feature settings are preserved and draw-boundary shader reconciliation is armed.",

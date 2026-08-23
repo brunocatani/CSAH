@@ -21,6 +21,7 @@ foreach(input IN ITEMS
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
+    VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
@@ -57,9 +58,6 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "kFocusShadow"
   "19504"
   "0xF4EBA56324D74051ull"
-  "publishDirectionalDiagnosticCompositePixelShaderPair"
-  "selectDirectionalDiagnosticCompositePixelShaderForBinding"
-  "isDirectionalDiagnosticCompositePixelShader"
   "CompleteIdentity{ 9348, 0x59FAED17411F08C7ull"
   "CompleteIdentity{ 9564, 0x0903D20AD75EBB0Eull"
   "CompleteIdentity{ 11100, 0x81247323F5EF60D3ull"
@@ -120,7 +118,6 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "preserveStartupCapability"
   "effectivePolicy(activeSettings_)"
   "setSslrSuiteRequested("
-  "setDirectionalLightDiagnosticMode(diagnosticMode)"
   "draw-boundary shader reconciliation is armed"
   "kPollInterval = std::chrono::milliseconds(250)"
   "reloadIfChanged()")
@@ -153,10 +150,6 @@ vanilla_fixes_require_text("${settings_store}" "settings"
 file(READ "${VANILLA_REFLECTION_PATCH_SOURCE}" reflection_patch)
 vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
-  "patchStockReflectionCompositeDirectionalDiagnostic"
-  "regularDiagnosticOutput"
-  "conditionalDiagnosticOutput"
-  "mov o0.xyz, r2.xyzx"
   "recomputeDxbcChecksum"
   "patchedBytecode.swap(candidate)")
 file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE}"
@@ -169,8 +162,19 @@ vanilla_fixes_require_text("${directional_diagnostic_surface}"
   "CreateRenderTargetView"
   "CreateShaderResourceView"
   "ClearRenderTargetView"
+  "fo4vr_cs_vanilla_directional_diagnostic_composite_ps"
+  "compositePixelShader()"
+  "isCompositePixelShader("
   "SampleDesc.Count != 1"
   "ArraySize != 1")
+file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_SOURCE}"
+  directional_diagnostic_composite)
+vanilla_fixes_require_text("${directional_diagnostic_composite}"
+  "directional diagnostic composite shader"
+  "DirectionalDiagnostic : register(t5)"
+  "SV_Position"
+  "DirectionalDiagnostic.Load"
+  "SV_Target0")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "kFirstResourceSlot = 4"
@@ -202,12 +206,13 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
   "selectDirectionalDiagnosticPixelShader("
-  "selectDirectionalDiagnosticCompositePixelShaderForBinding("
   "isDirectionalDiagnosticPixelShader(shader)"
-  "publishDirectionalDiagnosticCompositePixelShaderPair("
-  "patchStockReflectionCompositeDirectionalDiagnostic("
+  "captureProbeBindingForShader(shader)"
+  ".compositePixelShader()"
+  ".isCompositePixelShader(shader)"
   "ScopedDirectionalDiagnosticOutput"
   "ScopedDirectionalDiagnosticInput"
+  "bound its private packed-stereo payload at t5"
   "issueDrawWithDirectionalDiagnostic("
   "reconcileDirectionalDiagnosticModeAtDraw(context)"
   "activeEnginePixelShader = shader"
@@ -369,7 +374,8 @@ vanilla_fixes_require_text("${sslr_raytrace}" "SSLR raytrace source"
 if(DEFINED VANILLA_FXC_EXECUTABLE)
   vanilla_fixes_require_file(VANILLA_FXC_EXECUTABLE)
   foreach(shader IN ITEMS
-      SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS SSLR_RAYTRACE)
+      SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS SSLR_RAYTRACE
+      DIRECTIONAL_DIAGNOSTIC_COMPOSITE)
     vanilla_fixes_require_file(VANILLA_${shader}_BINARY)
   endforeach()
 
@@ -378,7 +384,8 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     "VANILLA_SAO_RAW_BINARY|5936|5a0373b4ac810c4abc392d3887d4bb916a798de6aa63bff140a9d0f49e6a53ee|cs_5_0|dcl_thread_group 16, 16, 1"
     "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
     "VANILLA_SSLR_PREPASS_BINARY|4640|a7526cfc9c67cf62f2719dd7882cef2388c4943d2f22010ddae5c8b8d66c9f80|ps_5_0|dynamicIndexed"
-    "VANILLA_SSLR_RAYTRACE_BINARY|18572|7098a1469ec96e77eaae57a384c5c1a7e16843351a4b680d61b3d21d0de09159|ps_5_0|dcl_resource_texturecube")
+    "VANILLA_SSLR_RAYTRACE_BINARY|18572|7098a1469ec96e77eaae57a384c5c1a7e16843351a4b680d61b3d21d0de09159|ps_5_0|dcl_resource_texturecube"
+    "VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_BINARY|680|a0bebe3381a9074c7197fdb8015082831fbfa19e429727ba1fa8a960b6fe172f|ps_5_0|ld_indexable")
   foreach(spec IN LISTS binary_specs)
     string(REPLACE "|" ";" fields "${spec}")
     list(GET fields 0 path_variable)

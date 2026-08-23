@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <optional>
 
 namespace community_shaders::vanilla_fixes
 {
@@ -373,42 +372,6 @@ namespace community_shaders::vanilla_fixes
                 0x00000002u,
             };
 
-        [[nodiscard]] constexpr std::array<std::uint32_t, 7>
-            regularDiagnosticOutput(
-                const DirectionalDiagnosticChannel) noexcept
-        {
-            return {
-                // mov o0.xyz, r2.xyzx. The selected producer writes only its
-                // assigned red, green, or blue diagnostic channel.
-                0x05000036u,
-                0x00102072u,
-                0x00000000u,
-                0x00100246u,
-                0x00000002u,
-                0x0100003Au,
-                0x0100003Au,
-            };
-        }
-
-        [[nodiscard]] constexpr std::array<std::uint32_t, 9>
-            conditionalDiagnosticOutput(
-                const DirectionalDiagnosticChannel) noexcept
-        {
-            return {
-                // mov o0.xyz, r2.xyzx. The selected producer writes only its
-                // assigned red, green, or blue diagnostic channel.
-                0x05000036u,
-                0x00102072u,
-                0x00000000u,
-                0x00100246u,
-                0x00000002u,
-                0x0100003Au,
-                0x0100003Au,
-                0x0100003Au,
-                0x0100003Au,
-            };
-        }
-
         struct Chunk
         {
             std::uint32_t offset{};
@@ -542,8 +505,6 @@ namespace community_shaders::vanilla_fixes
     {
         bool patchStockReflectionComposite(
             std::span<const std::byte> stockBytecode,
-            const std::optional<DirectionalDiagnosticChannel>
-                diagnosticChannel,
             std::vector<std::byte>& patchedBytecode) noexcept
         {
         patchedBytecode.clear();
@@ -674,65 +635,37 @@ namespace community_shaders::vanilla_fixes
                 return false;
             }
             if (regularLayout) {
-                if (diagnosticChannel) {
-                    const auto output =
-                        regularDiagnosticOutput(*diagnosticChannel);
-                    std::copy(
-                        output.begin(),
-                        output.end(),
-                        words.begin() + *outputPosition);
-                    if (findUniqueSequence(
-                            std::span<const std::uint32_t>{ words },
-                            output) != outputPosition) {
-                        return false;
-                    }
-                } else {
-                    words.insert(
-                        words.begin() + *regularReconstructionPosition +
-                            kStockRegularPositionReconstruction.size(),
-                        kRegularSurfaceAnchorCorrection.begin(),
-                        kRegularSurfaceAnchorCorrection.end());
-                    words.insert(
-                        words.begin() + *regularReconstructionPosition,
-                        kRegularSurfaceRaySetup.begin(),
-                        kRegularSurfaceRaySetup.end());
-                    std::copy(
-                        kSurfaceAnchoredRegularCameraDeclaration.begin(),
-                        kSurfaceAnchoredRegularCameraDeclaration.end(),
-                        words.begin() + *regularCameraDeclarationPosition);
-                    words[*regularCompressedPosition + 5] = 32;
-                    words[*regularCompressedPosition + 13] = 33;
-                    words[*regularCompressedPosition + 21] = 34;
-                    words[*regularCompressedPosition + 29] = 35;
-                }
+                words.insert(
+                    words.begin() + *regularReconstructionPosition +
+                        kStockRegularPositionReconstruction.size(),
+                    kRegularSurfaceAnchorCorrection.begin(),
+                    kRegularSurfaceAnchorCorrection.end());
+                words.insert(
+                    words.begin() + *regularReconstructionPosition,
+                    kRegularSurfaceRaySetup.begin(),
+                    kRegularSurfaceRaySetup.end());
+                std::copy(
+                    kSurfaceAnchoredRegularCameraDeclaration.begin(),
+                    kSurfaceAnchoredRegularCameraDeclaration.end(),
+                    words.begin() + *regularCameraDeclarationPosition);
+                words[*regularCompressedPosition + 5] = 32;
+                words[*regularCompressedPosition + 13] = 33;
+                words[*regularCompressedPosition + 21] = 34;
+                words[*regularCompressedPosition + 29] = 35;
             } else {
-                if (diagnosticChannel) {
-                    const auto output =
-                        conditionalDiagnosticOutput(*diagnosticChannel);
-                    std::copy(
-                        output.begin(),
-                        output.end(),
-                        words.begin() + *conditionalOutputPosition);
-                    if (findUniqueSequence(
-                            std::span<const std::uint32_t>{ words },
-                            output) != conditionalOutputPosition) {
-                        return false;
-                    }
-                } else {
-                    words.insert(
-                        words.begin() + *conditionalReconstructionPosition +
-                            kStockConditionalPositionReconstruction.size(),
-                        kConditionalSurfaceAnchorCorrection.begin(),
-                        kConditionalSurfaceAnchorCorrection.end());
-                    words.insert(
-                        words.begin() + *conditionalReconstructionPosition,
-                        kConditionalSurfaceRaySetup.begin(),
-                        kConditionalSurfaceRaySetup.end());
-                    words[*conditionalCompressedPosition + 5] = 32;
-                    words[*conditionalCompressedPosition + 13] = 33;
-                    words[*conditionalCompressedPosition + 21] = 34;
-                    words[*conditionalCompressedPosition + 29] = 35;
-                }
+                words.insert(
+                    words.begin() + *conditionalReconstructionPosition +
+                        kStockConditionalPositionReconstruction.size(),
+                    kConditionalSurfaceAnchorCorrection.begin(),
+                    kConditionalSurfaceAnchorCorrection.end());
+                words.insert(
+                    words.begin() + *conditionalReconstructionPosition,
+                    kConditionalSurfaceRaySetup.begin(),
+                    kConditionalSurfaceRaySetup.end());
+                words[*conditionalCompressedPosition + 5] = 32;
+                words[*conditionalCompressedPosition + 13] = 33;
+                words[*conditionalCompressedPosition + 21] = 34;
+                words[*conditionalCompressedPosition + 29] = 35;
             }
             if (words.size() >
                 (std::numeric_limits<std::uint32_t>::max)()) {
@@ -829,18 +762,6 @@ namespace community_shaders::vanilla_fixes
     {
         return patchStockReflectionComposite(
             stockBytecode,
-            std::nullopt,
-            patchedBytecode);
-    }
-
-    bool patchStockReflectionCompositeDirectionalDiagnostic(
-        const std::span<const std::byte> stockBytecode,
-        const DirectionalDiagnosticChannel channel,
-        std::vector<std::byte>& patchedBytecode) noexcept
-    {
-        return patchStockReflectionComposite(
-            stockBytecode,
-            channel,
             patchedBytecode);
     }
 }

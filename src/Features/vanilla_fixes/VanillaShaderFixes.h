@@ -81,21 +81,6 @@ namespace community_shaders::vanilla_fixes
         ID3D11PixelShader* correctedShader) noexcept;
     [[nodiscard]] bool isSslrRaytracePixelShader(
         ID3D11PixelShader* shader) noexcept;
-    [[nodiscard]] bool publishDirectionalDiagnosticCompositePixelShaderPair(
-        ID3D11PixelShader* normalShader,
-        const std::array<ID3D11PixelShader*, 3>& diagnosticShaders) noexcept;
-    [[nodiscard]] ID3D11PixelShader*
-        selectDirectionalDiagnosticCompositePixelShaderForBinding(
-            ID3D11PixelShader* engineShader) noexcept;
-    [[nodiscard]] bool isDirectionalDiagnosticCompositePixelShader(
-        ID3D11PixelShader* shader) noexcept;
-    [[nodiscard]] ID3D11PixelShader*
-        retainedNormalDirectionalDiagnosticCompositePixelShader(
-            ID3D11PixelShader* diagnosticShader) noexcept;
-    void setDirectionalLightDiagnosticMode(
-        DirectionalLightDiagnosticMode mode) noexcept;
-    void reportDirectionalDiagnosticCompositeCreationResult(
-        bool accepted) noexcept;
     void reportShaderCreationResult(
         const ShaderSelection& selection,
         bool accepted) noexcept;

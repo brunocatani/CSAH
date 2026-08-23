@@ -23,13 +23,26 @@ namespace community_shaders::vanilla_fixes
     class DirectionalLightDiagnosticSurface final
     {
     public:
+        using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11PixelShader**);
+
         [[nodiscard]] static DirectionalLightDiagnosticSurface& get() noexcept;
 
+        [[nodiscard]] bool onDeviceCreated(
+            ID3D11Device* device,
+            CreatePixelShaderFunction createPixelShader) noexcept;
         [[nodiscard]] DirectionalDiagnosticResources prepareOutput(
             ID3D11DeviceContext* context,
             ID3D11RenderTargetView* referenceTarget) noexcept;
         [[nodiscard]] DirectionalDiagnosticResources currentInput(
             ID3D11DeviceContext* context) noexcept;
+        [[nodiscard]] ID3D11PixelShader* compositePixelShader() const noexcept;
+        [[nodiscard]] bool isCompositePixelShader(
+            ID3D11PixelShader* shader) const noexcept;
 
     private:
         DirectionalLightDiagnosticSurface() = default;
@@ -37,12 +50,14 @@ namespace community_shaders::vanilla_fixes
         [[nodiscard]] bool ensureResources(
             ID3D11DeviceContext* context,
             ID3D11RenderTargetView* referenceTarget) noexcept;
-        void reset() noexcept;
+        void resetSurface() noexcept;
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11Texture2D> texture_;
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTarget_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource_;
+        Microsoft::WRL::ComPtr<ID3D11Device> compositeDevice_;
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> compositePixelShader_;
         UINT width_{};
         UINT height_{};
         bool firstReadyLogged_{};
