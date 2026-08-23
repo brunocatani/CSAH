@@ -22,42 +22,56 @@ namespace community_shaders::vanilla_fixes
             0xC065151Fu,
         };
         constexpr std::array<std::uint32_t, 4> kExactPatchedChecksum{
-            0xDC479311u,
-            0x35F0293Eu,
-            0xFBB954C5u,
-            0xCC529728u,
+            0x2B65726Du,
+            0x9676D0E0u,
+            0x3A3DBF34u,
+            0x609D7C67u,
         };
-
-        // Exact unique stock context beginning at file offset 0xE74:
-        //   lt r6.z, r2.y, cb2[12].y
-        //   if_nz r6.z
-        constexpr std::array<std::uint32_t, 11> kStockFinalCascadeCutoff{
-            0x08000031u,
-            0x00100042u,
-            0x00000006u,
-            0x0010001Au,
-            0x00000002u,
-            0x0020801Au,
-            0x00000002u,
-            0x0000000Cu,
-            0x0304001Fu,
-            0x0010002Au,
-            0x00000006u,
-        };
-
-        // Preserve the comparison and force only the following IF true.
-        constexpr std::array<std::uint32_t, 11> kPitchStableFinalCascade{
-            0x08000031u,
-            0x00100042u,
-            0x00000006u,
-            0x0010001Au,
-            0x00000002u,
-            0x0020801Au,
-            0x00000002u,
-            0x0000000Cu,
-            0x0304001Fu,
+        // Exact unique stock suffix beginning at file offset 0x13D4:
+        //   add r0.w, r0.w, l(-1.0)
+        //   mad r0.w, r1.w, r0.w, l(1.0)
+        // The incoming r0.w is the split-blended cascade result and r1.w is
+        // the high-power radial confidence derived from receiver distance.
+        constexpr std::array<std::uint32_t, 16> kStockRadialDistanceFade{
+            0x07000000u,
+            0x00100082u,
+            0x00000000u,
+            0x0010003Au,
+            0x00000000u,
+            0x00004001u,
+            0xBF800000u,
+            0x09000032u,
+            0x00100082u,
+            0x00000000u,
+            0x0010003Au,
+            0x00000001u,
+            0x0010003Au,
+            0x00000000u,
             0x00004001u,
             0x3F800000u,
+        };
+
+        // Copy the incoming cascade result without the (shadow - 1) + 1
+        // fractional round trip, then publish it while retaining the original
+        // two-instruction token lengths. The computed r1.w is overwritten
+        // before its next read.
+        constexpr std::array<std::uint32_t, 16> kRadialDistanceFadeBypassed{
+            0x07000038u,
+            0x00100082u,
+            0x00000000u,
+            0x0010003Au,
+            0x00000000u,
+            0x00004001u,
+            0x3F800000u,
+            0x09000032u,
+            0x00100082u,
+            0x00000000u,
+            0x00004001u,
+            0x00000000u,
+            0x0010003Au,
+            0x00000000u,
+            0x0010003Au,
+            0x00000000u,
         };
 
         [[nodiscard]] bool readU32(
@@ -144,7 +158,7 @@ namespace community_shaders::vanilla_fixes
         }
     }
 
-    bool patchStockDirectionalLightPitchCutoff(
+    bool patchStockDirectionalLightRadialFade(
         const std::span<const std::byte> stockBytecode,
         std::vector<std::byte>& patchedBytecode) noexcept
     {
@@ -152,10 +166,10 @@ namespace community_shaders::vanilla_fixes
         if (!exactContainer(stockBytecode, kExactStockChecksum)) {
             return false;
         }
-        const auto cutoffOffset = findUniqueSequence(
+        const auto fadeOffset = findUniqueSequence(
             stockBytecode,
-            kStockFinalCascadeCutoff);
-        if (!cutoffOffset || *cutoffOffset != 0xE74) {
+            kStockRadialDistanceFade);
+        if (!fadeOffset || *fadeOffset != 0x13D4) {
             return false;
         }
 
@@ -164,23 +178,21 @@ namespace community_shaders::vanilla_fixes
             stockBytecode.end(),
         };
         auto bytes = std::span<std::byte>{ candidate };
-        constexpr std::size_t predicateOperandIndex = 9;
-        constexpr std::size_t predicateValueIndex = 10;
-        if (!writeU32(
-                bytes,
-                *cutoffOffset +
-                    predicateOperandIndex * sizeof(std::uint32_t),
-                kPitchStableFinalCascade[predicateOperandIndex]) ||
-            !writeU32(
-                bytes,
-                *cutoffOffset +
-                    predicateValueIndex * sizeof(std::uint32_t),
-                kPitchStableFinalCascade[predicateValueIndex]) ||
-            !linear_lighting::recomputeDxbcChecksum(bytes) ||
+        for (std::size_t index = 0;
+             index < kRadialDistanceFadeBypassed.size();
+             ++index) {
+            if (!writeU32(
+                    bytes,
+                    *fadeOffset + index * sizeof(std::uint32_t),
+                    kRadialDistanceFadeBypassed[index])) {
+                return false;
+            }
+        }
+        if (!linear_lighting::recomputeDxbcChecksum(bytes) ||
             !exactContainer(candidate, kExactPatchedChecksum) ||
-            findUniqueSequence(candidate, kStockFinalCascadeCutoff) ||
-            findUniqueSequence(candidate, kPitchStableFinalCascade) !=
-                cutoffOffset) {
+            findUniqueSequence(candidate, kStockRadialDistanceFade) ||
+            findUniqueSequence(candidate, kRadialDistanceFadeBypassed) !=
+                fadeOffset) {
             return false;
         }
 

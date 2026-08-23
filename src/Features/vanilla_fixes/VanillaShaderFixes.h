@@ -26,7 +26,7 @@ namespace community_shaders::vanilla_fixes
         sslrPrepass,
         sslrRaytrace,
         surfaceAnchoredCubemap,
-        directionalLightPitchCutoff,
+        directionalLightRadialFade,
     };
 
     struct ShaderSelection final

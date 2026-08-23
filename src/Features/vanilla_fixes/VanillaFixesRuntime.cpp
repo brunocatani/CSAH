@@ -232,7 +232,7 @@ namespace community_shaders::vanilla_fixes
                         "Vanilla Fixes INI monitor could not start.");
                 }
                 logging::info(
-                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the pitch-stable deferred directional-light cutoff; shared-INI hot reload active={}.",
+                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the isolated directional-light peripheral radial-fade diagnostic; shared-INI hot reload active={}.",
                     hotReloadActive_.load(std::memory_order_acquire));
                 return true;
             }

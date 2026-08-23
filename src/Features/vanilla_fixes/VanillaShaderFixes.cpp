@@ -61,7 +61,7 @@ namespace community_shaders::vanilla_fixes
             0xF4EBA56324D74051ull,
             { 0x6C19C7D4u, 0xFF8FE5A6u, 0x94E7B9E2u, 0xC02418F2u },
         };
-        constexpr CompleteIdentity kDirectionalLightPitchCutoff{
+        constexpr CompleteIdentity kDirectionalLightRadialFade{
             9388,
             0x2BF99E4AE72E5F31ull,
             { 0xEE23B97Eu, 0x314D542Du, 0xE122666Du, 0xC065151Fu },
@@ -190,18 +190,18 @@ namespace community_shaders::vanilla_fixes
                 true,
             };
         }
-        if (matches(identity, kDirectionalLightPitchCutoff)) {
+        if (matches(identity, kDirectionalLightRadialFade)) {
             const auto stock = std::span<const std::byte>{
                 static_cast<const std::byte*>(bytecode),
                 bytecodeLength,
             };
-            const auto ready = patchStockDirectionalLightPitchCutoff(
+            const auto ready = patchStockDirectionalLightRadialFade(
                 stock,
                 patchStorage);
             return {
                 ready ? patchStorage.data() : bytecode,
                 ready ? patchStorage.size() : bytecodeLength,
-                ShaderFix::directionalLightPitchCutoff,
+                ShaderFix::directionalLightRadialFade,
                 ready,
             };
         }
@@ -338,7 +338,7 @@ namespace community_shaders::vanilla_fixes
         const ShaderFix fix) noexcept
     {
         if (!fixedShader || !stockShader ||
-            fix != ShaderFix::directionalLightPitchCutoff) {
+            fix != ShaderFix::directionalLightRadialFade) {
             return false;
         }
         auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
@@ -397,16 +397,16 @@ namespace community_shaders::vanilla_fixes
         targeted.fetch_add(1, std::memory_order_relaxed);
         (wasAccepted ? accepted : stockFallbacks)
             .fetch_add(1, std::memory_order_relaxed);
-        if (selection.fix == ShaderFix::directionalLightPitchCutoff &&
+        if (selection.fix == ShaderFix::directionalLightRadialFade &&
             !directionalLightResultLogged.exchange(
                 true,
                 std::memory_order_relaxed)) {
             if (wasAccepted) {
                 logging::info(
-                    "Vanilla Fixes accepted the exact 9,388-byte pitch-stable deferred directional-light shader and retained its stock pair; the live Vanilla Fixes master toggle owns bind selection.");
+                    "Vanilla Fixes accepted the exact 9,388-byte peripheral-radial-fade diagnostic and retained its stock pair; the live Vanilla Fixes master toggle owns bind selection.");
             } else {
                 logging::error(
-                    "Vanilla Fixes rejected the pitch-stable deferred directional-light shader; the exact stock shader remains active.");
+                    "Vanilla Fixes rejected the peripheral-radial-fade diagnostic; the exact stock directional-light shader remains active.");
             }
         }
     }

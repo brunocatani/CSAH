@@ -6,13 +6,12 @@
 
 namespace community_shaders::vanilla_fixes
 {
-    // Removes only FO4VR's camera-forward final-cascade eligibility plane
-    // from the exact active deferred directional-light pixel shader. The
-    // comparison remains present, but its immediately following branch is
-    // made unconditionally true. Cascade selection, PCF, split blending,
-    // radial distance fade, atlas ownership, and per-eye light data remain
-    // byte-for-byte stock.
-    [[nodiscard]] bool patchStockDirectionalLightPitchCutoff(
+    // Removes only FO4VR's high-power peripheral radial confidence blend from
+    // the exact active deferred directional-light pixel shader. The incoming
+    // evaluated cascade result is retained directly. Cascade selection, PCF,
+    // split blending, final-cascade cutoff, atlas ownership, per-eye light
+    // data, normals, and BRDF lighting remain byte-for-byte stock.
+    [[nodiscard]] bool patchStockDirectionalLightRadialFade(
         std::span<const std::byte> stockBytecode,
         std::vector<std::byte>& patchedBytecode) noexcept;
 }
