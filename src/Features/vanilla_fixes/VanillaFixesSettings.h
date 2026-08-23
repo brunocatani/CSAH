@@ -10,6 +10,9 @@ namespace community_shaders::vanilla_fixes
         normalLightDot = 1,
         normalViewDot = 2,
         shadowVisibility = 3,
+        suppliedLightVector = 4,
+        viewLightVector = 5,
+        correctedNormalLightDot = 6,
     };
 
     struct Settings final

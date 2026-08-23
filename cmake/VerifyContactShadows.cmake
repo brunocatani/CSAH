@@ -5,6 +5,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SETTINGS_STORE_SOURCE
     CONTACT_SHADOW_SETTINGS_STORE_HEADER
     CONTACT_SHADOW_SHADER_SOURCE
+    CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
     CONTACT_SHADOW_DISPATCH_SHADER_SOURCE
     CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
@@ -23,6 +24,8 @@ file(READ "${CONTACT_SHADOW_SETTINGS_HEADER}" settingsHeader)
 file(READ "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}" settingsStoreSource)
 file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
+file(READ "${CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE}"
+  diagnosticShaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
 file(READ "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}" dispatchShaderSource)
 file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
@@ -148,6 +151,26 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
+    "NativeDFLight : register(b2)"
+    "NativeCamera : register(b12)"
+    "uint eye : EYEINDEX"
+    "float3 decodedNormal : TEXCOORD0"
+    "DIRECTIONAL_DIAGNOSTIC_MODE == 4"
+    "DIRECTIONAL_DIAGNOSTIC_MODE == 5"
+    "DIRECTIONAL_DIAGNOSTIC_MODE == 6"
+    "Camera[0].xyz"
+    "Camera[1].xyz"
+    "Camera[2].xyz"
+    "WorldToViewDirection"
+    "correctedNdotL")
+  string(FIND "${diagnosticShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Directional-light diagnostic shader regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
     "Texture2D<float> SceneDepth : register(t0)"
     "StructuredBuffer<DispatchRecord> DispatchRecords : register(t1)"
     "RWTexture2D<unorm float> ContactShadowMask : register(u0)"
@@ -263,9 +286,14 @@ foreach(required IN ITEMS
     "multiply_rgb(1, visibility_scratch)"
     "multiply_rgb(0, visibility_scratch)"
     "STOCK_DIRECTIONAL_FINAL_OUTPUTS"
+    "DIRECTIONAL_DIAGNOSTIC_MODE_COUNT = 6"
     "directional_diagnostic_outputs"
+    "compile_directional_diagnostic_templates"
+    "directional_diagnostic_template_contract"
+    "remap_directional_diagnostic_instruction"
     "patch_directional_diagnostic"
     "diagnosticBytecode"
+    "std::array<const unsigned char*, 6> diagnosticBytecode"
     "directional diagnostic candidate {index}/{mode_index} validation")
   string(FIND "${generatorSource}" "${required}" found)
   if(found EQUAL -1)

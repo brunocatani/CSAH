@@ -143,7 +143,7 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumShaderContracts> replacements_{};
-        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 3>,
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 6>,
             kMaximumShaderContracts> directionalDiagnostics_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> dispatchCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;

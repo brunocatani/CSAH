@@ -256,7 +256,7 @@ namespace community_shaders::contact_shadows
                 "Directional diagnostics failed closed because one or more verified DFLight family variants were rejected; Contact Shadows remain available.");
         } else {
             logging::info(
-                "Directional diagnostics armed three color-coded modes across all {} verified DFLight contracts.",
+                "Directional diagnostics armed six color-coded modes across all {} verified DFLight contracts.",
                 fo4vr_cs_contact_shadow_dflight_contracts.size());
         }
 
@@ -517,7 +517,7 @@ namespace community_shaders::contact_shadows
         ID3D11PixelShader* requested,
         const std::uint8_t diagnosticMode) noexcept
     {
-        if (!requested || diagnosticMode == 0 || diagnosticMode > 3) {
+        if (!requested || diagnosticMode == 0 || diagnosticMode > 6) {
             return { requested, {} };
         }
         const auto modeIndex = static_cast<std::size_t>(diagnosticMode - 1);

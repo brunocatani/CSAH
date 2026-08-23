@@ -273,7 +273,10 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"id\": \"directional-diagnostic\""
   "\"section\": \"Diagnostics\""
   "\"key\": \"iDirectionalLightingMode\""
-  "\"label\": \"Shadow Visibility (Blue)\"")
+  "\"label\": \"Shadow Visibility (Blue)\""
+  "\"label\": \"Supplied Light Vector (RGB)\""
+  "\"label\": \"View Light Vector (RGB)\""
+  "\"label\": \"Corrected N dot L (Red)\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")

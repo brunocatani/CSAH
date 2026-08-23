@@ -62,6 +62,7 @@ WRAPPED_GRASS_CONSTANT_SLOT = 11
 HAIR_SPECULAR_CONSTANT_SLOT = 10
 BASIC_WETNESS_CONSTANT_SLOT = 9
 SURFACE_CLASS_SLOT = 47
+DIRECTIONAL_DIAGNOSTIC_MODE_COUNT = 6
 MUL_OPCODE = 0x38
 DIV_OPCODE = 0x0E
 MOV_OPCODE = 0x36
@@ -425,6 +426,76 @@ def compile_basic_wetness_template(
     return output.read_bytes()
 
 
+def compile_directional_diagnostic_templates(
+    root: Path, fxc: Path, temporary: Path
+) -> tuple[bytes, bytes, bytes]:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "ContactShadows"
+        / "DirectionalLightingDiagnosticTransform.hlsl"
+    )
+    results: list[bytes] = []
+    for mode in range(4, 7):
+        output = temporary / f"DirectionalLightingDiagnosticMode{mode}.dxbc"
+        assembly = temporary / f"DirectionalLightingDiagnosticMode{mode}.asm.txt"
+        run(
+            [
+                str(fxc),
+                "/nologo",
+                "/T",
+                "ps_5_0",
+                "/E",
+                "PSMain",
+                "/O3",
+                "/Ges",
+                "/WX",
+                f"/DDIRECTIONAL_DIAGNOSTIC_MODE={mode}",
+                "/Fo",
+                str(output),
+                "/Fc",
+                str(assembly),
+                str(source),
+            ],
+            f"directional diagnostic mode {mode} transform compilation",
+        )
+        text = assembly.read_text(encoding="utf-8")
+        required = [
+            "dcl_constantbuffer CB2[46], dynamicIndexed",
+            "dcl_input_ps constant v1.x",
+            "dcl_output o0.xyzw",
+        ]
+        if mode != 6:
+            required.append("mov o0.w, l(1.000000)")
+        if mode >= 5:
+            required.extend(
+                (
+                    "dcl_constantbuffer CB12[3], immediateIndexed",
+                    "cb12[0].xyzx",
+                    "cb12[1].xyzx",
+                    "cb12[2].xyzx",
+                )
+            )
+        if mode == 6:
+            required.extend(
+                (
+                    "dcl_input_ps linear v2.xyz",
+                    "dp3_sat",
+                    "mov o0.yzw, l(0,0,0,1.000000)",
+                )
+            )
+        for contract in required:
+            if contract not in text:
+                raise ContractError(
+                    f"directional diagnostic mode {mode} assembly changed: "
+                    f"{contract}"
+                )
+        results.append(output.read_bytes())
+    return tuple(results)
+
+
 def replace_instruction_operands(
     instruction: list[int], replacements: dict[int, list[int]]
 ) -> list[int]:
@@ -615,6 +686,27 @@ def basic_wetness_template_contract(
     return [constant_declaration], transform[:-1], temp_count
 
 
+def directional_diagnostic_template_contract(
+    template: bytes,
+) -> tuple[list[list[int]], int]:
+    _, _, _, words = shader_words(template)
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    temp_count = words[temp_declaration[0] + 1]
+    transform = [words[start:end] for start, end in body]
+    if not transform or (transform[-1][0] & 0x7FF) != OPCODE_RET:
+        raise ContractError(
+            "directional diagnostic template no longer terminates with ret"
+        )
+    if any(
+        (instruction[0] & 0x7FF) == OPCODE_RET
+        for instruction in transform[:-1]
+    ):
+        raise ContractError(
+            "directional diagnostic template contains an early return"
+        )
+    return transform[:-1], temp_count
+
+
 def remap_transform_instruction(
     instruction: list[int], first_scratch: int, template_temp_count: int,
     visibility_scratch: int
@@ -756,6 +848,46 @@ def remap_basic_wetness_instruction(
     return replace_instruction_operands(instruction, replacements)
 
 
+def remap_directional_diagnostic_instruction(
+    instruction: list[int], first_scratch: int, template_temp_count: int
+) -> list[int]:
+    replacements: dict[int, list[int]] = {}
+    for operand in executable_operands(instruction, 0, len(instruction)):
+        if operand.operand_type == OPERAND_TEMP:
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] is None
+                or int(operand.immediate_indices[0]) >= template_temp_count
+            ):
+                raise ContractError(
+                    "directional diagnostic template temporary changed"
+                )
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                first_scratch + int(operand.immediate_indices[0]),
+            )
+        elif operand.operand_type == OPERAND_INPUT:
+            if operand.immediate_indices == (1,):
+                continue
+            if operand.immediate_indices == (2,):
+                replacements[operand.start] = replace_operand_with_temp(
+                    instruction,
+                    operand,
+                    5,
+                )
+            else:
+                raise ContractError(
+                    "directional diagnostic template input changed"
+                )
+        elif operand.operand_type == OPERAND_OUTPUT:
+            if operand.immediate_indices != (0,):
+                raise ContractError(
+                    "directional diagnostic template output changed"
+                )
+    return replace_instruction_operands(instruction, replacements)
+
+
 def temp_mask(register: int, mask: int) -> list[int]:
     return [0x00100002 | (mask << 4), register]
 
@@ -815,18 +947,49 @@ def unique_sequence_offset(
     return matches[0]
 
 
-def patch_directional_diagnostic(original: bytes, mode_index: int) -> bytes:
+def patch_directional_diagnostic(
+    original: bytes,
+    mode_index: int,
+    templates: tuple[bytes, bytes, bytes],
+) -> bytes:
+    if mode_index < 0 or mode_index >= DIRECTIONAL_DIAGNOSTIC_MODE_COUNT:
+        raise ContractError("directional diagnostic mode is invalid")
     version, chunks, shader_index, words = shader_words(original)
     output_offset = unique_sequence_offset(
         words,
         STOCK_DIRECTIONAL_FINAL_OUTPUTS,
     )
-    diagnostic = directional_diagnostic_outputs(mode_index)
-    words[output_offset : output_offset + len(diagnostic)] = diagnostic
-    if tuple(
-        words[output_offset : output_offset + len(diagnostic)]
-    ) != diagnostic:
-        raise ContractError("directional diagnostic output was not installed")
+    if mode_index < 3:
+        diagnostic = directional_diagnostic_outputs(mode_index)
+        words[output_offset : output_offset + len(diagnostic)] = diagnostic
+        if tuple(
+            words[output_offset : output_offset + len(diagnostic)]
+        ) != diagnostic:
+            raise ContractError(
+                "directional diagnostic output was not installed"
+            )
+    else:
+        temp_declaration, _, _ = shader_declarations_and_body(words)
+        original_temps = words[temp_declaration[0] + 1]
+        if original_temps <= 5 or original_temps > 4096:
+            raise ContractError(
+                "directional diagnostic source temporary contract changed"
+            )
+        transform, template_temps = directional_diagnostic_template_contract(
+            templates[mode_index - 3]
+        )
+        transformed: list[int] = []
+        for instruction in transform:
+            transformed.extend(
+                remap_directional_diagnostic_instruction(
+                    instruction,
+                    original_temps,
+                    template_temps,
+                )
+            )
+        words[temp_declaration[0] + 1] = original_temps + template_temps
+        words[output_offset:] = [*transformed, 0x0100003E]
+        words[1] = len(words)
     if any(
         tuple(words[offset : offset + len(STOCK_DIRECTIONAL_FINAL_OUTPUTS)])
         == STOCK_DIRECTIONAL_FINAL_OUTPUTS
@@ -1150,7 +1313,7 @@ def write_header(path: Path, data: bytes, symbol: str) -> None:
 def write_shader_family_header(
     path: Path,
     candidates: list[
-        tuple[census.DxbcContainer, bytes, tuple[bytes, bytes, bytes]]
+        tuple[census.DxbcContainer, bytes, tuple[bytes, ...]]
     ],
 ) -> None:
     rows = [
@@ -1161,7 +1324,7 @@ def write_shader_family_header(
         "",
     ]
     symbols: list[str] = []
-    diagnostic_symbols: list[tuple[str, str, str]] = []
+    diagnostic_symbols: list[tuple[str, ...]] = []
     for index, (_, data, diagnostics) in enumerate(candidates):
         symbol = f"fo4vr_cs_contact_shadows_dflight_{index:03d}"
         symbols.append(symbol)
@@ -1199,8 +1362,8 @@ def write_shader_family_header(
             "    std::array<unsigned char, 16> originalChecksum;",
             "    const unsigned char* replacementBytecode;",
             "    std::size_t replacementBytecodeLength;",
-            "    std::array<const unsigned char*, 3> diagnosticBytecode;",
-            "    std::array<std::size_t, 3> diagnosticBytecodeLength;",
+            "    std::array<const unsigned char*, 6> diagnosticBytecode;",
+            "    std::array<std::size_t, 6> diagnosticBytecodeLength;",
             "};",
             "",
             "inline constexpr std::array<",
@@ -1261,6 +1424,13 @@ def main() -> int:
             args.fxc.resolve(),
             temporary,
         )
+        directional_diagnostic_templates = (
+            compile_directional_diagnostic_templates(
+                root,
+                args.fxc.resolve(),
+                temporary,
+            )
+        )
         compute = compile_compute_shader(root, args.fxc.resolve(), temporary)
         dispatch = compile_dispatch_shader(
             root,
@@ -1273,7 +1443,7 @@ def main() -> int:
             temporary,
         )
         candidates: list[
-            tuple[census.DxbcContainer, bytes, tuple[bytes, bytes, bytes]]
+            tuple[census.DxbcContainer, bytes, tuple[bytes, ...]]
         ] = []
         for original in originals:
             try:
@@ -1285,8 +1455,12 @@ def main() -> int:
                     basic_wetness_template,
                 )
                 diagnostics = tuple(
-                    patch_directional_diagnostic(original.data, mode_index)
-                    for mode_index in range(3)
+                    patch_directional_diagnostic(
+                        original.data,
+                        mode_index,
+                        directional_diagnostic_templates,
+                    )
+                    for mode_index in range(DIRECTIONAL_DIAGNOSTIC_MODE_COUNT)
                 )
             except ContractError:
                 continue
@@ -1348,7 +1522,7 @@ def main() -> int:
                 raise ContractError(
                     f"contact-shadow candidate {index} contains an injected early return"
                 )
-            diagnostic_signals = (
+            legacy_diagnostic_signals = (
                 ("mov r0.x, r5.w", "mov r0.y, l(0)", "mov r0.z, l(0)"),
                 ("mov r0.x, l(0)", "mov r0.y, r8.x", "mov r0.z, l(0)"),
                 ("mov r0.x, l(0)", "mov r0.y, l(0)", "mov r0.z, r0.w"),
@@ -1377,11 +1551,37 @@ def main() -> int:
                 diagnostic_assembly = diagnostic_assembly_path.read_text(
                     encoding="utf-8"
                 )
-                for required in (
-                    *diagnostic_signals[mode_index],
-                    "mov r0.w, l(3.000000)",
-                    "div o0.xyzw, r0.xyzw, l(3.000000, 3.000000, 3.000000, 3.000000)",
-                ):
+                required_contracts: tuple[str, ...]
+                if mode_index < 3:
+                    required_contracts = (
+                        *legacy_diagnostic_signals[mode_index],
+                        "mov r0.w, l(3.000000)",
+                        "div o0.xyzw, r0.xyzw, l(3.000000, 3.000000, 3.000000, 3.000000)",
+                    )
+                else:
+                    required_contracts = (
+                        "dcl_constantbuffer CB2[46], dynamicIndexed",
+                        "dcl_input_ps constant v1.x",
+                    )
+                    if mode_index < 5:
+                        required_contracts += (
+                            "mad ",
+                            "l(0.500000, 0.500000, 0.500000, 0.000000)",
+                            "l(0.333333, 0.333333, 0.333333, 0.000000)",
+                            "mov o0.w, l(1.000000)",
+                        )
+                    if mode_index >= 4:
+                        required_contracts += (
+                            "cb12[0].xyzx",
+                            "cb12[1].xyzx",
+                            "cb12[2].xyzx",
+                        )
+                    if mode_index == 5:
+                        required_contracts += (
+                            "dp3_sat",
+                            "mov o0.yzw, l(0,0,0,1.000000)",
+                        )
+                for required in required_contracts:
                     if required not in diagnostic_assembly:
                         raise ContractError(
                             f"directional diagnostic candidate {index}/{mode_index} "
