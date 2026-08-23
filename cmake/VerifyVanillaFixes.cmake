@@ -21,6 +21,7 @@ foreach(input IN ITEMS
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE
+    VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
@@ -64,6 +65,10 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "patchStockDirectionalLightOwnershipDiagnostic"
   "publishDirectionalLightPixelShaderPair"
   "selectDirectionalLightPixelShaderForBinding"
+  "publishDirectionalDiagnosticCompositePixelShaderPair"
+  "selectDirectionalDiagnosticCompositePixelShaderForBinding"
+  "isDirectionalLightDiagnosticPixelShader"
+  "isDirectionalDiagnosticCompositePixelShader"
   "accepted the exact 9,388-byte directional ownership diagnostic"
   "CompleteIdentity{ 9348, 0x59FAED17411F08C7ull"
   "CompleteIdentity{ 9564, 0x0903D20AD75EBB0Eull"
@@ -123,8 +128,9 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "writableRange"
   "InterlockedExchange8"
   "preserveStartupCapability"
+  "effectivePolicy(activeSettings_)"
   "setSslrSuiteRequested("
-  "setDirectionalLightOwnershipDiagnosticRequested("
+  "setDirectionalLightDiagnosticMode(diagnosticMode)"
   "kPollInterval = std::chrono::milliseconds(250)"
   "reloadIfChanged()")
 foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
@@ -147,11 +153,18 @@ vanilla_fixes_require_text("${settings_store}" "settings"
   "L\"bLensFlareVr\""
   "L\"bVrAllowFocusShadows\""
   "L\"bUseSunbeams\""
+  "L\"iDirectionalLightDiagnosticMode\""
+  "readDiagnosticMode("
+  "writeDiagnosticMode("
   "settings_path::resolveIniPath()")
 
 file(READ "${VANILLA_REFLECTION_PATCH_SOURCE}" reflection_patch)
 vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
+  "patchStockReflectionCompositeDirectionalDiagnostic"
+  "regularDiagnosticOutput"
+  "conditionalDiagnosticOutput"
+  "mov o0.xyz, r2.{channel}"
   "recomputeDxbcChecksum"
   "patchedBytecode.swap(candidate)")
 file(READ "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}" directional_pitch_patch)
@@ -168,8 +181,20 @@ vanilla_fixes_require_text("${directional_pitch_patch}" "directional ownership t
   "*outputOffset != 0x2420"
   "recomputeDxbcChecksum"
   "kExactPatchedChecksum"
-  "0x0F98DC79"
+  "0xCE9BCEA1"
   "patchedBytecode.swap(candidate)")
+file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE}"
+  directional_diagnostic_surface)
+vanilla_fixes_require_text("${directional_diagnostic_surface}"
+  "exclusive directional surface"
+  "DXGI_FORMAT_R16G16B16A16_FLOAT"
+  "D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE"
+  "CreateTexture2D"
+  "CreateRenderTargetView"
+  "CreateShaderResourceView"
+  "ClearRenderTargetView"
+  "SampleDesc.Count != 1"
+  "ArraySize != 1")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "kFirstResourceSlot = 4"
@@ -201,7 +226,14 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
   "vanilla_fixes::selectDirectionalLightPixelShaderForBinding("
+  "selectDirectionalDiagnosticCompositePixelShaderForBinding("
   "vanilla_fixes::publishDirectionalLightPixelShaderPair("
+  "publishDirectionalDiagnosticCompositePixelShaderPair("
+  "patchStockReflectionCompositeDirectionalDiagnostic("
+  "ScopedDirectionalDiagnosticOutput"
+  "ScopedDirectionalDiagnosticInput"
+  "issueDrawWithDirectionalDiagnostic("
+  "exclusiveDirectionalDiagnostic"
   "vanilla_fixes::isSslrRaytracePixelShader(shader)"
   "vanilla_fixes::retainedStockSslrPixelShader(shader)"
   "reconcileSslrDrawShader(context, sslrEnvironment)"
@@ -224,6 +256,14 @@ if(NOT sslr_draw_binding_count EQUAL 4)
   message(FATAL_ERROR
     "Vanilla Fixes SSLR environment must bind at all four draw boundaries")
 endif()
+string(REGEX MATCHALL
+  "issueDrawWithDirectionalDiagnostic\\(" directional_diagnostic_draws
+  "${d3d11}")
+list(LENGTH directional_diagnostic_draws directional_diagnostic_draw_count)
+if(NOT directional_diagnostic_draw_count EQUAL 5)
+  message(FATAL_ERROR
+    "Exclusive directional diagnostic must own its helper and all four draw boundaries")
+endif()
 
 file(READ "${VANILLA_DEVMENU_MANIFEST_SOURCE}" devmenu)
 vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
@@ -237,7 +277,10 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"key\": \"bVrAllowScreenSpaceSubsurfaceScattering\""
   "\"key\": \"bLensFlareVr\""
   "\"key\": \"bVrAllowFocusShadows\""
-  "\"key\": \"bUseSunbeams\"")
+  "\"key\": \"bUseSunbeams\""
+  "\"id\": \"directional-diagnostic\""
+  "\"key\": \"iDirectionalLightDiagnosticMode\""
+  "\"label\": \"Shadow Visibility\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")

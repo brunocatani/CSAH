@@ -145,6 +145,23 @@ namespace community_shaders::vanilla_fixes
             return false;
         }
 
+        [[nodiscard]] Settings effectivePolicy(Settings policy) noexcept
+        {
+            if (policy.directionalLightDiagnosticMode ==
+                DirectionalLightDiagnosticMode::off) {
+                return policy;
+            }
+            policy.precipitationOcclusion = false;
+            policy.imageSpaceModifiers = false;
+            policy.sao = false;
+            policy.screenSpaceReflections = false;
+            policy.screenSpaceSubsurfaceScattering = false;
+            policy.lensFlare = false;
+            policy.focusShadows = false;
+            policy.sunbeams = false;
+            return policy;
+        }
+
         [[nodiscard]] bool readableRange(
             const void* address,
             const std::size_t size) noexcept
@@ -242,15 +259,24 @@ namespace community_shaders::vanilla_fixes
                 {
                     std::scoped_lock lock(settingsMutex_);
                     activeSettings_ = settings;
-                    applyMemoryPolicy(activeSettings_);
+                    applyMemoryPolicy(effectivePolicy(activeSettings_));
                 }
                 focusEnabled_.store(
-                    settings.enabled && settings.focusShadows,
+                    settings.enabled && settings.focusShadows &&
+                        settings.directionalLightDiagnosticMode ==
+                            DirectionalLightDiagnosticMode::off,
                     std::memory_order_release);
                 setSslrSuiteRequested(
-                    settings.enabled && settings.screenSpaceReflections);
-                setDirectionalLightOwnershipDiagnosticRequested(
-                    settings.enabled);
+                    settings.enabled && settings.screenSpaceReflections &&
+                    settings.directionalLightDiagnosticMode ==
+                        DirectionalLightDiagnosticMode::off);
+                const auto diagnosticMode = settings.enabled ?
+                    settings.directionalLightDiagnosticMode :
+                    DirectionalLightDiagnosticMode::off;
+                diagnosticMode_.store(
+                    static_cast<std::uint8_t>(diagnosticMode),
+                    std::memory_order_release);
+                setDirectionalLightDiagnosticMode(diagnosticMode);
                 appliedPolicies_.fetch_add(1, std::memory_order_relaxed);
             }
 
@@ -277,6 +303,13 @@ namespace community_shaders::vanilla_fixes
             [[nodiscard]] bool focusEnabled() const noexcept
             {
                 return focusEnabled_.load(std::memory_order_acquire);
+            }
+
+            [[nodiscard]] DirectionalLightDiagnosticMode diagnosticMode()
+                const noexcept
+            {
+                return static_cast<DirectionalLightDiagnosticMode>(
+                    diagnosticMode_.load(std::memory_order_acquire));
             }
 
         private:
@@ -312,7 +345,7 @@ namespace community_shaders::vanilla_fixes
                     reloadIfChanged();
                     {
                         std::scoped_lock settingsLock(settingsMutex_);
-                        applyMemoryPolicy(activeSettings_);
+                        applyMemoryPolicy(effectivePolicy(activeSettings_));
                     }
                     lock.lock();
                 }
@@ -638,6 +671,7 @@ namespace community_shaders::vanilla_fixes
             std::atomic_bool started_{};
             std::atomic_bool hotReloadActive_{};
             std::atomic_bool focusEnabled_{ true };
+            std::atomic_uint8_t diagnosticMode_{};
             std::atomic_uint64_t appliedPolicies_{};
             std::atomic_uint64_t externalReloads_{};
             mutable std::mutex settingsMutex_;
@@ -665,6 +699,11 @@ namespace community_shaders::vanilla_fixes
     bool focusShadowsEnabled() noexcept
     {
         return Controller::get().focusEnabled();
+    }
+
+    DirectionalLightDiagnosticMode directionalLightDiagnosticMode() noexcept
+    {
+        return Controller::get().diagnosticMode();
     }
 
     RuntimeSnapshot runtimeSnapshot() noexcept

@@ -16,6 +16,8 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "Features/vanilla_fixes/FocusShadowRuntime.h"
+#include "Features/vanilla_fixes/DirectionalLightDiagnosticSurface.h"
+#include "Features/vanilla_fixes/ReflectionCompositePatch.h"
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
@@ -35,6 +37,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -237,7 +240,19 @@ namespace community_shaders::render
         thread_local bool activeFocusShadowPixel{};
         thread_local bool activeCorrectedSslrRaytracePixel{};
         thread_local ID3D11PixelShader* activeStockSslrRaytracePixel{};
+        thread_local bool activeDirectionalLightDiagnosticPixel{};
+        thread_local ID3D11PixelShader*
+            activeDirectionalLightDiagnosticShader{};
+        thread_local ID3D11PixelShader*
+            activeStockDirectionalLightPixel{};
+        thread_local bool activeDirectionalDiagnosticCompositePixel{};
+        thread_local ID3D11PixelShader*
+            activeDirectionalDiagnosticCompositeShader{};
+        thread_local ID3D11PixelShader*
+            activeNormalDirectionalDiagnosticCompositePixel{};
         std::atomic_bool firstSslrDrawFallbackLogged{};
+        std::atomic_bool firstDirectionalDiagnosticDrawFallbackLogged{};
+        std::atomic_bool firstDirectionalDiagnosticCompositeFallbackLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -327,6 +342,243 @@ namespace community_shaders::render
 
         private:
             bool& active_;
+        };
+
+        class ScopedDirectionalDiagnosticOutput final
+        {
+        public:
+            explicit ScopedDirectionalDiagnosticOutput(
+                ID3D11DeviceContext* context) noexcept :
+                context_(context)
+            {
+                if (!context_ || !originalOMSetRenderTargets) {
+                    return;
+                }
+                std::array<ID3D11RenderTargetView*,
+                    D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
+                    renderTargets{};
+                ID3D11DepthStencilView* depthStencil{};
+                context_->OMGetRenderTargets(
+                    static_cast<UINT>(renderTargets.size()),
+                    renderTargets.data(),
+                    &depthStencil);
+                for (std::size_t index = 0;
+                     index < renderTargets.size();
+                     ++index) {
+                    previousRenderTargets_[index].Attach(renderTargets[index]);
+                    if (renderTargets[index]) {
+                        previousRenderTargetCount_ =
+                            static_cast<UINT>(index + 1);
+                    }
+                }
+                previousDepthStencil_.Attach(depthStencil);
+                captured_ = true;
+                if (!previousRenderTargets_[0]) {
+                    return;
+                }
+                resources_ = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get().prepareOutput(
+                        context_,
+                        previousRenderTargets_[0].Get());
+                if (!resources_) {
+                    return;
+                }
+                auto* target = resources_.renderTarget.Get();
+                originalOMSetRenderTargets(
+                    context_,
+                    1,
+                    &target,
+                    previousDepthStencil_.Get());
+                bound_ = true;
+                ID3D11RenderTargetView* applied{};
+                context_->OMGetRenderTargets(1, &applied, nullptr);
+                const auto matched = applied == target;
+                if (applied) {
+                    applied->Release();
+                }
+                if (!matched) {
+                    (void)restore();
+                    return;
+                }
+                active_ = true;
+            }
+
+            ~ScopedDirectionalDiagnosticOutput()
+            {
+                (void)restore();
+            }
+
+            ScopedDirectionalDiagnosticOutput(
+                const ScopedDirectionalDiagnosticOutput&) = delete;
+            ScopedDirectionalDiagnosticOutput& operator=(
+                const ScopedDirectionalDiagnosticOutput&) = delete;
+
+            [[nodiscard]] bool active() const noexcept
+            {
+                return active_;
+            }
+
+            [[nodiscard]] bool restore() noexcept
+            {
+                if (restored_) {
+                    return true;
+                }
+                restored_ = true;
+                active_ = false;
+                if (!captured_ || !bound_ || !context_ ||
+                    !originalOMSetRenderTargets) {
+                    return false;
+                }
+                std::array<ID3D11RenderTargetView*,
+                    D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
+                    renderTargets{};
+                for (std::size_t index = 0;
+                     index < renderTargets.size();
+                     ++index) {
+                    renderTargets[index] = previousRenderTargets_[index].Get();
+                }
+                const auto restoreOnce = [&]() noexcept {
+                    originalOMSetRenderTargets(
+                        context_,
+                        previousRenderTargetCount_,
+                        renderTargets.data(),
+                        previousDepthStencil_.Get());
+                    std::array<ID3D11RenderTargetView*,
+                        D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
+                        applied{};
+                    ID3D11DepthStencilView* appliedDepth{};
+                    context_->OMGetRenderTargets(
+                        static_cast<UINT>(applied.size()),
+                        applied.data(),
+                        &appliedDepth);
+                    auto matches = appliedDepth == previousDepthStencil_.Get();
+                    for (std::size_t index = 0;
+                         index < applied.size();
+                         ++index) {
+                        matches = matches &&
+                            applied[index] == renderTargets[index];
+                        if (applied[index]) {
+                            applied[index]->Release();
+                        }
+                    }
+                    if (appliedDepth) {
+                        appliedDepth->Release();
+                    }
+                    return matches;
+                };
+                auto restored = restoreOnce();
+                if (!restored) {
+                    restored = restoreOnce();
+                }
+                bound_ = false;
+                return restored;
+            }
+
+        private:
+            ID3D11DeviceContext* context_{};
+            std::array<Microsoft::WRL::ComPtr<ID3D11RenderTargetView>,
+                D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
+                previousRenderTargets_{};
+            Microsoft::WRL::ComPtr<ID3D11DepthStencilView>
+                previousDepthStencil_;
+            vanilla_fixes::DirectionalDiagnosticResources resources_;
+            UINT previousRenderTargetCount_{};
+            bool captured_{};
+            bool bound_{};
+            bool active_{};
+            bool restored_{};
+        };
+
+        class ScopedDirectionalDiagnosticInput final
+        {
+        public:
+            static constexpr UINT kSlot = 5;
+
+            explicit ScopedDirectionalDiagnosticInput(
+                ID3D11DeviceContext* context) noexcept :
+                context_(context)
+            {
+                if (!context_) {
+                    return;
+                }
+                ID3D11ShaderResourceView* previous{};
+                context_->PSGetShaderResources(kSlot, 1, &previous);
+                previous_.Attach(previous);
+                captured_ = true;
+                resources_ = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get().currentInput(
+                        context_);
+                if (!resources_) {
+                    return;
+                }
+                auto* input = resources_.shaderResource.Get();
+                context_->PSSetShaderResources(kSlot, 1, &input);
+                bound_ = true;
+                ID3D11ShaderResourceView* applied{};
+                context_->PSGetShaderResources(kSlot, 1, &applied);
+                const auto matched = applied == input;
+                if (applied) {
+                    applied->Release();
+                }
+                if (!matched) {
+                    (void)restore();
+                    return;
+                }
+                active_ = true;
+            }
+
+            ~ScopedDirectionalDiagnosticInput()
+            {
+                (void)restore();
+            }
+
+            ScopedDirectionalDiagnosticInput(
+                const ScopedDirectionalDiagnosticInput&) = delete;
+            ScopedDirectionalDiagnosticInput& operator=(
+                const ScopedDirectionalDiagnosticInput&) = delete;
+
+            [[nodiscard]] bool active() const noexcept
+            {
+                return active_;
+            }
+
+            [[nodiscard]] bool restore() noexcept
+            {
+                if (restored_) {
+                    return true;
+                }
+                restored_ = true;
+                active_ = false;
+                if (!captured_ || !bound_ || !context_) {
+                    return false;
+                }
+                auto* previous = previous_.Get();
+                const auto restoreOnce = [&]() noexcept {
+                    context_->PSSetShaderResources(kSlot, 1, &previous);
+                    ID3D11ShaderResourceView* applied{};
+                    context_->PSGetShaderResources(kSlot, 1, &applied);
+                    const auto matches = applied == previous;
+                    if (applied) {
+                        applied->Release();
+                    }
+                    return matches;
+                };
+                auto restored = restoreOnce();
+                if (!restored) {
+                    restored = restoreOnce();
+                }
+                bound_ = false;
+                return restored;
+            }
+
+        private:
+            ID3D11DeviceContext* context_{};
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> previous_;
+            vanilla_fixes::DirectionalDiagnosticResources resources_;
+            bool captured_{};
+            bool bound_{};
+            bool active_{};
+            bool restored_{};
         };
 
         [[nodiscard]] bool isExecutableAddress(const void* address) noexcept
@@ -1353,11 +1605,88 @@ namespace community_shaders::render
             return activeReplacementBinding.family !=
                     linear_lighting::ReplacementShaderFamily::none ||
                 activeCorrectedSslrRaytracePixel ||
+                activeDirectionalLightDiagnosticPixel ||
+                activeDirectionalDiagnosticCompositePixel ||
                 activeIblMaterialBinding ||
                 activeContactShadowBinding ||
                 activeFilmicTonemappingBinding ||
                 activeIblCaptureProbePass.lastEnvironmentContractPlusOne != 0 ||
                 qualificationSessionActive.load(std::memory_order_acquire);
+        }
+
+        template <class DrawCall>
+        void issueDrawWithDirectionalDiagnostic(
+            ID3D11DeviceContext* context,
+            DrawCall&& draw) noexcept
+        {
+            if (activeDirectionalLightDiagnosticPixel) {
+                ScopedDirectionalDiagnosticOutput output(context);
+                if (output.active()) {
+                    draw();
+                    return;
+                }
+                if (originalPSSetShader && activeStockDirectionalLightPixel) {
+                    originalPSSetShader(
+                        context,
+                        activeStockDirectionalLightPixel,
+                        nullptr,
+                        0);
+                    draw();
+                    originalPSSetShader(
+                        context,
+                        activeDirectionalLightDiagnosticShader,
+                        nullptr,
+                        0);
+                    if (!firstDirectionalDiagnosticDrawFallbackLogged.exchange(
+                            true,
+                            std::memory_order_relaxed)) {
+                        logging::error(
+                            "Exclusive directional diagnostic could not establish its private output transaction; the retained stock directional shader was rebound for this draw.");
+                    }
+                    return;
+                }
+                if (!firstDirectionalDiagnosticDrawFallbackLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    logging::error(
+                        "Exclusive directional diagnostic suppressed a draw because neither its private output transaction nor retained stock fallback was available.");
+                }
+                return;
+            }
+            if (activeDirectionalDiagnosticCompositePixel) {
+                ScopedDirectionalDiagnosticInput input(context);
+                if (input.active()) {
+                    draw();
+                    return;
+                }
+                if (originalPSSetShader &&
+                    activeNormalDirectionalDiagnosticCompositePixel) {
+                    originalPSSetShader(
+                        context,
+                        activeNormalDirectionalDiagnosticCompositePixel,
+                        nullptr,
+                        0);
+                    draw();
+                    originalPSSetShader(
+                        context,
+                        activeDirectionalDiagnosticCompositeShader,
+                        nullptr,
+                        0);
+                    if (!firstDirectionalDiagnosticCompositeFallbackLogged
+                            .exchange(true, std::memory_order_relaxed)) {
+                        logging::error(
+                            "Exclusive directional diagnostic could not bind its private t5 input; the retained normal DFComposite shader was rebound for this draw.");
+                    }
+                    return;
+                }
+                if (!firstDirectionalDiagnosticCompositeFallbackLogged
+                        .exchange(true, std::memory_order_relaxed)) {
+                    logging::error(
+                        "Exclusive directional diagnostic suppressed a composite draw because neither its private t5 input nor retained normal shader was available.");
+                }
+                return;
+            }
+            draw();
         }
 
         void reconcileSslrDrawShader(
@@ -1731,21 +2060,49 @@ namespace community_shaders::render
                 bytecode,
                 bytecodeLength,
                 patchStorage);
-            auto result = original(
-                device,
-                selection.data,
-                selection.size,
-                classLinkage,
-                shader);
-            auto replacementAccepted =
-                selection.replaced() && SUCCEEDED(result) && shader && *shader;
+            const auto directionalDiagnostic = selection.fix ==
+                vanilla_fixes::ShaderFix::
+                    directionalLightOwnershipDiagnostic;
+            ID3D11PixelShader* directionalDiagnosticShader{};
+            HRESULT result{ E_FAIL };
+            auto replacementAccepted = false;
+            if (directionalDiagnostic && selection.replaced()) {
+                const auto diagnosticResult = original(
+                    device,
+                    selection.data,
+                    selection.size,
+                    classLinkage,
+                    &directionalDiagnosticShader);
+                result = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+                replacementAccepted = SUCCEEDED(diagnosticResult) &&
+                    directionalDiagnosticShader && SUCCEEDED(result) &&
+                    shader && *shader &&
+                    vanilla_fixes::publishDirectionalLightPixelShaderPair(
+                        directionalDiagnosticShader,
+                        *shader,
+                        selection.fix);
+                if (directionalDiagnosticShader) {
+                    directionalDiagnosticShader->Release();
+                }
+            } else {
+                result = original(
+                    device,
+                    selection.data,
+                    selection.size,
+                    classLinkage,
+                    shader);
+                replacementAccepted = selection.replaced() &&
+                    SUCCEEDED(result) && shader && *shader;
+            }
             if (replacementAccepted &&
                 (selection.fix == vanilla_fixes::ShaderFix::sslrPrepass ||
                     selection.fix ==
-                        vanilla_fixes::ShaderFix::sslrRaytrace ||
-                    selection.fix ==
-                        vanilla_fixes::ShaderFix::
-                            directionalLightOwnershipDiagnostic)) {
+                        vanilla_fixes::ShaderFix::sslrRaytrace)) {
                 ID3D11PixelShader* stockShader{};
                 const auto stockResult = original(
                     device,
@@ -1755,17 +2112,10 @@ namespace community_shaders::render
                     &stockShader);
                 const auto pairPublished = SUCCEEDED(stockResult) &&
                     stockShader &&
-                    (selection.fix ==
-                            vanilla_fixes::ShaderFix::
-                                directionalLightOwnershipDiagnostic ?
-                        vanilla_fixes::publishDirectionalLightPixelShaderPair(
-                            *shader,
-                            stockShader,
-                            selection.fix) :
-                        vanilla_fixes::publishSslrPixelShaderPair(
-                            *shader,
-                            stockShader,
-                            selection.fix));
+                    vanilla_fixes::publishSslrPixelShaderPair(
+                        *shader,
+                        stockShader,
+                        selection.fix);
                 if (stockShader) {
                     stockShader->Release();
                 }
@@ -1775,7 +2125,63 @@ namespace community_shaders::render
                     replacementAccepted = false;
                 }
             }
-            if (selection.replaced() && !replacementAccepted) {
+            if (replacementAccepted && selection.fix ==
+                    vanilla_fixes::ShaderFix::surfaceAnchoredCubemap) {
+                constexpr std::array channels{
+                    vanilla_fixes::DirectionalDiagnosticChannel::
+                        normalLightDot,
+                    vanilla_fixes::DirectionalDiagnosticChannel::
+                        normalViewDot,
+                    vanilla_fixes::DirectionalDiagnosticChannel::
+                        shadowVisibility,
+                };
+                std::array<ID3D11PixelShader*, channels.size()>
+                    diagnosticShaders{};
+                auto diagnosticsReady = true;
+                for (std::size_t index = 0;
+                     index < channels.size();
+                     ++index) {
+                    std::vector<std::byte> diagnosticBytecode;
+                    diagnosticsReady = diagnosticsReady &&
+                        vanilla_fixes::
+                            patchStockReflectionCompositeDirectionalDiagnostic(
+                                std::span<const std::byte>{
+                                    static_cast<const std::byte*>(bytecode),
+                                    bytecodeLength,
+                                },
+                                channels[index],
+                                diagnosticBytecode);
+                    if (!diagnosticsReady) {
+                        break;
+                    }
+                    const auto diagnosticResult = original(
+                        device,
+                        diagnosticBytecode.data(),
+                        diagnosticBytecode.size(),
+                        classLinkage,
+                        &diagnosticShaders[index]);
+                    diagnosticsReady = SUCCEEDED(diagnosticResult) &&
+                        diagnosticShaders[index];
+                    if (!diagnosticsReady) {
+                        break;
+                    }
+                }
+                const auto diagnosticsPublished = diagnosticsReady &&
+                    vanilla_fixes::
+                        publishDirectionalDiagnosticCompositePixelShaderPair(
+                            *shader,
+                            diagnosticShaders);
+                for (auto* diagnosticShader : diagnosticShaders) {
+                    if (diagnosticShader) {
+                        diagnosticShader->Release();
+                    }
+                }
+                vanilla_fixes::
+                    reportDirectionalDiagnosticCompositeCreationResult(
+                        diagnosticsPublished);
+            }
+            if (selection.replaced() && !replacementAccepted &&
+                (FAILED(result) || !shader || !*shader)) {
                 result = original(
                     device,
                     bytecode,
@@ -1984,11 +2390,33 @@ namespace community_shaders::render
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
             shader = vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
                 shader);
+            shader = vanilla_fixes::
+                selectDirectionalDiagnosticCompositePixelShaderForBinding(
+                    shader);
             activeCorrectedSslrRaytracePixel =
                 vanilla_fixes::isSslrRaytracePixelShader(shader);
             activeStockSslrRaytracePixel =
                 activeCorrectedSslrRaytracePixel ?
                 vanilla_fixes::retainedStockSslrPixelShader(shader) :
+                nullptr;
+            activeDirectionalLightDiagnosticPixel = vanilla_fixes::
+                isDirectionalLightDiagnosticPixelShader(shader);
+            activeDirectionalLightDiagnosticShader =
+                activeDirectionalLightDiagnosticPixel ? shader : nullptr;
+            activeStockDirectionalLightPixel =
+                activeDirectionalLightDiagnosticPixel ?
+                vanilla_fixes::retainedStockDirectionalLightPixelShader(
+                    shader) :
+                nullptr;
+            activeDirectionalDiagnosticCompositePixel = vanilla_fixes::
+                isDirectionalDiagnosticCompositePixelShader(shader);
+            activeDirectionalDiagnosticCompositeShader =
+                activeDirectionalDiagnosticCompositePixel ? shader : nullptr;
+            activeNormalDirectionalDiagnosticCompositePixel =
+                activeDirectionalDiagnosticCompositePixel ?
+                vanilla_fixes::
+                    retainedNormalDirectionalDiagnosticCompositePixelShader(
+                        shader) :
                 nullptr;
             activeFocusShadowPixel =
                 vanilla_fixes::isFocusShadowPixelShader(shader);
@@ -2046,31 +2474,44 @@ namespace community_shaders::render
             auto& cloudShadowRuntime = cloud_shadows::Runtime::get();
             auto& filmicTonemappingRuntime =
                 filmic_tonemapping::Runtime::get();
+            const auto exclusiveDirectionalDiagnostic =
+                vanilla_fixes::directionalLightDiagnosticMode() !=
+                vanilla_fixes::DirectionalLightDiagnosticMode::off;
             const auto qualificationActive =
                 qualificationSessionActive.load(std::memory_order_acquire);
             const auto replacementFeaturesActive =
+                !exclusiveDirectionalDiagnostic &&
                 replacementRuntime.replacementFeaturesEnabled();
             const auto skylightingFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 skylightingRuntime.requested();
-            const auto iblFeatureActive = iblRuntime.featureEnabled();
+            const auto iblFeatureActive =
+                !exclusiveDirectionalDiagnostic && iblRuntime.featureEnabled();
             const auto contactShadowFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 contactShadowRuntime.featureEnabled();
             const auto wrappedGrassFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 wrappedGrassRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
             const auto hairSpecularFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 hairSpecularRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
             const auto subsurfaceScatteringFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 subsurfaceScatteringRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
             const auto basicWetnessFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 basicWetnessRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
             const auto cloudShadowFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 cloudShadowRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
             const auto filmicTonemappingFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
                 filmicTonemappingRuntime.featureEnabled();
             const auto dflightCompositorActive =
                 contactShadowRuntime.compositorReady(
@@ -2326,17 +2767,24 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexed) {
-                issueDrawWithCloudShadows(context, [&]() noexcept {
-                    issueDrawWithContactShadows(context, [&]() noexcept {
-                        issueDrawWithIblMaterial(context, [&]() noexcept {
-                            originalDrawIndexed(
-                                context,
-                                indexCount,
-                                startIndexLocation,
-                                baseVertexLocation);
+                issueDrawWithDirectionalDiagnostic(
+                    context,
+                    [&]() noexcept {
+                        issueDrawWithCloudShadows(context, [&]() noexcept {
+                            issueDrawWithContactShadows(context,
+                                [&]() noexcept {
+                                    issueDrawWithIblMaterial(
+                                        context,
+                                        [&]() noexcept {
+                                            originalDrawIndexed(
+                                                context,
+                                                indexCount,
+                                                startIndexLocation,
+                                                baseVertexLocation);
+                                        });
+                                });
                         });
                     });
-                });
             }
         }
 
@@ -2384,14 +2832,23 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDraw) {
-                issueDrawWithCloudShadows(context, [&]() noexcept {
-                    issueDrawWithContactShadows(context, [&]() noexcept {
-                        issueDrawWithIblMaterial(context, [&]() noexcept {
-                            originalDraw(
-                                context, vertexCount, startVertexLocation);
+                issueDrawWithDirectionalDiagnostic(
+                    context,
+                    [&]() noexcept {
+                        issueDrawWithCloudShadows(context, [&]() noexcept {
+                            issueDrawWithContactShadows(context,
+                                [&]() noexcept {
+                                    issueDrawWithIblMaterial(
+                                        context,
+                                        [&]() noexcept {
+                                            originalDraw(
+                                                context,
+                                                vertexCount,
+                                                startVertexLocation);
+                                        });
+                                });
                         });
                     });
-                });
             }
         }
 
@@ -2450,19 +2907,26 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawIndexedInstanced) {
-                issueDrawWithCloudShadows(context, [&]() noexcept {
-                    issueDrawWithContactShadows(context, [&]() noexcept {
-                        issueDrawWithIblMaterial(context, [&]() noexcept {
-                            originalDrawIndexedInstanced(
-                                context,
-                                indexCountPerInstance,
-                                instanceCount,
-                                startIndexLocation,
-                                baseVertexLocation,
-                                startInstanceLocation);
+                issueDrawWithDirectionalDiagnostic(
+                    context,
+                    [&]() noexcept {
+                        issueDrawWithCloudShadows(context, [&]() noexcept {
+                            issueDrawWithContactShadows(context,
+                                [&]() noexcept {
+                                    issueDrawWithIblMaterial(
+                                        context,
+                                        [&]() noexcept {
+                                            originalDrawIndexedInstanced(
+                                                context,
+                                                indexCountPerInstance,
+                                                instanceCount,
+                                                startIndexLocation,
+                                                baseVertexLocation,
+                                                startInstanceLocation);
+                                        });
+                                });
                         });
                     });
-                });
             }
         }
 
@@ -2519,18 +2983,25 @@ namespace community_shaders::render
                 recordQualificationDraw(context);
             }
             if (originalDrawInstanced) {
-                issueDrawWithCloudShadows(context, [&]() noexcept {
-                    issueDrawWithContactShadows(context, [&]() noexcept {
-                        issueDrawWithIblMaterial(context, [&]() noexcept {
-                            originalDrawInstanced(
-                                context,
-                                vertexCountPerInstance,
-                                instanceCount,
-                                startVertexLocation,
-                                startInstanceLocation);
+                issueDrawWithDirectionalDiagnostic(
+                    context,
+                    [&]() noexcept {
+                        issueDrawWithCloudShadows(context, [&]() noexcept {
+                            issueDrawWithContactShadows(context,
+                                [&]() noexcept {
+                                    issueDrawWithIblMaterial(
+                                        context,
+                                        [&]() noexcept {
+                                            originalDrawInstanced(
+                                                context,
+                                                vertexCountPerInstance,
+                                                instanceCount,
+                                                startVertexLocation,
+                                                startInstanceLocation);
+                                        });
+                                });
                         });
                     });
-                });
             }
         }
 

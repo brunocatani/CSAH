@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <optional>
 #include <ranges>
 #include <span>
 
@@ -82,6 +83,7 @@ namespace community_shaders::vanilla_fixes
         std::atomic_uint64_t stockFallbacks{};
         std::atomic_uint64_t focusShadersCreated{};
         std::atomic_bool directionalLightResultLogged{};
+        std::atomic_bool directionalCompositeResultLogged{};
 
         struct SslrPixelShaderPair final
         {
@@ -106,7 +108,30 @@ namespace community_shaders::vanilla_fixes
         std::array<DirectionalLightPixelShaderPair,
             kDirectionalLightPixelShaderPairCapacity>
             directionalLightPixelShaderPairs{};
-        std::atomic_bool directionalLightOwnershipDiagnosticRequested{ true };
+
+        struct DirectionalDiagnosticCompositePixelShaderPair final
+        {
+            std::atomic<ID3D11PixelShader*> key{};
+            ID3D11PixelShader* normal{};
+            std::array<ID3D11PixelShader*, 3> diagnostics{};
+        };
+
+        constexpr std::size_t
+            kDirectionalDiagnosticCompositePixelShaderPairCapacity = 8;
+        std::array<DirectionalDiagnosticCompositePixelShaderPair,
+            kDirectionalDiagnosticCompositePixelShaderPairCapacity>
+            directionalDiagnosticCompositePixelShaderPairs{};
+        std::atomic_uint8_t directionalLightDiagnosticMode{};
+
+        [[nodiscard]] std::optional<std::size_t> diagnosticIndex() noexcept
+        {
+            const auto raw = directionalLightDiagnosticMode.load(
+                std::memory_order_acquire);
+            if (raw == 0 || raw > 3) {
+                return std::nullopt;
+            }
+            return static_cast<std::size_t>(raw - 1);
+        }
 
         [[nodiscard]] bool matches(
             const ShaderIdentity& identity,
@@ -350,7 +375,7 @@ namespace community_shaders::vanilla_fixes
                     expected,
                     busy,
                     std::memory_order_acq_rel)) {
-                if (expected == fixedShader) {
+                if (expected == stockShader) {
                     return false;
                 }
                 continue;
@@ -359,7 +384,7 @@ namespace community_shaders::vanilla_fixes
             stockShader->AddRef();
             pair.fixed = fixedShader;
             pair.stock = stockShader;
-            pair.key.store(fixedShader, std::memory_order_release);
+            pair.key.store(stockShader, std::memory_order_release);
             return true;
         }
         return false;
@@ -371,9 +396,7 @@ namespace community_shaders::vanilla_fixes
         if (!engineShader) {
             return nullptr;
         }
-        const auto useFixed =
-            directionalLightOwnershipDiagnosticRequested.load(
-            std::memory_order_acquire);
+        const auto useFixed = diagnosticIndex().has_value();
         for (const auto& pair : directionalLightPixelShaderPairs) {
             if (pair.key.load(std::memory_order_acquire) == engineShader) {
                 return useFixed ? pair.fixed : pair.stock;
@@ -382,12 +405,164 @@ namespace community_shaders::vanilla_fixes
         return engineShader;
     }
 
-    void setDirectionalLightOwnershipDiagnosticRequested(
-        const bool requested) noexcept
+    bool isDirectionalLightDiagnosticPixelShader(
+        ID3D11PixelShader* shader) noexcept
     {
-        directionalLightOwnershipDiagnosticRequested.store(
-            requested,
+        if (!shader) {
+            return false;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        return std::ranges::any_of(
+            directionalLightPixelShaderPairs,
+            [shader, busy](
+                const DirectionalLightPixelShaderPair& pair) noexcept {
+                const auto* const key = pair.key.load(
+                    std::memory_order_acquire);
+                return key && key != busy &&
+                    pair.fixed == shader;
+            });
+    }
+
+    ID3D11PixelShader* retainedStockDirectionalLightPixelShader(
+        ID3D11PixelShader* diagnosticShader) noexcept
+    {
+        if (!diagnosticShader) {
+            return nullptr;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        for (const auto& pair : directionalLightPixelShaderPairs) {
+            const auto* const key = pair.key.load(
+                std::memory_order_acquire);
+            if (key && key != busy &&
+                pair.fixed == diagnosticShader) {
+                return pair.stock;
+            }
+        }
+        return nullptr;
+    }
+
+    bool publishDirectionalDiagnosticCompositePixelShaderPair(
+        ID3D11PixelShader* normalShader,
+        const std::array<ID3D11PixelShader*, 3>& diagnosticShaders) noexcept
+    {
+        if (!normalShader || std::ranges::any_of(
+                diagnosticShaders,
+                [](ID3D11PixelShader* shader) noexcept {
+                    return shader == nullptr;
+                })) {
+            return false;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        for (auto& pair : directionalDiagnosticCompositePixelShaderPairs) {
+            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
+            if (!pair.key.compare_exchange_strong(
+                    expected,
+                    busy,
+                    std::memory_order_acq_rel)) {
+                if (expected == normalShader) {
+                    return false;
+                }
+                continue;
+            }
+            normalShader->AddRef();
+            for (auto* shader : diagnosticShaders) {
+                shader->AddRef();
+            }
+            pair.normal = normalShader;
+            pair.diagnostics = diagnosticShaders;
+            pair.key.store(normalShader, std::memory_order_release);
+            return true;
+        }
+        return false;
+    }
+
+    ID3D11PixelShader*
+        selectDirectionalDiagnosticCompositePixelShaderForBinding(
+            ID3D11PixelShader* engineShader) noexcept
+    {
+        if (!engineShader) {
+            return nullptr;
+        }
+        const auto index = diagnosticIndex();
+        for (const auto& pair :
+             directionalDiagnosticCompositePixelShaderPairs) {
+            if (pair.key.load(std::memory_order_acquire) == engineShader) {
+                return index ? pair.diagnostics[*index] : pair.normal;
+            }
+        }
+        return engineShader;
+    }
+
+    bool isDirectionalDiagnosticCompositePixelShader(
+        ID3D11PixelShader* shader) noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        return std::ranges::any_of(
+            directionalDiagnosticCompositePixelShaderPairs,
+            [shader, busy](
+                const DirectionalDiagnosticCompositePixelShaderPair& pair)
+                noexcept {
+                const auto* const key = pair.key.load(
+                    std::memory_order_acquire);
+                return key && key != busy &&
+                    std::ranges::find(pair.diagnostics, shader) !=
+                    pair.diagnostics.end();
+            });
+    }
+
+    ID3D11PixelShader*
+        retainedNormalDirectionalDiagnosticCompositePixelShader(
+            ID3D11PixelShader* diagnosticShader) noexcept
+    {
+        if (!diagnosticShader) {
+            return nullptr;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        for (const auto& pair :
+             directionalDiagnosticCompositePixelShaderPairs) {
+            const auto* const key = pair.key.load(
+                std::memory_order_acquire);
+            if (key && key != busy &&
+                std::ranges::find(pair.diagnostics, diagnosticShader) !=
+                pair.diagnostics.end()) {
+                return pair.normal;
+            }
+        }
+        return nullptr;
+    }
+
+    void setDirectionalLightDiagnosticMode(
+        const DirectionalLightDiagnosticMode mode) noexcept
+    {
+        const auto raw = static_cast<std::uint8_t>(mode);
+        directionalLightDiagnosticMode.store(
+            raw <= 3 ? raw : 0,
             std::memory_order_release);
+    }
+
+    void reportDirectionalDiagnosticCompositeCreationResult(
+        const bool wasAccepted) noexcept
+    {
+        if (directionalCompositeResultLogged.exchange(
+                true,
+                std::memory_order_relaxed)) {
+            return;
+        }
+        if (wasAccepted) {
+            logging::info(
+                "Vanilla Fixes prepared three exclusive DFComposite directional diagnostics; each mode publishes only its private grayscale ownership channel.");
+        } else {
+            logging::error(
+                "Vanilla Fixes could not prepare the exclusive DFComposite directional diagnostics; normal composite rendering remains active.");
+        }
     }
 
     void reportShaderCreationResult(

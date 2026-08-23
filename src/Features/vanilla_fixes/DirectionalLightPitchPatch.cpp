@@ -22,10 +22,10 @@ namespace community_shaders::vanilla_fixes
             0xC065151Fu,
         };
         constexpr std::array<std::uint32_t, 4> kExactPatchedChecksum{
-            0x0F98DC79u,
-            0xEE67FB0Eu,
-            0x330A26E3u,
-            0x97D71A54u,
+            0xCE9BCEA1u,
+            0x4184B8E9u,
+            0xE6AD6315u,
+            0x42AF088Bu,
         };
         // Exact unique stock output suffix beginning at file offset 0x2420:
         //   mul o1.xyz, r0.wwww, r1.xyzx
@@ -46,10 +46,10 @@ namespace community_shaders::vanilla_fixes
             0x00004001u, 0x3F800000u, 0x0100003Eu,
         };
 
-        // Preserve the exact 35-token suffix length. Both render targets carry
-        // the same diagnostic so the engine's diffuse/specular composition
-        // cannot hide one of the ownership channels. Four one-token NOPs fill
-        // the stock suffix budget without changing any upstream calculation.
+        // Preserve the exact 35-token suffix length. Target zero carries the
+        // three ownership channels in the native /3 accumulation scale with
+        // alpha one; target one is intentionally unbound by the private draw.
+        // Four one-token NOPs fill the stock suffix budget.
         constexpr std::array<std::uint32_t, 35> kOwnershipDiagnosticOutputs{
             // mov r0.x, r5.w
             0x05000036u, 0x00100012u, 0x00000000u, 0x0010003Au,
@@ -60,15 +60,13 @@ namespace community_shaders::vanilla_fixes
             // mov r0.z, r0.w
             0x05000036u, 0x00100042u, 0x00000000u, 0x0010003Au,
             0x00000000u,
-            // mov r0.w, l(1.0)
+            // mov r0.w, l(3.0)
             0x05000036u, 0x00100082u, 0x00000000u, 0x00004001u,
-            0x3F800000u,
-            // mov o0.xyzw, r0.xyzw
-            0x05000036u, 0x001020F2u, 0x00000000u, 0x00100E46u,
-            0x00000000u,
-            // mov o1.xyzw, r0.xyzw
-            0x05000036u, 0x001020F2u, 0x00000001u, 0x00100E46u,
-            0x00000000u,
+            0x40400000u,
+            // div o0.xyzw, r0.xyzw, l(3, 3, 3, 3)
+            0x0A00000Eu, 0x001020F2u, 0x00000000u, 0x00100E46u,
+            0x00000000u, 0x00004002u, 0x40400000u, 0x40400000u,
+            0x40400000u, 0x40400000u,
             0x0100003Au, 0x0100003Au, 0x0100003Au, 0x0100003Au,
             0x0100003Eu,
         };

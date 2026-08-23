@@ -19,5 +19,7 @@ namespace community_shaders::vanilla_fixes
     void applySettings(const Settings& settings) noexcept;
     [[nodiscard]] Settings activeSettings() noexcept;
     [[nodiscard]] bool focusShadowsEnabled() noexcept;
+    [[nodiscard]] DirectionalLightDiagnosticMode
+        directionalLightDiagnosticMode() noexcept;
     [[nodiscard]] RuntimeSnapshot runtimeSnapshot() noexcept;
 }

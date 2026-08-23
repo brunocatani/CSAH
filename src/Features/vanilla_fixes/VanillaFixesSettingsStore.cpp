@@ -73,6 +73,38 @@ namespace community_shaders::vanilla_fixes
                        value ? L"1" : L"0",
                        path.c_str()) != FALSE;
         }
+
+        [[nodiscard]] DirectionalLightDiagnosticMode readDiagnosticMode(
+            const std::filesystem::path& path,
+            const DirectionalLightDiagnosticMode fallback) noexcept
+        {
+            const auto raw = GetPrivateProfileIntW(
+                kSection,
+                L"iDirectionalLightDiagnosticMode",
+                static_cast<int>(fallback),
+                path.c_str());
+            if (raw > static_cast<UINT>(
+                    DirectionalLightDiagnosticMode::shadowVisibility)) {
+                return fallback;
+            }
+            return static_cast<DirectionalLightDiagnosticMode>(raw);
+        }
+
+        [[nodiscard]] bool writeDiagnosticMode(
+            const std::filesystem::path& path,
+            const DirectionalLightDiagnosticMode mode) noexcept
+        {
+            constexpr std::array values{ L"0", L"1", L"2", L"3" };
+            const auto index = static_cast<std::size_t>(mode);
+            if (index >= values.size()) {
+                return false;
+            }
+            return WritePrivateProfileStringW(
+                       kSection,
+                       L"iDirectionalLightDiagnosticMode",
+                       values[index],
+                       path.c_str()) != FALSE;
+        }
     }
 
     Settings loadSettings(const std::filesystem::path& path) noexcept
@@ -114,6 +146,9 @@ namespace community_shaders::vanilla_fixes
                 path,
                 L"bUseSunbeams",
                 defaults.sunbeams),
+            .directionalLightDiagnosticMode = readDiagnosticMode(
+                path,
+                defaults.directionalLightDiagnosticMode),
         };
     }
 
@@ -122,7 +157,7 @@ namespace community_shaders::vanilla_fixes
         const auto path = settings_path::resolveIniPath();
         const auto settings = loadSettings(path);
         logging::info(
-            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, screenSpaceSSS={}, lensFlare={}, focusShadows={}, sunbeams={}.",
+            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, screenSpaceSSS={}, lensFlare={}, focusShadows={}, sunbeams={}, exclusiveDirectionalDiagnostic={}.",
             path.string(),
             settings.enabled,
             settings.precipitationOcclusion,
@@ -132,7 +167,8 @@ namespace community_shaders::vanilla_fixes
             settings.screenSpaceSubsurfaceScattering,
             settings.lensFlare,
             settings.focusShadows,
-            settings.sunbeams);
+            settings.sunbeams,
+            static_cast<unsigned>(settings.directionalLightDiagnosticMode));
         return settings;
     }
 
@@ -176,6 +212,10 @@ namespace community_shaders::vanilla_fixes
                       settings.focusShadows) &&
             success;
         success = writeBoolean(path, L"bUseSunbeams", settings.sunbeams) &&
+            success;
+        success = writeDiagnosticMode(
+                      path,
+                      settings.directionalLightDiagnosticMode) &&
             success;
         return success;
     }

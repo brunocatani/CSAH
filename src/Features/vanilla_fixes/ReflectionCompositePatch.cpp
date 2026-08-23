@@ -373,6 +373,54 @@ namespace community_shaders::vanilla_fixes
                 0x00000002u,
             };
 
+        [[nodiscard]] constexpr std::uint32_t diagnosticSwizzle(
+            const DirectionalDiagnosticChannel channel) noexcept
+        {
+            switch (channel) {
+            case DirectionalDiagnosticChannel::normalLightDot:
+                return 0x00100006u;  // r2.xxxx
+            case DirectionalDiagnosticChannel::normalViewDot:
+                return 0x00100556u;  // r2.yyyy
+            case DirectionalDiagnosticChannel::shadowVisibility:
+                return 0x00100AA6u;  // r2.zzzz
+            }
+            return 0;
+        }
+
+        [[nodiscard]] constexpr std::array<std::uint32_t, 7>
+            regularDiagnosticOutput(
+                const DirectionalDiagnosticChannel channel) noexcept
+        {
+            return {
+                // mov o0.xyz, r2.{channel}
+                0x05000036u,
+                0x00102072u,
+                0x00000000u,
+                diagnosticSwizzle(channel),
+                0x00000002u,
+                0x0100003Au,
+                0x0100003Au,
+            };
+        }
+
+        [[nodiscard]] constexpr std::array<std::uint32_t, 9>
+            conditionalDiagnosticOutput(
+                const DirectionalDiagnosticChannel channel) noexcept
+        {
+            return {
+                // mov o0.xyz, r2.{channel}
+                0x05000036u,
+                0x00102072u,
+                0x00000000u,
+                diagnosticSwizzle(channel),
+                0x00000002u,
+                0x0100003Au,
+                0x0100003Au,
+                0x0100003Au,
+                0x0100003Au,
+            };
+        }
+
         struct Chunk
         {
             std::uint32_t offset{};
@@ -502,10 +550,14 @@ namespace community_shaders::vanilla_fixes
         }
     }
 
-    bool patchStockReflectionCompositeSurfaceAnchoredCubemap(
-        std::span<const std::byte> stockBytecode,
-        std::vector<std::byte>& patchedBytecode) noexcept
+    namespace
     {
+        bool patchStockReflectionComposite(
+            std::span<const std::byte> stockBytecode,
+            const std::optional<DirectionalDiagnosticChannel>
+                diagnosticChannel,
+            std::vector<std::byte>& patchedBytecode) noexcept
+        {
         patchedBytecode.clear();
         try {
             std::vector<Chunk> chunks;
@@ -634,37 +686,65 @@ namespace community_shaders::vanilla_fixes
                 return false;
             }
             if (regularLayout) {
-                words.insert(
-                    words.begin() + *regularReconstructionPosition +
-                        kStockRegularPositionReconstruction.size(),
-                    kRegularSurfaceAnchorCorrection.begin(),
-                    kRegularSurfaceAnchorCorrection.end());
-                words.insert(
-                    words.begin() + *regularReconstructionPosition,
-                    kRegularSurfaceRaySetup.begin(),
-                    kRegularSurfaceRaySetup.end());
-                std::copy(
-                    kSurfaceAnchoredRegularCameraDeclaration.begin(),
-                    kSurfaceAnchoredRegularCameraDeclaration.end(),
-                    words.begin() + *regularCameraDeclarationPosition);
-                words[*regularCompressedPosition + 5] = 32;
-                words[*regularCompressedPosition + 13] = 33;
-                words[*regularCompressedPosition + 21] = 34;
-                words[*regularCompressedPosition + 29] = 35;
+                if (diagnosticChannel) {
+                    const auto output =
+                        regularDiagnosticOutput(*diagnosticChannel);
+                    std::copy(
+                        output.begin(),
+                        output.end(),
+                        words.begin() + *outputPosition);
+                    if (findUniqueSequence(
+                            std::span<const std::uint32_t>{ words },
+                            output) != outputPosition) {
+                        return false;
+                    }
+                } else {
+                    words.insert(
+                        words.begin() + *regularReconstructionPosition +
+                            kStockRegularPositionReconstruction.size(),
+                        kRegularSurfaceAnchorCorrection.begin(),
+                        kRegularSurfaceAnchorCorrection.end());
+                    words.insert(
+                        words.begin() + *regularReconstructionPosition,
+                        kRegularSurfaceRaySetup.begin(),
+                        kRegularSurfaceRaySetup.end());
+                    std::copy(
+                        kSurfaceAnchoredRegularCameraDeclaration.begin(),
+                        kSurfaceAnchoredRegularCameraDeclaration.end(),
+                        words.begin() + *regularCameraDeclarationPosition);
+                    words[*regularCompressedPosition + 5] = 32;
+                    words[*regularCompressedPosition + 13] = 33;
+                    words[*regularCompressedPosition + 21] = 34;
+                    words[*regularCompressedPosition + 29] = 35;
+                }
             } else {
-                words.insert(
-                    words.begin() + *conditionalReconstructionPosition +
-                        kStockConditionalPositionReconstruction.size(),
-                    kConditionalSurfaceAnchorCorrection.begin(),
-                    kConditionalSurfaceAnchorCorrection.end());
-                words.insert(
-                    words.begin() + *conditionalReconstructionPosition,
-                    kConditionalSurfaceRaySetup.begin(),
-                    kConditionalSurfaceRaySetup.end());
-                words[*conditionalCompressedPosition + 5] = 32;
-                words[*conditionalCompressedPosition + 13] = 33;
-                words[*conditionalCompressedPosition + 21] = 34;
-                words[*conditionalCompressedPosition + 29] = 35;
+                if (diagnosticChannel) {
+                    const auto output =
+                        conditionalDiagnosticOutput(*diagnosticChannel);
+                    std::copy(
+                        output.begin(),
+                        output.end(),
+                        words.begin() + *conditionalOutputPosition);
+                    if (findUniqueSequence(
+                            std::span<const std::uint32_t>{ words },
+                            output) != conditionalOutputPosition) {
+                        return false;
+                    }
+                } else {
+                    words.insert(
+                        words.begin() + *conditionalReconstructionPosition +
+                            kStockConditionalPositionReconstruction.size(),
+                        kConditionalSurfaceAnchorCorrection.begin(),
+                        kConditionalSurfaceAnchorCorrection.end());
+                    words.insert(
+                        words.begin() + *conditionalReconstructionPosition,
+                        kConditionalSurfaceRaySetup.begin(),
+                        kConditionalSurfaceRaySetup.end());
+                    words[*conditionalCompressedPosition + 5] = 32;
+                    words[*conditionalCompressedPosition + 13] = 33;
+                    words[*conditionalCompressedPosition + 21] = 34;
+                    words[*conditionalCompressedPosition + 29] = 35;
+                }
             }
             if (words.size() >
                 (std::numeric_limits<std::uint32_t>::max)()) {
@@ -752,5 +832,27 @@ namespace community_shaders::vanilla_fixes
             patchedBytecode.clear();
             return false;
         }
+        }
+    }
+
+    bool patchStockReflectionCompositeSurfaceAnchoredCubemap(
+        const std::span<const std::byte> stockBytecode,
+        std::vector<std::byte>& patchedBytecode) noexcept
+    {
+        return patchStockReflectionComposite(
+            stockBytecode,
+            std::nullopt,
+            patchedBytecode);
+    }
+
+    bool patchStockReflectionCompositeDirectionalDiagnostic(
+        const std::span<const std::byte> stockBytecode,
+        const DirectionalDiagnosticChannel channel,
+        std::vector<std::byte>& patchedBytecode) noexcept
+    {
+        return patchStockReflectionComposite(
+            stockBytecode,
+            channel,
+            patchedBytecode);
     }
 }

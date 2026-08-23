@@ -74,9 +74,9 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 93)
+if(NOT controlCount EQUAL 94)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 93 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 94 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -89,7 +89,7 @@ foreach(required IN ITEMS
     filmic-strength white-point-scale diffuse-ibl-level grass-wrap
     hair-highlight skin-strength wetness-amount cloud-opacity strength
     quality precipitation native-shadows-enabled shadow-distance mode
-    center-width)
+    center-width directional-diagnostic)
   list(FIND controlIds "${required}" controlIndex)
   if(controlIndex EQUAL -1)
     message(FATAL_ERROR
@@ -206,4 +206,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 93 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 94 shared-INI controls, direct runtime publication, no wrist provider or assets")
