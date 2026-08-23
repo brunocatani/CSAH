@@ -20,6 +20,7 @@ foreach(input IN ITEMS
     VANILLA_FOCUS_RUNTIME_SOURCE
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
+    VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
@@ -56,6 +57,14 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "kFocusShadow"
   "19504"
   "0xF4EBA56324D74051ull"
+  "kDirectionalLightPitchCutoff"
+  "9388"
+  "0x2BF99E4AE72E5F31ull"
+  "ShaderFix::directionalLightPitchCutoff"
+  "patchStockDirectionalLightPitchCutoff"
+  "publishDirectionalLightPixelShaderPair"
+  "selectDirectionalLightPixelShaderForBinding"
+  "accepted the exact 9,388-byte pitch-stable deferred directional-light shader"
   "CompleteIdentity{ 9348, 0x59FAED17411F08C7ull"
   "CompleteIdentity{ 9564, 0x0903D20AD75EBB0Eull"
   "CompleteIdentity{ 11100, 0x81247323F5EF60D3ull"
@@ -115,6 +124,7 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "InterlockedExchange8"
   "preserveStartupCapability"
   "setSslrSuiteRequested("
+  "setDirectionalLightPitchFixRequested(settings.enabled)"
   "kPollInterval = std::chrono::milliseconds(250)"
   "reloadIfChanged()")
 foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
@@ -143,6 +153,20 @@ file(READ "${VANILLA_REFLECTION_PATCH_SOURCE}" reflection_patch)
 vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
   "recomputeDxbcChecksum"
+  "patchedBytecode.swap(candidate)")
+file(READ "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}" directional_pitch_patch)
+vanilla_fixes_require_text("${directional_pitch_patch}" "directional pitch transform"
+  "kExactStockSize = 9388"
+  "kExactStockChecksum"
+  "0xEE23B97E"
+  "kStockFinalCascadeCutoff"
+  "kPitchStableFinalCascade"
+  "0x0010002A"
+  "0x00004001"
+  "0x3F800000"
+  "*cutoffOffset != 0xE74"
+  "recomputeDxbcChecksum"
+  "kExactPatchedChecksum"
   "patchedBytecode.swap(candidate)")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
@@ -174,6 +198,8 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectPixelShader("
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
+  "vanilla_fixes::selectDirectionalLightPixelShaderForBinding("
+  "vanilla_fixes::publishDirectionalLightPixelShaderPair("
   "vanilla_fixes::isSslrRaytracePixelShader(shader)"
   "vanilla_fixes::retainedStockSslrPixelShader(shader)"
   "reconcileSslrDrawShader(context, sslrEnvironment)"

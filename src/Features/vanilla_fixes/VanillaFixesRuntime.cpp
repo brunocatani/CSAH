@@ -2,6 +2,7 @@
 
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
+#include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
 
@@ -231,7 +232,7 @@ namespace community_shaders::vanilla_fixes
                         "Vanilla Fixes INI monitor could not start.");
                 }
                 logging::info(
-                    "Vanilla Fixes owns 8 verified engine gates plus the coordinated stable-reflection suite; shared-INI hot reload active={}.",
+                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the pitch-stable deferred directional-light cutoff; shared-INI hot reload active={}.",
                     hotReloadActive_.load(std::memory_order_acquire));
                 return true;
             }
@@ -248,6 +249,7 @@ namespace community_shaders::vanilla_fixes
                     std::memory_order_release);
                 setSslrSuiteRequested(
                     settings.enabled && settings.screenSpaceReflections);
+                setDirectionalLightPitchFixRequested(settings.enabled);
                 appliedPolicies_.fetch_add(1, std::memory_order_relaxed);
             }
 

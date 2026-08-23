@@ -1742,7 +1742,9 @@ namespace community_shaders::render
             if (replacementAccepted &&
                 (selection.fix == vanilla_fixes::ShaderFix::sslrPrepass ||
                     selection.fix ==
-                        vanilla_fixes::ShaderFix::sslrRaytrace)) {
+                        vanilla_fixes::ShaderFix::sslrRaytrace ||
+                    selection.fix ==
+                        vanilla_fixes::ShaderFix::directionalLightPitchCutoff)) {
                 ID3D11PixelShader* stockShader{};
                 const auto stockResult = original(
                     device,
@@ -1752,10 +1754,16 @@ namespace community_shaders::render
                     &stockShader);
                 const auto pairPublished = SUCCEEDED(stockResult) &&
                     stockShader &&
-                    vanilla_fixes::publishSslrPixelShaderPair(
-                        *shader,
-                        stockShader,
-                        selection.fix);
+                    (selection.fix ==
+                            vanilla_fixes::ShaderFix::directionalLightPitchCutoff ?
+                        vanilla_fixes::publishDirectionalLightPixelShaderPair(
+                            *shader,
+                            stockShader,
+                            selection.fix) :
+                        vanilla_fixes::publishSslrPixelShaderPair(
+                            *shader,
+                            stockShader,
+                            selection.fix));
                 if (stockShader) {
                     stockShader->Release();
                 }
@@ -1972,6 +1980,8 @@ namespace community_shaders::render
                 return;
             }
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
+            shader = vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
+                shader);
             activeCorrectedSslrRaytracePixel =
                 vanilla_fixes::isSslrRaytracePixelShader(shader);
             activeStockSslrRaytracePixel =

@@ -170,6 +170,12 @@ set(VANILLA_REFLECTION_PATCH_SOURCE
   "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.cpp")
 set(VANILLA_REFLECTION_PATCH_HEADER
   "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.h")
+set(VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE
+  "${VANILLA_FIXES_SOURCE_DIR}/DirectionalLightPitchPatch.cpp")
+set(VANILLA_DIRECTIONAL_PITCH_PATCH_HEADER
+  "${VANILLA_FIXES_SOURCE_DIR}/DirectionalLightPitchPatch.h")
+set(VANILLA_DIRECTIONAL_PITCH_PATCH_TOOL_SOURCE
+  "${ROOT_DIR}/tools/VanillaDirectionalLightPitchPatchTool.cpp")
 set(VANILLA_SAO_BLUR_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/VanillaFixes/SaoBlurHCS.hlsl")
 set(VANILLA_SAO_RAW_SOURCE
@@ -630,6 +636,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${VANILLA_FOCUS_RUNTIME_SOURCE}"
   "${VANILLA_RUNTIME_SOURCE}"
   "${VANILLA_SETTINGS_STORE_SOURCE}"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_TOOL_SOURCE}"
   "${VANILLA_REFLECTION_PATCH_SOURCE}"
   "${VANILLA_SSLR_ENVIRONMENT_SOURCE}"
   "${VANILLA_IBL_GENERATOR_SOURCE}"
@@ -859,6 +867,18 @@ add_executable(VanillaReflectionPatchTool
 target_compile_features(VanillaReflectionPatchTool PRIVATE cxx_std_23)
 target_include_directories(VanillaReflectionPatchTool PRIVATE "${SOURCE_DIR}")
 target_compile_options(VanillaReflectionPatchTool PRIVATE
+  /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+
+add_executable(VanillaDirectionalLightPitchPatchTool
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_TOOL_SOURCE}"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_HEADER}"
+  "${SOURCE_DIR}/Features/linear_lighting/DxbcChecksum.h")
+target_compile_features(
+  VanillaDirectionalLightPitchPatchTool PRIVATE cxx_std_23)
+target_include_directories(
+  VanillaDirectionalLightPitchPatchTool PRIVATE "${SOURCE_DIR}")
+target_compile_options(VanillaDirectionalLightPitchPatchTool PRIVATE
   /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
 
 add_custom_target(VerifyIblFoundation ALL
@@ -1276,6 +1296,7 @@ add_custom_target(VerifyVanillaFixes ALL
     "-DVANILLA_FOCUS_RUNTIME_SOURCE=${VANILLA_FOCUS_RUNTIME_SOURCE}"
     "-DVANILLA_RUNTIME_SOURCE=${VANILLA_RUNTIME_SOURCE}"
     "-DVANILLA_SETTINGS_STORE_SOURCE=${VANILLA_SETTINGS_STORE_SOURCE}"
+    "-DVANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE=${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}"
     "-DVANILLA_REFLECTION_PATCH_SOURCE=${VANILLA_REFLECTION_PATCH_SOURCE}"
     "-DVANILLA_SSLR_ENVIRONMENT_SOURCE=${VANILLA_SSLR_ENVIRONMENT_SOURCE}"
     "-DVANILLA_IBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}"
@@ -1882,6 +1903,8 @@ add_library(${PROJECT_NAME} SHARED
   "${UPSCALING_REACTIVE_SHADER_HEADER}"
   "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.cpp"
   "${VANILLA_FIXES_SOURCE_DIR}/FocusShadowRuntime.h"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}"
+  "${VANILLA_DIRECTIONAL_PITCH_PATCH_HEADER}"
   "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.cpp"
   "${VANILLA_FIXES_SOURCE_DIR}/ReflectionCompositePatch.h"
   "${VANILLA_FIXES_SOURCE_DIR}/SslrEnvironmentBinding.cpp"
@@ -1916,6 +1939,7 @@ add_dependencies(${PROJECT_NAME}
   VanillaFixesShaders
   UpscalingShaders
   VanillaReflectionPatchTool
+  VanillaDirectionalLightPitchPatchTool
   ContactShadowShader
   SkylightingShaders
   FilmicTonemappingShader
@@ -2235,6 +2259,7 @@ if(BUILD_FO4VR_CS_TESTS)
       "-DVANILLA_FOCUS_RUNTIME_SOURCE=${VANILLA_FOCUS_RUNTIME_SOURCE}"
       "-DVANILLA_RUNTIME_SOURCE=${VANILLA_RUNTIME_SOURCE}"
       "-DVANILLA_SETTINGS_STORE_SOURCE=${VANILLA_SETTINGS_STORE_SOURCE}"
+      "-DVANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE=${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}"
       "-DVANILLA_REFLECTION_PATCH_SOURCE=${VANILLA_REFLECTION_PATCH_SOURCE}"
       "-DVANILLA_SSLR_ENVIRONMENT_SOURCE=${VANILLA_SSLR_ENVIRONMENT_SOURCE}"
       "-DVANILLA_IBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}"
