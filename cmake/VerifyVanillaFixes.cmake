@@ -20,7 +20,6 @@ foreach(input IN ITEMS
     VANILLA_FOCUS_RUNTIME_SOURCE
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
-    VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
@@ -58,18 +57,9 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "kFocusShadow"
   "19504"
   "0xF4EBA56324D74051ull"
-  "kDirectionalLightOwnershipDiagnostic"
-  "9388"
-  "0x2BF99E4AE72E5F31ull"
-  "ShaderFix::directionalLightOwnershipDiagnostic"
-  "patchStockDirectionalLightOwnershipDiagnostic"
-  "publishDirectionalLightPixelShaderPair"
-  "selectDirectionalLightPixelShaderForBinding"
   "publishDirectionalDiagnosticCompositePixelShaderPair"
   "selectDirectionalDiagnosticCompositePixelShaderForBinding"
-  "isDirectionalLightDiagnosticPixelShader"
   "isDirectionalDiagnosticCompositePixelShader"
-  "accepted the exact 9,388-byte directional ownership diagnostic"
   "CompleteIdentity{ 9348, 0x59FAED17411F08C7ull"
   "CompleteIdentity{ 9564, 0x0903D20AD75EBB0Eull"
   "CompleteIdentity{ 11100, 0x81247323F5EF60D3ull"
@@ -144,7 +134,8 @@ endforeach()
 
 file(READ "${VANILLA_SETTINGS_STORE_SOURCE}" settings_store)
 vanilla_fixes_require_text("${settings_store}" "settings"
-  "kSection = L\"VanillaFixes\""
+  "kVanillaFixesSection = L\"VanillaFixes\""
+  "kDiagnosticsSection = L\"Diagnostics\""
   "L\"bEnabled\""
   "L\"bPrecipitationOcclusion\""
   "L\"bAllowImageSpaceModifiers\""
@@ -154,7 +145,7 @@ vanilla_fixes_require_text("${settings_store}" "settings"
   "L\"bLensFlareVr\""
   "L\"bVrAllowFocusShadows\""
   "L\"bUseSunbeams\""
-  "L\"iDirectionalLightDiagnosticMode\""
+  "L\"iDirectionalLightingMode\""
   "readDiagnosticMode("
   "writeDiagnosticMode("
   "settings_path::resolveIniPath()")
@@ -165,24 +156,8 @@ vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeDirectionalDiagnostic"
   "regularDiagnosticOutput"
   "conditionalDiagnosticOutput"
-  "mov o0.xyz, r2.{channel}"
+  "mov o0.xyz, r2.xyzx"
   "recomputeDxbcChecksum"
-  "patchedBytecode.swap(candidate)")
-file(READ "${VANILLA_DIRECTIONAL_PITCH_PATCH_SOURCE}" directional_pitch_patch)
-vanilla_fixes_require_text("${directional_pitch_patch}" "directional ownership transform"
-  "kExactStockSize = 9388"
-  "kExactStockChecksum"
-  "0xEE23B97E"
-  "kStockFinalOutputs"
-  "kOwnershipDiagnosticOutputs"
-  "0x0010003Au,"
-  "0x00000005u,"
-  "0x0010000Au,"
-  "0x00000008u,"
-  "*outputOffset != 0x2420"
-  "recomputeDxbcChecksum"
-  "kExactPatchedChecksum"
-  "0xCE9BCEA1"
   "patchedBytecode.swap(candidate)")
 file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE}"
   directional_diagnostic_surface)
@@ -226,9 +201,9 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectPixelShader("
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
-  "vanilla_fixes::selectDirectionalLightPixelShaderForBinding("
+  "selectDirectionalDiagnosticPixelShader("
   "selectDirectionalDiagnosticCompositePixelShaderForBinding("
-  "vanilla_fixes::publishDirectionalLightPixelShaderPair("
+  "isDirectionalDiagnosticPixelShader(shader)"
   "publishDirectionalDiagnosticCompositePixelShaderPair("
   "patchStockReflectionCompositeDirectionalDiagnostic("
   "ScopedDirectionalDiagnosticOutput"
@@ -291,8 +266,9 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"key\": \"bVrAllowFocusShadows\""
   "\"key\": \"bUseSunbeams\""
   "\"id\": \"directional-diagnostic\""
-  "\"key\": \"iDirectionalLightDiagnosticMode\""
-  "\"label\": \"Shadow Visibility\"")
+  "\"section\": \"Diagnostics\""
+  "\"key\": \"iDirectionalLightingMode\""
+  "\"label\": \"Shadow Visibility (Blue)\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")

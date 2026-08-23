@@ -373,30 +373,17 @@ namespace community_shaders::vanilla_fixes
                 0x00000002u,
             };
 
-        [[nodiscard]] constexpr std::uint32_t diagnosticSwizzle(
-            const DirectionalDiagnosticChannel channel) noexcept
-        {
-            switch (channel) {
-            case DirectionalDiagnosticChannel::normalLightDot:
-                return 0x00100006u;  // r2.xxxx
-            case DirectionalDiagnosticChannel::normalViewDot:
-                return 0x00100556u;  // r2.yyyy
-            case DirectionalDiagnosticChannel::shadowVisibility:
-                return 0x00100AA6u;  // r2.zzzz
-            }
-            return 0;
-        }
-
         [[nodiscard]] constexpr std::array<std::uint32_t, 7>
             regularDiagnosticOutput(
-                const DirectionalDiagnosticChannel channel) noexcept
+                const DirectionalDiagnosticChannel) noexcept
         {
             return {
-                // mov o0.xyz, r2.{channel}
+                // mov o0.xyz, r2.xyzx. The selected producer writes only its
+                // assigned red, green, or blue diagnostic channel.
                 0x05000036u,
                 0x00102072u,
                 0x00000000u,
-                diagnosticSwizzle(channel),
+                0x00100246u,
                 0x00000002u,
                 0x0100003Au,
                 0x0100003Au,
@@ -405,14 +392,15 @@ namespace community_shaders::vanilla_fixes
 
         [[nodiscard]] constexpr std::array<std::uint32_t, 9>
             conditionalDiagnosticOutput(
-                const DirectionalDiagnosticChannel channel) noexcept
+                const DirectionalDiagnosticChannel) noexcept
         {
             return {
-                // mov o0.xyz, r2.{channel}
+                // mov o0.xyz, r2.xyzx. The selected producer writes only its
+                // assigned red, green, or blue diagnostic channel.
                 0x05000036u,
                 0x00102072u,
                 0x00000000u,
-                diagnosticSwizzle(channel),
+                0x00100246u,
                 0x00000002u,
                 0x0100003Au,
                 0x0100003Au,

@@ -65,8 +65,14 @@ foreach(required IN ITEMS
     "ScopedComputeState restore"
     "recordDrawFallback"
     "selectPixelShader"
+    "selectDirectionalDiagnosticPixelShader"
+    "isDirectionalDiagnosticPixelShader"
+    "retainedOriginalDirectionalDiagnosticPixelShader"
     "tracksOriginal"
     "for (auto& replacement : replacements_)"
+    "directionalDiagnostics_"
+    "diagnosticBytecodeLength"
+    "Exclusive directional diagnostic selected live DFLight contract"
     "for (auto& original : originals_)"
     "original.shader.Reset()")
   string(FIND "${runtimeSource}${runtimeHeader}" "${required}" found)
@@ -255,7 +261,12 @@ foreach(required IN ITEMS
     "contact-shadow resolve assembly changed"
     "fo4vr_cs_contact_shadow_resolve"
     "multiply_rgb(1, visibility_scratch)"
-    "multiply_rgb(0, visibility_scratch)")
+    "multiply_rgb(0, visibility_scratch)"
+    "STOCK_DIRECTIONAL_FINAL_OUTPUTS"
+    "directional_diagnostic_outputs"
+    "patch_directional_diagnostic"
+    "diagnosticBytecode"
+    "directional diagnostic candidate {index}/{mode_index} validation")
   string(FIND "${generatorSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -266,6 +277,8 @@ endforeach()
 foreach(required IN ITEMS
     "contact_shadows::Runtime::get().onDeviceCreated"
     "contact_shadows::Runtime::get().onPixelShaderCreated"
+    "selectDirectionalDiagnosticPixelShader("
+    "isDirectionalDiagnosticPixelShader(shader)"
     "contactShadowRuntime.selectPixelShader("
     "contactShadowRuntime.tracksOriginal(shader)"
     "firstTrackedContactShaderBindLogged"

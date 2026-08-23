@@ -15,7 +15,8 @@ namespace community_shaders::vanilla_fixes
 {
     namespace
     {
-        constexpr auto kSection = L"VanillaFixes";
+        constexpr auto kVanillaFixesSection = L"VanillaFixes";
+        constexpr auto kDiagnosticsSection = L"Diagnostics";
 
         [[nodiscard]] bool parseBoolean(
             const std::wstring_view source,
@@ -50,7 +51,7 @@ namespace community_shaders::vanilla_fixes
         {
             std::array<wchar_t, 64> value{};
             const auto count = GetPrivateProfileStringW(
-                kSection,
+                kVanillaFixesSection,
                 key,
                 L"",
                 value.data(),
@@ -68,7 +69,7 @@ namespace community_shaders::vanilla_fixes
             const bool value) noexcept
         {
             return WritePrivateProfileStringW(
-                       kSection,
+                       kVanillaFixesSection,
                        key,
                        value ? L"1" : L"0",
                        path.c_str()) != FALSE;
@@ -79,8 +80,8 @@ namespace community_shaders::vanilla_fixes
             const DirectionalLightDiagnosticMode fallback) noexcept
         {
             const auto raw = GetPrivateProfileIntW(
-                kSection,
-                L"iDirectionalLightDiagnosticMode",
+                kDiagnosticsSection,
+                L"iDirectionalLightingMode",
                 static_cast<int>(fallback),
                 path.c_str());
             if (raw > static_cast<UINT>(
@@ -100,8 +101,8 @@ namespace community_shaders::vanilla_fixes
                 return false;
             }
             return WritePrivateProfileStringW(
-                       kSection,
-                       L"iDirectionalLightDiagnosticMode",
+                       kDiagnosticsSection,
+                       L"iDirectionalLightingMode",
                        values[index],
                        path.c_str()) != FALSE;
         }

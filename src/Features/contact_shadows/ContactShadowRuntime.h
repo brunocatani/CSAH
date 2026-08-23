@@ -20,6 +20,7 @@ namespace community_shaders::contact_shadows
         std::uint32_t matchingShaders{};
         std::uint32_t trackedShaders{};
         std::uint64_t replacementBinds{};
+        std::uint64_t diagnosticBinds{};
         std::uint64_t maskDispatches{};
         std::uint64_t maskRebuilds{};
         std::uint64_t drawScopes{};
@@ -91,8 +92,17 @@ namespace community_shaders::contact_shadows
         [[nodiscard]] PixelShaderSelection selectPixelShader(
             ID3D11PixelShader* requested,
             bool compositorFeatureActive) noexcept;
+        [[nodiscard]] PixelShaderSelection
+            selectDirectionalDiagnosticPixelShader(
+                ID3D11PixelShader* requested,
+                std::uint8_t diagnosticMode) noexcept;
         [[nodiscard]] bool tracksOriginal(
             ID3D11PixelShader* shader) const noexcept;
+        [[nodiscard]] bool isDirectionalDiagnosticPixelShader(
+            ID3D11PixelShader* shader) const noexcept;
+        [[nodiscard]] ID3D11PixelShader*
+            retainedOriginalDirectionalDiagnosticPixelShader(
+                ID3D11PixelShader* diagnosticShader) const noexcept;
         [[nodiscard]] ScopedDrawBindings scopeDraw(
             ID3D11DeviceContext* context,
             ShaderBinding binding,
@@ -133,6 +143,8 @@ namespace community_shaders::contact_shadows
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumShaderContracts> replacements_{};
+        std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 3>,
+            kMaximumShaderContracts> directionalDiagnostics_{};
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> dispatchCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> maskCompute_;
         Microsoft::WRL::ComPtr<ID3D11ComputeShader> resolveCompute_;
@@ -174,6 +186,7 @@ namespace community_shaders::contact_shadows
         std::atomic_uint32_t matchingShaders_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_uint64_t replacementBinds_{};
+        std::atomic_uint64_t diagnosticBinds_{};
         std::atomic_uint64_t maskDispatches_{};
         std::atomic_uint64_t maskRebuilds_{};
         std::atomic_uint64_t drawScopes_{};
@@ -182,6 +195,7 @@ namespace community_shaders::contact_shadows
         std::atomic_uint64_t failures_{};
         std::atomic_bool firstMatchLogged_{};
         std::atomic_bool firstReplacementBindLogged_{};
+        std::atomic_bool firstDiagnosticBindLogged_{};
         std::atomic_bool firstDispatchLogged_{};
         std::atomic_bool firstDispatchFailureLogged_{};
     };

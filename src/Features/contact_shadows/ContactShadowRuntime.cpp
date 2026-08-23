@@ -140,6 +140,11 @@ namespace community_shaders::contact_shadows
         for (auto& replacement : replacements_) {
             replacement.Reset();
         }
+        for (auto& contractDiagnostics : directionalDiagnostics_) {
+            for (auto& diagnostic : contractDiagnostics) {
+                diagnostic.Reset();
+            }
+        }
         dispatchCompute_.Reset();
         maskCompute_.Reset();
         resolveCompute_.Reset();
@@ -164,6 +169,7 @@ namespace community_shaders::contact_shadows
         trackedShaders_.store(0, std::memory_order_relaxed);
         firstMatchLogged_.store(false, std::memory_order_relaxed);
         firstReplacementBindLogged_.store(false, std::memory_order_relaxed);
+        firstDiagnosticBindLogged_.store(false, std::memory_order_relaxed);
         firstDispatchLogged_.store(false, std::memory_order_relaxed);
         firstDispatchFailureLogged_.store(false, std::memory_order_relaxed);
         uploadedRevision_ = 0;
@@ -181,6 +187,7 @@ namespace community_shaders::contact_shadows
             fo4vr_cs_contact_shadow_dflight_contracts.size() <=
             kMaximumShaderContracts);
         bool replacementCreationFailed{};
+        bool diagnosticCreationFailed{};
         for (std::size_t index = 0;
              index < fo4vr_cs_contact_shadow_dflight_contracts.size();
              ++index) {
@@ -203,14 +210,54 @@ namespace community_shaders::contact_shadows
                 continue;
             }
             replacements_[index].Attach(replacement);
+            for (std::size_t modeIndex = 0;
+                 modeIndex < contract.diagnosticBytecode.size();
+                 ++modeIndex) {
+                ID3D11PixelShader* diagnostic{};
+                const auto diagnosticResult = createPixelShader(
+                    device,
+                    contract.diagnosticBytecode[modeIndex],
+                    contract.diagnosticBytecodeLength[modeIndex],
+                    nullptr,
+                    &diagnostic);
+                if (FAILED(diagnosticResult) || !diagnostic) {
+                    diagnosticCreationFailed = true;
+                    failures_.fetch_add(1, std::memory_order_relaxed);
+                    logging::error(
+                        "Directional diagnostic DFLight contract {}/{} creation failed (HRESULT=0x{:08X}).",
+                        index,
+                        modeIndex + 1,
+                        static_cast<std::uint32_t>(diagnosticResult));
+                    continue;
+                }
+                directionalDiagnostics_[index][modeIndex].Attach(diagnostic);
+            }
         }
         if (replacementCreationFailed) {
             for (auto& replacement : replacements_) {
                 replacement.Reset();
             }
+            for (auto& contractDiagnostics : directionalDiagnostics_) {
+                for (auto& diagnostic : contractDiagnostics) {
+                    diagnostic.Reset();
+                }
+            }
             logging::error(
                 "Contact Shadows DFLight family failed closed because one or more structurally verified replacements were rejected.");
             return;
+        }
+        if (diagnosticCreationFailed) {
+            for (auto& contractDiagnostics : directionalDiagnostics_) {
+                for (auto& diagnostic : contractDiagnostics) {
+                    diagnostic.Reset();
+                }
+            }
+            logging::error(
+                "Directional diagnostics failed closed because one or more verified DFLight family variants were rejected; Contact Shadows remain available.");
+        } else {
+            logging::info(
+                "Directional diagnostics armed three color-coded modes across all {} verified DFLight contracts.",
+                fo4vr_cs_contact_shadow_dflight_contracts.size());
         }
 
         const auto dispatchResult = device->CreateComputeShader(
@@ -466,6 +513,38 @@ namespace community_shaders::contact_shadows
         return { requested, {} };
     }
 
+    PixelShaderSelection Runtime::selectDirectionalDiagnosticPixelShader(
+        ID3D11PixelShader* requested,
+        const std::uint8_t diagnosticMode) noexcept
+    {
+        if (!requested || diagnosticMode == 0 || diagnosticMode > 3) {
+            return { requested, {} };
+        }
+        const auto modeIndex = static_cast<std::size_t>(diagnosticMode - 1);
+        for (const auto& original : originals_) {
+            if (original.shader.Get() != requested ||
+                original.contractIndex >= directionalDiagnostics_.size()) {
+                continue;
+            }
+            auto* diagnostic =
+                directionalDiagnostics_[original.contractIndex][modeIndex].Get();
+            if (!diagnostic) {
+                return { requested, {} };
+            }
+            diagnosticBinds_.fetch_add(1, std::memory_order_relaxed);
+            if (!firstDiagnosticBindLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Exclusive directional diagnostic selected live DFLight contract {} in color-coded mode {}.",
+                    original.contractIndex,
+                    diagnosticMode);
+            }
+            return { diagnostic, { requested, diagnostic } };
+        }
+        return { requested, {} };
+    }
+
     bool Runtime::tracksOriginal(ID3D11PixelShader* shader) const noexcept
     {
         if (!shader) {
@@ -477,6 +556,44 @@ namespace community_shaders::contact_shadows
             }
         }
         return false;
+    }
+
+    bool Runtime::isDirectionalDiagnosticPixelShader(
+        ID3D11PixelShader* shader) const noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        for (const auto& contractDiagnostics : directionalDiagnostics_) {
+            for (const auto& diagnostic : contractDiagnostics) {
+                if (diagnostic.Get() == shader) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    ID3D11PixelShader*
+        Runtime::retainedOriginalDirectionalDiagnosticPixelShader(
+            ID3D11PixelShader* diagnosticShader) const noexcept
+    {
+        if (!diagnosticShader) {
+            return nullptr;
+        }
+        for (const auto& original : originals_) {
+            if (!original.shader ||
+                original.contractIndex >= directionalDiagnostics_.size()) {
+                continue;
+            }
+            for (const auto& diagnostic :
+                 directionalDiagnostics_[original.contractIndex]) {
+                if (diagnostic.Get() == diagnosticShader) {
+                    return original.shader.Get();
+                }
+            }
+        }
+        return nullptr;
     }
 
     void Runtime::uploadSettings(
@@ -953,6 +1070,7 @@ namespace community_shaders::contact_shadows
             .matchingShaders = matchingShaders_.load(std::memory_order_relaxed),
             .trackedShaders = trackedShaders_.load(std::memory_order_relaxed),
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
+            .diagnosticBinds = diagnosticBinds_.load(std::memory_order_relaxed),
             .maskDispatches = maskDispatches_.load(std::memory_order_relaxed),
             .maskRebuilds = maskRebuilds_.load(std::memory_order_relaxed),
             .drawScopes = drawScopes_.load(std::memory_order_relaxed),

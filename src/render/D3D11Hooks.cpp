@@ -2066,45 +2066,14 @@ namespace community_shaders::render
                 bytecode,
                 bytecodeLength,
                 patchStorage);
-            const auto directionalDiagnostic = selection.fix ==
-                vanilla_fixes::ShaderFix::
-                    directionalLightOwnershipDiagnostic;
-            ID3D11PixelShader* directionalDiagnosticShader{};
-            HRESULT result{ E_FAIL };
-            auto replacementAccepted = false;
-            if (directionalDiagnostic && selection.replaced()) {
-                const auto diagnosticResult = original(
-                    device,
-                    selection.data,
-                    selection.size,
-                    classLinkage,
-                    &directionalDiagnosticShader);
-                result = original(
-                    device,
-                    bytecode,
-                    bytecodeLength,
-                    classLinkage,
-                    shader);
-                replacementAccepted = SUCCEEDED(diagnosticResult) &&
-                    directionalDiagnosticShader && SUCCEEDED(result) &&
-                    shader && *shader &&
-                    vanilla_fixes::publishDirectionalLightPixelShaderPair(
-                        directionalDiagnosticShader,
-                        *shader,
-                        selection.fix);
-                if (directionalDiagnosticShader) {
-                    directionalDiagnosticShader->Release();
-                }
-            } else {
-                result = original(
-                    device,
-                    selection.data,
-                    selection.size,
-                    classLinkage,
-                    shader);
-                replacementAccepted = selection.replaced() &&
-                    SUCCEEDED(result) && shader && *shader;
-            }
+            auto result = original(
+                device,
+                selection.data,
+                selection.size,
+                classLinkage,
+                shader);
+            auto replacementAccepted = selection.replaced() &&
+                SUCCEEDED(result) && shader && *shader;
             if (replacementAccepted &&
                 (selection.fix == vanilla_fixes::ShaderFix::sslrPrepass ||
                     selection.fix ==
@@ -2394,11 +2363,18 @@ namespace community_shaders::render
                 return;
             }
             activeEnginePixelShader = shader;
-            activeDirectionalDiagnosticModeAtBind =
+            const auto requestedDirectionalDiagnosticMode =
                 vanilla_fixes::directionalLightDiagnosticMode();
+            activeDirectionalDiagnosticModeAtBind =
+                requestedDirectionalDiagnosticMode;
+            auto& contactShadowRuntime = contact_shadows::Runtime::get();
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
-            shader = vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
-                shader);
+            shader = contactShadowRuntime
+                         .selectDirectionalDiagnosticPixelShader(
+                             shader,
+                             static_cast<std::uint8_t>(
+                                 requestedDirectionalDiagnosticMode))
+                         .shader;
             shader = vanilla_fixes::
                 selectDirectionalDiagnosticCompositePixelShaderForBinding(
                     shader);
@@ -2408,14 +2384,14 @@ namespace community_shaders::render
                 activeCorrectedSslrRaytracePixel ?
                 vanilla_fixes::retainedStockSslrPixelShader(shader) :
                 nullptr;
-            activeDirectionalLightDiagnosticPixel = vanilla_fixes::
-                isDirectionalLightDiagnosticPixelShader(shader);
+            activeDirectionalLightDiagnosticPixel = contactShadowRuntime.
+                isDirectionalDiagnosticPixelShader(shader);
             activeDirectionalLightDiagnosticShader =
                 activeDirectionalLightDiagnosticPixel ? shader : nullptr;
             activeStockDirectionalLightPixel =
                 activeDirectionalLightDiagnosticPixel ?
-                vanilla_fixes::retainedStockDirectionalLightPixelShader(
-                    shader) :
+                contactShadowRuntime.
+                    retainedOriginalDirectionalDiagnosticPixelShader(shader) :
                 nullptr;
             activeDirectionalDiagnosticCompositePixel = vanilla_fixes::
                 isDirectionalDiagnosticCompositePixelShader(shader);
@@ -2474,7 +2450,6 @@ namespace community_shaders::render
             auto& replacementRuntime = linear_lighting::Runtime::get();
             auto& skylightingRuntime = skylighting::Runtime::get();
             auto& iblRuntime = ibl::Runtime::get();
-            auto& contactShadowRuntime = contact_shadows::Runtime::get();
             auto& wrappedGrassRuntime = wrapped_grass::Runtime::get();
             auto& hairSpecularRuntime = hair_specular::Runtime::get();
             auto& subsurfaceScatteringRuntime =
@@ -2738,9 +2713,12 @@ namespace community_shaders::render
                 activeDirectionalDiagnosticModeAtBind = requestedMode;
                 return;
             }
-            auto* desiredShader =
-                vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
-                    engineShader);
+            auto* desiredShader = contact_shadows::Runtime::get()
+                                      .selectDirectionalDiagnosticPixelShader(
+                                          engineShader,
+                                          static_cast<std::uint8_t>(
+                                              requestedMode))
+                                      .shader;
             desiredShader = vanilla_fixes::
                 selectDirectionalDiagnosticCompositePixelShaderForBinding(
                     desiredShader);

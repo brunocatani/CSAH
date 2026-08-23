@@ -29,7 +29,8 @@ namespace community_shaders::vanilla_fixes
 
     // Exclusive diagnostic transformation for the same four exact
     // DFComposite permutations. It publishes one channel from the private
-    // directional-light payload at t5 as grayscale and prevents albedo,
+    // directional-light payload at t5 in its assigned diagnostic colour and
+    // prevents albedo,
     // ambient, point lights, emissive, cubemaps, SSR, IBL, and material
     // modulation from contributing to the final composite output.
     [[nodiscard]] bool patchStockReflectionCompositeDirectionalDiagnostic(

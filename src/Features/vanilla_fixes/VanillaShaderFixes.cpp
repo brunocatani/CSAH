@@ -1,6 +1,5 @@
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 
-#include "Features/vanilla_fixes/DirectionalLightPitchPatch.h"
 #include "Features/vanilla_fixes/ReflectionCompositePatch.h"
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 
@@ -62,11 +61,6 @@ namespace community_shaders::vanilla_fixes
             0xF4EBA56324D74051ull,
             { 0x6C19C7D4u, 0xFF8FE5A6u, 0x94E7B9E2u, 0xC02418F2u },
         };
-        constexpr CompleteIdentity kDirectionalLightOwnershipDiagnostic{
-            9388,
-            0x2BF99E4AE72E5F31ull,
-            { 0xEE23B97Eu, 0x314D542Du, 0xE122666Du, 0xC065151Fu },
-        };
         constexpr std::array<CompleteIdentity, 4> kReflectionComposite{
             CompleteIdentity{ 9348, 0x59FAED17411F08C7ull,
                 { 0xAFC6ED93u, 0xD2B2CB41u, 0x992E9690u, 0x25CE4F5Au } },
@@ -82,7 +76,6 @@ namespace community_shaders::vanilla_fixes
         std::atomic_uint64_t accepted{};
         std::atomic_uint64_t stockFallbacks{};
         std::atomic_uint64_t focusShadersCreated{};
-        std::atomic_bool directionalLightResultLogged{};
         std::atomic_bool directionalCompositeResultLogged{};
 
         struct SslrPixelShaderPair final
@@ -96,18 +89,6 @@ namespace community_shaders::vanilla_fixes
         constexpr std::size_t kSslrPixelShaderPairCapacity = 16;
         std::array<SslrPixelShaderPair, kSslrPixelShaderPairCapacity>
             sslrPixelShaderPairs{};
-
-        struct DirectionalLightPixelShaderPair final
-        {
-            std::atomic<ID3D11PixelShader*> key{};
-            ID3D11PixelShader* fixed{};
-            ID3D11PixelShader* stock{};
-        };
-
-        constexpr std::size_t kDirectionalLightPixelShaderPairCapacity = 8;
-        std::array<DirectionalLightPixelShaderPair,
-            kDirectionalLightPixelShaderPairCapacity>
-            directionalLightPixelShaderPairs{};
 
         struct DirectionalDiagnosticCompositePixelShaderPair final
         {
@@ -213,22 +194,6 @@ namespace community_shaders::vanilla_fixes
                 sizeof(fo4vr_cs_vanilla_sslr_raytrace_ps),
                 ShaderFix::sslrRaytrace,
                 true,
-            };
-        }
-        if (matches(identity, kDirectionalLightOwnershipDiagnostic)) {
-            const auto stock = std::span<const std::byte>{
-                static_cast<const std::byte*>(bytecode),
-                bytecodeLength,
-            };
-            const auto ready =
-                patchStockDirectionalLightOwnershipDiagnostic(
-                stock,
-                patchStorage);
-            return {
-                ready ? patchStorage.data() : bytecode,
-                ready ? patchStorage.size() : bytecodeLength,
-                ShaderFix::directionalLightOwnershipDiagnostic,
-                ready,
             };
         }
         for (const auto& candidate : kReflectionComposite) {
@@ -358,91 +323,6 @@ namespace community_shaders::vanilla_fixes
             });
     }
 
-    bool publishDirectionalLightPixelShaderPair(
-        ID3D11PixelShader* fixedShader,
-        ID3D11PixelShader* stockShader,
-        const ShaderFix fix) noexcept
-    {
-        if (!fixedShader || !stockShader ||
-            fix != ShaderFix::directionalLightOwnershipDiagnostic) {
-            return false;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        for (auto& pair : directionalLightPixelShaderPairs) {
-            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
-            if (!pair.key.compare_exchange_strong(
-                    expected,
-                    busy,
-                    std::memory_order_acq_rel)) {
-                if (expected == stockShader) {
-                    return false;
-                }
-                continue;
-            }
-            fixedShader->AddRef();
-            stockShader->AddRef();
-            pair.fixed = fixedShader;
-            pair.stock = stockShader;
-            pair.key.store(stockShader, std::memory_order_release);
-            return true;
-        }
-        return false;
-    }
-
-    ID3D11PixelShader* selectDirectionalLightPixelShaderForBinding(
-        ID3D11PixelShader* engineShader) noexcept
-    {
-        if (!engineShader) {
-            return nullptr;
-        }
-        const auto useFixed = diagnosticIndex().has_value();
-        for (const auto& pair : directionalLightPixelShaderPairs) {
-            if (pair.key.load(std::memory_order_acquire) == engineShader) {
-                return useFixed ? pair.fixed : pair.stock;
-            }
-        }
-        return engineShader;
-    }
-
-    bool isDirectionalLightDiagnosticPixelShader(
-        ID3D11PixelShader* shader) noexcept
-    {
-        if (!shader) {
-            return false;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        return std::ranges::any_of(
-            directionalLightPixelShaderPairs,
-            [shader, busy](
-                const DirectionalLightPixelShaderPair& pair) noexcept {
-                const auto* const key = pair.key.load(
-                    std::memory_order_acquire);
-                return key && key != busy &&
-                    pair.fixed == shader;
-            });
-    }
-
-    ID3D11PixelShader* retainedStockDirectionalLightPixelShader(
-        ID3D11PixelShader* diagnosticShader) noexcept
-    {
-        if (!diagnosticShader) {
-            return nullptr;
-        }
-        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
-            std::uintptr_t{ 1 });
-        for (const auto& pair : directionalLightPixelShaderPairs) {
-            const auto* const key = pair.key.load(
-                std::memory_order_acquire);
-            if (key && key != busy &&
-                pair.fixed == diagnosticShader) {
-                return pair.stock;
-            }
-        }
-        return nullptr;
-    }
-
     bool publishDirectionalDiagnosticCompositePixelShaderPair(
         ID3D11PixelShader* normalShader,
         const std::array<ID3D11PixelShader*, 3>& diagnosticShaders) noexcept
@@ -558,7 +438,7 @@ namespace community_shaders::vanilla_fixes
         }
         if (wasAccepted) {
             logging::info(
-                "Vanilla Fixes prepared three exclusive DFComposite directional diagnostics; each mode publishes only its private grayscale ownership channel.");
+                "Vanilla Fixes prepared three exclusive DFComposite directional diagnostics; N.L is red, N.V is green, and shadow visibility is blue.");
         } else {
             logging::error(
                 "Vanilla Fixes could not prepare the exclusive DFComposite directional diagnostics; normal composite rendering remains active.");
@@ -575,19 +455,6 @@ namespace community_shaders::vanilla_fixes
         targeted.fetch_add(1, std::memory_order_relaxed);
         (wasAccepted ? accepted : stockFallbacks)
             .fetch_add(1, std::memory_order_relaxed);
-        if (selection.fix ==
-                ShaderFix::directionalLightOwnershipDiagnostic &&
-            !directionalLightResultLogged.exchange(
-                true,
-                std::memory_order_relaxed)) {
-            if (wasAccepted) {
-                logging::info(
-                    "Vanilla Fixes accepted the exact 9,388-byte directional ownership diagnostic (red=N.L, green=N.V, blue=shadow visibility) and retained its stock pair; the live Vanilla Fixes master toggle owns bind selection.");
-            } else {
-                logging::error(
-                    "Vanilla Fixes rejected the directional ownership diagnostic; the exact stock directional-light shader remains active.");
-            }
-        }
     }
 
     void reportFocusShaderCreated() noexcept

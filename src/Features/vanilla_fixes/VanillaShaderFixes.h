@@ -28,7 +28,6 @@ namespace community_shaders::vanilla_fixes
         sslrPrepass,
         sslrRaytrace,
         surfaceAnchoredCubemap,
-        directionalLightOwnershipDiagnostic,
     };
 
     struct ShaderSelection final
@@ -82,18 +81,6 @@ namespace community_shaders::vanilla_fixes
         ID3D11PixelShader* correctedShader) noexcept;
     [[nodiscard]] bool isSslrRaytracePixelShader(
         ID3D11PixelShader* shader) noexcept;
-    [[nodiscard]] bool publishDirectionalLightPixelShaderPair(
-        ID3D11PixelShader* fixedShader,
-        ID3D11PixelShader* stockShader,
-        ShaderFix fix) noexcept;
-    [[nodiscard]] ID3D11PixelShader*
-        selectDirectionalLightPixelShaderForBinding(
-            ID3D11PixelShader* engineShader) noexcept;
-    [[nodiscard]] bool isDirectionalLightDiagnosticPixelShader(
-        ID3D11PixelShader* shader) noexcept;
-    [[nodiscard]] ID3D11PixelShader*
-        retainedStockDirectionalLightPixelShader(
-            ID3D11PixelShader* diagnosticShader) noexcept;
     [[nodiscard]] bool publishDirectionalDiagnosticCompositePixelShaderPair(
         ID3D11PixelShader* normalShader,
         const std::array<ID3D11PixelShader*, 3>& diagnosticShaders) noexcept;

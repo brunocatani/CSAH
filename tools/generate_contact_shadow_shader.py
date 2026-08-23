@@ -73,6 +73,103 @@ WRAPPED_NDOTL_INSTRUCTION = (
     0x00000041,
     0x00000001,
 )
+STOCK_DIRECTIONAL_FINAL_OUTPUTS = (
+    # mul o1.xyz, r0.wwww, r1.xyzx
+    0x07000038,
+    0x00102072,
+    0x00000001,
+    0x00100FF6,
+    0x00000000,
+    0x00100246,
+    0x00000001,
+    # mul r0.xyz, r0.wwww, r0.xyzx
+    0x07000038,
+    0x00100072,
+    0x00000000,
+    0x00100FF6,
+    0x00000000,
+    0x00100246,
+    0x00000000,
+    # mov r0.w, l(0)
+    0x05000036,
+    0x00100082,
+    0x00000000,
+    0x00004001,
+    0x00000000,
+    # div o0.xyzw, r0.xyzw, l(3, 3, 3, 3)
+    0x0A00000E,
+    0x001020F2,
+    0x00000000,
+    0x00100E46,
+    0x00000000,
+    0x00004002,
+    0x40400000,
+    0x40400000,
+    0x40400000,
+    0x40400000,
+    # mov o1.w, l(1); ret
+    0x05000036,
+    0x00102082,
+    0x00000001,
+    0x00004001,
+    0x3F800000,
+    0x0100003E,
+)
+
+
+def directional_diagnostic_outputs(mode_index: int) -> tuple[int, ...]:
+    if mode_index < 0 or mode_index > 2:
+        raise ContractError("directional diagnostic mode is invalid")
+
+    zero_sources = (
+        (0x00100012, 0x00004001, 0x00000000),
+        (0x00100022, 0x00004001, 0x00000000),
+        (0x00100042, 0x00004001, 0x00000000),
+    )
+    signal_sources = (
+        (0x00100012, 0x0010003A, 0x00000005),  # red = N.L in r5.w
+        (0x00100022, 0x0010000A, 0x00000008),  # green = N.V in r8.x
+        (0x00100042, 0x0010003A, 0x00000000),  # blue = visibility in r0.w
+    )
+    words: list[int] = []
+    for component in range(3):
+        destination, source, register = (
+            signal_sources[component]
+            if component == mode_index
+            else zero_sources[component]
+        )
+        words.extend((0x05000036, destination, 0x00000000, source, register))
+    words.extend(
+        (
+            # Preserve the native /3 DFLight accumulation scale.
+            0x05000036,
+            0x00100082,
+            0x00000000,
+            0x00004001,
+            0x40400000,
+            0x0A00000E,
+            0x001020F2,
+            0x00000000,
+            0x00100E46,
+            0x00000000,
+            0x00004002,
+            0x40400000,
+            0x40400000,
+            0x40400000,
+            0x40400000,
+            # The private diagnostic draw binds only target zero. Four NOPs
+            # retain the exact stock suffix length before ret.
+            0x0100003A,
+            0x0100003A,
+            0x0100003A,
+            0x0100003A,
+            0x0100003E,
+        )
+    )
+    result = tuple(words)
+    if len(result) != len(STOCK_DIRECTIONAL_FINAL_OUTPUTS):
+        raise ContractError("directional diagnostic output length changed")
+    return result
 
 
 def arguments() -> argparse.Namespace:
@@ -703,6 +800,51 @@ def output_contract(
     return matches[0]
 
 
+def unique_sequence_offset(
+    words: list[int], sequence: tuple[int, ...]
+) -> int:
+    matches = [
+        offset
+        for offset in range(0, len(words) - len(sequence) + 1)
+        if tuple(words[offset : offset + len(sequence)]) == sequence
+    ]
+    if len(matches) != 1:
+        raise ContractError(
+            "directional DFLight final-output contract changed"
+        )
+    return matches[0]
+
+
+def patch_directional_diagnostic(original: bytes, mode_index: int) -> bytes:
+    version, chunks, shader_index, words = shader_words(original)
+    output_offset = unique_sequence_offset(
+        words,
+        STOCK_DIRECTIONAL_FINAL_OUTPUTS,
+    )
+    diagnostic = directional_diagnostic_outputs(mode_index)
+    words[output_offset : output_offset + len(diagnostic)] = diagnostic
+    if tuple(
+        words[output_offset : output_offset + len(diagnostic)]
+    ) != diagnostic:
+        raise ContractError("directional diagnostic output was not installed")
+    if any(
+        tuple(words[offset : offset + len(STOCK_DIRECTIONAL_FINAL_OUTPUTS)])
+        == STOCK_DIRECTIONAL_FINAL_OUTPUTS
+        for offset in range(
+            0,
+            len(words) - len(STOCK_DIRECTIONAL_FINAL_OUTPUTS) + 1,
+        )
+    ):
+        raise ContractError("stock directional output survived diagnostics")
+
+    patched_chunks = list(chunks)
+    patched_chunks[shader_index] = DxbcChunk(
+        patched_chunks[shader_index].tag,
+        pack_words(words),
+    )
+    return build_dxbc(version, patched_chunks)
+
+
 def patch_shader(
     original: bytes,
     contact_template: bytes,
@@ -1007,7 +1149,9 @@ def write_header(path: Path, data: bytes, symbol: str) -> None:
 
 def write_shader_family_header(
     path: Path,
-    candidates: list[tuple[census.DxbcContainer, bytes]],
+    candidates: list[
+        tuple[census.DxbcContainer, bytes, tuple[bytes, bytes, bytes]]
+    ],
 ) -> None:
     rows = [
         "#pragma once",
@@ -1017,7 +1161,8 @@ def write_shader_family_header(
         "",
     ]
     symbols: list[str] = []
-    for index, (_, data) in enumerate(candidates):
+    diagnostic_symbols: list[tuple[str, str, str]] = []
+    for index, (_, data, diagnostics) in enumerate(candidates):
         symbol = f"fo4vr_cs_contact_shadows_dflight_{index:03d}"
         symbols.append(symbol)
         rows.append(f"inline constexpr unsigned char {symbol}[] = {{")
@@ -1027,6 +1172,24 @@ def write_shader_family_header(
             )
             rows.append(f"    {values},")
         rows.extend(("};", ""))
+        current_diagnostic_symbols: list[str] = []
+        for mode_index, diagnostic in enumerate(diagnostics):
+            diagnostic_symbol = (
+                f"fo4vr_cs_directional_diagnostic_dflight_"
+                f"{index:03d}_{mode_index}"
+            )
+            current_diagnostic_symbols.append(diagnostic_symbol)
+            rows.append(
+                f"inline constexpr unsigned char {diagnostic_symbol}[] = {{"
+            )
+            for offset in range(0, len(diagnostic), 16):
+                values = ", ".join(
+                    f"0x{value:02x}"
+                    for value in diagnostic[offset : offset + 16]
+                )
+                rows.append(f"    {values},")
+            rows.extend(("};", ""))
+        diagnostic_symbols.append(tuple(current_diagnostic_symbols))
 
     rows.extend(
         (
@@ -1036,6 +1199,8 @@ def write_shader_family_header(
             "    std::array<unsigned char, 16> originalChecksum;",
             "    const unsigned char* replacementBytecode;",
             "    std::size_t replacementBytecodeLength;",
+            "    std::array<const unsigned char*, 3> diagnosticBytecode;",
+            "    std::array<std::size_t, 3> diagnosticBytecodeLength;",
             "};",
             "",
             "inline constexpr std::array<",
@@ -1043,13 +1208,23 @@ def write_shader_family_header(
             f"    {len(candidates)}> fo4vr_cs_contact_shadow_dflight_contracts{{{{",
         )
     )
-    for (item, _), symbol in zip(candidates, symbols, strict=True):
+    for (item, _, _), symbol, diagnostics in zip(
+        candidates,
+        symbols,
+        diagnostic_symbols,
+        strict=True,
+    ):
         checksum = ", ".join(
             f"0x{value:02x}" for value in bytes.fromhex(item.checksum)
         )
+        diagnostic_pointers = ", ".join(diagnostics)
+        diagnostic_lengths = ", ".join(
+            f"sizeof({diagnostic})" for diagnostic in diagnostics
+        )
         rows.append(
             "    Fo4vrCsContactShadowShaderContract{ "
-            f"{item.size}, {{ {checksum} }}, {symbol}, sizeof({symbol}) }},"
+            f"{item.size}, {{ {checksum} }}, {symbol}, sizeof({symbol}), "
+            f"{{ {diagnostic_pointers} }}, {{ {diagnostic_lengths} }} }},"
         )
     rows.extend(("}};", ""))
     path.write_text("\n".join(rows), encoding="utf-8")
@@ -1097,7 +1272,9 @@ def main() -> int:
             args.fxc.resolve(),
             temporary,
         )
-        candidates: list[tuple[census.DxbcContainer, bytes]] = []
+        candidates: list[
+            tuple[census.DxbcContainer, bytes, tuple[bytes, bytes, bytes]]
+        ] = []
         for original in originals:
             try:
                 candidate = patch_shader(
@@ -1107,12 +1284,16 @@ def main() -> int:
                     hair_specular_template,
                     basic_wetness_template,
                 )
+                diagnostics = tuple(
+                    patch_directional_diagnostic(original.data, mode_index)
+                    for mode_index in range(3)
+                )
             except ContractError:
                 continue
-            candidates.append((original, candidate))
+            candidates.append((original, candidate, diagnostics))
 
         compatible_identities = {
-            item.identity for item, _ in candidates
+            item.identity for item, _, _ in candidates
         }
         if compatible_identities != EXPECTED_COMPATIBLE_IDENTITIES:
             missing = sorted(
@@ -1139,7 +1320,7 @@ def main() -> int:
             "dcl_output o1.xyzw",
         )
         canonical_candidate: bytes | None = None
-        for index, (original, candidate) in enumerate(candidates):
+        for index, (original, candidate, diagnostics) in enumerate(candidates):
             candidate_path = temporary / f"ContactShadowsDFLight_{index:03d}.dxbc"
             assembly_path = temporary / f"ContactShadowsDFLight_{index:03d}.asm.txt"
             candidate_path.write_bytes(candidate)
@@ -1167,6 +1348,53 @@ def main() -> int:
                 raise ContractError(
                     f"contact-shadow candidate {index} contains an injected early return"
                 )
+            diagnostic_signals = (
+                ("mov r0.x, r5.w", "mov r0.y, l(0)", "mov r0.z, l(0)"),
+                ("mov r0.x, l(0)", "mov r0.y, r8.x", "mov r0.z, l(0)"),
+                ("mov r0.x, l(0)", "mov r0.y, l(0)", "mov r0.z, r0.w"),
+            )
+            for mode_index, diagnostic in enumerate(diagnostics):
+                diagnostic_path = temporary / (
+                    f"DirectionalDiagnosticDFLight_{index:03d}_"
+                    f"{mode_index}.dxbc"
+                )
+                diagnostic_assembly_path = temporary / (
+                    f"DirectionalDiagnosticDFLight_{index:03d}_"
+                    f"{mode_index}.asm.txt"
+                )
+                diagnostic_path.write_bytes(diagnostic)
+                run(
+                    [
+                        str(args.fxc.resolve()),
+                        "/dumpbin",
+                        "/nologo",
+                        "/Fc",
+                        str(diagnostic_assembly_path),
+                        str(diagnostic_path),
+                    ],
+                    f"directional diagnostic candidate {index}/{mode_index} validation",
+                )
+                diagnostic_assembly = diagnostic_assembly_path.read_text(
+                    encoding="utf-8"
+                )
+                for required in (
+                    *diagnostic_signals[mode_index],
+                    "mov r0.w, l(3.000000)",
+                    "div o0.xyzw, r0.xyzw, l(3.000000, 3.000000, 3.000000, 3.000000)",
+                ):
+                    if required not in diagnostic_assembly:
+                        raise ContractError(
+                            f"directional diagnostic candidate {index}/{mode_index} "
+                            f"validation failed: {required}"
+                        )
+                if sum(
+                    line.strip() == "ret"
+                    for line in diagnostic_assembly.splitlines()
+                ) != 1:
+                    raise ContractError(
+                        f"directional diagnostic candidate {index}/{mode_index} "
+                        "does not own exactly one return"
+                    )
             if original.data == canonical_original:
                 canonical_candidate = candidate
 
