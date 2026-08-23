@@ -250,9 +250,15 @@ namespace community_shaders::render
             activeDirectionalDiagnosticCompositeShader{};
         thread_local ID3D11PixelShader*
             activeNormalDirectionalDiagnosticCompositePixel{};
+        thread_local ID3D11PixelShader* activeEnginePixelShader{};
+        thread_local vanilla_fixes::DirectionalLightDiagnosticMode
+            activeDirectionalDiagnosticModeAtBind{
+                vanilla_fixes::DirectionalLightDiagnosticMode::off
+            };
         std::atomic_bool firstSslrDrawFallbackLogged{};
         std::atomic_bool firstDirectionalDiagnosticDrawFallbackLogged{};
         std::atomic_bool firstDirectionalDiagnosticCompositeFallbackLogged{};
+        std::atomic_bool firstDirectionalDiagnosticBindReconciledLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -2387,6 +2393,9 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            activeEnginePixelShader = shader;
+            activeDirectionalDiagnosticModeAtBind =
+                vanilla_fixes::directionalLightDiagnosticMode();
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
             shader = vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
                 shader);
@@ -2716,6 +2725,43 @@ namespace community_shaders::render
             }
         }
 
+        void reconcileDirectionalDiagnosticModeAtDraw(
+            ID3D11DeviceContext* context) noexcept
+        {
+            const auto requestedMode =
+                vanilla_fixes::directionalLightDiagnosticMode();
+            if (requestedMode == activeDirectionalDiagnosticModeAtBind) {
+                return;
+            }
+            auto* const engineShader = activeEnginePixelShader;
+            if (!context || !engineShader || !originalPSSetShader) {
+                activeDirectionalDiagnosticModeAtBind = requestedMode;
+                return;
+            }
+            auto* desiredShader =
+                vanilla_fixes::selectDirectionalLightPixelShaderForBinding(
+                    engineShader);
+            desiredShader = vanilla_fixes::
+                selectDirectionalDiagnosticCompositePixelShaderForBinding(
+                    desiredShader);
+            const auto trackedDirectionalPath = desiredShader != engineShader ||
+                activeDirectionalLightDiagnosticPixel ||
+                activeDirectionalDiagnosticCompositePixel;
+            if (!trackedDirectionalPath) {
+                activeDirectionalDiagnosticModeAtBind = requestedMode;
+                return;
+            }
+
+            hookPSSetShader(context, engineShader, nullptr, 0);
+            if (!firstDirectionalDiagnosticBindReconciledLogged.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Exclusive directional diagnostic reconciled a retained world-session shader bind at the draw boundary; requested mode={}.",
+                    static_cast<unsigned>(requestedMode));
+            }
+        }
+
         void STDMETHODCALLTYPE hookDrawIndexed(
             ID3D11DeviceContext* context,
             UINT indexCount,
@@ -2731,6 +2777,7 @@ namespace community_shaders::render
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexed");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawIndexed) {
@@ -2802,6 +2849,7 @@ namespace community_shaders::render
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "Draw");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDraw) {
@@ -2869,6 +2917,7 @@ namespace community_shaders::render
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexedInstanced");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawIndexedInstanced) {
@@ -2946,6 +2995,7 @@ namespace community_shaders::render
             consumePendingDFPrePassDescriptorAtDraw(context);
             reconcileGrassVertexClassAtDraw(context);
             retireDisabledFeatureBindings(context);
+            reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawInstanced");
             if (!activeDrawInterceptionRequired()) {
                 if (originalDrawInstanced) {

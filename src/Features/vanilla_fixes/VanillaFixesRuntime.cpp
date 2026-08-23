@@ -273,10 +273,18 @@ namespace community_shaders::vanilla_fixes
                 const auto diagnosticMode = settings.enabled ?
                     settings.directionalLightDiagnosticMode :
                     DirectionalLightDiagnosticMode::off;
-                diagnosticMode_.store(
-                    static_cast<std::uint8_t>(diagnosticMode),
-                    std::memory_order_release);
+                const auto rawDiagnosticMode =
+                    static_cast<std::uint8_t>(diagnosticMode);
+                const auto previousDiagnosticMode = diagnosticMode_.exchange(
+                    rawDiagnosticMode,
+                    std::memory_order_acq_rel);
                 setDirectionalLightDiagnosticMode(diagnosticMode);
+                if (previousDiagnosticMode != rawDiagnosticMode) {
+                    logging::info(
+                        "Exclusive directional diagnostic mode transition: {} -> {}; saved feature settings are preserved and draw-boundary shader reconciliation is armed.",
+                        previousDiagnosticMode,
+                        rawDiagnosticMode);
+                }
                 appliedPolicies_.fetch_add(1, std::memory_order_relaxed);
             }
 

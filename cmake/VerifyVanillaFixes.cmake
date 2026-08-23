@@ -131,6 +131,7 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "effectivePolicy(activeSettings_)"
   "setSslrSuiteRequested("
   "setDirectionalLightDiagnosticMode(diagnosticMode)"
+  "draw-boundary shader reconciliation is armed"
   "kPollInterval = std::chrono::milliseconds(250)"
   "reloadIfChanged()")
 foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
@@ -233,6 +234,8 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "ScopedDirectionalDiagnosticOutput"
   "ScopedDirectionalDiagnosticInput"
   "issueDrawWithDirectionalDiagnostic("
+  "reconcileDirectionalDiagnosticModeAtDraw(context)"
+  "activeEnginePixelShader = shader"
   "exclusiveDirectionalDiagnostic"
   "vanilla_fixes::isSslrRaytracePixelShader(shader)"
   "vanilla_fixes::retainedStockSslrPixelShader(shader)"
@@ -263,6 +266,15 @@ list(LENGTH directional_diagnostic_draws directional_diagnostic_draw_count)
 if(NOT directional_diagnostic_draw_count EQUAL 5)
   message(FATAL_ERROR
     "Exclusive directional diagnostic must own its helper and all four draw boundaries")
+endif()
+string(REGEX MATCHALL
+  "reconcileDirectionalDiagnosticModeAtDraw\\(context\\)"
+  directional_diagnostic_reconciles "${d3d11}")
+list(LENGTH directional_diagnostic_reconciles
+  directional_diagnostic_reconcile_count)
+if(NOT directional_diagnostic_reconcile_count EQUAL 4)
+  message(FATAL_ERROR
+    "Exclusive directional diagnostic must reconcile retained binds at all four draw boundaries")
 endif()
 
 file(READ "${VANILLA_DEVMENU_MANIFEST_SOURCE}" devmenu)
