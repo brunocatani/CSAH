@@ -48,8 +48,6 @@ namespace community_shaders::ibl
     {
         bool enabled{};
         bool dynamicCubemapsEnabled{};
-        bool freezePublishedCube{};
-        bool geometricLookupNormal{};
         bool diffuseEnabled{};
         bool resourcesReady{};
         bool diffuseSHUsable{};
@@ -354,7 +352,6 @@ namespace community_shaders::ibl
         bool loggedMaterialBindingFailure_{};
         bool materialConsumptionFailed_{};
         bool materialEnvironmentTransitionActive_{};
-        bool materialGeometricLookupApplied_{};
         float materialEnvironmentTransitionWeight_{ 1.0f };
         std::uint64_t materialEnvironmentTransitionStartMilliseconds_{};
         std::uint64_t nextMaterialEnvironmentTransitionTickMilliseconds_{};
@@ -362,8 +359,6 @@ namespace community_shaders::ibl
         std::atomic_bool resourcesReady_{};
         std::atomic_bool enabled_{ true };
         std::atomic_bool dynamicCubemapsEnabled_{ true };
-        std::atomic_bool freezePublishedCube_{};
-        std::atomic_bool geometricLookupNormal_{};
         std::atomic_bool diffuseEnabled_{ true };
         std::atomic_bool sslrConsumerEnabled_{};
         std::atomic_uint32_t diffuseLevelBits_{

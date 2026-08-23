@@ -70,18 +70,12 @@ int main()
         "bDiffuseEnabled=0\n"
         "fDiffuseLevel=1.35\n"
         "[DynamicCubemaps]\n"
-        "bEnabled=0\n"
-        "bFreezePublishedCube=1\n"
-        "bGeometricLookupNormal=1\n");
+        "bEnabled=0\n");
     const auto configured = loadSettings(ini.path());
     require(!configured.enabled, "disabled owned key");
     require(
         !configured.dynamicCubemapsEnabled,
         "disabled Dynamic Cubemaps key");
-    require(configured.freezePublishedCube, "freeze published cube key");
-    require(
-        configured.geometricLookupNormal,
-        "geometric lookup normal key");
     require(!configured.diffuseEnabled, "disabled diffuse key");
     require(
         std::abs(configured.diffuseLevel - 1.35f) < 1.0e-6f,
@@ -96,8 +90,6 @@ int main()
     require(
         independent.dynamicCubemapsEnabled,
         "Dynamic Cubemaps default");
-    require(!independent.freezePublishedCube, "freeze default");
-    require(!independent.geometricLookupNormal, "geometric default");
     require(independent.diffuseEnabled, "diffuse default");
     require(
         std::abs(independent.diffuseLevel - 1.0f) < 1.0e-6f,

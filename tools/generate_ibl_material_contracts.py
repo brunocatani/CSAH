@@ -172,17 +172,12 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "SurfaceClass : register(t47)",
         "if (IblWeight > 1.0 / 255.0)",
         "saturate(validity * IblWeight)",
-        "float3 dynamicDirection = -input.DirectionAndArray.xyz",
+        "const float3 dynamicDirection = -input.DirectionAndArray.xyz",
         "EnvironmentTransitionWeight",
         "PreviousEnvironmentAvailable",
         "PublishedProbeOrigin",
         "PreviousPublishedProbeOrigin",
-        "ReconstructReceiverGeometry",
-        "GeometricReflectionDirection",
-        "GeometricLookupNormal",
-        "cross(",
-        "ddx(receiverViewPosition)",
-        "ddy(receiverViewPosition)",
+        "ReconstructReceiverWorldPosition",
         "CorrectProbeDirection",
         "Scene[80u + eye].xyz",
         "lerp(vanilla.xyz, published, weight)",
@@ -219,7 +214,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB5[4], immediateIndexed",
+        "dcl_constantbuffer CB5[3], immediateIndexed",
         "dcl_constantbuffer CB9[2], immediateIndexed",
         "dcl_constantbuffer CB12[82], dynamicIndexed",
         "dcl_sampler s3, mode_default",
@@ -899,8 +894,8 @@ def validate_candidate(
     candidate_declarations = census.parse_declarations(candidate_text)
     original_buffers = dict(original_declarations.constant_buffers)
     candidate_buffers = dict(candidate_declarations.constant_buffers)
-    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 4:
-        raise ContractError(f"{name} does not add exact b5[4]")
+    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 3:
+        raise ContractError(f"{name} does not add exact b5[3]")
     if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
         raise ContractError(f"{name} does not add exact b9[2]")
     expected_buffers = dict(original_buffers)
@@ -1188,8 +1183,7 @@ def main() -> int:
             "IBL material contracts verified: 41 exact DFComposite identities, "
             "including four surface-anchored cubemap permutations; "
             "vanilla t8/s8 fallback and weight-gated, validity-aware "
-            "position-corrected t29..t35/b5 consumption with an optional "
-            "depth-derived geometric lookup ray."
+            "position-corrected t29..t35/b5 consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)

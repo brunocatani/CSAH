@@ -33,21 +33,6 @@
           ]
         },
         {
-          "id": "cubemap-test",
-          "label": "Cubemap Test",
-          "groups": [
-            {
-              "id": "cubemap-source-lookup",
-              "label": "Source versus lookup",
-              "description": "Diagnostic controls for the HMD-coupled reflection investigation. Both controls default off.",
-              "controls": [
-                { "id": "cubemap-freeze", "type": "toggle", "label": "Freeze Published Cube", "help": "Allows the first valid generation, then stops new cubemap capture dispatches. Disable to resume live updates.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DynamicCubemaps", "key": "bFreezePublishedCube" } },
-                { "id": "cubemap-geometric-normal", "type": "toggle", "label": "Geometric Lookup Normal", "help": "Uses a depth-derived macro normal only for the dynamic-cubemap lookup ray. Material normal maps remain active in ordinary lighting.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DynamicCubemaps", "key": "bGeometricLookupNormal" } }
-              ]
-            }
-          ]
-        },
-        {
           "id": "materials",
           "label": "Materials",
           "groups": [

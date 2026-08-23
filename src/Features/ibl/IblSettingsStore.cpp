@@ -22,9 +22,6 @@ namespace community_shaders::ibl
         constexpr auto kDynamicCubemapsSection = L"DynamicCubemaps";
         constexpr auto kEnabledKey = L"bEnabled";
         constexpr auto kDynamicCubemapsEnabledKey = L"bEnabled";
-        constexpr auto kFreezePublishedCubeKey = L"bFreezePublishedCube";
-        constexpr auto kGeometricLookupNormalKey =
-            L"bGeometricLookupNormal";
         constexpr auto kDiffuseEnabledKey = L"bDiffuseEnabled";
         constexpr auto kDiffuseLevelKey = L"fDiffuseLevel";
 
@@ -148,16 +145,6 @@ namespace community_shaders::ibl
                 kDynamicCubemapsSection,
                 kDynamicCubemapsEnabledKey,
                 defaults.dynamicCubemapsEnabled),
-            .freezePublishedCube = readBoolean(
-                path,
-                kDynamicCubemapsSection,
-                kFreezePublishedCubeKey,
-                defaults.freezePublishedCube),
-            .geometricLookupNormal = readBoolean(
-                path,
-                kDynamicCubemapsSection,
-                kGeometricLookupNormalKey,
-                defaults.geometricLookupNormal),
             .diffuseEnabled = readBoolean(
                 path,
                 kIblSection,
@@ -175,12 +162,10 @@ namespace community_shaders::ibl
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Image Based Lighting settings loaded from '{}'; enabled={}, Dynamic Cubemaps enabled={}, freeze published cube={}, geometric lookup normal={}, diffuse enabled={}, diffuse level={}.",
+            "Image Based Lighting settings loaded from '{}'; enabled={}, Dynamic Cubemaps enabled={}, diffuse enabled={}, diffuse level={}.",
             path.string(),
             result.enabled,
             result.dynamicCubemapsEnabled,
-            result.freezePublishedCube,
-            result.geometricLookupNormal,
             result.diffuseEnabled,
             result.diffuseLevel);
         return result;
@@ -213,18 +198,6 @@ namespace community_shaders::ibl
                       kDynamicCubemapsSection,
                       kDynamicCubemapsEnabledKey,
                       safe.dynamicCubemapsEnabled ? L"1" : L"0") &&
-            success;
-        success = writeValue(
-                      path,
-                      kDynamicCubemapsSection,
-                      kFreezePublishedCubeKey,
-                      safe.freezePublishedCube ? L"1" : L"0") &&
-            success;
-        success = writeValue(
-                      path,
-                      kDynamicCubemapsSection,
-                      kGeometricLookupNormalKey,
-                      safe.geometricLookupNormal ? L"1" : L"0") &&
             success;
         success = writeValue(
                       path,

@@ -74,14 +74,13 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 95)
+if(NOT controlCount EQUAL 93)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 95 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 93 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
     linear-lighting native-darkness ibl dynamic-cubemaps diffuse-ibl skylighting
-    cubemap-freeze cubemap-geometric-normal
     skylighting-quality skylighting-diffuse-min skylighting-specular-min
     skylighting-zenith filmic-tonemapping
     cloud-shadows complex-environment complex-parallax wrapped-grass
@@ -207,4 +206,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 95 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 93 shared-INI controls, direct runtime publication, no wrist provider or assets")
