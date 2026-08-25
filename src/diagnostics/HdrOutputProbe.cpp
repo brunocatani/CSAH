@@ -238,19 +238,24 @@ namespace community_shaders::diagnostics::hdr_output_probe
         auto* expectedRender = image + kRenderFunctionRva;
         const auto cellMatches = readable(renderCell, sizeof(*renderCell)) &&
             *renderCell == expectedRender;
-        const auto codeMatches =
-            executable(expectedRender, kRenderSignature.size()) &&
+        const auto codeExecutable =
+            executable(expectedRender, kRenderSignature.size());
+        const auto codeMatches = codeExecutable &&
             std::memcmp(
                 expectedRender,
                 kRenderSignature.data(),
                 kRenderSignature.size()) == 0;
-        if (!cellMatches || !codeMatches) {
+        if (!cellMatches || !codeExecutable) {
             validationFailures.fetch_add(1, std::memory_order_relaxed);
             logging::error(
-                "HDR output ownership probe identity gate failed (vtableCell={}, code={}); no engine state was modified.",
+                "HDR output ownership probe identity gate failed (vtableCell={}, executableTarget={}); no engine state was modified.",
                 cellMatches,
-                codeMatches);
+                codeExecutable);
             return false;
+        }
+        if (!codeMatches) {
+            logging::warn(
+                "HDR output ownership probe found the exact FO4VR vtable cell and executable render target, but its verified native prologue is already detoured. The probe will own only the vtable cell and chain through the existing render target.");
         }
         originalRender = reinterpret_cast<RenderFunction>(expectedRender);
         if (!patchPointer(
