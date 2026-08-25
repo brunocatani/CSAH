@@ -12,6 +12,7 @@
 #include "Features/linear_lighting/LinearLightingSettings.h"
 #include "Features/native_shadows/NativeShadowSettings.h"
 #include "Features/skylighting/SkylightingSettings.h"
+#include "Features/sky_sync/SkySyncSettings.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
 #include "Features/vanilla_fixes/VanillaFixesSettings.h"
 #include "Features/wrapped_grass/WrappedGrassSettings.h"
@@ -37,6 +38,7 @@ namespace community_shaders::shared_settings
         vanilla_fixes::Settings vanillaFixes{};
         native_shadows::Settings nativeShadows{};
         skylighting::Settings skylighting{};
+        sky_sync::Settings skySync{};
 
         [[nodiscard]] bool operator==(const Snapshot&) const noexcept = default;
     };
@@ -58,6 +60,7 @@ namespace community_shaders::shared_settings
         bool vanillaFixes{};
         bool nativeShadows{};
         bool skylighting{};
+        bool skySync{};
 
         [[nodiscard]] bool any() const noexcept
         {
@@ -79,7 +82,8 @@ namespace community_shaders::shared_settings
                 static_cast<std::size_t>(basicWetness) +
                 static_cast<std::size_t>(cloudShadows) +
                 static_cast<std::size_t>(vanillaFixes) +
-                static_cast<std::size_t>(skylighting);
+                static_cast<std::size_t>(skylighting) +
+                static_cast<std::size_t>(skySync);
         }
     };
 
@@ -108,6 +112,7 @@ namespace community_shaders::shared_settings
             .vanillaFixes = previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
             .skylighting = previous.skylighting != next.skylighting,
+            .skySync = previous.skySync != next.skySync,
         };
     }
 

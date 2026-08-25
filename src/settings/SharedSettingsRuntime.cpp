@@ -22,6 +22,8 @@
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/skylighting/SkylightingSettingsStore.h"
+#include "Features/sky_sync/SkySyncRuntime.h"
+#include "Features/sky_sync/SkySyncSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
@@ -103,6 +105,7 @@ namespace community_shaders::shared_settings
                 .vanillaFixes = vanilla_fixes::loadSettings(path),
                 .nativeShadows = native_shadows::loadSettings(path),
                 .skylighting = skylighting::loadSettings(path),
+                .skySync = sky_sync::loadSettings(path),
             };
         }
 
@@ -160,6 +163,9 @@ namespace community_shaders::shared_settings
             }
             if (changes.skylighting) {
                 skylighting::Runtime::get().applySettings(next.skylighting);
+            }
+            if (changes.skySync) {
+                sky_sync::Runtime::get().applySettings(next.skySync);
             }
         }
 

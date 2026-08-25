@@ -27,6 +27,8 @@
 #include "Features/skylighting/SkylightingNativeHooks.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/skylighting/SkylightingSettingsStore.h"
+#include "Features/sky_sync/SkySyncRuntime.h"
+#include "Features/sky_sync/SkySyncSettingsStore.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
@@ -120,6 +122,8 @@ namespace
             (void)community_shaders::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
             (void)ensureSkylightingNativeHooks(
+                "GameDataReady");
+            (void)community_shaders::sky_sync::Runtime::get().validateHook(
                 "GameDataReady");
             (void)community_shaders::dlaa::validateEngineHooks(
                 "GameDataReady");
@@ -358,6 +362,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::native_shadows::loadSettings();
         const auto skylightingSettings =
             community_shaders::skylighting::loadSettings();
+        const auto skySyncSettings =
+            community_shaders::sky_sync::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
@@ -382,6 +388,12 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             basicWetnessSettings);
         community_shaders::skylighting::Runtime::get().applySettings(
             skylightingSettings);
+        community_shaders::sky_sync::Runtime::get().applySettings(
+            skySyncSettings);
+        if (!community_shaders::sky_sync::Runtime::get().installHook()) {
+            community_shaders::logging::warn(
+                "Sky Sync hook is unavailable; native celestial lighting remains unchanged.");
+        }
         if (!community_shaders::native_shadows::startRuntime(
                 nativeShadowSettings)) {
             community_shaders::logging::warn(
