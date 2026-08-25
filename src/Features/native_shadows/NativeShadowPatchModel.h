@@ -24,9 +24,8 @@ namespace community_shaders::native_shadows::patch_model
     constexpr std::size_t kCachedOrthoShadowFilterOffset = 0x190;
     constexpr std::uint32_t kExtendedCascadeCount = 4;
 
-    constexpr std::array<std::uintptr_t, 4> kCascadeCountReadRvas{
+    constexpr std::array<std::uintptr_t, 3> kCascadeCountReadRvas{
         0x027E929A,
-        0x0290DC03,
         0x028A57A0,
         0x028A5C3C,
     };
@@ -71,10 +70,10 @@ namespace community_shaders::native_shadows::patch_model
 
     constexpr std::array<BytePatch, 3> kCascadeScalarPatches{
         BytePatch{
-            .rva = 0x0290DC09,
-            .expected = { 0x02 },
-            .replacement = { 0x04 },
-            .size = 1,
+            .rva = 0x0290DC03,
+            .expected = { 0x83, 0x3D, 0x0E, 0x6C, 0x01, 0x01, 0x02 },
+            .replacement = { 0x83, 0x3D, 0x0E, 0x6C, 0x01, 0x01, 0x04 },
+            .size = 7,
             .name = "cascade setup count comparison",
         },
         BytePatch{
