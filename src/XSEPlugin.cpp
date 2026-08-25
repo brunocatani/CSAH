@@ -33,6 +33,7 @@
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
+#include "diagnostics/HdrOutputProbe.h"
 #include "diagnostics/LinearLightingQualification.h"
 #include "render/BSDFPrePassShaderHook.h"
 #include "render/BSLightingGeometryHook.h"
@@ -394,6 +395,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         if (!community_shaders::render::installEarlyD3D11Hooks()) {
             community_shaders::logging::warn(
                 "Verified D3D11 bootstrap was not installed; plugin remains loaded but all rendering stays vanilla.");
+        }
+        if (!community_shaders::diagnostics::hdr_output_probe::install()) {
+            community_shaders::logging::warn(
+                "Verified FO4VR HDR output ownership probe was not installed; Filmic/Bloom/Glare diagnosis remains fail-closed.");
         }
         if (!community_shaders::dlaa::installEngineHooks()) {
             community_shaders::logging::warn(

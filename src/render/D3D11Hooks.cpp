@@ -22,6 +22,7 @@
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
+#include "diagnostics/HdrOutputProbe.h"
 #include "support/Logger.h"
 
 #include <MinHook.h>
@@ -2528,6 +2529,10 @@ namespace community_shaders::render
                 selection,
                 replacementAccepted);
             if (SUCCEEDED(result) && shader && *shader) {
+                diagnostics::hdr_output_probe::onPixelShaderCreated(
+                    bytecode,
+                    bytecodeLength,
+                    *shader);
                 community_shaders::dlaa::Runtime::get().onPixelShaderCreated(
                     *shader,
                     identity.bytecodeSize,
@@ -2723,6 +2728,9 @@ namespace community_shaders::render
                 return;
             }
             activeEnginePixelShader = shader;
+            diagnostics::hdr_output_probe::onPixelShaderBound(
+                context,
+                shader);
             const auto requestedDirectionalDiagnosticMode =
                 vanilla_fixes::directionalLightDiagnosticMode();
             activeDirectionalDiagnosticModeAtBind =
