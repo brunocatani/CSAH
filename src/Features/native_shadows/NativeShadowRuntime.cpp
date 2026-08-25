@@ -1240,18 +1240,21 @@ namespace community_shaders::native_shadows
         }
 
         const auto base = moduleBase();
+        // Extended cascades own the larger transaction. Validate and apply
+        // them before any independent tiled-lighting mutation so a rejected
+        // cascade identity leaves the native renderer completely untouched.
         auto accepted = true;
-        if (g_state.settings.tiledDeferredLighting) {
-            accepted = applyTiledLightingPatches(base) && accepted;
-        }
         if (g_state.settings.extendedDirectionalCascades) {
             accepted = applyCascadePatches(base) && accepted;
+        }
+        if (accepted && g_state.settings.tiledDeferredLighting) {
+            accepted = applyTiledLightingPatches(base) && accepted;
         }
         g_state.earlyContractAccepted = accepted;
         if (!accepted) {
             ++g_state.failures;
             logging::error(
-                "Native Shadows rejected at least one early FO4VR contract. Unknown boundaries were not patched and full cascade masks remain fail-closed.");
+                "Native Shadows rejected at least one early FO4VR contract. No later settings, distances, scene nodes, arrays, or masks will be changed.");
         }
         return accepted;
     }
@@ -1259,7 +1262,8 @@ namespace community_shaders::native_shadows
     void onGameDataReady() noexcept
     {
         std::scoped_lock lock(g_mutex);
-        if (!g_state.started || !g_state.settings.enabled) {
+        if (!g_state.started || !g_state.settings.enabled ||
+            !g_state.earlyContractAccepted) {
             return;
         }
         if (!forceTiledSetting()) {
@@ -1291,7 +1295,8 @@ namespace community_shaders::native_shadows
     void onWorldReady(const char* boundary) noexcept
     {
         std::scoped_lock lock(g_mutex);
-        if (!g_state.started || !g_state.settings.enabled) {
+        if (!g_state.started || !g_state.settings.enabled ||
+            !g_state.earlyContractAccepted) {
             return;
         }
         if (!forceFixedDistance(moduleBase())) {
