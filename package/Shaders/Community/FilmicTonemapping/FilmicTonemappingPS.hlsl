@@ -4,6 +4,10 @@ struct PixelInput
     float2 texCoord : TEXCOORD0;
 };
 
+#ifndef FO4VR_FILMIC_FADE
+#define FO4VR_FILMIC_FADE 0
+#endif
+
 SamplerState BloomSampler : register(s0);
 SamplerState SceneSampler : register(s1);
 SamplerState AdaptedLuminanceSampler : register(s2);
@@ -24,7 +28,9 @@ cbuffer NativeHdrBlend : register(b2)
     float4 NativeCinematic : packoffset(c2);
     float4 NativeTint : packoffset(c3);
     float4 NativeBloomUv : packoffset(c4);
+#if FO4VR_FILMIC_FADE
     float4 NativeFade : packoffset(c5);
+#endif
 };
 
 cbuffer FilmicSettings : register(b12)
@@ -121,5 +127,9 @@ float4 PSMain(PixelInput input) : SV_Target0
         adaptedLuminance.xxxx,
         graded,
         NativeCinematic.z);
+#if FO4VR_FILMIC_FADE
     return lerp(graded, NativeFade, NativeFade.w);
+#else
+    return graded;
+#endif
 }

@@ -266,6 +266,7 @@ namespace community_shaders::render
         std::atomic_bool firstDirectionalCoverageRasterLogged{};
         std::atomic_bool firstDirectionalSyntheticProducerLogged{};
         std::atomic_bool firstDirectionalSyntheticCompositeLogged{};
+        std::atomic_bool firstDirectionalFinalOutputLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -424,7 +425,7 @@ namespace community_shaders::render
                         true,
                         std::memory_order_relaxed)) {
                     logging::info(
-                        "Exclusive directional diagnostic bound its private packed-stereo payload at t5 for the first live DFComposite draw.");
+                        "Exclusive directional diagnostic bound its private packed-stereo payload at t5 for its first live presentation draw.");
                 }
             }
 
@@ -2006,10 +2007,14 @@ namespace community_shaders::render
                 activeDirectionalDiagnosticModeAtBind ==
                     DiagnosticMode::coverageSyntheticProducer ||
                 activeDirectionalDiagnosticModeAtBind ==
-                    DiagnosticMode::coverageSyntheticComposite;
+                    DiagnosticMode::coverageSyntheticComposite ||
+                activeDirectionalDiagnosticModeAtBind ==
+                    DiagnosticMode::finalOutputPresentation;
             const auto syntheticComposite =
                 activeDirectionalDiagnosticModeAtBind ==
-                DiagnosticMode::coverageSyntheticComposite;
+                    DiagnosticMode::coverageSyntheticComposite ||
+                activeDirectionalDiagnosticModeAtBind ==
+                    DiagnosticMode::finalOutputPresentation;
             if (activeDirectionalLightDiagnosticPixel) {
                 ScopedDirectionalDiagnosticOutput output(
                     context,
@@ -2076,7 +2081,7 @@ namespace community_shaders::render
                                 true,
                                 std::memory_order_relaxed)) {
                             logging::info(
-                                "Exclusive directional coverage replaced the native DFComposite vertex/clip-distance draw with two exact packed-eye rectangles.");
+                                "Exclusive directional coverage replaced the native presentation vertex/clip-distance draw with two exact packed-eye rectangles.");
                         }
                         return;
                     }
@@ -2098,14 +2103,14 @@ namespace community_shaders::render
                     if (!firstDirectionalDiagnosticCompositeFallbackLogged
                             .exchange(true, std::memory_order_relaxed)) {
                         logging::error(
-                            "Exclusive directional diagnostic could not bind its private t5 input; the retained normal DFComposite shader was rebound for this draw.");
+                            "Exclusive directional diagnostic could not bind its private t5 input; the retained native presentation shader was rebound for this draw.");
                     }
                     return;
                 }
                 if (!firstDirectionalDiagnosticCompositeFallbackLogged
                         .exchange(true, std::memory_order_relaxed)) {
                     logging::error(
-                        "Exclusive directional diagnostic suppressed a composite draw because neither its private t5 input nor retained normal shader was available.");
+                        "Exclusive directional diagnostic suppressed a presentation draw because neither its private t5 input nor retained native shader was available.");
                 }
                 return;
             }
@@ -2749,11 +2754,31 @@ namespace community_shaders::render
                          .shader;
             if (requestedDirectionalDiagnosticMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::off &&
+                requestedDirectionalDiagnosticMode !=
+                    vanilla_fixes::DirectionalLightDiagnosticMode::
+                        finalOutputPresentation &&
                 engineCaptureBinding.environmentContractPlusOne != 0) {
                 if (auto* diagnosticComposite = vanilla_fixes::
                         DirectionalLightDiagnosticSurface::get()
                             .compositePixelShader()) {
                     shader = diagnosticComposite;
+                }
+            }
+            if (requestedDirectionalDiagnosticMode ==
+                    vanilla_fixes::DirectionalLightDiagnosticMode::
+                        finalOutputPresentation &&
+                classInstanceCount == 0 &&
+                filmic_tonemapping::Runtime::get().tracksOriginal(shader)) {
+                if (auto* diagnosticComposite = vanilla_fixes::
+                        DirectionalLightDiagnosticSurface::get()
+                            .compositePixelShader()) {
+                    shader = diagnosticComposite;
+                    if (!firstDirectionalFinalOutputLogged.exchange(
+                            true,
+                            std::memory_order_relaxed)) {
+                        logging::info(
+                            "Exclusive directional diagnostic moved its raw-vector presentation from DFComposite to the exact final ImageSpace[026]/[027] HDR output family.");
+                    }
                 }
             }
             activeCorrectedSslrRaytracePixel =
@@ -3099,7 +3124,21 @@ namespace community_shaders::render
                                                 engineShader);
             if (requestedMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::off &&
+                requestedMode !=
+                    vanilla_fixes::DirectionalLightDiagnosticMode::
+                        finalOutputPresentation &&
                 captureBinding.environmentContractPlusOne != 0) {
+                if (auto* diagnosticComposite = vanilla_fixes::
+                        DirectionalLightDiagnosticSurface::get()
+                            .compositePixelShader()) {
+                    desiredShader = diagnosticComposite;
+                }
+            }
+            if (requestedMode ==
+                    vanilla_fixes::DirectionalLightDiagnosticMode::
+                        finalOutputPresentation &&
+                filmic_tonemapping::Runtime::get().tracksOriginal(
+                    engineShader)) {
                 if (auto* diagnosticComposite = vanilla_fixes::
                         DirectionalLightDiagnosticSurface::get()
                             .compositePixelShader()) {
@@ -4163,6 +4202,9 @@ namespace community_shaders::render
                 false,
                 std::memory_order_relaxed);
             firstDFPrePassTechniqueMismatchLogged.store(
+                false,
+                std::memory_order_relaxed);
+            firstDirectionalFinalOutputLogged.store(
                 false,
                 std::memory_order_relaxed);
             activeDFPrePassTechniques = {};

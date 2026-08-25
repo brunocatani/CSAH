@@ -93,6 +93,8 @@ namespace community_shaders::filmic_tonemapping
         [[nodiscard]] ScopedConstants scopeDraw(
             ID3D11DeviceContext* context,
             ShaderBinding binding) noexcept;
+        [[nodiscard]] bool tracksOriginal(
+            ID3D11PixelShader* shader) const noexcept;
         [[nodiscard]] bool featureEnabled() const noexcept;
         void setOutputFeatureRequested(bool requested) noexcept;
         [[nodiscard]] bool bindingActive(ShaderBinding binding) const noexcept;
@@ -117,10 +119,12 @@ namespace community_shaders::filmic_tonemapping
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_{};
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_{};
-        Microsoft::WRL::ComPtr<ID3D11PixelShader> replacement_{};
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> baseReplacement_{};
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> fadeReplacement_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> constants_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumTrackedShaders> originals_{};
+        std::array<bool, kMaximumTrackedShaders> originalFade_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_bool enabled_{ true };
         std::atomic_bool outputFeatureRequested_{};
@@ -136,7 +140,8 @@ namespace community_shaders::filmic_tonemapping
         std::atomic_uint64_t drawScopes_{};
         std::atomic_uint64_t drawRestores_{};
         std::atomic_uint64_t failures_{};
-        std::atomic_bool firstMatchLogged_{};
+        std::atomic_bool baseMatchLogged_{};
+        std::atomic_bool fadeMatchLogged_{};
         std::atomic_bool firstBindLogged_{};
     };
 }

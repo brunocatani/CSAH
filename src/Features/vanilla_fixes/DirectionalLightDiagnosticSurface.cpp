@@ -88,7 +88,7 @@ namespace community_shaders::vanilla_fixes
         if (FAILED(coverageVertexResult) || !coverageVertexShader) {
             shader->Release();
             logging::error(
-                "Exclusive directional synthetic coverage shader creation failed (HRESULT=0x{:08X}); modes 9 and 10 remain fail-closed.",
+                "Exclusive directional synthetic coverage shader creation failed (HRESULT=0x{:08X}); modes 9 through 11 remain fail-closed.",
                 static_cast<unsigned>(coverageVertexResult));
             return false;
         }
@@ -96,7 +96,7 @@ namespace community_shaders::vanilla_fixes
         compositePixelShader_.Attach(shader);
         coverageVertexShader_.Attach(coverageVertexShader);
         logging::info(
-            "Exclusive directional diagnostic armed its generic packed-stereo t5 composite for the complete verified IBL DFComposite family.");
+            "Exclusive directional diagnostic armed its generic packed-stereo t5 presenter for the verified DFComposite and final HDR output paths.");
         return true;
     }
 

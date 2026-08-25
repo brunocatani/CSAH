@@ -517,11 +517,12 @@ namespace community_shaders::contact_shadows
         ID3D11PixelShader* requested,
         const std::uint8_t diagnosticMode) noexcept
     {
-        if (!requested || diagnosticMode == 0 || diagnosticMode > 10) {
+        if (!requested || diagnosticMode == 0 || diagnosticMode > 11) {
             return { requested, {} };
         }
-        // Coverage modes 7 and 8 use the mode-4 raw-vector shader. Their only
-        // difference is the exact draw state applied by the diagnostic scope.
+        // Coverage and presentation modes use the mode-4 raw-vector shader.
+        // Their only difference is the draw/presentation path applied by the
+        // diagnostic scopes.
         const auto shaderMode = diagnosticMode <= 6 ? diagnosticMode : 4;
         const auto modeIndex = static_cast<std::size_t>(shaderMode - 1);
         for (const auto& original : originals_) {

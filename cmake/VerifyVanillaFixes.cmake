@@ -231,6 +231,8 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "coverageFullRaster"
   "coverageSyntheticProducer"
   "coverageSyntheticComposite"
+  "finalOutputPresentation"
+  "tracksOriginal(shader)"
   "ScopedDirectionalDiagnosticSyntheticGeometry"
   "originalDrawInstanced(context, 6, 2, 0, 0)"
   "RSSetViewports("
@@ -304,7 +306,8 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"label\": \"Coverage Without Depth (RGB)\""
   "\"label\": \"Coverage Full Raster (RGB)\""
   "\"label\": \"Synthetic DFLight Coverage (RGB)\""
-  "\"label\": \"Synthetic Composite Coverage (RGB)\"")
+  "\"label\": \"Synthetic Composite Coverage (RGB)\""
+  "\"label\": \"Final HDR Output (RGB)\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")

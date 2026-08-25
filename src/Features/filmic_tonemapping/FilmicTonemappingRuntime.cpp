@@ -12,26 +12,51 @@ namespace community_shaders::filmic_tonemapping
 {
     namespace
     {
-        constexpr SIZE_T kNativeBytecodeSize = 1848;
+        enum class NativeTonemapContract : std::uint8_t
+        {
+            none,
+            base,
+            fade,
+        };
+
+        constexpr SIZE_T kNativeBaseBytecodeSize = 1772;
+        constexpr SIZE_T kNativeFadeBytecodeSize = 1848;
         constexpr UINT kConstantSlot = 12;
-        constexpr std::array<std::uint8_t, 16> kNativeDxbcChecksum{
+        constexpr std::array<std::uint8_t, 16> kNativeBaseDxbcChecksum{
+            0x83, 0xB5, 0x14, 0xDD, 0x63, 0xEE, 0xA6, 0x0D,
+            0x84, 0x76, 0x93, 0x43, 0xD5, 0x76, 0xD4, 0xFA,
+        };
+        constexpr std::array<std::uint8_t, 16> kNativeFadeDxbcChecksum{
             0xF1, 0xBF, 0xA0, 0x42, 0xD5, 0x20, 0x62, 0xC4,
             0xAE, 0xDF, 0xD6, 0x12, 0xBB, 0xF4, 0x79, 0x9D,
         };
 
-        [[nodiscard]] bool matchesNativeTonemap(
+        [[nodiscard]] NativeTonemapContract classifyNativeTonemap(
             const void* bytecode,
             SIZE_T bytecodeLength) noexcept
         {
-            if (!bytecode || bytecodeLength != kNativeBytecodeSize) {
-                return false;
+            if (!bytecode || bytecodeLength < 20) {
+                return NativeTonemapContract::none;
             }
             const auto* bytes = static_cast<const std::uint8_t*>(bytecode);
-            return std::memcmp(bytes, "DXBC", 4) == 0 &&
+            if (std::memcmp(bytes, "DXBC", 4) != 0) {
+                return NativeTonemapContract::none;
+            }
+            if (bytecodeLength == kNativeBaseBytecodeSize &&
                 std::memcmp(
                     bytes + 4,
-                    kNativeDxbcChecksum.data(),
-                    kNativeDxbcChecksum.size()) == 0;
+                    kNativeBaseDxbcChecksum.data(),
+                    kNativeBaseDxbcChecksum.size()) == 0) {
+                return NativeTonemapContract::base;
+            }
+            if (bytecodeLength == kNativeFadeBytecodeSize &&
+                std::memcmp(
+                    bytes + 4,
+                    kNativeFadeDxbcChecksum.data(),
+                    kNativeFadeDxbcChecksum.size()) == 0) {
+                return NativeTonemapContract::fade;
+            }
+            return NativeTonemapContract::none;
         }
     }
 
@@ -78,12 +103,15 @@ namespace community_shaders::filmic_tonemapping
         for (auto& original : originals_) {
             original.Reset();
         }
-        replacement_.Reset();
+        originalFade_.fill(false);
+        baseReplacement_.Reset();
+        fadeReplacement_.Reset();
         constants_.Reset();
         device_ = device;
         context_ = context;
         uploadedRevision_ = 0;
-        firstMatchLogged_.store(false, std::memory_order_relaxed);
+        baseMatchLogged_.store(false, std::memory_order_relaxed);
+        fadeMatchLogged_.store(false, std::memory_order_relaxed);
         firstBindLogged_.store(false, std::memory_order_relaxed);
         if (!device || !context || !createPixelShader) {
             failures_.fetch_add(1, std::memory_order_relaxed);
@@ -102,14 +130,24 @@ namespace community_shaders::filmic_tonemapping
         if (SUCCEEDED(result)) {
             result = createPixelShader(
                 device,
-                generated::kPixelShader.data(),
-                generated::kPixelShader.size(),
+                generated::kBasePixelShader.data(),
+                generated::kBasePixelShader.size(),
                 nullptr,
-                replacement_.ReleaseAndGetAddressOf());
+                baseReplacement_.ReleaseAndGetAddressOf());
         }
-        if (FAILED(result) || !constants_ || !replacement_) {
+        if (SUCCEEDED(result)) {
+            result = createPixelShader(
+                device,
+                generated::kFadePixelShader.data(),
+                generated::kFadePixelShader.size(),
+                nullptr,
+                fadeReplacement_.ReleaseAndGetAddressOf());
+        }
+        if (FAILED(result) || !constants_ || !baseReplacement_ ||
+            !fadeReplacement_) {
             constants_.Reset();
-            replacement_.Reset();
+            baseReplacement_.Reset();
+            fadeReplacement_.Reset();
             failures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Filmic Tonemapping GPU resource creation failed (HRESULT=0x{:08X}); native HDR tonemapping remains bound.",
@@ -119,7 +157,7 @@ namespace community_shaders::filmic_tonemapping
         uploadedRevision_ = settingsRevision_.load(std::memory_order_acquire);
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Filmic Tonemapping replacement is GPU-ready for the unique FO4VR ImageSpace[027] HDR blend contract; CB12 remains scoped and optional Bloom/Glare t4/t5/b13 inputs fail closed.");
+            "Filmic Tonemapping replacements are GPU-ready for the exact FO4VR ImageSpace[026] base and ImageSpace[027] fade HDR output family; CB12 remains scoped and optional Bloom/Glare t4/t5/b13 inputs fail closed.");
     }
 
     void Runtime::onPixelShaderCreated(
@@ -127,7 +165,8 @@ namespace community_shaders::filmic_tonemapping
         SIZE_T bytecodeLength,
         ID3D11PixelShader* shader) noexcept
     {
-        if (!shader || !matchesNativeTonemap(bytecode, bytecodeLength)) {
+        const auto contract = classifyNativeTonemap(bytecode, bytecodeLength);
+        if (!shader || contract == NativeTonemapContract::none) {
             return;
         }
         matchingShaders_.fetch_add(1, std::memory_order_relaxed);
@@ -144,10 +183,19 @@ namespace community_shaders::filmic_tonemapping
             return;
         }
         originals_[count] = shader;
+        originalFade_[count] = contract == NativeTonemapContract::fade;
         trackedShaders_.store(count + 1, std::memory_order_release);
-        if (!firstMatchLogged_.exchange(true, std::memory_order_relaxed)) {
+        auto& matchLogged = contract == NativeTonemapContract::fade ?
+            fadeMatchLogged_ : baseMatchLogged_;
+        if (!matchLogged.exchange(true, std::memory_order_relaxed)) {
             logging::info(
-                "Filmic Tonemapping matched FO4VR ImageSpace[027] (1848 bytes, checksum f1bfa042d52062c4aedfd612bbf4799d).");
+                "Filmic Tonemapping matched FO4VR {} HDR contract ({} bytes, checksum={}).",
+                contract == NativeTonemapContract::fade ?
+                    "ImageSpace[027] fade" : "ImageSpace[026] base",
+                bytecodeLength,
+                contract == NativeTonemapContract::fade ?
+                    "f1bfa042d52062c4aedfd612bbf4799d" :
+                    "83b514dd63eea60d84769343d576d4fa");
         }
     }
 
@@ -155,8 +203,7 @@ namespace community_shaders::filmic_tonemapping
         ID3D11DeviceContext* context,
         ID3D11PixelShader* requested) noexcept
     {
-        if (!requested || !featureEnabled() || context != context_.Get() ||
-            !replacement_) {
+        if (!requested || !featureEnabled() || context != context_.Get()) {
             return { requested, {} };
         }
         const auto count = trackedShaders_.load(std::memory_order_acquire);
@@ -164,14 +211,20 @@ namespace community_shaders::filmic_tonemapping
             if (originals_[index].Get() != requested) {
                 continue;
             }
+            auto* replacement = originalFade_[index] ?
+                fadeReplacement_.Get() : baseReplacement_.Get();
+            if (!replacement) {
+                failures_.fetch_add(1, std::memory_order_relaxed);
+                return { requested, {} };
+            }
             replacementBinds_.fetch_add(1, std::memory_order_relaxed);
             if (!firstBindLogged_.exchange(true, std::memory_order_relaxed)) {
                 logging::info(
-                    "Filmic Tonemapping replaced its first native HDR blend bind; exposure, native bloom, cinematic, fade, and bypass-mask inputs remain engine-owned while optional Bloom/Glare inputs are privately scoped.");
+                    "Filmic Tonemapping replaced its first executing native HDR output bind; base/fade semantics, exposure, native bloom, cinematic state, and bypass-mask inputs remain engine-owned while optional Bloom/Glare inputs are privately scoped.");
             }
             return {
-                replacement_.Get(),
-                { requested, replacement_.Get() },
+                replacement,
+                { requested, replacement },
             };
         }
         return { requested, {} };
@@ -190,6 +243,20 @@ namespace community_shaders::filmic_tonemapping
         return ScopedConstants(this, context, constants_.Get());
     }
 
+    bool Runtime::tracksOriginal(ID3D11PixelShader* shader) const noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        const auto count = trackedShaders_.load(std::memory_order_acquire);
+        for (std::uint32_t index = 0; index < count; ++index) {
+            if (originals_[index].Get() == shader) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool Runtime::featureEnabled() const noexcept
     {
         return (enabled_.load(std::memory_order_acquire) ||
@@ -205,8 +272,9 @@ namespace community_shaders::filmic_tonemapping
 
     bool Runtime::bindingActive(ShaderBinding binding) const noexcept
     {
-        return binding && featureEnabled() && replacement_ &&
-            binding.replacement == replacement_.Get();
+        return binding && featureEnabled() &&
+            (binding.replacement == baseReplacement_.Get() ||
+                binding.replacement == fadeReplacement_.Get());
     }
 
     void Runtime::applySettings(const Settings& settings) noexcept

@@ -17,6 +17,7 @@ namespace community_shaders::vanilla_fixes
         coverageFullRaster = 8,
         coverageSyntheticProducer = 9,
         coverageSyntheticComposite = 10,
+        finalOutputPresentation = 11,
     };
 
     struct Settings final
