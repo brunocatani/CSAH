@@ -70,7 +70,10 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
   "fo4vr_cs_vanilla_sslr_raytrace_ps"
   "publishSslrPixelShaderPair"
-  "selectSslrPixelShaderForBinding")
+  "selectSslrPixelShaderForBinding"
+  "publishSurfaceAnchoredCubemapPixelShaderPair"
+  "selectSurfaceAnchoredCubemapPixelShaderForBinding"
+  "setSurfaceAnchoredCubemapFixRequested")
 
 file(READ "${VANILLA_FOCUS_RUNTIME_SOURCE}" focus_runtime)
 vanilla_fixes_require_text("${focus_runtime}" "focus-shadow native/resource"
@@ -221,6 +224,7 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::selectPixelShader("
   "vanilla_fixes::selectComputeShader("
   "vanilla_fixes::selectSslrPixelShaderForBinding(shader)"
+  "selectSurfaceAnchoredCubemapPixelShaderForBinding(shader)"
   "selectDirectionalDiagnosticPixelShader("
   "isDirectionalDiagnosticPixelShader(shader)"
   "captureProbeBindingForShader(shader)"

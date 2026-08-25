@@ -270,6 +270,10 @@ namespace community_shaders::vanilla_fixes
                     settings.enabled && settings.screenSpaceReflections &&
                     settings.directionalLightDiagnosticMode ==
                         DirectionalLightDiagnosticMode::off);
+                setSurfaceAnchoredCubemapFixRequested(
+                    settings.enabled &&
+                    settings.directionalLightDiagnosticMode ==
+                        DirectionalLightDiagnosticMode::off);
                 const auto diagnosticMode = settings.enabled ?
                     settings.directionalLightDiagnosticMode :
                     DirectionalLightDiagnosticMode::off;

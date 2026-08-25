@@ -2496,10 +2496,13 @@ namespace community_shaders::render
                 shader);
             auto replacementAccepted = selection.replaced() &&
                 SUCCEEDED(result) && shader && *shader;
+            ID3D11PixelShader* pairedStockShader{};
             if (replacementAccepted &&
                 (selection.fix == vanilla_fixes::ShaderFix::sslrPrepass ||
                     selection.fix ==
-                        vanilla_fixes::ShaderFix::sslrRaytrace)) {
+                        vanilla_fixes::ShaderFix::sslrRaytrace ||
+                    selection.fix ==
+                        vanilla_fixes::ShaderFix::surfaceAnchoredCubemap)) {
                 ID3D11PixelShader* stockShader{};
                 const auto stockResult = original(
                     device,
@@ -2509,17 +2512,26 @@ namespace community_shaders::render
                     &stockShader);
                 const auto pairPublished = SUCCEEDED(stockResult) &&
                     stockShader &&
-                    vanilla_fixes::publishSslrPixelShaderPair(
-                        *shader,
-                        stockShader,
-                        selection.fix);
-                if (stockShader) {
-                    stockShader->Release();
-                }
+                    (selection.fix ==
+                            vanilla_fixes::ShaderFix::surfaceAnchoredCubemap ?
+                        vanilla_fixes::
+                            publishSurfaceAnchoredCubemapPixelShaderPair(
+                                *shader,
+                                stockShader,
+                                selection.fix) :
+                        vanilla_fixes::publishSslrPixelShaderPair(
+                            *shader,
+                            stockShader,
+                            selection.fix));
                 if (!pairPublished) {
+                    if (stockShader) {
+                        stockShader->Release();
+                    }
                     (*shader)->Release();
                     *shader = nullptr;
                     replacementAccepted = false;
+                } else {
+                    pairedStockShader = stockShader;
                 }
             }
             if (selection.replaced() && !replacementAccepted &&
@@ -2551,22 +2563,32 @@ namespace community_shaders::render
                     vanilla_fixes::registerFocusShadowPixelShader(*shader);
                     vanilla_fixes::reportFocusShaderCreated();
                 }
-                linear_lighting::Runtime::get().onPixelShaderCreated(
-                    bytecode,
-                    bytecodeLength,
-                    *shader);
-                ibl::Runtime::get().onPixelShaderCreated(
-                    bytecode,
-                    bytecodeLength,
-                    *shader);
-                contact_shadows::Runtime::get().onPixelShaderCreated(
-                    bytecode,
-                    bytecodeLength,
-                    *shader);
-                filmic_tonemapping::Runtime::get().onPixelShaderCreated(
-                    bytecode,
-                    bytecodeLength,
-                    *shader);
+                const auto registerShader = [&](ID3D11PixelShader* created)
+                    noexcept {
+                    linear_lighting::Runtime::get().onPixelShaderCreated(
+                        bytecode,
+                        bytecodeLength,
+                        created);
+                    ibl::Runtime::get().onPixelShaderCreated(
+                        bytecode,
+                        bytecodeLength,
+                        created);
+                    contact_shadows::Runtime::get().onPixelShaderCreated(
+                        bytecode,
+                        bytecodeLength,
+                        created);
+                    filmic_tonemapping::Runtime::get().onPixelShaderCreated(
+                        bytecode,
+                        bytecodeLength,
+                        created);
+                };
+                registerShader(*shader);
+                if (pairedStockShader) {
+                    registerShader(pairedStockShader);
+                }
+            }
+            if (pairedStockShader) {
+                pairedStockShader->Release();
             }
             return result;
         }
@@ -2746,6 +2768,8 @@ namespace community_shaders::render
             const auto engineCaptureBinding =
                 iblRuntime.captureProbeBindingForShader(shader);
             shader = vanilla_fixes::selectSslrPixelShaderForBinding(shader);
+            shader = vanilla_fixes::
+                selectSurfaceAnchoredCubemapPixelShaderForBinding(shader);
             shader = contactShadowRuntime
                          .selectDirectionalDiagnosticPixelShader(
                              shader,

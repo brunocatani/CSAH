@@ -88,6 +88,18 @@ namespace community_shaders::vanilla_fixes
         std::array<SslrPixelShaderPair, kSslrPixelShaderPairCapacity>
             sslrPixelShaderPairs{};
 
+        struct SurfaceAnchoredCubemapPixelShaderPair final
+        {
+            std::atomic<ID3D11PixelShader*> key{};
+            ID3D11PixelShader* fixed{};
+            ID3D11PixelShader* stock{};
+        };
+
+        constexpr std::size_t kSurfaceAnchoredCubemapPairCapacity = 8;
+        std::array<SurfaceAnchoredCubemapPixelShaderPair,
+            kSurfaceAnchoredCubemapPairCapacity>
+            surfaceAnchoredCubemapPixelShaderPairs{};
+        std::atomic_bool surfaceAnchoredCubemapFixRequested{ true };
 
         [[nodiscard]] bool matches(
             const ShaderIdentity& identity,
@@ -296,6 +308,61 @@ namespace community_shaders::vanilla_fixes
                     pair.fix == ShaderFix::sslrRaytrace &&
                     pair.fixed == shader;
             });
+    }
+
+    bool publishSurfaceAnchoredCubemapPixelShaderPair(
+        ID3D11PixelShader* fixedShader,
+        ID3D11PixelShader* stockShader,
+        const ShaderFix fix) noexcept
+    {
+        if (!fixedShader || !stockShader ||
+            fix != ShaderFix::surfaceAnchoredCubemap) {
+            return false;
+        }
+        auto* const busy = reinterpret_cast<ID3D11PixelShader*>(
+            std::uintptr_t{ 1 });
+        for (auto& pair : surfaceAnchoredCubemapPixelShaderPairs) {
+            auto* expected = static_cast<ID3D11PixelShader*>(nullptr);
+            if (!pair.key.compare_exchange_strong(
+                    expected,
+                    busy,
+                    std::memory_order_acq_rel)) {
+                if (expected == fixedShader) {
+                    return false;
+                }
+                continue;
+            }
+            fixedShader->AddRef();
+            stockShader->AddRef();
+            pair.fixed = fixedShader;
+            pair.stock = stockShader;
+            pair.key.store(fixedShader, std::memory_order_release);
+            return true;
+        }
+        return false;
+    }
+
+    ID3D11PixelShader* selectSurfaceAnchoredCubemapPixelShaderForBinding(
+        ID3D11PixelShader* engineShader) noexcept
+    {
+        if (!engineShader) {
+            return nullptr;
+        }
+        const auto useFixed = surfaceAnchoredCubemapFixRequested.load(
+            std::memory_order_acquire);
+        for (const auto& pair : surfaceAnchoredCubemapPixelShaderPairs) {
+            if (pair.key.load(std::memory_order_acquire) == engineShader) {
+                return useFixed ? pair.fixed : pair.stock;
+            }
+        }
+        return engineShader;
+    }
+
+    void setSurfaceAnchoredCubemapFixRequested(const bool requested) noexcept
+    {
+        surfaceAnchoredCubemapFixRequested.store(
+            requested,
+            std::memory_order_release);
     }
 
     void reportShaderCreationResult(
