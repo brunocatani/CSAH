@@ -14,6 +14,7 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/skylighting/SkylightingNativeHooks.h"
 #include "Features/skylighting/SkylightingRuntime.h"
+#include "Features/sky_sync/SkySyncRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "Features/vanilla_fixes/FocusShadowRuntime.h"
@@ -4096,6 +4097,10 @@ namespace community_shaders::render
                 return result;
             }
 
+            if (!sky_sync::Runtime::get().installHook()) {
+                logging::warn(
+                    "Sky Sync hook is unavailable after shared MinHook initialization; native celestial lighting remains unchanged.");
+            }
             if (!linear_lighting::installDFTiledPointLightHook()) {
                 logging::warn(
                     "Verified DFTiled/Effect producer hook remains unavailable; native 2.2 producer gamma is retained and replacement frame constants remain fail-closed.");

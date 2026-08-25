@@ -123,8 +123,6 @@ namespace
                 validateDFTiledPointLightHook("GameDataReady");
             (void)ensureSkylightingNativeHooks(
                 "GameDataReady");
-            (void)community_shaders::sky_sync::Runtime::get().validateHook(
-                "GameDataReady");
             (void)community_shaders::dlaa::validateEngineHooks(
                 "GameDataReady");
             (void)community_shaders::dlaa::validateD3D11Hooks(
@@ -390,10 +388,6 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             skylightingSettings);
         community_shaders::sky_sync::Runtime::get().applySettings(
             skySyncSettings);
-        if (!community_shaders::sky_sync::Runtime::get().installHook()) {
-            community_shaders::logging::warn(
-                "Sky Sync hook is unavailable; native celestial lighting remains unchanged.");
-        }
         if (!community_shaders::native_shadows::startRuntime(
                 nativeShadowSettings)) {
             community_shaders::logging::warn(
