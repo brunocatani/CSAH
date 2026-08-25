@@ -113,6 +113,7 @@ namespace
         case F4SE::MessagingInterface::kGameDataReady:
         {
             community_shaders::native_shadows::onGameDataReady();
+            community_shaders::vanilla_fixes::onGameDataReady();
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameDataReady");
             (void)community_shaders::render::

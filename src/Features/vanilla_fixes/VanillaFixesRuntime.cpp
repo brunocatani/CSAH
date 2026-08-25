@@ -30,8 +30,15 @@ namespace community_shaders::vanilla_fixes
         constexpr std::uintptr_t kIniPrefSettingVtableRva = 0x02C8C1B0;
         constexpr std::uintptr_t kRendererConfigRva = 0x068787F0;
         constexpr std::uintptr_t kImageSpaceManagerPointerRva = 0x068789E8;
+        constexpr std::uintptr_t kSceneRootRegistryPointerRva = 0x06879520;
         constexpr std::uintptr_t kSunbeamsAvailabilityRva = 0x0689AC94;
         constexpr std::uintptr_t kSaoEffectVtableRva = 0x030B8FD8;
+        constexpr std::uintptr_t kShaderPropertyRefreshRva = 0x027F5BC0;
+        constexpr std::uintptr_t kRefreshSceneRootRva = 0x02804860;
+
+        constexpr std::uint8_t kSaoPolicyBit = 1U << 0;
+        constexpr std::uint8_t kScreenSpaceReflectionsPolicyBit = 1U << 1;
+        constexpr std::uint8_t kNativeScreenSpaceSssPolicyBit = 1U << 2;
 
         enum class PolicyField : std::uint8_t
         {
@@ -160,6 +167,33 @@ namespace community_shaders::vanilla_fixes
             policy.focusShadows = false;
             policy.sunbeams = false;
             return policy;
+        }
+
+        [[nodiscard]] std::uint8_t screenSpacePolicyBits(
+            const Settings& policy) noexcept
+        {
+            std::uint8_t bits{};
+            if (requestedValue(policy, PolicyField::kSao)) {
+                bits |= kSaoPolicyBit;
+            }
+            if (requestedValue(
+                    policy,
+                    PolicyField::kScreenSpaceReflections)) {
+                bits |= kScreenSpaceReflectionsPolicyBit;
+            }
+            if (requestedValue(
+                    policy,
+                    PolicyField::kScreenSpaceSubsurfaceScattering)) {
+                bits |= kNativeScreenSpaceSssPolicyBit;
+            }
+            return bits;
+        }
+
+        [[nodiscard]] bool policyBit(
+            const std::uint8_t policy,
+            const std::uint8_t bit) noexcept
+        {
+            return (policy & bit) != 0;
         }
 
         [[nodiscard]] bool readableRange(
@@ -321,6 +355,12 @@ namespace community_shaders::vanilla_fixes
             {
                 return static_cast<DirectionalLightDiagnosticMode>(
                     diagnosticMode_.load(std::memory_order_acquire));
+            }
+
+            void onGameDataReady() noexcept
+            {
+                gameDataReady_.store(true, std::memory_order_release);
+                requestScreenSpacePolicyApply();
             }
 
         private:
@@ -488,6 +528,9 @@ namespace community_shaders::vanilla_fixes
                     0x48, 0x8D, 0x05 };
                 constexpr std::array<std::uint8_t, 3> storeRip{
                     0x48, 0x89, 0x05 };
+                constexpr std::array<std::uint8_t, 3> loadPointerRip{
+                    0x48, 0x8B, 0x0D };
+                constexpr std::array<std::uint8_t, 1> relativeCall{ 0xE8 };
                 if (!validateRipTarget(
                         0x0288D68F, compareRip, 2, 7, 0x03924D58) ||
                     !validateRipTarget(
@@ -513,7 +556,19 @@ namespace community_shaders::vanilla_fixes
                         compareRip,
                         2,
                         7,
-                        kSunbeamsAvailabilityRva)) {
+                        kSunbeamsAvailabilityRva) ||
+                    !validateRipTarget(
+                        kShaderPropertyRefreshRva + 4,
+                        loadPointerRip,
+                        3,
+                        7,
+                        kSceneRootRegistryPointerRva) ||
+                    !validateRipTarget(
+                        kShaderPropertyRefreshRva + 0xB,
+                        relativeCall,
+                        1,
+                        5,
+                        kRefreshSceneRootRva)) {
                     logging::critical(
                         "Visual gate contract rejected: Fallout4VR consumer signatures do not match 1.2.72.0.");
                     return false;
@@ -548,6 +603,14 @@ namespace community_shaders::vanilla_fixes
                         1) ||
                     !writableRange(
                         reinterpret_cast<void*>(
+                            moduleBase_ + kRendererConfigRva + 0x11C),
+                        2) ||
+                    !readableRange(
+                        reinterpret_cast<const void*>(
+                            moduleBase_ + kSceneRootRegistryPointerRva),
+                        sizeof(std::uintptr_t)) ||
+                    !writableRange(
+                        reinterpret_cast<void*>(
                             moduleBase_ + kSunbeamsAvailabilityRva),
                         1)) {
                     logging::critical(
@@ -557,7 +620,7 @@ namespace community_shaders::vanilla_fixes
 
                 contractValid_ = true;
                 logging::info(
-                    "Visual gate memory contract passed: 10 setting records, renderer snapshot, SAO instance path, and sunbeams availability are verified.");
+                    "Visual gate memory contract passed: 10 setting records, renderer snapshot, coordinated SAO/SSR/SSS policy path, native shader-property refresh, and sunbeams availability are verified.");
                 return true;
             }
 
@@ -583,50 +646,193 @@ namespace community_shaders::vanilla_fixes
 
                 auto* renderer = reinterpret_cast<std::uint8_t*>(
                     moduleBase_ + kRendererConfigRva);
-                const auto sao =
-                    requestedValue(policy, PolicyField::kSao);
                 const auto lensFlare =
                     requestedValue(policy, PolicyField::kLensFlare);
-                const auto screenSpaceReflections = requestedValue(
-                    policy,
-                    PolicyField::kScreenSpaceReflections);
-                const auto screenSpaceSubsurfaceScattering = requestedValue(
-                    policy,
-                    PolicyField::kScreenSpaceSubsurfaceScattering);
                 const auto sunbeams =
                     requestedValue(policy, PolicyField::kSunbeams);
-                writeBoolean(renderer + 0x32, sao);
                 writeBoolean(renderer + 0xEC, lensFlare);
-                writeBoolean(
-                    renderer + 0x11C,
-                    screenSpaceReflections);
-                writeBoolean(
-                    renderer + 0x11D,
-                    screenSpaceSubsurfaceScattering);
                 writeBoolean(
                     reinterpret_cast<std::uint8_t*>(
                         moduleBase_ + kSunbeamsAvailabilityRva),
                     sunbeams);
-                refreshSaoEffect(sao);
+
+                const auto requestedScreenSpacePolicy =
+                    screenSpacePolicyBits(policy);
+                const auto previousScreenSpacePolicy =
+                    requestedScreenSpacePolicy_.exchange(
+                        requestedScreenSpacePolicy,
+                        std::memory_order_acq_rel);
+                const auto wasInitialized =
+                    screenSpacePolicyInitialized_.exchange(
+                        true,
+                        std::memory_order_acq_rel);
+                if (!wasInitialized ||
+                    previousScreenSpacePolicy != requestedScreenSpacePolicy) {
+                    screenSpacePolicyGeneration_.fetch_add(
+                        1,
+                        std::memory_order_acq_rel);
+                }
+                requestScreenSpacePolicyApply();
             }
 
-            void refreshSaoEffect(const bool enabled) noexcept
+            void requestScreenSpacePolicyApply() noexcept
+            {
+                if (!contractValid_ ||
+                    !gameDataReady_.load(std::memory_order_acquire) ||
+                    !screenSpacePolicyInitialized_.load(
+                        std::memory_order_acquire)) {
+                    return;
+                }
+                const auto generation =
+                    screenSpacePolicyGeneration_.load(
+                        std::memory_order_acquire);
+                if (generation == screenSpacePolicyAppliedGeneration_.load(
+                                      std::memory_order_acquire) &&
+                    !screenSpaceEffectSyncPending_.load(
+                        std::memory_order_acquire) &&
+                    !nativePropertyRefreshPending_.load(
+                        std::memory_order_acquire)) {
+                    return;
+                }
+                auto expected = false;
+                if (!screenSpacePolicyTaskQueued_.compare_exchange_strong(
+                        expected,
+                        true,
+                        std::memory_order_acq_rel)) {
+                    return;
+                }
+                const auto* tasks = F4SE::GetTaskInterface();
+                if (!tasks) {
+                    screenSpacePolicyTaskQueued_.store(
+                        false,
+                        std::memory_order_release);
+                    if (!taskInterfaceFailureLogged_.exchange(
+                            true,
+                            std::memory_order_acq_rel)) {
+                        logging::error(
+                            "Native screen-space policy apply is pending because the F4SE main-thread task interface is unavailable.");
+                    }
+                    return;
+                }
+                try {
+                    tasks->AddTask([]() noexcept {
+                        Controller::get().applyScreenSpacePolicyOnMainThread();
+                    });
+                } catch (const std::exception& error) {
+                    screenSpacePolicyTaskQueued_.store(
+                        false,
+                        std::memory_order_release);
+                    logging::error(
+                        "Native screen-space policy main-thread task could not be queued: {}.",
+                        error.what());
+                } catch (...) {
+                    screenSpacePolicyTaskQueued_.store(
+                        false,
+                        std::memory_order_release);
+                    logging::error(
+                        "Native screen-space policy main-thread task could not be queued.");
+                }
+            }
+
+            void applyScreenSpacePolicyOnMainThread() noexcept
+            {
+                const auto targetGeneration =
+                    screenSpacePolicyGeneration_.load(
+                        std::memory_order_acquire);
+                const auto previousAppliedGeneration =
+                    screenSpacePolicyAppliedGeneration_.load(
+                        std::memory_order_acquire);
+                const auto policy = requestedScreenSpacePolicy_.load(
+                    std::memory_order_acquire);
+                const auto sao = policyBit(policy, kSaoPolicyBit);
+                const auto screenSpaceReflections = policyBit(
+                    policy,
+                    kScreenSpaceReflectionsPolicyBit);
+                const auto nativeScreenSpaceSss = policyBit(
+                    policy,
+                    kNativeScreenSpaceSssPolicyBit);
+                auto* renderer = reinterpret_cast<std::uint8_t*>(
+                    moduleBase_ + kRendererConfigRva);
+                const auto nativePropertyRefreshRequired =
+                    nativePropertyRefreshPending_.exchange(
+                        false,
+                        std::memory_order_acq_rel) ||
+                    (renderer[0x11C] != 0) != screenSpaceReflections ||
+                    (renderer[0x11D] != 0) != nativeScreenSpaceSss;
+
+                writeBoolean(renderer + 0x32, sao);
+                writeBoolean(renderer + 0x11C, screenSpaceReflections);
+                writeBoolean(renderer + 0x11D, nativeScreenSpaceSss);
+
+                const auto effectSync = synchronizeSaoAndSslrEffect(
+                    sao,
+                    screenSpaceReflections);
+                screenSpaceEffectSyncPending_.store(
+                    !effectSync.has_value(),
+                    std::memory_order_release);
+
+                auto nativePropertyRefreshCompleted = true;
+                if (nativePropertyRefreshRequired) {
+                    nativePropertyRefreshCompleted =
+                        refreshNativeShaderProperties();
+                    nativePropertyRefreshPending_.store(
+                        !nativePropertyRefreshCompleted,
+                        std::memory_order_release);
+                }
+
+                screenSpacePolicyAppliedGeneration_.store(
+                    targetGeneration,
+                    std::memory_order_release);
+                screenSpacePolicyTaskQueued_.store(
+                    false,
+                    std::memory_order_release);
+                screenSpacePolicyApplies_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+
+                if (targetGeneration != previousAppliedGeneration) {
+                    const auto refreshState =
+                        !nativePropertyRefreshRequired ? "not-required" :
+                        nativePropertyRefreshCompleted ? "completed" :
+                        "deferred";
+                    logging::info(
+                        "Native screen-space policy applied on the F4SE main-thread queue: SAO={}, SSR={}, native SSS/shared graph={}, shared SAO/SSR effect={}, shader-property refresh={}.",
+                        sao,
+                        screenSpaceReflections,
+                        nativeScreenSpaceSss,
+                        effectSync.value_or(false),
+                        refreshState);
+                } else if (nativePropertyRefreshRequired &&
+                    nativePropertyRefreshCompleted) {
+                    logging::info(
+                        "Deferred native screen-space shader-property refresh completed on the F4SE main-thread queue.");
+                }
+
+                if (screenSpacePolicyGeneration_.load(
+                        std::memory_order_acquire) != targetGeneration) {
+                    requestScreenSpacePolicyApply();
+                }
+            }
+
+            [[nodiscard]] std::optional<bool> synchronizeSaoAndSslrEffect(
+                const bool sao,
+                const bool screenSpaceReflections) noexcept
             {
                 const auto* managerPointer = reinterpret_cast<
                     const std::uintptr_t*>(
                     moduleBase_ + kImageSpaceManagerPointerRva);
                 if (!readableRange(managerPointer, sizeof(*managerPointer))) {
-                    return;
+                    return std::nullopt;
                 }
                 std::uintptr_t manager{};
                 std::memcpy(&manager, managerPointer, sizeof(manager));
                 if (!manager || !readableRange(
                         reinterpret_cast<const void*>(manager), 0xBD)) {
-                    return;
+                    return std::nullopt;
                 }
                 if (*reinterpret_cast<const std::uint8_t*>(manager + 0xBC) ==
                     0) {
-                    return;
+                    return std::nullopt;
                 }
                 std::uintptr_t effects{};
                 std::memcpy(
@@ -638,9 +844,9 @@ namespace community_shaders::vanilla_fixes
                 constexpr std::size_t saoEffectIndex = 0x47;
                 if (!effects || !readableRange(
                         reinterpret_cast<const void*>(
-                            effects + saoEffectIndex * sizeof(std::uintptr_t)),
+                        effects + saoEffectIndex * sizeof(std::uintptr_t)),
                         sizeof(std::uintptr_t))) {
-                    return;
+                    return std::nullopt;
                 }
                 std::uintptr_t effect{};
                 std::memcpy(
@@ -651,8 +857,10 @@ namespace community_shaders::vanilla_fixes
                 if (!effect || !readableRange(
                         reinterpret_cast<const void*>(effect), 0x121) ||
                     !writableRange(
-                        reinterpret_cast<const void*>(effect + 8), 1)) {
-                    return;
+                        reinterpret_cast<const void*>(effect + 8), 1) ||
+                    !writableRange(
+                        reinterpret_cast<const void*>(effect + 0x120), 1)) {
+                    return std::nullopt;
                 }
                 std::uintptr_t vtable{};
                 std::memcpy(
@@ -665,11 +873,44 @@ namespace community_shaders::vanilla_fixes
                         logging::critical(
                             "SAO live apply rejected: effect slot 0x47 has an unexpected vtable; source and renderer gates remain controlled.");
                     }
-                    return;
+                    return false;
                 }
                 writeBoolean(
+                    reinterpret_cast<std::uint8_t*>(effect + 0x120),
+                    screenSpaceReflections);
+                writeBoolean(
                     reinterpret_cast<std::uint8_t*>(effect + 8),
-                    enabled);
+                    sao || screenSpaceReflections);
+                return true;
+            }
+
+            [[nodiscard]] bool refreshNativeShaderProperties() noexcept
+            {
+                const auto* registryPointer = reinterpret_cast<
+                    const std::uintptr_t*>(
+                    moduleBase_ + kSceneRootRegistryPointerRva);
+                if (!readableRange(registryPointer, sizeof(*registryPointer))) {
+                    return false;
+                }
+                std::uintptr_t registry{};
+                std::memcpy(&registry, registryPointer, sizeof(registry));
+                if (!registry) {
+                    if (!sceneRegistryUnavailableLogged_.exchange(
+                            true,
+                            std::memory_order_acq_rel)) {
+                        logging::warn(
+                            "Native screen-space shader-property refresh is deferred until the scene-root registry is available.");
+                    }
+                    return false;
+                }
+                using RefreshShaderProperties = void (*)();
+                const auto refresh = reinterpret_cast<RefreshShaderProperties>(
+                    moduleBase_ + kShaderPropertyRefreshRva);
+                refresh();
+                nativePropertyRefreshes_.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                return true;
             }
 
 
@@ -681,8 +922,20 @@ namespace community_shaders::vanilla_fixes
             bool saoIdentityFailureLogged_{};
             std::atomic_bool started_{};
             std::atomic_bool hotReloadActive_{};
+            std::atomic_bool gameDataReady_{};
             std::atomic_bool focusEnabled_{ true };
             std::atomic_uint8_t diagnosticMode_{};
+            std::atomic_uint8_t requestedScreenSpacePolicy_{};
+            std::atomic_bool screenSpacePolicyInitialized_{};
+            std::atomic_bool screenSpacePolicyTaskQueued_{};
+            std::atomic_bool screenSpaceEffectSyncPending_{ true };
+            std::atomic_bool nativePropertyRefreshPending_{};
+            std::atomic_bool taskInterfaceFailureLogged_{};
+            std::atomic_bool sceneRegistryUnavailableLogged_{};
+            std::atomic_uint64_t screenSpacePolicyGeneration_{};
+            std::atomic_uint64_t screenSpacePolicyAppliedGeneration_{};
+            std::atomic_uint64_t screenSpacePolicyApplies_{};
+            std::atomic_uint64_t nativePropertyRefreshes_{};
             std::atomic_uint64_t appliedPolicies_{};
             std::atomic_uint64_t externalReloads_{};
             mutable std::mutex settingsMutex_;
@@ -700,6 +953,11 @@ namespace community_shaders::vanilla_fixes
     void applySettings(const Settings& settings) noexcept
     {
         Controller::get().apply(settings);
+    }
+
+    void onGameDataReady() noexcept
+    {
+        Controller::get().onGameDataReady();
     }
 
     Settings activeSettings() noexcept
