@@ -15,6 +15,7 @@
 #undef near
 #undef far
 #include <RE/NetImmerse/NiAVObject.h>
+#include <RE/NetImmerse/NiNode.h>
 #include <RE/NetImmerse/NiUpdateData.h>
 #pragma pop_macro("far")
 #pragma pop_macro("near")
@@ -314,6 +315,32 @@ namespace community_shaders::sky_sync
             return target;
         }
 
+        [[nodiscard]] bool transformWorldDirectionToParentLocal(
+            const RE::NiAVObject& light,
+            const std::array<float, 3>& worldDirection,
+            std::array<float, 3>& localDirection) noexcept
+        {
+            const auto* parent = light.parent;
+            if (!parent ||
+                !readableRange(parent, sizeof(RE::NiAVObject))) {
+                return false;
+            }
+
+            const auto& parentRotation = parent->world.rotate;
+            localDirection = {
+                parentRotation.entry[0][0] * worldDirection[0] +
+                    parentRotation.entry[1][0] * worldDirection[1] +
+                    parentRotation.entry[2][0] * worldDirection[2],
+                parentRotation.entry[0][1] * worldDirection[0] +
+                    parentRotation.entry[1][1] * worldDirection[1] +
+                    parentRotation.entry[2][1] * worldDirection[2],
+                parentRotation.entry[0][2] * worldDirection[0] +
+                    parentRotation.entry[1][2] * worldDirection[1] +
+                    parentRotation.entry[2][2] * worldDirection[2],
+            };
+            return normalize(localDirection);
+        }
+
         void publishVector(
             std::array<std::atomic_uint32_t, 3>& destination,
             const std::array<float, 3>& value) noexcept
@@ -550,13 +577,32 @@ namespace community_shaders::sky_sync
         }
 
         auto* light = reinterpret_cast<RE::NiAVObject*>(lightAddress);
-        light->local.rotate.entry[0][0] = -currentDirection_[0];
-        light->local.rotate.entry[1][0] = -currentDirection_[1];
-        light->local.rotate.entry[2][0] = -currentDirection_[2];
+        std::array<float, 3> localDirection{};
+        if (!transformWorldDirectionToParentLocal(
+                *light, currentDirection_, localDirection)) {
+            rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
+            applied_.store(false, std::memory_order_release);
+            return;
+        }
+
+        light->local.rotate.entry[0][0] = -localDirection[0];
+        light->local.rotate.entry[1][0] = -localDirection[1];
+        light->local.rotate.entry[2][0] = -localDirection[2];
         RE::NiUpdateData updateData{};
         light->Update(updateData);
         publishVector(appliedDirectionBits_, currentDirection_);
-        directionApplications_.fetch_add(1, std::memory_order_relaxed);
+        const auto previousApplications =
+            directionApplications_.fetch_add(1, std::memory_order_relaxed);
+        if (previousApplications == 0) {
+            logging::info(
+                "Sky Sync first directional-light application converted world=[{:.6f},{:.6f},{:.6f}] to parent-local=[{:.6f},{:.6f},{:.6f}].",
+                currentDirection_[0],
+                currentDirection_[1],
+                currentDirection_[2],
+                localDirection[0],
+                localDirection[1],
+                localDirection[2]);
+        }
         applied_.store(true, std::memory_order_release);
     }
 
