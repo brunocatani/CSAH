@@ -262,6 +262,8 @@ namespace community_shaders::render
         std::atomic_bool firstDirectionalDiagnosticBindReconciledLogged{};
         std::atomic_bool firstDirectionalCoverageDepthLogged{};
         std::atomic_bool firstDirectionalCoverageRasterLogged{};
+        std::atomic_bool firstDirectionalSyntheticProducerLogged{};
+        std::atomic_bool firstDirectionalSyntheticCompositeLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -656,6 +658,212 @@ namespace community_shaders::render
             bool depthStencilBound_{};
             bool rasterizerBound_{};
             bool viewportBound_{};
+            bool active_{};
+            bool restored_{};
+        };
+
+        class ScopedDirectionalDiagnosticSyntheticGeometry final
+        {
+        public:
+            explicit ScopedDirectionalDiagnosticSyntheticGeometry(
+                ID3D11DeviceContext* context) noexcept :
+                context_(context)
+            {
+                if (!context_ || !originalVSSetShader) {
+                    return;
+                }
+                auto& diagnosticSurface = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get();
+                auto* coverageVertexShader =
+                    diagnosticSurface.coverageVertexShader();
+                auto* coverageDepth =
+                    diagnosticSurface.coverageDepthStencilState();
+                if (!coverageVertexShader || !coverageDepth) {
+                    return;
+                }
+
+                ID3D11RenderTargetView* renderTarget{};
+                context_->OMGetRenderTargets(1, &renderTarget, nullptr);
+                Microsoft::WRL::ComPtr<ID3D11RenderTargetView>
+                    currentRenderTarget;
+                currentRenderTarget.Attach(renderTarget);
+                Microsoft::WRL::ComPtr<ID3D11Resource> renderTargetResource;
+                Microsoft::WRL::ComPtr<ID3D11Texture2D> renderTargetTexture;
+                if (!currentRenderTarget) {
+                    return;
+                }
+                currentRenderTarget->GetResource(&renderTargetResource);
+                if (!renderTargetResource ||
+                    FAILED(renderTargetResource.As(&renderTargetTexture)) ||
+                    !renderTargetTexture) {
+                    return;
+                }
+                D3D11_TEXTURE2D_DESC targetDescription{};
+                renderTargetTexture->GetDesc(&targetDescription);
+                if (targetDescription.Width == 0 ||
+                    targetDescription.Height == 0) {
+                    return;
+                }
+
+                ID3D11DepthStencilState* depthStencilState{};
+                context_->OMGetDepthStencilState(
+                    &depthStencilState,
+                    &previousStencilReference_);
+                previousDepthStencilState_.Attach(depthStencilState);
+                ID3D11RasterizerState* rasterizerState{};
+                context_->RSGetState(&rasterizerState);
+                previousRasterizer_.Attach(rasterizerState);
+                previousViewportCount_ =
+                    D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+                context_->RSGetViewports(
+                    &previousViewportCount_,
+                    previousViewports_.data());
+                if (previousViewportCount_ == 0) {
+                    return;
+                }
+                auto* coverageRasterizer =
+                    diagnosticSurface.coverageRasterizerState(
+                        previousRasterizer_.Get());
+                if (!coverageRasterizer) {
+                    return;
+                }
+
+                ID3D11VertexShader* vertexShader{};
+                context_->VSGetShader(&vertexShader, nullptr, nullptr);
+                previousVertexShader_.Attach(vertexShader);
+                ID3D11GeometryShader* geometryShader{};
+                context_->GSGetShader(&geometryShader, nullptr, nullptr);
+                previousGeometryShader_.Attach(geometryShader);
+                ID3D11HullShader* hullShader{};
+                context_->HSGetShader(&hullShader, nullptr, nullptr);
+                previousHullShader_.Attach(hullShader);
+                ID3D11DomainShader* domainShader{};
+                context_->DSGetShader(&domainShader, nullptr, nullptr);
+                previousDomainShader_.Attach(domainShader);
+                ID3D11InputLayout* inputLayout{};
+                context_->IAGetInputLayout(&inputLayout);
+                previousInputLayout_.Attach(inputLayout);
+                context_->IAGetPrimitiveTopology(&previousTopology_);
+
+                context_->OMSetDepthStencilState(coverageDepth, 0);
+                context_->RSSetState(coverageRasterizer);
+                const D3D11_VIEWPORT viewport{
+                    .TopLeftX = 0.0f,
+                    .TopLeftY = 0.0f,
+                    .Width = static_cast<float>(targetDescription.Width),
+                    .Height = static_cast<float>(targetDescription.Height),
+                    .MinDepth = 0.0f,
+                    .MaxDepth = 1.0f,
+                };
+                context_->RSSetViewports(1, &viewport);
+                originalVSSetShader(
+                    context_,
+                    coverageVertexShader,
+                    nullptr,
+                    0);
+                context_->GSSetShader(nullptr, nullptr, 0);
+                context_->HSSetShader(nullptr, nullptr, 0);
+                context_->DSSetShader(nullptr, nullptr, 0);
+                context_->IASetInputLayout(nullptr);
+                context_->IASetPrimitiveTopology(
+                    D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                bound_ = true;
+
+                ID3D11VertexShader* appliedVertexShader{};
+                context_->VSGetShader(
+                    &appliedVertexShader,
+                    nullptr,
+                    nullptr);
+                const auto matched =
+                    appliedVertexShader == coverageVertexShader;
+                if (appliedVertexShader) {
+                    appliedVertexShader->Release();
+                }
+                if (!matched) {
+                    (void)restore();
+                    return;
+                }
+                active_ = true;
+            }
+
+            ~ScopedDirectionalDiagnosticSyntheticGeometry()
+            {
+                (void)restore();
+            }
+
+            ScopedDirectionalDiagnosticSyntheticGeometry(
+                const ScopedDirectionalDiagnosticSyntheticGeometry&) = delete;
+            ScopedDirectionalDiagnosticSyntheticGeometry& operator=(
+                const ScopedDirectionalDiagnosticSyntheticGeometry&) = delete;
+
+            [[nodiscard]] bool active() const noexcept
+            {
+                return active_;
+            }
+
+            [[nodiscard]] bool restore() noexcept
+            {
+                if (restored_) {
+                    return true;
+                }
+                restored_ = true;
+                active_ = false;
+                if (!bound_ || !context_ || !originalVSSetShader) {
+                    return false;
+                }
+                originalVSSetShader(
+                    context_,
+                    previousVertexShader_.Get(),
+                    nullptr,
+                    0);
+                context_->GSSetShader(
+                    previousGeometryShader_.Get(),
+                    nullptr,
+                    0);
+                context_->HSSetShader(
+                    previousHullShader_.Get(),
+                    nullptr,
+                    0);
+                context_->DSSetShader(
+                    previousDomainShader_.Get(),
+                    nullptr,
+                    0);
+                context_->IASetInputLayout(previousInputLayout_.Get());
+                context_->IASetPrimitiveTopology(previousTopology_);
+                context_->RSSetViewports(
+                    previousViewportCount_,
+                    previousViewports_.data());
+                context_->RSSetState(previousRasterizer_.Get());
+                context_->OMSetDepthStencilState(
+                    previousDepthStencilState_.Get(),
+                    previousStencilReference_);
+                bound_ = false;
+                return true;
+            }
+
+        private:
+            ID3D11DeviceContext* context_{};
+            Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
+                previousDepthStencilState_;
+            Microsoft::WRL::ComPtr<ID3D11RasterizerState>
+                previousRasterizer_;
+            Microsoft::WRL::ComPtr<ID3D11VertexShader>
+                previousVertexShader_;
+            Microsoft::WRL::ComPtr<ID3D11GeometryShader>
+                previousGeometryShader_;
+            Microsoft::WRL::ComPtr<ID3D11HullShader> previousHullShader_;
+            Microsoft::WRL::ComPtr<ID3D11DomainShader>
+                previousDomainShader_;
+            Microsoft::WRL::ComPtr<ID3D11InputLayout> previousInputLayout_;
+            std::array<D3D11_VIEWPORT,
+                D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE>
+                previousViewports_{};
+            D3D11_PRIMITIVE_TOPOLOGY previousTopology_{
+                D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED
+            };
+            UINT previousViewportCount_{};
+            UINT previousStencilReference_{};
+            bool bound_{};
             bool active_{};
             bool restored_{};
         };
@@ -1790,13 +1998,38 @@ namespace community_shaders::render
             ID3D11DeviceContext* context,
             DrawCall&& draw) noexcept
         {
+            using DiagnosticMode =
+                vanilla_fixes::DirectionalLightDiagnosticMode;
+            const auto syntheticProducer =
+                activeDirectionalDiagnosticModeAtBind ==
+                    DiagnosticMode::coverageSyntheticProducer ||
+                activeDirectionalDiagnosticModeAtBind ==
+                    DiagnosticMode::coverageSyntheticComposite;
+            const auto syntheticComposite =
+                activeDirectionalDiagnosticModeAtBind ==
+                DiagnosticMode::coverageSyntheticComposite;
             if (activeDirectionalLightDiagnosticPixel) {
                 ScopedDirectionalDiagnosticOutput output(
                     context,
                     activeDirectionalDiagnosticModeAtBind);
                 if (output.active()) {
-                    draw();
-                    return;
+                    if (!syntheticProducer) {
+                        draw();
+                        return;
+                    }
+                    ScopedDirectionalDiagnosticSyntheticGeometry geometry(
+                        context);
+                    if (geometry.active() && originalDrawInstanced) {
+                        originalDrawInstanced(context, 6, 2, 0, 0);
+                        if (!firstDirectionalSyntheticProducerLogged.exchange(
+                                true,
+                                std::memory_order_relaxed)) {
+                            logging::info(
+                                "Exclusive directional coverage replaced the native DFLight vertex/clip-distance draw with two exact packed-eye rectangles.");
+                        }
+                        return;
+                    }
+                    (void)output.restore();
                 }
                 if (originalPSSetShader && activeStockDirectionalLightPixel) {
                     originalPSSetShader(
@@ -1829,8 +2062,23 @@ namespace community_shaders::render
             if (activeDirectionalDiagnosticCompositePixel) {
                 ScopedDirectionalDiagnosticInput input(context);
                 if (input.active()) {
-                    draw();
-                    return;
+                    if (!syntheticComposite) {
+                        draw();
+                        return;
+                    }
+                    ScopedDirectionalDiagnosticSyntheticGeometry geometry(
+                        context);
+                    if (geometry.active() && originalDrawInstanced) {
+                        originalDrawInstanced(context, 6, 2, 0, 0);
+                        if (!firstDirectionalSyntheticCompositeLogged.exchange(
+                                true,
+                                std::memory_order_relaxed)) {
+                            logging::info(
+                                "Exclusive directional coverage replaced the native DFComposite vertex/clip-distance draw with two exact packed-eye rectangles.");
+                        }
+                        return;
+                    }
+                    (void)input.restore();
                 }
                 if (originalPSSetShader &&
                     activeNormalDirectionalDiagnosticCompositePixel) {
@@ -3879,7 +4127,10 @@ namespace community_shaders::render
                 *immediateContext,
                 originalCreatePixelShader);
             (void)vanilla_fixes::DirectionalLightDiagnosticSurface::get()
-                .onDeviceCreated(*device, originalCreatePixelShader);
+                .onDeviceCreated(
+                    *device,
+                    originalCreatePixelShader,
+                    originalCreateVertexShader);
             if (!vanilla_fixes::initializeSslrEnvironmentBinding(
                     *device,
                     *immediateContext)) {

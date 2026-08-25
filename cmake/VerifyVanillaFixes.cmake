@@ -22,6 +22,7 @@ foreach(input IN ITEMS
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_SOURCE
+    VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
@@ -180,6 +181,16 @@ vanilla_fixes_require_text("${directional_diagnostic_composite}"
   "SV_Position"
   "DirectionalDiagnostic.Load"
   "SV_Target0")
+file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_SOURCE}"
+  directional_diagnostic_coverage)
+vanilla_fixes_require_text("${directional_diagnostic_coverage}"
+  "directional diagnostic coverage shader"
+  "SV_VertexID"
+  "SV_InstanceID"
+  "EYEINDEX"
+  "kRectangle[6]"
+  "localPosition.x * 0.5f + eyeCenter"
+  "SV_Position")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "kFirstResourceSlot = 4"
@@ -218,6 +229,10 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "ScopedDirectionalDiagnosticOutput"
   "coverageNoDepthStencil"
   "coverageFullRaster"
+  "coverageSyntheticProducer"
+  "coverageSyntheticComposite"
+  "ScopedDirectionalDiagnosticSyntheticGeometry"
+  "originalDrawInstanced(context, 6, 2, 0, 0)"
   "RSSetViewports("
   "OMSetDepthStencilState("
   "ScopedDirectionalDiagnosticInput"
@@ -287,7 +302,9 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"label\": \"View Light Vector (RGB)\""
   "\"label\": \"Corrected N dot L (Red)\""
   "\"label\": \"Coverage Without Depth (RGB)\""
-  "\"label\": \"Coverage Full Raster (RGB)\"")
+  "\"label\": \"Coverage Full Raster (RGB)\""
+  "\"label\": \"Synthetic DFLight Coverage (RGB)\""
+  "\"label\": \"Synthetic Composite Coverage (RGB)\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")
@@ -389,7 +406,8 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
   vanilla_fixes_require_file(VANILLA_FXC_EXECUTABLE)
   foreach(shader IN ITEMS
       SAO_BLUR SAO_RAW SSLR_BLUR SSLR_PREPASS SSLR_RAYTRACE
-      DIRECTIONAL_DIAGNOSTIC_COMPOSITE)
+      DIRECTIONAL_DIAGNOSTIC_COMPOSITE
+      DIRECTIONAL_DIAGNOSTIC_COVERAGE)
     vanilla_fixes_require_file(VANILLA_${shader}_BINARY)
   endforeach()
 
@@ -399,7 +417,8 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
     "VANILLA_SSLR_BLUR_BINARY|1532|cd5a5f6c4f2faf238403ca8bc366a00557f39f373c22b6cdbbc67588c5e0e25d|vs_5_0|dcl_output o5.xy"
     "VANILLA_SSLR_PREPASS_BINARY|4640|a7526cfc9c67cf62f2719dd7882cef2388c4943d2f22010ddae5c8b8d66c9f80|ps_5_0|dynamicIndexed"
     "VANILLA_SSLR_RAYTRACE_BINARY|18572|7098a1469ec96e77eaae57a384c5c1a7e16843351a4b680d61b3d21d0de09159|ps_5_0|dcl_resource_texturecube"
-    "VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_BINARY|680|a0bebe3381a9074c7197fdb8015082831fbfa19e429727ba1fa8a960b6fe172f|ps_5_0|ld_indexable")
+    "VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_BINARY|680|a0bebe3381a9074c7197fdb8015082831fbfa19e429727ba1fa8a960b6fe172f|ps_5_0|ld_indexable"
+    "VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_BINARY|892|188844250035a61024a4f4b2c267d5252458eb4917675cdb635d51227214b9a0|vs_5_0|dcl_input_sgv v1.x, instance_id")
   foreach(spec IN LISTS binary_specs)
     string(REPLACE "|" ";" fields "${spec}")
     list(GET fields 0 path_variable)
@@ -456,6 +475,17 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
         if(assembly MATCHES "${forbidden_pattern}")
           message(FATAL_ERROR
             "Vanilla Fixes SSLR raytrace bytecode contains forbidden '${forbidden_pattern}'")
+        endif()
+      endforeach()
+    endif()
+    if(path_variable STREQUAL
+        "VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_BINARY")
+      foreach(forbidden_pattern IN ITEMS
+          "cull_distance"
+          "clip_distance")
+        if(assembly MATCHES "${forbidden_pattern}")
+          message(FATAL_ERROR
+            "Directional coverage shader retained forbidden '${forbidden_pattern}'")
         endif()
       endforeach()
     endif()

@@ -517,7 +517,7 @@ namespace community_shaders::contact_shadows
         ID3D11PixelShader* requested,
         const std::uint8_t diagnosticMode) noexcept
     {
-        if (!requested || diagnosticMode == 0 || diagnosticMode > 8) {
+        if (!requested || diagnosticMode == 0 || diagnosticMode > 10) {
             return { requested, {} };
         }
         // Coverage modes 7 and 8 use the mode-4 raw-vector shader. Their only

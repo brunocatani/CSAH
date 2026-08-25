@@ -3,6 +3,7 @@
 #include "support/Logger.h"
 
 #include "VanillaFixesDirectionalDiagnosticCompositePS.h"
+#include "VanillaFixesDirectionalDiagnosticCoverageVS.h"
 
 #include <array>
 #include <utility>
@@ -35,17 +36,19 @@ namespace community_shaders::vanilla_fixes
 
     bool DirectionalLightDiagnosticSurface::onDeviceCreated(
         ID3D11Device* device,
-        const CreatePixelShaderFunction createPixelShader) noexcept
+        const CreatePixelShaderFunction createPixelShader,
+        const CreateVertexShaderFunction createVertexShader) noexcept
     {
         resetSurface();
         compositePixelShader_.Reset();
+        coverageVertexShader_.Reset();
         compositeDevice_.Reset();
         coverageDepthStencilState_.Reset();
-        coverageSourceRasterizerState_.Reset();
-        coverageRasterizerState_.Reset();
-        coverageRasterizerSourceInitialized_ = false;
+        for (auto& state : coverageRasterizerStates_) {
+            state = {};
+        }
         firstCoverageRasterizerFailureLogged_ = false;
-        if (!device || !createPixelShader) {
+        if (!device || !createPixelShader || !createVertexShader) {
             return false;
         }
         D3D11_DEPTH_STENCIL_DESC coverageDepthDescription{};
@@ -75,8 +78,23 @@ namespace community_shaders::vanilla_fixes
                 static_cast<unsigned>(result));
             return false;
         }
+        ID3D11VertexShader* coverageVertexShader{};
+        const auto coverageVertexResult = createVertexShader(
+            device,
+            fo4vr_cs_vanilla_directional_diagnostic_coverage_vs,
+            sizeof(fo4vr_cs_vanilla_directional_diagnostic_coverage_vs),
+            nullptr,
+            &coverageVertexShader);
+        if (FAILED(coverageVertexResult) || !coverageVertexShader) {
+            shader->Release();
+            logging::error(
+                "Exclusive directional synthetic coverage shader creation failed (HRESULT=0x{:08X}); modes 9 and 10 remain fail-closed.",
+                static_cast<unsigned>(coverageVertexResult));
+            return false;
+        }
         compositeDevice_ = device;
         compositePixelShader_.Attach(shader);
+        coverageVertexShader_.Attach(coverageVertexShader);
         logging::info(
             "Exclusive directional diagnostic armed its generic packed-stereo t5 composite for the complete verified IBL DFComposite family.");
         return true;
@@ -135,10 +153,11 @@ namespace community_shaders::vanilla_fixes
         if (!compositeDevice_) {
             return nullptr;
         }
-        if (coverageRasterizerSourceInitialized_ &&
-            coverageSourceRasterizerState_.Get() == source &&
-            coverageRasterizerState_) {
-            return coverageRasterizerState_.Get();
+        for (const auto& state : coverageRasterizerStates_) {
+            if (state.sourceInitialized && state.source.Get() == source &&
+                state.replacement) {
+                return state.replacement.Get();
+            }
         }
 
         D3D11_RASTERIZER_DESC description{};
@@ -167,10 +186,27 @@ namespace community_shaders::vanilla_fixes
             }
             return nullptr;
         }
-        coverageSourceRasterizerState_ = source;
-        coverageRasterizerState_ = std::move(replacement);
-        coverageRasterizerSourceInitialized_ = true;
-        return coverageRasterizerState_.Get();
+        for (auto& state : coverageRasterizerStates_) {
+            if (state.sourceInitialized) {
+                continue;
+            }
+            state.source = source;
+            state.replacement = std::move(replacement);
+            state.sourceInitialized = true;
+            return state.replacement.Get();
+        }
+        if (!firstCoverageRasterizerFailureLogged_) {
+            firstCoverageRasterizerFailureLogged_ = true;
+            logging::error(
+                "Exclusive directional coverage exceeded its fixed raster-state cache; synthetic coverage modes remain fail-closed for the unmatched state.");
+        }
+        return nullptr;
+    }
+
+    ID3D11VertexShader* DirectionalLightDiagnosticSurface::
+        coverageVertexShader() const noexcept
+    {
+        return coverageVertexShader_.Get();
     }
 
     bool DirectionalLightDiagnosticSurface::ensureResources(

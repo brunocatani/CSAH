@@ -15,6 +15,8 @@ namespace community_shaders::vanilla_fixes
         correctedNormalLightDot = 6,
         coverageNoDepthStencil = 7,
         coverageFullRaster = 8,
+        coverageSyntheticProducer = 9,
+        coverageSyntheticComposite = 10,
     };
 
     struct Settings final

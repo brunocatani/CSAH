@@ -3,6 +3,8 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <array>
+
 namespace community_shaders::vanilla_fixes
 {
     struct DirectionalDiagnosticResources final
@@ -31,12 +33,19 @@ namespace community_shaders::vanilla_fixes
             SIZE_T,
             ID3D11ClassLinkage*,
             ID3D11PixelShader**);
+        using CreateVertexShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
+            ID3D11Device*,
+            const void*,
+            SIZE_T,
+            ID3D11ClassLinkage*,
+            ID3D11VertexShader**);
 
         [[nodiscard]] static DirectionalLightDiagnosticSurface& get() noexcept;
 
         [[nodiscard]] bool onDeviceCreated(
             ID3D11Device* device,
-            CreatePixelShaderFunction createPixelShader) noexcept;
+            CreatePixelShaderFunction createPixelShader,
+            CreateVertexShaderFunction createVertexShader) noexcept;
         [[nodiscard]] DirectionalDiagnosticResources prepareOutput(
             ID3D11DeviceContext* context,
             ID3D11RenderTargetView* referenceTarget) noexcept;
@@ -49,8 +58,17 @@ namespace community_shaders::vanilla_fixes
             coverageDepthStencilState() const noexcept;
         [[nodiscard]] ID3D11RasterizerState* coverageRasterizerState(
             ID3D11RasterizerState* source) noexcept;
+        [[nodiscard]] ID3D11VertexShader* coverageVertexShader()
+            const noexcept;
 
     private:
+        struct CoverageRasterizerState final
+        {
+            Microsoft::WRL::ComPtr<ID3D11RasterizerState> source;
+            Microsoft::WRL::ComPtr<ID3D11RasterizerState> replacement;
+            bool sourceInitialized{};
+        };
+
         DirectionalLightDiagnosticSurface() = default;
 
         [[nodiscard]] bool ensureResources(
@@ -64,15 +82,13 @@ namespace community_shaders::vanilla_fixes
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource_;
         Microsoft::WRL::ComPtr<ID3D11Device> compositeDevice_;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> compositePixelShader_;
+        Microsoft::WRL::ComPtr<ID3D11VertexShader> coverageVertexShader_;
         Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
             coverageDepthStencilState_;
-        Microsoft::WRL::ComPtr<ID3D11RasterizerState>
-            coverageSourceRasterizerState_;
-        Microsoft::WRL::ComPtr<ID3D11RasterizerState>
-            coverageRasterizerState_;
+        std::array<CoverageRasterizerState, 4>
+            coverageRasterizerStates_{};
         UINT width_{};
         UINT height_{};
-        bool coverageRasterizerSourceInitialized_{};
         bool firstReadyLogged_{};
         bool firstFailureLogged_{};
         bool firstCoverageRasterizerFailureLogged_{};
