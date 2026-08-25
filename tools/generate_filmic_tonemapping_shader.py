@@ -122,14 +122,18 @@ def main() -> int:
     for required in (
         "dcl_constantbuffer CB2[6], immediateIndexed",
         "dcl_constantbuffer CB12[1], immediateIndexed",
+        "dcl_constantbuffer CB13[1], immediateIndexed",
         "dcl_sampler s0, mode_default",
         "dcl_sampler s1, mode_default",
         "dcl_sampler s2, mode_default",
         "dcl_sampler s3, mode_default",
+        "dcl_sampler s4, mode_default",
         "dcl_resource_texture2d (float,float,float,float) t0",
         "dcl_resource_texture2d (float,float,float,float) t1",
         "dcl_resource_texture2d (float,float,float,float) t2",
         "dcl_resource_texture2d (float,float,float,float) t3",
+        "dcl_resource_texture2d (float,float,float,float) t4",
+        "dcl_resource_texture2d (float,float,float,float) t5",
         "dcl_input_ps linear v1.xy",
         "dcl_output o0.xyzw",
     ):

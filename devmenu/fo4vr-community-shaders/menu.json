@@ -27,6 +27,8 @@
                 { "id": "diffuse-ibl", "type": "toggle", "label": "Diffuse IBL", "help": "Adds environment-derived diffuse bounce lighting.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bDiffuseEnabled" } },
                 { "id": "skylighting", "type": "toggle", "label": "Skylighting", "help": "Uses a shared stereo world-space probe field to occlude sky diffuse and specular light beneath roofs, trees, and overhangs.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Skylighting", "key": "bEnabled" } },
                 { "id": "filmic-tonemapping", "type": "toggle", "label": "Filmic Tonemapping", "help": "Replaces the exact native HDR blend with hue-preserving highlight compression while retaining bloom, cinematic state, fade, and engine adaptation.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "bEnabled" } },
+                { "id": "bloom", "type": "toggle", "label": "Enhanced Bloom", "help": "Adds a stereo-isolated HDR mip-chain bloom while preserving Fallout's native bloom.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Bloom", "key": "bEnabled" } },
+                { "id": "physical-glare", "type": "toggle", "label": "Physical Glare", "help": "Convolves bright HDR light with a wavelength-dependent optical point-spread function independently for each eye.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "bEnabled" } },
                 { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CloudShadows", "key": "bEnabled" } }
               ]
             }
@@ -156,6 +158,61 @@
               "label": "Environment energy",
               "controls": [
                 { "id": "diffuse-ibl-level", "type": "slider", "label": "Diffuse IBL Level", "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "fDiffuseLevel" } }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optics",
+      "label": "Optics",
+      "pages": [
+        {
+          "id": "bloom-tuning",
+          "label": "Bloom",
+          "groups": [
+            {
+              "id": "bloom-response",
+              "label": "HDR bloom response",
+              "description": "The enhanced bloom is extracted from the verified linear HDR scene before exposure and tonemapping. It is added to, not substituted for, Fallout's native bloom.",
+              "controls": [
+                { "id": "bloom-threshold", "type": "slider", "label": "Threshold (EV)", "default": 3.0, "min": -7.0, "max": 16.0, "step": 0.1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Bloom", "key": "fThresholdEV" } },
+                { "id": "bloom-intensity", "type": "slider", "label": "Intensity", "default": 0.035, "min": 0.0, "max": 1.0, "step": 0.005, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Bloom", "key": "fIntensity" } },
+                { "id": "bloom-radius", "type": "slider", "label": "Radius", "default": 2.0, "min": 1.0, "max": 5.0, "step": 0.1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Bloom", "key": "fRadius" } }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "glare-tuning",
+          "label": "Physical Glare",
+          "groups": [
+            {
+              "id": "glare-response",
+              "label": "Glare response",
+              "description": "Each eye receives an independent FFT convolution. Higher FFT resolution sharpens the diffraction pattern and increases fixed GPU cost.",
+              "controls": [
+                { "id": "glare-threshold", "type": "slider", "label": "Threshold (EV)", "default": 6.0, "min": -7.0, "max": 16.0, "step": 0.1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fThresholdEV" } },
+                { "id": "glare-intensity", "type": "slider", "label": "Intensity", "default": 0.2, "min": 0.0, "max": 2.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fIntensity" } },
+                { "id": "glare-fft", "type": "choice", "label": "FFT Resolution", "default": 256, "choices": [ { "label": "Low (128)", "value": 128 }, { "label": "Medium (256)", "value": 256 }, { "label": "High (512)", "value": 512 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "iFftResolution" } },
+                { "id": "glare-padding", "type": "slider", "label": "FFT Padding", "default": 0.1, "min": 0.0, "max": 0.25, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fPaddingRatio" } }
+              ]
+            },
+            {
+              "id": "glare-aperture",
+              "label": "Optical aperture",
+              "controls": [
+                { "id": "glare-aperture-mode", "type": "choice", "label": "Aperture", "default": 0, "choices": [ { "label": "Lens polygon", "value": 0 }, { "label": "Circular pupil", "value": 1 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "iApertureMode" } },
+                { "id": "glare-blades", "type": "slider", "label": "Aperture Blades", "default": 6, "min": 3, "max": 10, "step": 1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "iApertureBlades" } },
+                { "id": "glare-rotation", "type": "slider", "label": "Aperture Rotation", "default": 0.0, "min": -180.0, "max": 180.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fApertureRotationDegrees" } },
+                { "id": "glare-fstop", "type": "slider", "label": "F-Stop", "default": 2.8, "min": 1.0, "max": 22.0, "step": 0.1, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fFStop" } },
+                { "id": "glare-fresnel", "type": "slider", "label": "Fresnel Exponent", "default": 30.0, "min": 0.0, "max": 80.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fFresnelExponent" } },
+                { "id": "glare-aberration", "type": "slider", "label": "Spherical Aberration", "default": 0.0, "min": 0.0, "max": 100.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fSphericalAberration" } },
+                { "id": "glare-chromatic", "type": "slider", "label": "Chromatic Spread", "default": 1.0, "min": 0.0, "max": 3.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fChromaticSpread" } },
+                { "id": "glare-kernel", "type": "slider", "label": "Kernel Scale", "default": 1.0, "min": 0.01, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fKernelScale" } },
+                { "id": "glare-psf-sharpness", "type": "slider", "label": "PSF Sharpness", "default": 0.45, "min": 0.2, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fPsfSharpness" } },
+                { "id": "glare-noise-floor", "type": "slider", "label": "PSF Noise Floor", "default": 0.001, "min": 0.0, "max": 0.01, "step": 0.0001, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "fPsfNoiseFloor" } }
               ]
             }
           ]

@@ -74,13 +74,18 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 94)
+if(NOT controlCount EQUAL 113)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 94 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 113 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
     linear-lighting native-darkness ibl dynamic-cubemaps diffuse-ibl skylighting
+    bloom physical-glare bloom-threshold bloom-intensity bloom-radius
+    glare-threshold glare-intensity glare-fft glare-padding
+    glare-aperture-mode glare-blades glare-rotation glare-fstop glare-fresnel
+    glare-aberration glare-chromatic glare-kernel glare-psf-sharpness
+    glare-noise-floor
     skylighting-quality skylighting-diffuse-min skylighting-specular-min
     skylighting-zenith filmic-tonemapping
     cloud-shadows complex-environment complex-parallax wrapped-grass
@@ -117,6 +122,7 @@ foreach(required IN ITEMS
     "hair_specular::Runtime::get().applySettings"
     "subsurface_scattering::Runtime::get().applySettings"
     "basic_wetness::Runtime::get().applySettings"
+    "bloom_glare::Runtime::get().applySettings"
     "skylighting::Runtime::get().applySettings")
   string(FIND "${pluginSource}" "${required}" found)
   if(found EQUAL -1)
@@ -129,6 +135,7 @@ foreach(required IN ITEMS
     "linear_lighting::Runtime::get().queueSettings"
     "dlaa::Runtime::get().applySettings"
     "filmic_tonemapping::Runtime::get().applySettings"
+    "bloom_glare::Runtime::get().applySettings"
     "ibl::Runtime::get().applySettings"
     "queueComplexParallaxSettings"
     "contact_shadows::Runtime::get().applySettings"
@@ -206,4 +213,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 94 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 113 shared-INI controls, direct runtime publication, no wrist provider or assets")

@@ -2,6 +2,8 @@
 
 #include "Features/basic_wetness/BasicWetnessRuntime.h"
 #include "Features/basic_wetness/BasicWetnessSettingsStore.h"
+#include "Features/bloom_glare/BloomGlareRuntime.h"
+#include "Features/bloom_glare/BloomGlareSettingsStore.h"
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
@@ -332,6 +334,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         const auto dlaaSettings = community_shaders::dlaa::loadSettings();
         const auto filmicTonemappingSettings =
             community_shaders::filmic_tonemapping::loadSettings();
+        const auto bloomGlareSettings =
+            community_shaders::bloom_glare::loadSettings();
         const auto iblSettings = community_shaders::ibl::loadSettings();
         const auto contactShadowSettings =
             community_shaders::contact_shadows::loadSettings();
@@ -358,6 +362,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
         community_shaders::filmic_tonemapping::Runtime::get().applySettings(
             filmicTonemappingSettings);
+        community_shaders::bloom_glare::Runtime::get().applySettings(
+            bloomGlareSettings);
         community_shaders::linear_lighting::Runtime::get().
             applyComplexParallaxSettings(complexMaterialSettings);
         community_shaders::ibl::Runtime::get().applySettings(iblSettings);

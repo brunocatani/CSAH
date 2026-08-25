@@ -2,6 +2,8 @@
 
 #include "Features/basic_wetness/BasicWetnessRuntime.h"
 #include "Features/basic_wetness/BasicWetnessSettingsStore.h"
+#include "Features/bloom_glare/BloomGlareRuntime.h"
+#include "Features/bloom_glare/BloomGlareSettingsStore.h"
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/cloud_shadows/CloudShadowSettingsStore.h"
 #include "Features/complex_materials/ComplexParallaxSettingsStore.h"
@@ -87,6 +89,7 @@ namespace community_shaders::shared_settings
                 .dlaa = dlaa::loadSettings(path),
                 .filmicTonemapping =
                     filmic_tonemapping::loadSettings(path),
+                .bloomGlare = bloom_glare::loadSettings(path),
                 .ibl = ibl::loadSettings(path),
                 .complexMaterials =
                     complex_materials::loadSettings(path),
@@ -117,6 +120,9 @@ namespace community_shaders::shared_settings
             if (changes.filmicTonemapping) {
                 filmic_tonemapping::Runtime::get().applySettings(
                     next.filmicTonemapping);
+            }
+            if (changes.bloomGlare) {
+                bloom_glare::Runtime::get().applySettings(next.bloomGlare);
             }
             if (changes.ibl) {
                 ibl::Runtime::get().applySettings(next.ibl);

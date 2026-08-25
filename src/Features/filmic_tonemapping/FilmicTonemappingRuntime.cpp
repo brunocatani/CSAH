@@ -119,7 +119,7 @@ namespace community_shaders::filmic_tonemapping
         uploadedRevision_ = settingsRevision_.load(std::memory_order_acquire);
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
-            "Filmic Tonemapping replacement is GPU-ready for the unique FO4VR ImageSpace[027] HDR blend contract (CB12, no additional pass).");
+            "Filmic Tonemapping replacement is GPU-ready for the unique FO4VR ImageSpace[027] HDR blend contract; CB12 remains scoped and optional Bloom/Glare t4/t5/b13 inputs fail closed.");
     }
 
     void Runtime::onPixelShaderCreated(
@@ -167,7 +167,7 @@ namespace community_shaders::filmic_tonemapping
             replacementBinds_.fetch_add(1, std::memory_order_relaxed);
             if (!firstBindLogged_.exchange(true, std::memory_order_relaxed)) {
                 logging::info(
-                    "Filmic Tonemapping replaced its first native HDR blend bind; exposure, bloom, cinematic, fade, and bypass-mask inputs remain engine-owned.");
+                    "Filmic Tonemapping replaced its first native HDR blend bind; exposure, native bloom, cinematic, fade, and bypass-mask inputs remain engine-owned while optional Bloom/Glare inputs are privately scoped.");
             }
             return {
                 replacement_.Get(),
@@ -192,8 +192,15 @@ namespace community_shaders::filmic_tonemapping
 
     bool Runtime::featureEnabled() const noexcept
     {
-        return enabled_.load(std::memory_order_acquire) &&
+        return (enabled_.load(std::memory_order_acquire) ||
+                   outputFeatureRequested_.load(std::memory_order_acquire)) &&
             resourcesReady_.load(std::memory_order_acquire);
+    }
+
+    void Runtime::setOutputFeatureRequested(bool requested) noexcept
+    {
+        outputFeatureRequested_.store(requested, std::memory_order_release);
+        settingsRevision_.fetch_add(1, std::memory_order_release);
     }
 
     bool Runtime::bindingActive(ShaderBinding binding) const noexcept
@@ -217,6 +224,14 @@ namespace community_shaders::filmic_tonemapping
 
     Runtime::GpuConstants Runtime::gpuConstants() const noexcept
     {
+        if (!enabled_.load(std::memory_order_acquire)) {
+            return {
+                .exposureMultiplier = 1.0f,
+                .nativeAdaptationWeight = 1.0f,
+                .filmicStrength = 0.0f,
+                .whitePointScale = 1.0f,
+            };
+        }
         return {
             .exposureMultiplier = std::exp2(
                 exposureCompensationEV_.load(std::memory_order_relaxed)),

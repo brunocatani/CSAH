@@ -1,6 +1,7 @@
 #include "render/D3D11Hooks.h"
 
 #include "Features/basic_wetness/BasicWetnessRuntime.h"
+#include "Features/bloom_glare/BloomGlareRuntime.h"
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/contact_shadows/ContactShadowRuntime.h"
 #include "Features/dlaa/DlaaD3D11Hooks.h"
@@ -2746,6 +2747,10 @@ namespace community_shaders::render
                     activeReplacementBinding.family ==
                         linear_lighting::ReplacementShaderFamily::
                             dFLightAmbient);
+            const auto bloomGlareBindings =
+                bloom_glare::Runtime::get().scopeDraw(
+                    context,
+                    static_cast<bool>(activeFilmicTonemappingBinding));
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2814,6 +2819,10 @@ namespace community_shaders::render
                     activeReplacementBinding.family ==
                         linear_lighting::ReplacementShaderFamily::
                             dFLightAmbient);
+            const auto bloomGlareBindings =
+                bloom_glare::Runtime::get().scopeDraw(
+                    context,
+                    static_cast<bool>(activeFilmicTonemappingBinding));
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2888,6 +2897,10 @@ namespace community_shaders::render
                     activeReplacementBinding.family ==
                         linear_lighting::ReplacementShaderFamily::
                             dFLightAmbient);
+            const auto bloomGlareBindings =
+                bloom_glare::Runtime::get().scopeDraw(
+                    context,
+                    static_cast<bool>(activeFilmicTonemappingBinding));
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -2965,6 +2978,10 @@ namespace community_shaders::render
                     activeReplacementBinding.family ==
                         linear_lighting::ReplacementShaderFamily::
                             dFLightAmbient);
+            const auto bloomGlareBindings =
+                bloom_glare::Runtime::get().scopeDraw(
+                    context,
+                    static_cast<bool>(activeFilmicTonemappingBinding));
             const auto filmicConstants =
                 filmic_tonemapping::Runtime::get().scopeDraw(
                     context,
@@ -3734,6 +3751,9 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            bloom_glare::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
             dlaa::Runtime::get().onDeviceCreated(*device, *immediateContext);
             shaderInterceptionActive.store(true, std::memory_order_release);
             deviceHooksInstalled.store(true, std::memory_order_release);

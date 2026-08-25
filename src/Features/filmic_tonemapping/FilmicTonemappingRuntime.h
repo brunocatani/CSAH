@@ -94,6 +94,7 @@ namespace community_shaders::filmic_tonemapping
             ID3D11DeviceContext* context,
             ShaderBinding binding) noexcept;
         [[nodiscard]] bool featureEnabled() const noexcept;
+        void setOutputFeatureRequested(bool requested) noexcept;
         [[nodiscard]] bool bindingActive(ShaderBinding binding) const noexcept;
         void applySettings(const Settings& settings) noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
@@ -122,6 +123,7 @@ namespace community_shaders::filmic_tonemapping
             kMaximumTrackedShaders> originals_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_bool enabled_{ true };
+        std::atomic_bool outputFeatureRequested_{};
         std::atomic_bool nativeAutoExposure_{ true };
         std::atomic<float> exposureCompensationEV_{};
         std::atomic<float> filmicStrength_{ 1.0f };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/basic_wetness/BasicWetnessSettings.h"
+#include "Features/bloom_glare/BloomGlareSettings.h"
 #include "Features/cloud_shadows/CloudShadowSettings.h"
 #include "Features/complex_materials/ComplexParallaxSettings.h"
 #include "Features/contact_shadows/ContactShadowSettings.h"
@@ -24,6 +25,7 @@ namespace community_shaders::shared_settings
         linear_lighting::Settings linearLighting{};
         dlaa::Settings dlaa{};
         filmic_tonemapping::Settings filmicTonemapping{};
+        bloom_glare::Settings bloomGlare{};
         ibl::Settings ibl{};
         complex_materials::Settings complexMaterials{};
         contact_shadows::Settings contactShadows{};
@@ -44,6 +46,7 @@ namespace community_shaders::shared_settings
         bool linearLighting{};
         bool dlaa{};
         bool filmicTonemapping{};
+        bool bloomGlare{};
         bool ibl{};
         bool complexMaterials{};
         bool contactShadows{};
@@ -66,6 +69,7 @@ namespace community_shaders::shared_settings
             return static_cast<std::size_t>(linearLighting) +
                 static_cast<std::size_t>(dlaa) +
                 static_cast<std::size_t>(filmicTonemapping) +
+                static_cast<std::size_t>(bloomGlare) +
                 static_cast<std::size_t>(ibl) +
                 static_cast<std::size_t>(complexMaterials) +
                 static_cast<std::size_t>(contactShadows) +
@@ -89,6 +93,7 @@ namespace community_shaders::shared_settings
             .dlaa = previous.dlaa != next.dlaa,
             .filmicTonemapping = previous.filmicTonemapping !=
                 next.filmicTonemapping,
+            .bloomGlare = previous.bloomGlare != next.bloomGlare,
             .ibl = previous.ibl != next.ibl,
             .complexMaterials =
                 previous.complexMaterials != next.complexMaterials,

@@ -8,11 +8,14 @@ SamplerState BloomSampler : register(s0);
 SamplerState SceneSampler : register(s1);
 SamplerState AdaptedLuminanceSampler : register(s2);
 SamplerState BypassMaskSampler : register(s3);
+SamplerState BloomGlareSampler : register(s4);
 
 Texture2D<float4> BloomTexture : register(t0);
 Texture2D<float4> SceneTexture : register(t1);
 Texture2D<float4> AdaptedLuminanceTexture : register(t2);
 Texture2D<float4> BypassMaskTexture : register(t3);
+Texture2D<float4> EnhancedBloomTexture : register(t4);
+Texture2D<float4> PhysicalGlareTexture : register(t5);
 
 cbuffer NativeHdrBlend : register(b2)
 {
@@ -29,6 +32,12 @@ cbuffer FilmicSettings : register(b12)
     // x = exp2(exposure EV), y = native adaptation weight,
     // z = hue-preserving filmic strength, w = 5.6 white-point scale.
     float4 FilmicParameters;
+};
+
+cbuffer BloomGlareSettings : register(b13)
+{
+    // x=enhanced bloom ready, y=physical glare ready.
+    float4 BloomGlareComposite;
 };
 
 static const float3 LuminanceWeights =
@@ -74,7 +83,15 @@ float4 PSMain(PixelInput input) : SV_Target0
         BypassMaskTexture.Sample(BypassMaskSampler, uv).x;
     const bool bypass = abs(bypassMask * 255.0 - 4.0) < 0.25;
     const float2 bloomUv = uv * NativeBloomUv.zw;
-    const float3 bloom = BloomTexture.Sample(BloomSampler, bloomUv).xyz;
+    float3 bloom = BloomTexture.Sample(BloomSampler, bloomUv).xyz;
+    if (BloomGlareComposite.x > 0.5) {
+        bloom += EnhancedBloomTexture.SampleLevel(
+            BloomGlareSampler, uv, 0.0).xyz;
+    }
+    if (BloomGlareComposite.y > 0.5) {
+        bloom += PhysicalGlareTexture.SampleLevel(
+            BloomGlareSampler, uv, 0.0).xyz;
+    }
     if (bypass) {
         return float4(scene, 1.0);
     }
