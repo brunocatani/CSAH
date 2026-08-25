@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -75,7 +76,7 @@ namespace community_shaders::basic_wetness
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .wetness = readFloat(path, L"fWetness", defaults.wetness),
             .diffuseDarkening = readFloat(
@@ -84,7 +85,7 @@ namespace community_shaders::basic_wetness
                 path, L"fSpecularMultiplier", defaults.specularMultiplier),
             .roughnessScale = readFloat(
                 path, L"fRoughnessScale", defaults.roughnessScale),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

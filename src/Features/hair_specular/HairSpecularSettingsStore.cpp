@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -70,13 +71,13 @@ namespace community_shaders::hair_specular
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .specularMultiplier = readFloat(
                 path,
                 L"fSpecularMultiplier",
                 defaults.specularMultiplier),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

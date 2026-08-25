@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -120,7 +121,7 @@ namespace community_shaders::bloom_glare
             error) {
             return defaults;
         }
-        return sanitize({
+        auto result = sanitize({
             .bloom = {
                 .enabled = readBoolean(
                     path, kBloomSection, L"bEnabled", defaults.bloom.enabled),
@@ -215,6 +216,11 @@ namespace community_shaders::bloom_glare
                     defaults.glare.psfNoiseFloor),
             },
         });
+        if (!master_settings::enabled(path)) {
+            result.bloom.enabled = false;
+            result.glare.enabled = false;
+        }
+        return result;
     }
 
     Settings loadSettings() noexcept

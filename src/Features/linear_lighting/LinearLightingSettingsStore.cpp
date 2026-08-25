@@ -2,6 +2,7 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -158,7 +159,7 @@ namespace community_shaders::linear_lighting
             defaults.otherEffectMultiplier);
 
         result = sanitize(result);
-        return result;
+        return master_settings::gate(path, result);
     }
 
     Settings loadSettings() noexcept

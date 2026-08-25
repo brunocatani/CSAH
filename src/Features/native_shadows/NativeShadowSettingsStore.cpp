@@ -2,6 +2,7 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -164,7 +165,7 @@ namespace community_shaders::native_shadows
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .extendedDirectionalCascades = readBoolean(
                 path,
@@ -186,7 +187,7 @@ namespace community_shaders::native_shadows
                 path,
                 L"iOrthographicShadowFilter",
                 defaults.orthographicShadowFilter),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

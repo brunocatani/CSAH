@@ -2,6 +2,7 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -134,7 +135,7 @@ namespace community_shaders::ibl
             return defaults;
         }
 
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(
                 path,
                 kIblSection,
@@ -154,7 +155,7 @@ namespace community_shaders::ibl
                 path,
                 kDiffuseLevelKey,
                 defaults.diffuseLevel),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

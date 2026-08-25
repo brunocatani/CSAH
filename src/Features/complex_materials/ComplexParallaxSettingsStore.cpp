@@ -2,6 +2,7 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -126,6 +127,10 @@ namespace community_shaders::complex_materials
         result.fadeEnd = readFloat(
             path, L"fParallaxFadeEnd", defaults.fadeEnd);
         result = sanitize(result);
+        if (!master_settings::enabled(path)) {
+            result.environmentResponseEnabled = false;
+            result.parallaxEnabled = false;
+        }
         return result;
     }
 

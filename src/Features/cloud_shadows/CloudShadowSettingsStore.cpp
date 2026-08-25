@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -75,10 +76,10 @@ namespace community_shaders::cloud_shadows
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .opacity = readFloat(path, L"fOpacity", defaults.opacity),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

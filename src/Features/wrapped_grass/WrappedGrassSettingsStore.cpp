@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -72,13 +73,13 @@ namespace community_shaders::wrapped_grass
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .wrapAmount = readFloat(
                 path,
                 L"fWrapAmount",
                 defaults.wrapAmount),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

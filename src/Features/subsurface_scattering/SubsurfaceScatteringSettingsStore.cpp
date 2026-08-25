@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -75,14 +76,14 @@ namespace community_shaders::subsurface_scattering
             error) {
             return defaults;
         }
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .strength = readFloat(path, L"fStrength", defaults.strength),
             .radiusPixels = readFloat(
                 path, L"fRadiusPixels", defaults.radiusPixels),
             .depthRejection = readFloat(
                 path, L"fDepthRejection", defaults.depthRejection),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept

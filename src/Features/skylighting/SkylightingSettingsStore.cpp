@@ -3,6 +3,7 @@
 #include "Features/contact_shadows/ContactShadowSettingsStore.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
+#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -121,7 +122,7 @@ namespace community_shaders::skylighting
             return defaults;
         }
 
-        return sanitize({
+        return master_settings::gate(path, sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .quality = sanitizeQuality(readInteger(
                 path,
@@ -139,7 +140,7 @@ namespace community_shaders::skylighting
                 path,
                 L"fMaxZenithDegrees",
                 defaults.maximumZenithDegrees),
-        });
+        }));
     }
 
     Settings loadSettings() noexcept
