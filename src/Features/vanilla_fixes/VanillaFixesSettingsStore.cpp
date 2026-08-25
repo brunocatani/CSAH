@@ -135,10 +135,10 @@ namespace community_shaders::vanilla_fixes
                 path,
                 L"bVrAllowScreenSpaceReflections",
                 defaults.screenSpaceReflections),
-            .screenSpaceSubsurfaceScattering = readBoolean(
+            .nativeScreenSpaceMaterialPipeline = readBoolean(
                 path,
-                L"bVrAllowScreenSpaceSubsurfaceScattering",
-                defaults.screenSpaceSubsurfaceScattering),
+                L"bNativeScreenSpaceMaterialPipeline",
+                defaults.nativeScreenSpaceMaterialPipeline),
             .lensFlare = readBoolean(
                 path,
                 L"bLensFlareVr",
@@ -162,14 +162,14 @@ namespace community_shaders::vanilla_fixes
         const auto path = settings_path::resolveIniPath();
         const auto settings = loadSettings(path);
         logging::info(
-            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, screenSpaceSSS={}, lensFlare={}, focusShadows={}, sunbeams={}, exclusiveDirectionalDiagnostic={}.",
+            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, exclusiveDirectionalDiagnostic={}.",
             path.string(),
             settings.enabled,
             settings.precipitationOcclusion,
             settings.imageSpaceModifiers,
             settings.sao,
             settings.screenSpaceReflections,
-            settings.screenSpaceSubsurfaceScattering,
+            settings.nativeScreenSpaceMaterialPipeline,
             settings.lensFlare,
             settings.focusShadows,
             settings.sunbeams,
@@ -206,8 +206,8 @@ namespace community_shaders::vanilla_fixes
             success;
         success = writeBoolean(
                       path,
-                      L"bVrAllowScreenSpaceSubsurfaceScattering",
-                      settings.screenSpaceSubsurfaceScattering) &&
+                      L"bNativeScreenSpaceMaterialPipeline",
+                      settings.nativeScreenSpaceMaterialPipeline) &&
             success;
         success = writeBoolean(path, L"bLensFlareVr", settings.lensFlare) &&
             success;

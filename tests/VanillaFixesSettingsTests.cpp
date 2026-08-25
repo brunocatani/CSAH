@@ -68,7 +68,7 @@ int main()
         "bAllowImageSpaceModifiers=no\n"
         "bVrAllowSAO=false\n"
         "bVrAllowScreenSpaceReflections=0\n"
-        "bVrAllowScreenSpaceSubsurfaceScattering=OFF\n"
+        "bNativeScreenSpaceMaterialPipeline=OFF\n"
         "bLensFlareVr=No\n"
         "bVrAllowFocusShadows=False\n"
         "bUseSunbeams=0\n");
@@ -79,8 +79,8 @@ int main()
     require(!disabled.sao, "SAO key");
     require(!disabled.screenSpaceReflections, "SSLR key");
     require(
-        !disabled.screenSpaceSubsurfaceScattering,
-        "screen-space SSS key");
+        !disabled.nativeScreenSpaceMaterialPipeline,
+        "native screen-space material pipeline key");
     require(!disabled.lensFlare, "lens-flare key");
     require(!disabled.focusShadows, "focus-shadow key");
     require(!disabled.sunbeams, "sunbeams key");
@@ -99,7 +99,7 @@ int main()
         .imageSpaceModifiers = true,
         .sao = false,
         .screenSpaceReflections = true,
-        .screenSpaceSubsurfaceScattering = false,
+        .nativeScreenSpaceMaterialPipeline = false,
         .lensFlare = true,
         .focusShadows = false,
         .sunbeams = true,

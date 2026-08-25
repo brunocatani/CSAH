@@ -38,7 +38,8 @@ namespace community_shaders::vanilla_fixes
 
         constexpr std::uint8_t kSaoPolicyBit = 1U << 0;
         constexpr std::uint8_t kScreenSpaceReflectionsPolicyBit = 1U << 1;
-        constexpr std::uint8_t kNativeScreenSpaceSssPolicyBit = 1U << 2;
+        constexpr std::uint8_t
+            kNativeScreenSpaceMaterialPipelinePolicyBit = 1U << 2;
 
         enum class PolicyField : std::uint8_t
         {
@@ -46,7 +47,7 @@ namespace community_shaders::vanilla_fixes
             kImageSpaceModifiers,
             kSao,
             kScreenSpaceReflections,
-            kScreenSpaceSubsurfaceScattering,
+            kNativeScreenSpaceMaterialPipeline,
             kLensFlare,
             kFocusShadows,
             kSunbeams
@@ -121,7 +122,7 @@ namespace community_shaders::vanilla_fixes
                 0x03925608,
                 0x030BA220,
                 kIniSettingVtableRva,
-                PolicyField::kScreenSpaceSubsurfaceScattering },
+                PolicyField::kNativeScreenSpaceMaterialPipeline },
         };
 
         [[nodiscard]] bool requestedValue(
@@ -140,8 +141,8 @@ namespace community_shaders::vanilla_fixes
                 return policy.sao;
             case PolicyField::kScreenSpaceReflections:
                 return policy.screenSpaceReflections;
-            case PolicyField::kScreenSpaceSubsurfaceScattering:
-                return policy.screenSpaceSubsurfaceScattering;
+            case PolicyField::kNativeScreenSpaceMaterialPipeline:
+                return policy.nativeScreenSpaceMaterialPipeline;
             case PolicyField::kLensFlare:
                 return policy.lensFlare;
             case PolicyField::kFocusShadows:
@@ -162,7 +163,7 @@ namespace community_shaders::vanilla_fixes
             policy.imageSpaceModifiers = false;
             policy.sao = false;
             policy.screenSpaceReflections = false;
-            policy.screenSpaceSubsurfaceScattering = false;
+            policy.nativeScreenSpaceMaterialPipeline = false;
             policy.lensFlare = false;
             policy.focusShadows = false;
             policy.sunbeams = false;
@@ -183,8 +184,8 @@ namespace community_shaders::vanilla_fixes
             }
             if (requestedValue(
                     policy,
-                    PolicyField::kScreenSpaceSubsurfaceScattering)) {
-                bits |= kNativeScreenSpaceSssPolicyBit;
+                    PolicyField::kNativeScreenSpaceMaterialPipeline)) {
+                bits |= kNativeScreenSpaceMaterialPipelinePolicyBit;
             }
             return bits;
         }
@@ -634,7 +635,7 @@ namespace community_shaders::vanilla_fixes
                         setting.field == PolicyField::kSao ||
                         setting.field == PolicyField::kScreenSpaceReflections ||
                         setting.field ==
-                            PolicyField::kScreenSpaceSubsurfaceScattering ||
+                            PolicyField::kNativeScreenSpaceMaterialPipeline ||
                         setting.field == PolicyField::kLensFlare ||
                         setting.field == PolicyField::kSunbeams;
                     writeBoolean(
@@ -748,9 +749,9 @@ namespace community_shaders::vanilla_fixes
                 const auto screenSpaceReflections = policyBit(
                     policy,
                     kScreenSpaceReflectionsPolicyBit);
-                const auto nativeScreenSpaceSss = policyBit(
+                const auto nativeScreenSpaceMaterialPipeline = policyBit(
                     policy,
-                    kNativeScreenSpaceSssPolicyBit);
+                    kNativeScreenSpaceMaterialPipelinePolicyBit);
                 auto* renderer = reinterpret_cast<std::uint8_t*>(
                     moduleBase_ + kRendererConfigRva);
                 const auto nativePropertyRefreshRequired =
@@ -758,11 +759,14 @@ namespace community_shaders::vanilla_fixes
                         false,
                         std::memory_order_acq_rel) ||
                     (renderer[0x11C] != 0) != screenSpaceReflections ||
-                    (renderer[0x11D] != 0) != nativeScreenSpaceSss;
+                    (renderer[0x11D] != 0) !=
+                        nativeScreenSpaceMaterialPipeline;
 
                 writeBoolean(renderer + 0x32, sao);
                 writeBoolean(renderer + 0x11C, screenSpaceReflections);
-                writeBoolean(renderer + 0x11D, nativeScreenSpaceSss);
+                writeBoolean(
+                    renderer + 0x11D,
+                    nativeScreenSpaceMaterialPipeline);
 
                 const auto effectSync = synchronizeSaoAndSslrEffect(
                     sao,
@@ -799,7 +803,7 @@ namespace community_shaders::vanilla_fixes
                         "Native screen-space policy applied on the F4SE main-thread queue: SAO={}, SSR={}, native SSS/shared graph={}, shared SAO/SSR effect={}, shader-property refresh={}.",
                         sao,
                         screenSpaceReflections,
-                        nativeScreenSpaceSss,
+                        nativeScreenSpaceMaterialPipeline,
                         effectSync.value_or(false),
                         refreshState);
                 } else if (nativePropertyRefreshRequired &&

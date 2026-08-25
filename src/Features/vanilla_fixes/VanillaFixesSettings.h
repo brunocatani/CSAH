@@ -27,7 +27,7 @@ namespace community_shaders::vanilla_fixes
         bool imageSpaceModifiers{ true };
         bool sao{ true };
         bool screenSpaceReflections{ true };
-        bool screenSpaceSubsurfaceScattering{ true };
+        bool nativeScreenSpaceMaterialPipeline{ true };
         bool lensFlare{ true };
         bool focusShadows{ true };
         bool sunbeams{ true };
