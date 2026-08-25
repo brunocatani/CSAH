@@ -85,7 +85,7 @@ namespace community_shaders::vanilla_fixes
                 static_cast<int>(fallback),
                 path.c_str());
             if (raw > static_cast<UINT>(
-                    DirectionalLightDiagnosticMode::correctedNormalLightDot)) {
+                    DirectionalLightDiagnosticMode::coverageFullRaster)) {
                 return fallback;
             }
             return static_cast<DirectionalLightDiagnosticMode>(raw);
@@ -96,7 +96,8 @@ namespace community_shaders::vanilla_fixes
             const DirectionalLightDiagnosticMode mode) noexcept
         {
             constexpr std::array values{
-                L"0", L"1", L"2", L"3", L"4", L"5", L"6"
+                L"0", L"1", L"2", L"3", L"4", L"5", L"6", L"7",
+                L"8"
             };
             const auto index = static_cast<std::size_t>(mode);
             if (index >= values.size()) {

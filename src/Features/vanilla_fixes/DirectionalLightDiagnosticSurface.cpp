@@ -40,8 +40,27 @@ namespace community_shaders::vanilla_fixes
         resetSurface();
         compositePixelShader_.Reset();
         compositeDevice_.Reset();
+        coverageDepthStencilState_.Reset();
+        coverageSourceRasterizerState_.Reset();
+        coverageRasterizerState_.Reset();
+        coverageRasterizerSourceInitialized_ = false;
+        firstCoverageRasterizerFailureLogged_ = false;
         if (!device || !createPixelShader) {
             return false;
+        }
+        D3D11_DEPTH_STENCIL_DESC coverageDepthDescription{};
+        coverageDepthDescription.DepthEnable = FALSE;
+        coverageDepthDescription.DepthWriteMask =
+            D3D11_DEPTH_WRITE_MASK_ZERO;
+        coverageDepthDescription.DepthFunc = D3D11_COMPARISON_ALWAYS;
+        coverageDepthDescription.StencilEnable = FALSE;
+        const auto coverageDepthResult = device->CreateDepthStencilState(
+            &coverageDepthDescription,
+            coverageDepthStencilState_.GetAddressOf());
+        if (FAILED(coverageDepthResult) || !coverageDepthStencilState_) {
+            logging::error(
+                "Exclusive directional coverage diagnostics could not create their depth-disabled state (HRESULT=0x{:08X}); modes 7 and 8 remain fail-closed.",
+                static_cast<unsigned>(coverageDepthResult));
         }
         ID3D11PixelShader* shader{};
         const auto result = createPixelShader(
@@ -73,7 +92,7 @@ namespace community_shaders::vanilla_fixes
         }
         constexpr std::array clear{ 0.0f, 0.0f, 0.0f, 0.0f };
         context->ClearRenderTargetView(renderTarget_.Get(), clear.data());
-        return { renderTarget_, shaderResource_ };
+        return { renderTarget_, shaderResource_, width_, height_ };
     }
 
     DirectionalDiagnosticResources
@@ -89,7 +108,7 @@ namespace community_shaders::vanilla_fixes
             resetSurface();
             return {};
         }
-        return { renderTarget_, shaderResource_ };
+        return { renderTarget_, shaderResource_, width_, height_ };
     }
 
     ID3D11PixelShader*
@@ -102,6 +121,56 @@ namespace community_shaders::vanilla_fixes
         ID3D11PixelShader* shader) const noexcept
     {
         return shader && shader == compositePixelShader_.Get();
+    }
+
+    ID3D11DepthStencilState* DirectionalLightDiagnosticSurface::
+        coverageDepthStencilState() const noexcept
+    {
+        return coverageDepthStencilState_.Get();
+    }
+
+    ID3D11RasterizerState* DirectionalLightDiagnosticSurface::
+        coverageRasterizerState(ID3D11RasterizerState* source) noexcept
+    {
+        if (!compositeDevice_) {
+            return nullptr;
+        }
+        if (coverageRasterizerSourceInitialized_ &&
+            coverageSourceRasterizerState_.Get() == source &&
+            coverageRasterizerState_) {
+            return coverageRasterizerState_.Get();
+        }
+
+        D3D11_RASTERIZER_DESC description{};
+        if (source) {
+            source->GetDesc(&description);
+        } else {
+            description.FillMode = D3D11_FILL_SOLID;
+            description.CullMode = D3D11_CULL_BACK;
+            description.DepthClipEnable = TRUE;
+        }
+        description.FillMode = D3D11_FILL_SOLID;
+        description.CullMode = D3D11_CULL_NONE;
+        description.DepthClipEnable = FALSE;
+        description.ScissorEnable = FALSE;
+
+        ComPtr<ID3D11RasterizerState> replacement;
+        const auto result = compositeDevice_->CreateRasterizerState(
+            &description,
+            replacement.GetAddressOf());
+        if (FAILED(result) || !replacement) {
+            if (!firstCoverageRasterizerFailureLogged_) {
+                firstCoverageRasterizerFailureLogged_ = true;
+                logging::error(
+                    "Exclusive directional full-raster diagnostic could not create its state (HRESULT=0x{:08X}); mode 8 remains fail-closed.",
+                    static_cast<unsigned>(result));
+            }
+            return nullptr;
+        }
+        coverageSourceRasterizerState_ = source;
+        coverageRasterizerState_ = std::move(replacement);
+        coverageRasterizerSourceInitialized_ = true;
+        return coverageRasterizerState_.Get();
     }
 
     bool DirectionalLightDiagnosticSurface::ensureResources(

@@ -9,6 +9,8 @@ namespace community_shaders::vanilla_fixes
     {
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTarget;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource;
+        UINT width{};
+        UINT height{};
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -43,6 +45,10 @@ namespace community_shaders::vanilla_fixes
         [[nodiscard]] ID3D11PixelShader* compositePixelShader() const noexcept;
         [[nodiscard]] bool isCompositePixelShader(
             ID3D11PixelShader* shader) const noexcept;
+        [[nodiscard]] ID3D11DepthStencilState*
+            coverageDepthStencilState() const noexcept;
+        [[nodiscard]] ID3D11RasterizerState* coverageRasterizerState(
+            ID3D11RasterizerState* source) noexcept;
 
     private:
         DirectionalLightDiagnosticSurface() = default;
@@ -58,9 +64,17 @@ namespace community_shaders::vanilla_fixes
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource_;
         Microsoft::WRL::ComPtr<ID3D11Device> compositeDevice_;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> compositePixelShader_;
+        Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
+            coverageDepthStencilState_;
+        Microsoft::WRL::ComPtr<ID3D11RasterizerState>
+            coverageSourceRasterizerState_;
+        Microsoft::WRL::ComPtr<ID3D11RasterizerState>
+            coverageRasterizerState_;
         UINT width_{};
         UINT height_{};
+        bool coverageRasterizerSourceInitialized_{};
         bool firstReadyLogged_{};
         bool firstFailureLogged_{};
+        bool firstCoverageRasterizerFailureLogged_{};
     };
 }

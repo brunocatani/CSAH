@@ -260,6 +260,8 @@ namespace community_shaders::render
         std::atomic_bool firstDirectionalDiagnosticCompositeFallbackLogged{};
         std::atomic_bool firstDirectionalDiagnosticCompositeBindLogged{};
         std::atomic_bool firstDirectionalDiagnosticBindReconciledLogged{};
+        std::atomic_bool firstDirectionalCoverageDepthLogged{};
+        std::atomic_bool firstDirectionalCoverageRasterLogged{};
         std::atomic_bool firstTrackedContactShaderBindLogged{};
         std::atomic_bool firstTerrainDrawCallerLogged{};
         std::atomic_bool firstDFPrePassDescriptorConsumeLogged{};
@@ -355,7 +357,9 @@ namespace community_shaders::render
         {
         public:
             explicit ScopedDirectionalDiagnosticOutput(
-                ID3D11DeviceContext* context) noexcept :
+                ID3D11DeviceContext* context,
+                const vanilla_fixes::DirectionalLightDiagnosticMode mode)
+                noexcept :
                 context_(context)
             {
                 if (!context_ || !originalOMSetRenderTargets) {
@@ -407,6 +411,10 @@ namespace community_shaders::render
                     (void)restore();
                     return;
                 }
+                if (!applyCoverageOverride(mode)) {
+                    (void)restore();
+                    return;
+                }
                 active_ = true;
                 if (!firstDirectionalDiagnosticCompositeBindLogged.exchange(
                         true,
@@ -438,6 +446,22 @@ namespace community_shaders::render
                 }
                 restored_ = true;
                 active_ = false;
+                if (viewportBound_ && context_) {
+                    context_->RSSetViewports(
+                        previousViewportCount_,
+                        previousViewports_.data());
+                    viewportBound_ = false;
+                }
+                if (rasterizerBound_ && context_) {
+                    context_->RSSetState(previousRasterizer_.Get());
+                    rasterizerBound_ = false;
+                }
+                if (depthStencilBound_ && context_) {
+                    context_->OMSetDepthStencilState(
+                        previousDepthStencilState_.Get(),
+                        previousStencilReference_);
+                    depthStencilBound_ = false;
+                }
                 if (!captured_ || !bound_ || !context_ ||
                     !originalOMSetRenderTargets) {
                     return false;
@@ -488,16 +512,150 @@ namespace community_shaders::render
             }
 
         private:
+            [[nodiscard]] bool applyCoverageOverride(
+                const vanilla_fixes::DirectionalLightDiagnosticMode mode)
+                noexcept
+            {
+                using DiagnosticMode =
+                    vanilla_fixes::DirectionalLightDiagnosticMode;
+                if (mode != DiagnosticMode::coverageNoDepthStencil &&
+                    mode != DiagnosticMode::coverageFullRaster) {
+                    return true;
+                }
+
+                ID3D11DepthStencilState* depthStencilState{};
+                context_->OMGetDepthStencilState(
+                    &depthStencilState,
+                    &previousStencilReference_);
+                previousDepthStencilState_.Attach(depthStencilState);
+                auto* coverageDepth = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get().
+                        coverageDepthStencilState();
+                if (!coverageDepth) {
+                    return false;
+                }
+                if (!firstDirectionalCoverageDepthLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    D3D11_DEPTH_STENCIL_DESC description{};
+                    if (previousDepthStencilState_) {
+                        previousDepthStencilState_->GetDesc(&description);
+                    } else {
+                        description.DepthEnable = TRUE;
+                        description.DepthWriteMask =
+                            D3D11_DEPTH_WRITE_MASK_ALL;
+                        description.DepthFunc = D3D11_COMPARISON_LESS;
+                    }
+                    logging::info(
+                        "Exclusive directional coverage captured native depth/stencil state: present={}, depthEnable={}, depthWrite={}, depthFunc={}, stencilEnable={}, stencilRef={}.",
+                        static_cast<bool>(previousDepthStencilState_),
+                        description.DepthEnable != FALSE,
+                        static_cast<unsigned>(description.DepthWriteMask),
+                        static_cast<unsigned>(description.DepthFunc),
+                        description.StencilEnable != FALSE,
+                        previousStencilReference_);
+                }
+                context_->OMSetDepthStencilState(coverageDepth, 0);
+                depthStencilBound_ = true;
+                ID3D11DepthStencilState* appliedDepth{};
+                UINT appliedStencilReference{};
+                context_->OMGetDepthStencilState(
+                    &appliedDepth,
+                    &appliedStencilReference);
+                const auto depthMatches = appliedDepth == coverageDepth &&
+                    appliedStencilReference == 0;
+                if (appliedDepth) {
+                    appliedDepth->Release();
+                }
+                if (!depthMatches) {
+                    return false;
+                }
+                if (mode == DiagnosticMode::coverageNoDepthStencil) {
+                    return true;
+                }
+
+                ID3D11RasterizerState* rasterizerState{};
+                context_->RSGetState(&rasterizerState);
+                previousRasterizer_.Attach(rasterizerState);
+                previousViewportCount_ =
+                    D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+                context_->RSGetViewports(
+                    &previousViewportCount_,
+                    previousViewports_.data());
+                if (previousViewportCount_ == 0 || resources_.width == 0 ||
+                    resources_.height == 0) {
+                    return false;
+                }
+                auto* coverageRasterizer = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get().
+                        coverageRasterizerState(previousRasterizer_.Get());
+                if (!coverageRasterizer) {
+                    return false;
+                }
+                if (!firstDirectionalCoverageRasterLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    D3D11_RASTERIZER_DESC description{};
+                    if (previousRasterizer_) {
+                        previousRasterizer_->GetDesc(&description);
+                    } else {
+                        description.FillMode = D3D11_FILL_SOLID;
+                        description.CullMode = D3D11_CULL_BACK;
+                        description.DepthClipEnable = TRUE;
+                    }
+                    const auto& viewport = previousViewports_[0];
+                    logging::info(
+                        "Exclusive directional coverage captured native raster state: present={}, viewports={}, first=({}, {}, {}x{}, {}..{}), fill={}, cull={}, depthClip={}, scissor={}.",
+                        static_cast<bool>(previousRasterizer_),
+                        previousViewportCount_,
+                        viewport.TopLeftX,
+                        viewport.TopLeftY,
+                        viewport.Width,
+                        viewport.Height,
+                        viewport.MinDepth,
+                        viewport.MaxDepth,
+                        static_cast<unsigned>(description.FillMode),
+                        static_cast<unsigned>(description.CullMode),
+                        description.DepthClipEnable != FALSE,
+                        description.ScissorEnable != FALSE);
+                }
+                context_->RSSetState(coverageRasterizer);
+                rasterizerBound_ = true;
+                const D3D11_VIEWPORT viewport{
+                    .TopLeftX = 0.0f,
+                    .TopLeftY = 0.0f,
+                    .Width = static_cast<float>(resources_.width),
+                    .Height = static_cast<float>(resources_.height),
+                    .MinDepth = 0.0f,
+                    .MaxDepth = 1.0f,
+                };
+                context_->RSSetViewports(1, &viewport);
+                viewportBound_ = true;
+                return true;
+            }
+
             ID3D11DeviceContext* context_{};
             std::array<Microsoft::WRL::ComPtr<ID3D11RenderTargetView>,
                 D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT>
                 previousRenderTargets_{};
             Microsoft::WRL::ComPtr<ID3D11DepthStencilView>
                 previousDepthStencil_;
+            Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
+                previousDepthStencilState_;
+            Microsoft::WRL::ComPtr<ID3D11RasterizerState>
+                previousRasterizer_;
             vanilla_fixes::DirectionalDiagnosticResources resources_;
+            std::array<D3D11_VIEWPORT,
+                D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE>
+                previousViewports_{};
             UINT previousRenderTargetCount_{};
+            UINT previousViewportCount_{};
+            UINT previousStencilReference_{};
             bool captured_{};
             bool bound_{};
+            bool depthStencilBound_{};
+            bool rasterizerBound_{};
+            bool viewportBound_{};
             bool active_{};
             bool restored_{};
         };
@@ -1633,7 +1791,9 @@ namespace community_shaders::render
             DrawCall&& draw) noexcept
         {
             if (activeDirectionalLightDiagnosticPixel) {
-                ScopedDirectionalDiagnosticOutput output(context);
+                ScopedDirectionalDiagnosticOutput output(
+                    context,
+                    activeDirectionalDiagnosticModeAtBind);
                 if (output.active()) {
                     draw();
                     return;

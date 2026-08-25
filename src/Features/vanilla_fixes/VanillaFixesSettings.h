@@ -13,6 +13,8 @@ namespace community_shaders::vanilla_fixes
         suppliedLightVector = 4,
         viewLightVector = 5,
         correctedNormalLightDot = 6,
+        coverageNoDepthStencil = 7,
+        coverageFullRaster = 8,
     };
 
     struct Settings final

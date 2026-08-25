@@ -75,6 +75,8 @@ foreach(required IN ITEMS
     "for (auto& replacement : replacements_)"
     "directionalDiagnostics_"
     "diagnosticBytecodeLength"
+    "diagnosticMode > 8"
+    "shaderMode = diagnosticMode <= 6 ? diagnosticMode : 4"
     "Exclusive directional diagnostic selected live DFLight contract"
     "for (auto& original : originals_)"
     "original.shader.Reset()")
