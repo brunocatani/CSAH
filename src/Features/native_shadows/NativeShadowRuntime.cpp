@@ -40,6 +40,8 @@ namespace community_shaders::native_shadows
             Settings settings{};
             bool started{};
             bool earlyContractAccepted{};
+            bool cascadeContractAccepted{};
+            bool tiledLightingContractAccepted{};
             bool cascadePatchesOwned{};
             bool tiledLightingPatchesOwned{};
             bool safetyCavesOwned{};
@@ -1240,21 +1242,27 @@ namespace community_shaders::native_shadows
         }
 
         const auto base = moduleBase();
-        // Extended cascades own the larger transaction. Validate and apply
-        // them before any independent tiled-lighting mutation so a rejected
-        // cascade identity leaves the native renderer completely untouched.
-        auto accepted = true;
+        // The tiled-lighting gates and extended cascades are independent
+        // transactions. FO4VR still needs the verified tiled path when an
+        // extended-cascade identity is unavailable.
+        auto cascadeAccepted = true;
         if (g_state.settings.extendedDirectionalCascades) {
-            accepted = applyCascadePatches(base) && accepted;
+            cascadeAccepted = applyCascadePatches(base);
         }
-        if (accepted && g_state.settings.tiledDeferredLighting) {
-            accepted = applyTiledLightingPatches(base) && accepted;
+        auto tiledAccepted = true;
+        if (g_state.settings.tiledDeferredLighting) {
+            tiledAccepted = applyTiledLightingPatches(base);
         }
+        g_state.cascadeContractAccepted = cascadeAccepted;
+        g_state.tiledLightingContractAccepted = tiledAccepted;
+        const auto accepted = cascadeAccepted && tiledAccepted;
         g_state.earlyContractAccepted = accepted;
         if (!accepted) {
             ++g_state.failures;
             logging::error(
-                "Native Shadows rejected at least one early FO4VR contract. No later settings, distances, scene nodes, arrays, or masks will be changed.");
+                "Native Shadows early contract result: tiledLighting={}, extendedCascades={}. Rejected transactions and their later mutations remain inactive.",
+                tiledAccepted,
+                cascadeAccepted);
         }
         return accepted;
     }
@@ -1262,12 +1270,18 @@ namespace community_shaders::native_shadows
     void onGameDataReady() noexcept
     {
         std::scoped_lock lock(g_mutex);
-        if (!g_state.started || !g_state.settings.enabled ||
-            !g_state.earlyContractAccepted) {
+        if (!g_state.started || !g_state.settings.enabled) {
             return;
         }
-        if (!forceTiledSetting()) {
+        if (g_state.settings.tiledDeferredLighting &&
+            g_state.tiledLightingContractAccepted &&
+            !forceTiledSetting()) {
             ++g_state.failures;
+        }
+        if (!g_state.cascadeContractAccepted) {
+            logging::info(
+                "Native Shadows is running the verified tiled two-cascade path; rejected extended-cascade settings, distances, scene nodes, arrays, shader fields, and masks remain untouched.");
+            return;
         }
         if (!forceFixedShadowQuality(moduleBase())) {
             ++g_state.failures;
@@ -1296,7 +1310,7 @@ namespace community_shaders::native_shadows
     {
         std::scoped_lock lock(g_mutex);
         if (!g_state.started || !g_state.settings.enabled ||
-            !g_state.earlyContractAccepted) {
+            !g_state.cascadeContractAccepted) {
             return;
         }
         if (!forceFixedDistance(moduleBase())) {
