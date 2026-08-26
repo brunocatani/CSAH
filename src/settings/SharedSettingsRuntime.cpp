@@ -30,6 +30,7 @@
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
+#include "settings/MasterSettings.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
 
@@ -87,6 +88,7 @@ namespace community_shaders::shared_settings
             const std::filesystem::path& path) noexcept
         {
             return {
+                .masterEnabled = master_settings::enabled(path),
                 .linearLighting = linear_lighting::loadSettings(path),
                 .dlaa = dlaa::loadSettings(path),
                 .filmicTonemapping =
@@ -289,10 +291,10 @@ namespace community_shaders::shared_settings
                             std::memory_order_relaxed) +
                         1;
                     logging::info(
-                        "Shared Community Shaders INI reload #{} accepted: live feature groups={}, Native Shadows restart pending={}.",
+                        "Shared Community Shaders INI reload #{} accepted: live feature groups={}, startup-native restart pending={}.",
                         reloadNumber,
                         changes.liveFeatureCount(),
-                        changes.nativeShadows);
+                        changes.nativeShadows || changes.masterGate);
                 } catch (const std::exception& error) {
                     logging::warn(
                         "Shared settings monitor rejected an INI reload: {}.",

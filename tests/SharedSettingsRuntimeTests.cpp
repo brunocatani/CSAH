@@ -23,6 +23,19 @@ int main()
     const Snapshot baseline{};
     require(!diff(baseline, baseline).any(), "equal snapshots changed");
 
+    auto masterOff = baseline;
+    masterOff.masterEnabled = false;
+    masterOff.vanillaFixes.enabled = false;
+    const auto masterChanges = diff(baseline, masterOff);
+    require(masterChanges.any(), "master gate diff");
+    require(masterChanges.masterGate, "master gate classification");
+    require(
+        !masterChanges.vanillaFixes,
+        "master gate attempted live Vanilla Fixes teardown");
+    require(
+        masterChanges.liveFeatureCount() == 0,
+        "master gate incorrectly counted as live feature");
+
     auto verifyLive = [&](auto mutate, const char* message) {
         auto next = baseline;
         mutate(next);

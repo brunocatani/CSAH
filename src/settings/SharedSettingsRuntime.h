@@ -23,6 +23,7 @@ namespace community_shaders::shared_settings
 {
     struct Snapshot final
     {
+        bool masterEnabled{ true };
         linear_lighting::Settings linearLighting{};
         dlaa::Settings dlaa{};
         filmic_tonemapping::Settings filmicTonemapping{};
@@ -45,6 +46,7 @@ namespace community_shaders::shared_settings
 
     struct ChangeSet final
     {
+        bool masterGate{};
         bool linearLighting{};
         bool dlaa{};
         bool filmicTonemapping{};
@@ -64,7 +66,7 @@ namespace community_shaders::shared_settings
 
         [[nodiscard]] bool any() const noexcept
         {
-            return liveFeatureCount() != 0 || nativeShadows;
+            return masterGate || liveFeatureCount() != 0 || nativeShadows;
         }
 
         [[nodiscard]] std::size_t liveFeatureCount() const noexcept
@@ -92,6 +94,7 @@ namespace community_shaders::shared_settings
         const Snapshot& next) noexcept
     {
         return {
+            .masterGate = previous.masterEnabled != next.masterEnabled,
             .linearLighting =
                 previous.linearLighting != next.linearLighting,
             .dlaa = previous.dlaa != next.dlaa,
@@ -109,7 +112,11 @@ namespace community_shaders::shared_settings
                 next.subsurfaceScattering,
             .basicWetness = previous.basicWetness != next.basicWetness,
             .cloudShadows = previous.cloudShadows != next.cloudShadows,
-            .vanillaFixes = previous.vanillaFixes != next.vanillaFixes,
+            // The master gate persists startup-native policy for the next
+            // launch. Do not dismantle the active SAO/SSLR/shared renderer
+            // graph as part of a bulk live A/B transition.
+            .vanillaFixes = previous.masterEnabled && next.masterEnabled &&
+                previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
             .skylighting = previous.skylighting != next.skylighting,
             .skySync = previous.skySync != next.skySync,
