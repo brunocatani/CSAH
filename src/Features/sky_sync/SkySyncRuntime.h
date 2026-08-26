@@ -25,6 +25,7 @@ namespace community_shaders::sky_sync
         Settings settings{};
         bool hookInstalled{};
         bool hookOwned{};
+        bool stereoCameraReady{};
         bool sunValid{};
         bool moonValid{};
         bool applied{};
@@ -61,6 +62,7 @@ namespace community_shaders::sky_sync
         std::atomic_bool hookInstalled_{};
         std::atomic_bool hookOwned_{};
         std::atomic_bool worldReady_{};
+        std::atomic_bool stereoCameraReady_{};
         std::atomic_bool sunValid_{};
         std::atomic_bool moonValid_{};
         std::atomic_bool applied_{};
