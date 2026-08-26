@@ -530,6 +530,19 @@ namespace community_shaders::sky_sync
                 moonColor[2]);
         }
 
+        if (targetSource == CelestialSource::sun) {
+            // FO4VR already keeps the visible daytime Sun and the
+            // shadow-casting directional light synchronized. Rewriting that
+            // native light during initial world setup invalidates its cascade
+            // owner even when the requested direction is numerically equal.
+            // Retain the Sun as the transition origin but mutate the light
+            // only when Fallout's Moon becomes the active caster.
+            currentDirection_ = targetDirection;
+            publishVector(appliedDirectionBits_, currentDirection_);
+            applied_.store(true, std::memory_order_release);
+            return;
+        }
+
         std::uintptr_t lightAddress{};
         if (!readValue(sunOwner + kSunLightNodeOffset, lightAddress) ||
             !lightAddress ||
@@ -552,7 +565,7 @@ namespace community_shaders::sky_sync
             directionApplications_.fetch_add(1, std::memory_order_relaxed);
         if (previousApplications == 0) {
             logging::info(
-                "Sky Sync first directional-light application consumed camera-independent local source=[{:.6f},{:.6f},{:.6f}].",
+                "Sky Sync first Fallout Moon directional-light application consumed camera-independent local source=[{:.6f},{:.6f},{:.6f}].",
                 currentDirection_[0],
                 currentDirection_[1],
                 currentDirection_[2]);
