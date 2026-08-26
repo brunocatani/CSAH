@@ -230,8 +230,13 @@ namespace
                 skylighting.ambientBinds);
             break;
         }
+        case F4SE::MessagingInterface::kPreLoadGame:
+            community_shaders::sky_sync::Runtime::get().onWorldEnding();
+            break;
         case F4SE::MessagingInterface::kPostLoadGame:
             community_shaders::native_shadows::onWorldReady("PostLoadGame");
+            community_shaders::sky_sync::Runtime::get().onWorldReady(
+                "PostLoadGame");
             (void)ensureSkylightingNativeHooks("PostLoadGame");
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameSessionReady");
@@ -246,6 +251,8 @@ namespace
             break;
         case F4SE::MessagingInterface::kNewGame:
             community_shaders::native_shadows::onWorldReady("NewGame");
+            community_shaders::sky_sync::Runtime::get().onWorldReady(
+                "NewGame");
             (void)ensureSkylightingNativeHooks("NewGame");
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameSessionReady");

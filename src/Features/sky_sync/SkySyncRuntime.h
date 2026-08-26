@@ -48,6 +48,8 @@ namespace community_shaders::sky_sync
         void applySettings(const Settings& settings) noexcept;
         [[nodiscard]] bool installHook() noexcept;
         [[nodiscard]] bool validateHook(const char* trigger) noexcept;
+        void onWorldReady(const char* boundary) noexcept;
+        void onWorldEnding() noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
         void onSkyUpdated(RE::Sky* sky, float deltaSeconds) noexcept;
@@ -58,6 +60,7 @@ namespace community_shaders::sky_sync
         std::atomic_bool enabled_{ true };
         std::atomic_bool hookInstalled_{};
         std::atomic_bool hookOwned_{};
+        std::atomic_bool worldReady_{};
         std::atomic_bool sunValid_{};
         std::atomic_bool moonValid_{};
         std::atomic_bool applied_{};

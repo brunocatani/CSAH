@@ -411,11 +411,30 @@ namespace community_shaders::sky_sync
         return owned;
     }
 
+    void Runtime::onWorldReady(const char* boundary) noexcept
+    {
+        currentDirectionValid_ = false;
+        currentSource_ = CelestialSource::none;
+        worldReady_.store(true, std::memory_order_release);
+        logging::info(
+            "Sky Sync presentation armed at {} after Native Shadows completed its world-ready transaction.",
+            boundary ? boundary : "unknown");
+    }
+
+    void Runtime::onWorldEnding() noexcept
+    {
+        worldReady_.store(false, std::memory_order_release);
+        applied_.store(false, std::memory_order_release);
+        currentDirectionValid_ = false;
+        currentSource_ = CelestialSource::none;
+    }
+
     void Runtime::onSkyUpdated(RE::Sky* sky, float deltaSeconds) noexcept
     {
         skyUpdates_.fetch_add(1, std::memory_order_relaxed);
         if (!sky || !enabled_.load(std::memory_order_acquire) ||
-            !hookOwned_.load(std::memory_order_acquire)) {
+            !hookOwned_.load(std::memory_order_acquire) ||
+            !worldReady_.load(std::memory_order_acquire)) {
             applied_.store(false, std::memory_order_release);
             currentDirectionValid_ = false;
             currentSource_ = CelestialSource::none;
