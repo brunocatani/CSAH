@@ -100,6 +100,7 @@ foreach(required IN ITEMS
     "createAbsoluteJumpThunk("
     "captureDirectCallIdentity("
     "installedSetViewFrustumVrCallIdentity"
+    "preexistingSetViewFrustumCall.destination"
     "_ReturnAddress()"
     "hookPass14Resolver"
     "usesLightingPrecipitationBuilder("

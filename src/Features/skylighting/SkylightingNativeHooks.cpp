@@ -1235,29 +1235,43 @@ namespace community_shaders::skylighting
                 "Skylighting native projection signature mismatch at RVA 0x00635530.");
             return false;
         }
-        DetourIdentity preexistingSetViewFrustumDetour{};
-        const auto nativeSetViewFrustum = isExecutableRange(
-                                              setViewFrustumVr,
-                                              kSetViewFrustumVrSignature.size()) &&
+        DirectCallIdentity preexistingSetViewFrustumCall{};
+        if (!captureDirectCallIdentity(
+                setViewFrustumVrCall,
+                preexistingSetViewFrustumCall) ||
+            preexistingSetViewFrustumCall.destination ==
+                reinterpret_cast<const void*>(&hookSetViewFrustumVr)) {
+            logging::error(
+                "Skylighting native precipitation VR-frustum callsite at RVA 0x00635A76 has no safe executable predecessor.");
+            return false;
+        }
+        const auto callTargetsNativeEntry =
+            preexistingSetViewFrustumCall.destination == setViewFrustumVr;
+        const auto nativeSetViewFrustum = callTargetsNativeEntry &&
+            isExecutableRange(
+                setViewFrustumVr,
+                kSetViewFrustumVrSignature.size()) &&
             std::memcmp(
                 setViewFrustumVr,
                 kSetViewFrustumVrSignature.data(),
                 kSetViewFrustumVrSignature.size()) == 0;
-        const auto chainedSetViewFrustum = !nativeSetViewFrustum &&
+        DetourIdentity preexistingSetViewFrustumDetour{};
+        const auto chainedNativeEntry = callTargetsNativeEntry &&
+            !nativeSetViewFrustum &&
             captureDetourIdentity(
                 setViewFrustumVr,
                 preexistingSetViewFrustumDetour);
-        if ((!nativeSetViewFrustum && !chainedSetViewFrustum) ||
-            !isExecutableRange(setViewFrustumVrCall, kRelativeCallSize) ||
-            relativeTarget(setViewFrustumVrCall) != setViewFrustumVr) {
-            logging::error(
-                "Skylighting native precipitation VR-frustum callsite mismatch at RVA 0x00635A76; the target must be the verified native entry or one recognized detour chain at RVA 0x01C2BFA0.");
-            return false;
-        }
-        if (chainedSetViewFrustum) {
+        if (!callTargetsNativeEntry) {
+            logging::info(
+                "Skylighting found an existing precipitation VR-frustum call owner at RVA 0x00635A76 and will preserve its executable destination {}.",
+                fmt::ptr(preexistingSetViewFrustumCall.destination));
+        } else if (chainedNativeEntry) {
             logging::info(
                 "Skylighting found an existing VR-frustum detour at RVA 0x01C2BFA0 and will preserve it through the precipitation-only callsite chain (destination={}).",
                 fmt::ptr(preexistingSetViewFrustumDetour.destination));
+        } else if (!nativeSetViewFrustum) {
+            logging::warn(
+                "Skylighting found externally modified bytes at the executable VR-frustum entry RVA 0x01C2BFA0; the exact precipitation call predecessor is retained without assuming detour encoding.");
         }
         if (!isReadableRange(image + kCubeSizeRva, sizeof(float))) {
             logging::error(
@@ -1518,7 +1532,7 @@ namespace community_shaders::skylighting
             reinterpret_cast<NativeGpuCullingEnabled>(
                 gpuCullingEnabledTrampoline);
         originalSetViewFrustumVr = reinterpret_cast<SetViewFrustumVr>(
-            setViewFrustumVr);
+            preexistingSetViewFrustumCall.destination);
         originalPass14Resolver = reinterpret_cast<Pass14Resolver>(
             pass14Trampoline);
         nativeSkySingleton =
