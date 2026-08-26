@@ -341,6 +341,87 @@ namespace community_shaders::sky_sync
             return normalize(localDirection);
         }
 
+        [[nodiscard]] float dot(
+            const std::array<float, 3>& lhs,
+            const std::array<float, 3>& rhs) noexcept
+        {
+            return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
+        }
+
+        [[nodiscard]] std::array<float, 3> cross(
+            const std::array<float, 3>& lhs,
+            const std::array<float, 3>& rhs) noexcept
+        {
+            return {
+                lhs[1] * rhs[2] - lhs[2] * rhs[1],
+                lhs[2] * rhs[0] - lhs[0] * rhs[2],
+                lhs[0] * rhs[1] - lhs[1] * rhs[0],
+            };
+        }
+
+        [[nodiscard]] bool rebuildDirectionalLightBasis(
+            RE::NiAVObject& light,
+            const std::array<float, 3>& localDirection) noexcept
+        {
+            std::array<float, 3> forward{
+                -localDirection[0],
+                -localDirection[1],
+                -localDirection[2],
+            };
+            if (!normalize(forward)) {
+                return false;
+            }
+
+            // Retain the light's existing roll when that axis is usable.
+            // Gram-Schmidt removes the component parallel to the new forward
+            // vector, then the cross products complete a right-handed basis.
+            std::array<float, 3> second{
+                light.local.rotate.entry[0][1],
+                light.local.rotate.entry[1][1],
+                light.local.rotate.entry[2][1],
+            };
+            const auto projectSecond = [&]() noexcept {
+                const float projection = dot(second, forward);
+                for (std::size_t index = 0; index < second.size(); ++index) {
+                    second[index] -= projection * forward[index];
+                }
+                return normalize(second);
+            };
+            if (!projectSecond()) {
+                const auto absoluteForward = std::array{
+                    std::fabs(forward[0]),
+                    std::fabs(forward[1]),
+                    std::fabs(forward[2]),
+                };
+                const std::size_t leastAligned =
+                    absoluteForward[0] <= absoluteForward[1] &&
+                        absoluteForward[0] <= absoluteForward[2] ?
+                    0u :
+                    (absoluteForward[1] <= absoluteForward[2] ? 1u : 2u);
+                second = {};
+                second[leastAligned] = 1.0f;
+                if (!projectSecond()) {
+                    return false;
+                }
+            }
+
+            auto third = cross(forward, second);
+            if (!normalize(third)) {
+                return false;
+            }
+            second = cross(third, forward);
+            if (!normalize(second)) {
+                return false;
+            }
+
+            for (std::size_t row = 0; row < 3; ++row) {
+                light.local.rotate.entry[row][0] = forward[row];
+                light.local.rotate.entry[row][1] = second[row];
+                light.local.rotate.entry[row][2] = third[row];
+            }
+            return true;
+        }
+
         void publishVector(
             std::array<std::atomic_uint32_t, 3>& destination,
             const std::array<float, 3>& value) noexcept
@@ -585,9 +666,11 @@ namespace community_shaders::sky_sync
             return;
         }
 
-        light->local.rotate.entry[0][0] = -localDirection[0];
-        light->local.rotate.entry[1][0] = -localDirection[1];
-        light->local.rotate.entry[2][0] = -localDirection[2];
+        if (!rebuildDirectionalLightBasis(*light, localDirection)) {
+            rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
+            applied_.store(false, std::memory_order_release);
+            return;
+        }
         RE::NiUpdateData updateData{};
         light->Update(updateData);
         publishVector(appliedDirectionBits_, currentDirection_);

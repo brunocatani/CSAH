@@ -18,6 +18,7 @@ endfunction()
 foreach(input IN ITEMS
     VANILLA_SHADER_RUNTIME_SOURCE
     VANILLA_FOCUS_RUNTIME_SOURCE
+    VANILLA_SUN_OCCLUSION_RUNTIME_SOURCE
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
@@ -99,6 +100,20 @@ vanilla_fixes_require_text("${focus_runtime}" "focus-shadow native/resource"
   "PSSetShaderResources"
   "ScopedFocusShadowBinding::~ScopedFocusShadowBinding")
 
+file(READ "${VANILLA_SUN_OCCLUSION_RUNTIME_SOURCE}" sun_occlusion_runtime)
+vanilla_fixes_require_text("${sun_occlusion_runtime}"
+  "stereo Sun occlusion"
+  "kAggregateSunOcclusionRva = 0x0281DD70"
+  "kMinimumAcceptedCoveragePixels = 10"
+  "kStoredSunOcclusionOffset = 0xF618"
+  "kSunTestsOffset = 0xF620"
+  "sizeof(SunOcclusionTest) == 0x18"
+  "aggregateStereoSunOcclusion("
+  "installSunOcclusionNativeHook()"
+  "setSunOcclusionFixEnabled("
+  "MH_CreateHook("
+  "MH_EnableHook(")
+
 file(READ "${VANILLA_RUNTIME_SOURCE}" runtime)
 vanilla_fixes_require_text("${runtime}" "engine-gate"
   "0x03740E38"
@@ -162,6 +177,7 @@ vanilla_fixes_require_text("${settings_store}" "settings"
   "L\"bLensFlareVr\""
   "L\"bVrAllowFocusShadows\""
   "L\"bUseSunbeams\""
+  "L\"bVrSunOcclusion\""
   "L\"iDirectionalLightingMode\""
   "readDiagnosticMode("
   "writeDiagnosticMode("
@@ -317,6 +333,7 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"key\": \"bLensFlareVr\""
   "\"key\": \"bVrAllowFocusShadows\""
   "\"key\": \"bUseSunbeams\""
+  "\"key\": \"bVrSunOcclusion\""
   "\"id\": \"directional-diagnostic\""
   "\"section\": \"Diagnostics\""
   "\"key\": \"iDirectionalLightingMode\""

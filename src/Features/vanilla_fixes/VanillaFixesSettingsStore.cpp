@@ -151,6 +151,10 @@ namespace community_shaders::vanilla_fixes
                 path,
                 L"bUseSunbeams",
                 defaults.sunbeams),
+            .stereoSunOcclusion = readBoolean(
+                path,
+                L"bVrSunOcclusion",
+                defaults.stereoSunOcclusion),
             .directionalLightDiagnosticMode = readDiagnosticMode(
                 path,
                 defaults.directionalLightDiagnosticMode),
@@ -162,7 +166,7 @@ namespace community_shaders::vanilla_fixes
         const auto path = settings_path::resolveIniPath();
         const auto settings = loadSettings(path);
         logging::info(
-            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, exclusiveDirectionalDiagnostic={}.",
+            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, stereoSunOcclusion={}, exclusiveDirectionalDiagnostic={}.",
             path.string(),
             settings.enabled,
             settings.precipitationOcclusion,
@@ -173,6 +177,7 @@ namespace community_shaders::vanilla_fixes
             settings.lensFlare,
             settings.focusShadows,
             settings.sunbeams,
+            settings.stereoSunOcclusion,
             static_cast<unsigned>(settings.directionalLightDiagnosticMode));
         return settings;
     }
@@ -217,6 +222,11 @@ namespace community_shaders::vanilla_fixes
                       settings.focusShadows) &&
             success;
         success = writeBoolean(path, L"bUseSunbeams", settings.sunbeams) &&
+            success;
+        success = writeBoolean(
+                      path,
+                      L"bVrSunOcclusion",
+                      settings.stereoSunOcclusion) &&
             success;
         success = writeDiagnosticMode(
                       path,
