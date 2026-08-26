@@ -1247,7 +1247,6 @@ namespace community_shaders::render
             if (renderTargetAndUnorderedAccessBindCreated) {
                 (void)MH_RemoveHook(renderTargetAndUnorderedAccessBindTarget);
             }
-            (void)MH_Uninitialize();
             originalCreateVertexShader = nullptr;
             originalCreatePixelShader = nullptr;
             originalCreateComputeShader = nullptr;
@@ -3750,7 +3749,8 @@ namespace community_shaders::render
             }
 
             auto status = MH_Initialize();
-            if (status != MH_OK) {
+            if (status != MH_OK &&
+                status != MH_ERROR_ALREADY_INITIALIZED) {
                 logging::error(
                     "MinHook initialization failed: {} ({}).",
                     minHookStatusName(status),

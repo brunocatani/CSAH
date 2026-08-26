@@ -352,6 +352,9 @@ vanilla_fixes_require_text("${shared_settings}" "live settings publication"
 
 file(READ "${VANILLA_PLUGIN_SOURCE}" plugin)
 vanilla_fixes_require_text("${plugin}" "startup"
+  "MH_Initialize()"
+  "MH_ERROR_ALREADY_INITIALIZED"
+  "Shared native-hook runtime initialized before feature ownership begins."
   "vanilla_fixes::loadSettings()"
   "vanilla_fixes::startRuntime("
   "vanilla_fixes::onGameDataReady()"
@@ -362,6 +365,14 @@ if(runtime_start EQUAL -1 OR d3d_start EQUAL -1 OR
    NOT runtime_start LESS d3d_start)
   message(FATAL_ERROR
     "Vanilla Fixes engine-gate runtime must start before D3D interception")
+endif()
+
+vanilla_fixes_require_text("${d3d11}" "shared hook ownership"
+  "status != MH_ERROR_ALREADY_INITIALIZED")
+string(FIND "${d3d11}" "MH_Uninitialize()" minhook_uninitialize)
+if(NOT minhook_uninitialize EQUAL -1)
+  message(FATAL_ERROR
+    "D3D11 rollback must not uninitialize the process-wide native-hook runtime")
 endif()
 
 file(READ "${VANILLA_IBL_GENERATOR_SOURCE}" ibl_generator)

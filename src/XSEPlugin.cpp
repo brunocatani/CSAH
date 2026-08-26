@@ -43,6 +43,8 @@
 #include "support/Logger.h"
 #include "settings/SharedSettingsRuntime.h"
 
+#include <MinHook.h>
+
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
     version.PluginName("FO4VR Community Shaders");
@@ -332,6 +334,17 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             return false;
         }
         F4SE::Init(a_f4se, false);
+
+        const auto minHookStatus = MH_Initialize();
+        if (minHookStatus != MH_OK &&
+            minHookStatus != MH_ERROR_ALREADY_INITIALIZED) {
+            community_shaders::logging::critical(
+                "Shared native-hook runtime initialization failed (MinHook={}); plugin remains unloaded.",
+                static_cast<int>(minHookStatus));
+            return false;
+        }
+        community_shaders::logging::info(
+            "Shared native-hook runtime initialized before feature ownership begins.");
 
         const auto settings =
             community_shaders::linear_lighting::loadSettings();
