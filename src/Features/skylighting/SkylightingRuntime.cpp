@@ -527,7 +527,10 @@ namespace community_shaders::skylighting
                 immediateContext,
                 "Skylighting",
                 { "native capture", "probe update", nullptr, nullptr },
-                2)) {
+                2,
+                120,
+                1,
+                render::GpuTimingProfiler::Group::Skylighting)) {
             logging::warn(
                 "Skylighting could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
         }
@@ -539,7 +542,8 @@ namespace community_shaders::skylighting
                     nullptr },
                 1,
                 120,
-                30)) {
+                30,
+                render::GpuTimingProfiler::Group::Skylighting)) {
             logging::warn(
                 "Skylighting could not allocate ambient-draw GPU timing queries; rendering remains active without performance telemetry.");
         }

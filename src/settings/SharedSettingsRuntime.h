@@ -16,6 +16,7 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
 #include "Features/vanilla_fixes/VanillaFixesSettings.h"
 #include "Features/wrapped_grass/WrappedGrassSettings.h"
+#include "settings/DiagnosticsSettings.h"
 
 #include <cstddef>
 
@@ -24,6 +25,7 @@ namespace community_shaders::shared_settings
     struct Snapshot final
     {
         bool masterEnabled{ true };
+        diagnostics_settings::Settings diagnostics{};
         linear_lighting::Settings linearLighting{};
         dlaa::Settings dlaa{};
         filmic_tonemapping::Settings filmicTonemapping{};
@@ -47,6 +49,7 @@ namespace community_shaders::shared_settings
     struct ChangeSet final
     {
         bool masterGate{};
+        bool diagnostics{};
         bool linearLighting{};
         bool dlaa{};
         bool filmicTonemapping{};
@@ -67,13 +70,14 @@ namespace community_shaders::shared_settings
 
         [[nodiscard]] bool any() const noexcept
         {
-            return masterGate || vanillaFixesGate ||
+            return masterGate || diagnostics || vanillaFixesGate ||
                 liveFeatureCount() != 0 || nativeShadows;
         }
 
         [[nodiscard]] std::size_t liveFeatureCount() const noexcept
         {
             return static_cast<std::size_t>(linearLighting) +
+                static_cast<std::size_t>(diagnostics) +
                 static_cast<std::size_t>(dlaa) +
                 static_cast<std::size_t>(filmicTonemapping) +
                 static_cast<std::size_t>(bloomGlare) +
@@ -97,6 +101,7 @@ namespace community_shaders::shared_settings
     {
         return {
             .masterGate = previous.masterEnabled != next.masterEnabled,
+            .diagnostics = previous.diagnostics != next.diagnostics,
             .linearLighting =
                 previous.linearLighting != next.linearLighting,
             .dlaa = previous.dlaa != next.dlaa,

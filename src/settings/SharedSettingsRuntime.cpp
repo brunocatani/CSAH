@@ -31,6 +31,8 @@
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "settings/MasterSettings.h"
+#include "render/GpuTimingProfiler.h"
+#include "settings/DiagnosticsSettings.h"
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
 
@@ -89,6 +91,7 @@ namespace community_shaders::shared_settings
         {
             return {
                 .masterEnabled = master_settings::enabled(path),
+                .diagnostics = diagnostics_settings::load(path),
                 .linearLighting = linear_lighting::loadSettings(path),
                 .dlaa = dlaa::loadSettings(path),
                 .filmicTonemapping =
@@ -115,6 +118,10 @@ namespace community_shaders::shared_settings
             const ChangeSet& changes,
             const Snapshot& next) noexcept
         {
+            if (changes.diagnostics) {
+                render::GpuTimingProfiler::setOnDemandGroups(
+                    next.diagnostics.gpuProfilingGroups);
+            }
             if (changes.linearLighting) {
                 linear_lighting::Runtime::get().queueSettings(
                     next.linearLighting);
@@ -196,6 +203,8 @@ namespace community_shaders::shared_settings
                     return false;
                 }
                 active_ = loadSnapshot(configPath_);
+                render::GpuTimingProfiler::setOnDemandGroups(
+                    active_.diagnostics.gpuProfilingGroups);
                 accepted_ = readSignature(configPath_);
 
                 try {
