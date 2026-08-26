@@ -211,6 +211,8 @@ foreach(required IN ITEMS
     "LoadNativeDepth"
     "ReconstructViewPosition"
     "ProjectViewPosition"
+    "const float fadeDistance = max(ContactParams2.x, 1.0f)"
+    "if (abs(surface.z) >= fadeDistance)"
     "rawDepth * 100.0f"
     "rawDepth * 1.01f - 0.01f"
     "neighborDomain != baseDomain"

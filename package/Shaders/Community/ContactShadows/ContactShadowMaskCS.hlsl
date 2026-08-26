@@ -327,6 +327,10 @@ void CSMain(
         packedUv,
         samplingRawDepth[0],
         record.eye);
+    const float fadeDistance = max(ContactParams2.x, 1.0f);
+    if (abs(surface.z) >= fadeDistance) {
+        return;
+    }
     const float3 towardLight = normalize(DFLight[record.eye + 1u].xyz);
     const float4 startClip = ProjectViewPosition(surface, record.eye);
     const float4 endClip = ProjectViewPosition(
