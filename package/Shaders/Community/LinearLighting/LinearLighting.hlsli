@@ -227,11 +227,21 @@ float3 LinearLightingSkyProducerColor(float3 color)
 
 // Cloud techniques receive an authored weather tint rather than the fixed
 // producer-decoded gradient colour used by the other Sky techniques. Decode
-// that tint with the complete Sky response before composing it with the
-// already-decoded cloud texture.
+// its luminance with the complete Sky response while retaining the authored
+// channel ratio. A per-channel power curve turns pale sunset tints crimson by
+// suppressing their weaker green and blue channels disproportionately.
 float3 LinearLightingSkyCloudColor(float3 color)
 {
-    return LinearLightingSky(color);
+    if (enableLinearLighting == 0u) {
+        return color;
+    }
+
+    const float3 positiveColor = abs(color);
+    const float luminance = dot(
+        positiveColor,
+        float3(0.2126f, 0.7152f, 0.0722f));
+    const float linearLuminance = pow(luminance, skyGamma);
+    return positiveColor * (linearLuminance / max(luminance, 1e-5f));
 }
 
 float3 LinearLightingWater(float3 color)

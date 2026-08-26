@@ -390,14 +390,37 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             std::abs(value), gamma / kSkyProducerGamma);
     }
 
+    std::array<float, 3> skyCloudColor(
+        const std::array<float, 4>& color,
+        float gamma)
+    {
+        constexpr std::array<float, 3> luminanceWeights{
+            0.2126F, 0.7152F, 0.0722F
+        };
+        float luminance = 0.0F;
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            luminance += std::abs(color[channel]) * luminanceWeights[channel];
+        }
+        const float scale = std::pow(luminance, gamma) /
+            std::max(luminance, 1.0e-5F);
+        return {
+            std::abs(color[0]) * scale,
+            std::abs(color[1]) * scale,
+            std::abs(color[2]) * scale
+        };
+    }
+
     Pixel expectedEnabled(std::uint32_t descriptor, float gamma)
     {
         Pixel expected{};
+        const auto cloudColor = skyCloudColor(kVertexColor, gamma);
         const auto scaledProduct = [gamma](float lhs, float rhs) {
             return sky(lhs, gamma) * skyProducerColor(rhs, gamma) * kScale;
         };
-        const auto scaledCloudProduct = [gamma](float lhs, float rhs) {
-            return sky(lhs, gamma) * sky(rhs, gamma) * kScale;
+        const auto scaledCloudProduct = [gamma](
+                                                  float texture,
+                                                  float tint) {
+            return sky(texture, gamma) * tint * kScale;
         };
         const float noise = kNoise * 0.0078125F - 0.001953125F;
         for (std::size_t channel = 0; channel < 3; ++channel) {
@@ -416,7 +439,7 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
             case 4:
             case 5:
                 expected[channel] =
-                    scaledCloudProduct(kBaseColor[channel], kVertexColor[channel]);
+                    scaledCloudProduct(kBaseColor[channel], cloudColor[channel]);
                 break;
             case 6:
                 expected[channel] =
@@ -424,15 +447,15 @@ VSOutput VSMain(uint vertexId : SV_VertexID)
                         sky(kBaseColor[channel], gamma),
                         sky(kBlendColor[channel], gamma),
                         kBlend) *
-                    sky(kVertexColor[channel], gamma) * kScale;
+                    cloudColor[channel] * kScale;
                 break;
             case 7:
                 expected[channel] = scaledCloudProduct(
-                    kBaseColor[channel], kVertexColor[channel]);
+                    kBaseColor[channel], cloudColor[channel]);
                 break;
             case 8:
                 expected[channel] = scaledCloudProduct(
-                    kBaseColor[channel], kVertexColor[channel]) + noise;
+                    kBaseColor[channel], cloudColor[channel]) + noise;
                 break;
             default:
                 throw std::runtime_error("unexpected Sky descriptor");
