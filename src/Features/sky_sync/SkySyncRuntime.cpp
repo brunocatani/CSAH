@@ -15,7 +15,6 @@
 #undef near
 #undef far
 #include <RE/NetImmerse/NiAVObject.h>
-#include <RE/NetImmerse/NiNode.h>
 #include <RE/NetImmerse/NiUpdateData.h>
 #pragma pop_macro("far")
 #pragma pop_macro("near")
@@ -39,18 +38,14 @@ namespace community_shaders::sky_sync
     namespace
     {
         constexpr std::uintptr_t kSkyUpdateRva = 0x0063A3A0;
-        constexpr std::uintptr_t kStereoRootPointerRva = 0x06235AC8;
-        constexpr std::uintptr_t kStereoUploadIdentityRva = 0x01D939AF;
         constexpr std::uintptr_t kMoonPhaseFunctionRva = 0x00632390;
         constexpr std::uintptr_t kMoonPhaseValueRva = 0x05A3CF78;
-        constexpr std::size_t kStereoFirstOriginOffset = 0x2590;
         constexpr std::size_t kSunOwnerOffset = 0x80;
         constexpr std::size_t kMasserOwnerOffset = 0x90;
         constexpr std::size_t kSecundaOwnerOffset = 0x98;
         constexpr std::size_t kSunSourceNodeOffset = 0x18;
         constexpr std::size_t kSunLightNodeOffset = 0x38;
         constexpr std::size_t kMoonSourceNodeOffset = 0x08;
-        constexpr std::size_t kWorldPositionOffset = 0xA0;
         constexpr std::size_t kMoonColorOffset = 0x168;
         constexpr float kMinimumDirectionMagnitude = 1.0e-5f;
         constexpr float kMaximumCoordinateMagnitude = 1.0e8f;
@@ -64,23 +59,6 @@ namespace community_shaders::sky_sync
             std::byte{ 0x49 }, std::byte{ 0x8D }, std::byte{ 0xAB },
             std::byte{ 0xE8 }, std::byte{ 0xFE }, std::byte{ 0xFF },
             std::byte{ 0xFF },
-        };
-        constexpr std::array<std::byte, 44> kStereoUploadIdentity{
-            std::byte{ 0x48 }, std::byte{ 0x8B }, std::byte{ 0x05 },
-            std::byte{ 0x12 }, std::byte{ 0x21 }, std::byte{ 0x4A },
-            std::byte{ 0x04 }, std::byte{ 0x4C }, std::byte{ 0x8B },
-            std::byte{ 0x65 }, std::byte{ 0xB0 }, std::byte{ 0x48 },
-            std::byte{ 0x8B }, std::byte{ 0x0D }, std::byte{ 0xFF },
-            std::byte{ 0x20 }, std::byte{ 0x4A }, std::byte{ 0x04 },
-            std::byte{ 0x4C }, std::byte{ 0x8D }, std::byte{ 0xA8 },
-            std::byte{ 0xE0 }, std::byte{ 0x1E }, std::byte{ 0x00 },
-            std::byte{ 0x00 }, std::byte{ 0x48 }, std::byte{ 0x85 },
-            std::byte{ 0xC0 }, std::byte{ 0x75 }, std::byte{ 0x07 },
-            std::byte{ 0x4C }, std::byte{ 0x8D }, std::byte{ 0xA9 },
-            std::byte{ 0xE0 }, std::byte{ 0x1E }, std::byte{ 0x00 },
-            std::byte{ 0x00 }, std::byte{ 0x4D }, std::byte{ 0x8B },
-            std::byte{ 0xAD }, std::byte{ 0xF0 }, std::byte{ 0x06 },
-            std::byte{ 0x00 }, std::byte{ 0x00 },
         };
         constexpr std::array<std::byte, 20> kMoonPhaseSignature{
             std::byte{ 0x48 }, std::byte{ 0x83 }, std::byte{ 0xEC },
@@ -100,18 +78,11 @@ namespace community_shaders::sky_sync
             const void* destination{};
         };
 
-        struct StereoOriginFields final
-        {
-            float first[4]{};
-            float second[4]{};
-        };
-
         std::mutex hookMutex;
         SkyUpdateFunction originalSkyUpdate{};
         std::byte* skyUpdateTarget{};
         DetourIdentity hookIdentity{};
         std::uintptr_t moduleBase{};
-        std::uintptr_t stereoRootPointerAddress{};
         std::uintptr_t moonPhaseAddress{};
 
         [[nodiscard]] bool readableRange(
@@ -261,37 +232,45 @@ namespace community_shaders::sky_sync
             return true;
         }
 
-        [[nodiscard]] bool captureStereoCenter(
-            std::array<float, 3>& center) noexcept
-        {
-            std::uintptr_t root{};
-            StereoOriginFields origins{};
-            if (!readValue(stereoRootPointerAddress, root) || !root ||
-                !readValue(root + kStereoFirstOriginOffset, origins)) {
-                return false;
-            }
-            for (std::size_t index = 0; index < center.size(); ++index) {
-                center[index] = (origins.first[index] + origins.second[index]) *
-                    0.5f;
-            }
-            return finiteVector(center);
-        }
-
-        [[nodiscard]] bool captureDirection(
+        [[nodiscard]] bool captureSunDirection(
             const std::uintptr_t owner,
             const std::size_t nodeOffset,
-            const std::array<float, 3>& center,
             std::array<float, 3>& direction) noexcept
         {
             std::uintptr_t node{};
-            std::array<float, 3> world{};
             if (!owner || !readValue(owner + nodeOffset, node) || !node ||
-                !readValue(node + kWorldPositionOffset, world)) {
+                !readableRange(
+                    reinterpret_cast<const void*>(node),
+                    sizeof(RE::NiAVObject))) {
                 return false;
             }
-            for (std::size_t index = 0; index < direction.size(); ++index) {
-                direction[index] = world[index] - center[index];
+            const auto* root = reinterpret_cast<const RE::NiAVObject*>(node);
+            direction = {
+                root->local.translate.x,
+                root->local.translate.y,
+                root->local.translate.z,
+            };
+            return normalize(direction);
+        }
+
+        [[nodiscard]] bool captureMoonDirection(
+            const std::uintptr_t owner,
+            const std::size_t nodeOffset,
+            std::array<float, 3>& direction) noexcept
+        {
+            std::uintptr_t node{};
+            if (!owner || !readValue(owner + nodeOffset, node) || !node ||
+                !readableRange(
+                    reinterpret_cast<const void*>(node),
+                    sizeof(RE::NiAVObject))) {
+                return false;
             }
+            const auto* root = reinterpret_cast<const RE::NiAVObject*>(node);
+            direction = {
+                root->local.rotate.entry[0][1],
+                root->local.rotate.entry[1][1],
+                root->local.rotate.entry[2][1],
+            };
             return normalize(direction);
         }
 
@@ -313,113 +292,6 @@ namespace community_shaders::sky_sync
                 return result;
             }
             return target;
-        }
-
-        [[nodiscard]] bool transformWorldDirectionToParentLocal(
-            const RE::NiAVObject& light,
-            const std::array<float, 3>& worldDirection,
-            std::array<float, 3>& localDirection) noexcept
-        {
-            const auto* parent = light.parent;
-            if (!parent ||
-                !readableRange(parent, sizeof(RE::NiAVObject))) {
-                return false;
-            }
-
-            const auto& parentRotation = parent->world.rotate;
-            localDirection = {
-                parentRotation.entry[0][0] * worldDirection[0] +
-                    parentRotation.entry[1][0] * worldDirection[1] +
-                    parentRotation.entry[2][0] * worldDirection[2],
-                parentRotation.entry[0][1] * worldDirection[0] +
-                    parentRotation.entry[1][1] * worldDirection[1] +
-                    parentRotation.entry[2][1] * worldDirection[2],
-                parentRotation.entry[0][2] * worldDirection[0] +
-                    parentRotation.entry[1][2] * worldDirection[1] +
-                    parentRotation.entry[2][2] * worldDirection[2],
-            };
-            return normalize(localDirection);
-        }
-
-        [[nodiscard]] float dot(
-            const std::array<float, 3>& lhs,
-            const std::array<float, 3>& rhs) noexcept
-        {
-            return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
-        }
-
-        [[nodiscard]] std::array<float, 3> cross(
-            const std::array<float, 3>& lhs,
-            const std::array<float, 3>& rhs) noexcept
-        {
-            return {
-                lhs[1] * rhs[2] - lhs[2] * rhs[1],
-                lhs[2] * rhs[0] - lhs[0] * rhs[2],
-                lhs[0] * rhs[1] - lhs[1] * rhs[0],
-            };
-        }
-
-        [[nodiscard]] bool rebuildDirectionalLightBasis(
-            RE::NiAVObject& light,
-            const std::array<float, 3>& localDirection) noexcept
-        {
-            std::array<float, 3> forward{
-                -localDirection[0],
-                -localDirection[1],
-                -localDirection[2],
-            };
-            if (!normalize(forward)) {
-                return false;
-            }
-
-            // Retain the light's existing roll when that axis is usable.
-            // Gram-Schmidt removes the component parallel to the new forward
-            // vector, then the cross products complete a right-handed basis.
-            std::array<float, 3> second{
-                light.local.rotate.entry[0][1],
-                light.local.rotate.entry[1][1],
-                light.local.rotate.entry[2][1],
-            };
-            const auto projectSecond = [&]() noexcept {
-                const float projection = dot(second, forward);
-                for (std::size_t index = 0; index < second.size(); ++index) {
-                    second[index] -= projection * forward[index];
-                }
-                return normalize(second);
-            };
-            if (!projectSecond()) {
-                const auto absoluteForward = std::array{
-                    std::fabs(forward[0]),
-                    std::fabs(forward[1]),
-                    std::fabs(forward[2]),
-                };
-                const std::size_t leastAligned =
-                    absoluteForward[0] <= absoluteForward[1] &&
-                        absoluteForward[0] <= absoluteForward[2] ?
-                    0u :
-                    (absoluteForward[1] <= absoluteForward[2] ? 1u : 2u);
-                second = {};
-                second[leastAligned] = 1.0f;
-                if (!projectSecond()) {
-                    return false;
-                }
-            }
-
-            auto third = cross(forward, second);
-            if (!normalize(third)) {
-                return false;
-            }
-            second = cross(third, forward);
-            if (!normalize(second)) {
-                return false;
-            }
-
-            for (std::size_t row = 0; row < 3; ++row) {
-                light.local.rotate.entry[row][0] = forward[row];
-                light.local.rotate.entry[row][1] = second[row];
-                light.local.rotate.entry[row][2] = third[row];
-            }
-            return true;
         }
 
         void publishVector(
@@ -482,17 +354,13 @@ namespace community_shaders::sky_sync
                 reinterpret_cast<std::uintptr_t>(skyUpdateTarget),
                 kSkyUpdateSignature) ||
             !matchesBytes(
-                moduleBase + kStereoUploadIdentityRva,
-                kStereoUploadIdentity) ||
-            !matchesBytes(
                 moduleBase + kMoonPhaseFunctionRva,
                 kMoonPhaseSignature)) {
             logging::critical(
-                "Sky Sync FO4VR sky-update, stereo-camera, or Moon-phase identity gate failed; native lighting remains unchanged.");
+                "Sky Sync FO4VR sky-update or Moon-phase identity gate failed; native lighting remains unchanged.");
             return false;
         }
 
-        stereoRootPointerAddress = moduleBase + kStereoRootPointerRva;
         moonPhaseAddress = moduleBase + kMoonPhaseValueRva;
         const auto createResult = MH_CreateHook(
             skyUpdateTarget,
@@ -521,9 +389,8 @@ namespace community_shaders::sky_sync
 
         hookInstalled_.store(true, std::memory_order_release);
         hookOwned_.store(true, std::memory_order_release);
-        stereoCameraReady_.store(true, std::memory_order_release);
         logging::info(
-            "Sky Sync installed the verified FO4VR Sky::Update hook: one stereo-stable Sun source and one climate-selected Fallout Moon source are armed.");
+            "Sky Sync installed the verified FO4VR Sky::Update hook: the Sun root local translation and Fallout Moon root local rotation are armed as camera-independent sources.");
         return true;
     }
 
@@ -556,18 +423,16 @@ namespace community_shaders::sky_sync
         }
 
         const auto skyAddress = reinterpret_cast<std::uintptr_t>(sky);
-        std::array<float, 3> center{};
         std::uintptr_t sunOwner{};
-        if (!captureStereoCenter(center) ||
-            !readValue(skyAddress + kSunOwnerOffset, sunOwner) || !sunOwner) {
+        if (!readValue(skyAddress + kSunOwnerOffset, sunOwner) || !sunOwner) {
             rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
             applied_.store(false, std::memory_order_release);
             return;
         }
 
         std::array<float, 3> sunDirection{};
-        const auto sunValid = captureDirection(
-            sunOwner, kSunSourceNodeOffset, center, sunDirection);
+        const auto sunValid = captureSunDirection(
+            sunOwner, kSunSourceNodeOffset, sunDirection);
         sunValid_.store(sunValid, std::memory_order_release);
         if (sunValid) {
             publishVector(sunDirectionBits_, sunDirection);
@@ -578,11 +443,11 @@ namespace community_shaders::sky_sync
         (void)readValue(skyAddress + kMasserOwnerOffset, masser);
         (void)readValue(skyAddress + kSecundaOwnerOffset, secunda);
         std::array<float, 3> moonDirection{};
-        auto moonValid = captureDirection(
-            secunda, kMoonSourceNodeOffset, center, moonDirection);
+        auto moonValid = captureMoonDirection(
+            secunda, kMoonSourceNodeOffset, moonDirection);
         if (!moonValid) {
-            moonValid = captureDirection(
-                masser, kMoonSourceNodeOffset, center, moonDirection);
+            moonValid = captureMoonDirection(
+                masser, kMoonSourceNodeOffset, moonDirection);
         }
         moonValid_.store(moonValid, std::memory_order_release);
         if (moonValid) {
@@ -658,19 +523,9 @@ namespace community_shaders::sky_sync
         }
 
         auto* light = reinterpret_cast<RE::NiAVObject*>(lightAddress);
-        std::array<float, 3> localDirection{};
-        if (!transformWorldDirectionToParentLocal(
-                *light, currentDirection_, localDirection)) {
-            rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
-            applied_.store(false, std::memory_order_release);
-            return;
-        }
-
-        if (!rebuildDirectionalLightBasis(*light, localDirection)) {
-            rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
-            applied_.store(false, std::memory_order_release);
-            return;
-        }
+        light->local.rotate.entry[0][0] = -currentDirection_[0];
+        light->local.rotate.entry[1][0] = -currentDirection_[1];
+        light->local.rotate.entry[2][0] = -currentDirection_[2];
         RE::NiUpdateData updateData{};
         light->Update(updateData);
         publishVector(appliedDirectionBits_, currentDirection_);
@@ -678,13 +533,10 @@ namespace community_shaders::sky_sync
             directionApplications_.fetch_add(1, std::memory_order_relaxed);
         if (previousApplications == 0) {
             logging::info(
-                "Sky Sync first directional-light application converted world=[{:.6f},{:.6f},{:.6f}] to parent-local=[{:.6f},{:.6f},{:.6f}].",
+                "Sky Sync first directional-light application consumed camera-independent local source=[{:.6f},{:.6f},{:.6f}].",
                 currentDirection_[0],
                 currentDirection_[1],
-                currentDirection_[2],
-                localDirection[0],
-                localDirection[1],
-                localDirection[2]);
+                currentDirection_[2]);
         }
         applied_.store(true, std::memory_order_release);
     }
@@ -695,8 +547,6 @@ namespace community_shaders::sky_sync
             .settings = { .enabled = enabled_.load(std::memory_order_acquire) },
             .hookInstalled = hookInstalled_.load(std::memory_order_acquire),
             .hookOwned = hookOwned_.load(std::memory_order_acquire),
-            .stereoCameraReady =
-                stereoCameraReady_.load(std::memory_order_acquire),
             .sunValid = sunValid_.load(std::memory_order_acquire),
             .moonValid = moonValid_.load(std::memory_order_acquire),
             .applied = applied_.load(std::memory_order_acquire),
