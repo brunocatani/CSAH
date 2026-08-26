@@ -4259,6 +4259,7 @@ namespace community_shaders::render
             contact_shadows::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
+                swapChain ? *swapChain : nullptr,
                 originalCreatePixelShader);
             vanilla_fixes::DirectionalLightStabilityRuntime::get()
                 .onDeviceCreated(*device);

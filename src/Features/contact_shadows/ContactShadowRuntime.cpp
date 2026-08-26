@@ -128,6 +128,7 @@ namespace community_shaders::contact_shadows
     void Runtime::onDeviceCreated(
         ID3D11Device* device,
         ID3D11DeviceContext* context,
+        IDXGISwapChain* swapChain,
         HRESULT(STDMETHODCALLTYPE* createPixelShader)(
             ID3D11Device*, const void*, SIZE_T, ID3D11ClassLinkage*,
             ID3D11PixelShader**)) noexcept
@@ -137,6 +138,7 @@ namespace community_shaders::contact_shadows
         drawGpuTiming_.reset();
         device_ = device;
         context_ = context;
+        swapChain_ = swapChain;
         for (auto& replacement : replacements_) {
             replacement.Reset();
         }
@@ -172,12 +174,15 @@ namespace community_shaders::contact_shadows
         firstDiagnosticBindLogged_.store(false, std::memory_order_relaxed);
         firstDispatchLogged_.store(false, std::memory_order_relaxed);
         firstDispatchFailureLogged_.store(false, std::memory_order_relaxed);
+        firstMaskCacheHitLogged_.store(false, std::memory_order_relaxed);
         uploadedRevision_ = 0;
         uploadedContactActive_ = false;
         uploadedMaskActive_ = false;
         uploadedCloudActive_ = false;
         uploadedCloudOpacity_ = 0.0f;
         uploadedGpuSettings_.fill(0.0f);
+        maskCacheKey_ = {};
+        maskCacheValid_ = false;
         if (!device || !context || !createPixelShader) {
             failures_.fetch_add(1, std::memory_order_relaxed);
             return;
@@ -743,6 +748,7 @@ namespace community_shaders::contact_shadows
         maskTexture_ = std::move(nextTexture);
         maskView_ = std::move(nextView);
         maskOutput_ = std::move(nextOutput);
+        maskCacheValid_ = false;
         maskWidth_ = source.Width;
         maskHeight_ = source.Height;
         maskRebuilds_.fetch_add(1, std::memory_order_relaxed);
@@ -755,6 +761,7 @@ namespace community_shaders::contact_shadows
 
     bool Runtime::dispatchMask(
         ID3D11DeviceContext* context,
+        ShaderBinding binding,
         bool contactShadowsActive,
         bool cloudShadowsActive,
         bool& maskActive) noexcept
@@ -821,6 +828,38 @@ namespace community_shaders::contact_shadows
             }
             return false;
         }
+        UINT presentCount{};
+        const auto hasFrameToken = swapChain_ &&
+            SUCCEEDED(swapChain_->GetLastPresentCount(&presentCount));
+        const MaskCacheKey cacheKey{
+            .presentCount = presentCount,
+            .width = maskWidth_,
+            .height = maskHeight_,
+            .depth = depth.Get(),
+            .dflight = dflight.Get(),
+            .stereo = stereo.Get(),
+            .camera = camera.Get(),
+            .cloud = cloud,
+            .cloudSampler = cloudSampler,
+            .originalShader = binding.original,
+            .replacementShader = binding.replacement,
+            .settingsRevision = uploadedRevision_,
+            .cloudOpacity = cloudOpacity,
+            .contactActive = contactShadowsActive,
+            .cloudActive = cloudReady,
+        };
+        if (hasFrameToken && maskCacheValid_ &&
+            maskCacheKey_ == cacheKey) {
+            maskCacheHits_.fetch_add(1, std::memory_order_relaxed);
+            if (!firstMaskCacheHitLogged_.exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                logging::info(
+                    "Contact Shadows reused its exact stereo mask within one presented frame.");
+            }
+            return true;
+        }
+        maskCacheValid_ = false;
         render::ScopedComputeState restore(
             context,
             {
@@ -983,6 +1022,8 @@ namespace community_shaders::contact_shadows
             return false;
         }
         maskDispatches_.fetch_add(1, std::memory_order_relaxed);
+        maskCacheKey_ = cacheKey;
+        maskCacheValid_ = hasFrameToken;
         if (!firstDispatchLogged_.exchange(
                 true,
                 std::memory_order_relaxed)) {
@@ -1015,6 +1056,7 @@ namespace community_shaders::contact_shadows
         auto maskActive = false;
         if (!dispatchMask(
                 context,
+                binding,
                 contactShadowsActive,
                 cloudShadowsActive,
                 maskActive)) {
@@ -1078,6 +1120,7 @@ namespace community_shaders::contact_shadows
             .replacementBinds = replacementBinds_.load(std::memory_order_relaxed),
             .diagnosticBinds = diagnosticBinds_.load(std::memory_order_relaxed),
             .maskDispatches = maskDispatches_.load(std::memory_order_relaxed),
+            .maskCacheHits = maskCacheHits_.load(std::memory_order_relaxed),
             .maskRebuilds = maskRebuilds_.load(std::memory_order_relaxed),
             .drawScopes = drawScopes_.load(std::memory_order_relaxed),
             .drawRestores = drawRestores_.load(std::memory_order_relaxed),

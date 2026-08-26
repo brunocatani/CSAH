@@ -4,6 +4,7 @@
 #include "render/GpuTimingProfiler.h"
 
 #include <d3d11.h>
+#include <dxgi.h>
 #include <wrl/client.h>
 
 #include <array>
@@ -22,6 +23,7 @@ namespace community_shaders::contact_shadows
         std::uint64_t replacementBinds{};
         std::uint64_t diagnosticBinds{};
         std::uint64_t maskDispatches{};
+        std::uint64_t maskCacheHits{};
         std::uint64_t maskRebuilds{};
         std::uint64_t drawScopes{};
         std::uint64_t drawRestores{};
@@ -82,6 +84,7 @@ namespace community_shaders::contact_shadows
         void onDeviceCreated(
             ID3D11Device* device,
             ID3D11DeviceContext* context,
+            IDXGISwapChain* swapChain,
             HRESULT(STDMETHODCALLTYPE* createPixelShader)(
                 ID3D11Device*, const void*, SIZE_T, ID3D11ClassLinkage*,
                 ID3D11PixelShader**)) noexcept;
@@ -127,9 +130,32 @@ namespace community_shaders::contact_shadows
             ID3D11ShaderResourceView* depth) noexcept;
         [[nodiscard]] bool dispatchMask(
             ID3D11DeviceContext* context,
+            ShaderBinding binding,
             bool contactShadowsActive,
             bool cloudShadowsActive,
             bool& maskActive) noexcept;
+
+        struct MaskCacheKey final
+        {
+            UINT presentCount{};
+            UINT width{};
+            UINT height{};
+            ID3D11ShaderResourceView* depth{};
+            ID3D11Buffer* dflight{};
+            ID3D11Buffer* stereo{};
+            ID3D11Buffer* camera{};
+            ID3D11ShaderResourceView* cloud{};
+            ID3D11SamplerState* cloudSampler{};
+            ID3D11PixelShader* originalShader{};
+            ID3D11PixelShader* replacementShader{};
+            std::uint64_t settingsRevision{};
+            float cloudOpacity{};
+            bool contactActive{};
+            bool cloudActive{};
+
+            [[nodiscard]] bool operator==(
+                const MaskCacheKey&) const noexcept = default;
+        };
 
         struct TrackedShader
         {
@@ -141,6 +167,7 @@ namespace community_shaders::contact_shadows
         static constexpr std::size_t kMaximumTrackedShaders = 128;
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
+        Microsoft::WRL::ComPtr<IDXGISwapChain> swapChain_;
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kMaximumShaderContracts> replacements_{};
         std::array<std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 6>,
@@ -183,11 +210,14 @@ namespace community_shaders::contact_shadows
         bool uploadedCloudActive_{};
         float uploadedCloudOpacity_{};
         std::array<float, 16> uploadedGpuSettings_{};
+        MaskCacheKey maskCacheKey_{};
+        bool maskCacheValid_{};
         std::atomic_uint32_t matchingShaders_{};
         std::atomic_uint32_t trackedShaders_{};
         std::atomic_uint64_t replacementBinds_{};
         std::atomic_uint64_t diagnosticBinds_{};
         std::atomic_uint64_t maskDispatches_{};
+        std::atomic_uint64_t maskCacheHits_{};
         std::atomic_uint64_t maskRebuilds_{};
         std::atomic_uint64_t drawScopes_{};
         std::atomic_uint64_t drawRestores_{};
@@ -198,5 +228,6 @@ namespace community_shaders::contact_shadows
         std::atomic_bool firstDiagnosticBindLogged_{};
         std::atomic_bool firstDispatchLogged_{};
         std::atomic_bool firstDispatchFailureLogged_{};
+        std::atomic_bool firstMaskCacheHitLogged_{};
     };
 }
