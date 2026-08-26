@@ -39,6 +39,7 @@ foreach(required IN ITEMS
     "kWrapperRva = 0x00634300"
     "kRenderRva = 0x006350C0"
     "kProjectionRva = 0x00635530"
+    "kSetViewFrustumVrCallsiteRva = 0x00635A76"
     "kSetViewFrustumVrRva = 0x01C2BFA0"
     "kDepthTargetMapperRva = 0x01DB9E40"
     "kRendererStateRva = 0x038AC010"
@@ -96,6 +97,9 @@ foreach(required IN ITEMS
     "hookGpuCullingEnabled"
     "hookSetViewFrustumVr"
     "activeCaptureQuadrant"
+    "createAbsoluteJumpThunk("
+    "captureDirectCallIdentity("
+    "installedSetViewFrustumVrCallIdentity"
     "_ReturnAddress()"
     "hookPass14Resolver"
     "usesLightingPrecipitationBuilder("
@@ -105,7 +109,6 @@ foreach(required IN ITEMS
     "std::atomic_bool passProductionActive"
     "passProductionActive.compare_exchange_strong("
     "captureDetourIdentity("
-    "installedSetViewFrustumVrIdentity"
     "Runtime::get().setNativeHookOwned(true)")
   string(FIND "${nativeHook}" "${required}" found)
   if(found EQUAL -1)
@@ -128,6 +131,8 @@ foreach(forbidden IN ITEMS
     "lightingPassBuilderCell"
     "patchPointerCell("
     "hookLightingPassBuilder"
+    "setViewFrustumVrTrampoline"
+    "installedSetViewFrustumVrIdentity"
     "kLightingPassBuilderRva = 0x027A3250"
     "kLightingPassBuilderSlot = 0x2D")
   string(FIND "${nativeHook}" "${forbidden}" found)
