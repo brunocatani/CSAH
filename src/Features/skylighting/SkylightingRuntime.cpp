@@ -655,6 +655,7 @@ namespace community_shaders::skylighting
         level.previousCellValid = false;
         level.dataValid = false;
         level.updateSliceCursor = 0;
+        level.captureQuadrant = 0;
         return true;
     }
 
@@ -833,6 +834,7 @@ namespace community_shaders::skylighting
             level.previousCellValid = false;
             level.dataValid = false;
             level.updateSliceCursor = 0;
+            level.captureQuadrant = 0;
         };
         clearLevel(nearProbes_);
         clearLevel(farProbes_);
@@ -1609,7 +1611,8 @@ namespace community_shaders::skylighting
                 privateDepthTexture_.Get(),
                 privateDepthView_.Get(),
                 privateDepthResource_.Get());
-            ScopedOcclusionPassProduction passProduction;
+            ScopedOcclusionPassProduction passProduction(
+                targetLevel.captureQuadrant);
             if (privateTarget.active() && passProduction.active()) {
                 privateDepthBinds_.fetch_add(1, std::memory_order_relaxed);
                 privateRenderActive_.store(
@@ -1660,6 +1663,8 @@ namespace community_shaders::skylighting
             rejectedCaptures_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
+        targetLevel.captureQuadrant =
+            (targetLevel.captureQuadrant + 1u) % 4u;
         const auto& cameraPosition = playerCamera->cameraRoot->world.translate;
         const auto volumeMoved = updateRollingVolume(
             targetLevel,
@@ -1669,11 +1674,14 @@ namespace community_shaders::skylighting
             cameraPosition.x,
             cameraPosition.y,
             cameraPosition.z);
-        const auto stableSlices = updateFarLevel ?
+        const auto baseStableSlices = updateFarLevel ?
             8u :
             (activeQuality_ == Quality::high ?
                     13u :
                     (activeQuality_ == Quality::medium ? 11u : 8u));
+        const auto stableSlices = (std::min)(
+            targetLevel.dimensions.depth,
+            baseStableSlices * 4u);
         std::uint32_t sliceStart{};
         std::uint32_t sliceCount{};
         if (volumeMoved || !targetLevel.dataValid) {

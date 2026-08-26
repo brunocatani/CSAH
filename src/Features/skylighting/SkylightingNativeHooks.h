@@ -1,11 +1,14 @@
 #pragma once
 
+#include <cstdint>
+
 namespace community_shaders::skylighting
 {
     class ScopedOcclusionPassProduction final
     {
     public:
-        ScopedOcclusionPassProduction() noexcept;
+        explicit ScopedOcclusionPassProduction(
+            std::uint32_t captureQuadrant) noexcept;
         ~ScopedOcclusionPassProduction() noexcept;
 
         ScopedOcclusionPassProduction(

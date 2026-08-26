@@ -39,6 +39,7 @@ foreach(required IN ITEMS
     "kWrapperRva = 0x00634300"
     "kRenderRva = 0x006350C0"
     "kProjectionRva = 0x00635530"
+    "kSetViewFrustumVrRva = 0x01C2BFA0"
     "kDepthTargetMapperRva = 0x01DB9E40"
     "kRendererStateRva = 0x038AC010"
     "kCubeSizeRva = 0x05A3CFA4"
@@ -75,6 +76,7 @@ foreach(required IN ITEMS
     "kExcludedBsxFlags = 0x3D54"
     "std::array<std::byte, 6> kWrapperSignature"
     "std::array<std::byte, 27> kRenderDepthTargetSetupSignature"
+    "kSetViewFrustumVrSignature"
     "std::array<std::byte, 17> kDepthTargetMapperSignature"
     "kGpuCullingEnabledSignature"
     "kPass14ResolverSignature"
@@ -92,6 +94,8 @@ foreach(required IN ITEMS
     "MH_CreateHook("
     "ReadPointerAcquire("
     "hookGpuCullingEnabled"
+    "hookSetViewFrustumVr"
+    "activeCaptureQuadrant"
     "_ReturnAddress()"
     "hookPass14Resolver"
     "usesLightingPrecipitationBuilder("
@@ -101,6 +105,7 @@ foreach(required IN ITEMS
     "std::atomic_bool passProductionActive"
     "passProductionActive.compare_exchange_strong("
     "captureDetourIdentity("
+    "installedSetViewFrustumVrIdentity"
     "Runtime::get().setNativeHookOwned(true)")
   string(FIND "${nativeHook}" "${required}" found)
   if(found EQUAL -1)
@@ -143,6 +148,9 @@ foreach(required IN ITEMS
     "farProbes_"
     "farLevel"
     "updateSliceCursor"
+    "captureQuadrant"
+    "ScopedOcclusionPassProduction passProduction("
+    "(targetLevel.captureQuadrant + 1u) % 4u"
     "DXGI_FORMAT_R16G16B16A16_FLOAT"
     "DXGI_FORMAT_R8_UINT"
     "ScopedComputeState"
