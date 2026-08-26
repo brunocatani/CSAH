@@ -217,7 +217,7 @@ namespace community_shaders::shared_settings
                 }
 
                 logging::info(
-                    "Shared Community Shaders INI monitor started for '{}'; DevMenu remains optional and Native Shadows changes remain restart-only.",
+                    "Shared Community Shaders INI monitor started for '{}'; DevMenu remains optional and Native Shadows/Vanilla Fixes master changes remain restart-only.",
                     configPath_.string());
                 return true;
             }
@@ -283,8 +283,16 @@ namespace community_shaders::shared_settings
                         return;
                     }
 
+                    const bool activeVanillaFixesGate =
+                        active_.vanillaFixes.enabled;
                     applyLiveChanges(changes, next);
                     active_ = next;
+                    if (changes.vanillaFixesGate) {
+                        // Keep the process-effective startup gate as the
+                        // comparison authority until the next launch.
+                        active_.vanillaFixes.enabled =
+                            activeVanillaFixesGate;
+                    }
                     const auto reloadNumber =
                         acceptedReloads_.fetch_add(
                             1,
@@ -294,7 +302,8 @@ namespace community_shaders::shared_settings
                         "Shared Community Shaders INI reload #{} accepted: live feature groups={}, startup-native restart pending={}.",
                         reloadNumber,
                         changes.liveFeatureCount(),
-                        changes.nativeShadows || changes.masterGate);
+                        changes.nativeShadows || changes.vanillaFixesGate ||
+                            changes.masterGate);
                 } catch (const std::exception& error) {
                     logging::warn(
                         "Shared settings monitor rejected an INI reload: {}.",

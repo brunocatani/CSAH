@@ -132,9 +132,16 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "sao || screenSpaceReflections"
   "refreshNativeShaderProperties()"
   "draw-boundary shader reconciliation is armed"
-  "kPollInterval = std::chrono::milliseconds(250)"
-  "reloadIfChanged()")
-foreach(forbidden IN ITEMS "REL::Relocation" "REL::ID" "Data/F4SE/Plugins")
+  "kPolicyMaintenanceInterval ="
+  "std::chrono::milliseconds(250)"
+  "policyMaintenanceMain("
+  "shared settings exclusively own INI reloads")
+foreach(forbidden IN ITEMS
+    "REL::Relocation"
+    "REL::ID"
+    "Data/F4SE/Plugins"
+    "reloadIfChanged()"
+    "Vanilla Fixes reloaded the shared INI in-game.")
   string(FIND "${runtime}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

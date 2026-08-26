@@ -59,6 +59,7 @@ namespace community_shaders::shared_settings
         bool subsurfaceScattering{};
         bool basicWetness{};
         bool cloudShadows{};
+        bool vanillaFixesGate{};
         bool vanillaFixes{};
         bool nativeShadows{};
         bool skylighting{};
@@ -66,7 +67,8 @@ namespace community_shaders::shared_settings
 
         [[nodiscard]] bool any() const noexcept
         {
-            return masterGate || liveFeatureCount() != 0 || nativeShadows;
+            return masterGate || vanillaFixesGate ||
+                liveFeatureCount() != 0 || nativeShadows;
         }
 
         [[nodiscard]] std::size_t liveFeatureCount() const noexcept
@@ -112,10 +114,14 @@ namespace community_shaders::shared_settings
                 next.subsurfaceScattering,
             .basicWetness = previous.basicWetness != next.basicWetness,
             .cloudShadows = previous.cloudShadows != next.cloudShadows,
-            // The master gate persists startup-native policy for the next
-            // launch. Do not dismantle the active SAO/SSLR/shared renderer
-            // graph as part of a bulk live A/B transition.
+            .vanillaFixesGate = previous.vanillaFixes.enabled !=
+                next.vanillaFixes.enabled,
+            // Both master gates persist startup-native policy for the next
+            // launch. While the suite remains active, its individual fixes
+            // can still be changed live. Never dismantle the active
+            // SAO/SSLR/shared renderer graph during a world session.
             .vanillaFixes = previous.masterEnabled && next.masterEnabled &&
+                previous.vanillaFixes.enabled && next.vanillaFixes.enabled &&
                 previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
             .skylighting = previous.skylighting != next.skylighting,

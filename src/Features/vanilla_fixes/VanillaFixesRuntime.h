@@ -10,9 +10,7 @@ namespace community_shaders::vanilla_fixes
     {
         Settings settings{};
         bool nativeContractValid{};
-        bool hotReloadActive{};
         std::uint64_t appliedPolicies{};
-        std::uint64_t externalReloads{};
     };
 
     [[nodiscard]] bool startRuntime(const Settings& settings) noexcept;

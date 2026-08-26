@@ -84,9 +84,25 @@ int main()
     verifyLive(
         [](Snapshot& value) { value.cloudShadows.enabled = false; },
         "Cloud Shadows diff");
+    auto vanillaFixesOff = baseline;
+    vanillaFixesOff.vanillaFixes.enabled = false;
+    const auto vanillaFixesGateChanges = diff(baseline, vanillaFixesOff);
+    require(vanillaFixesGateChanges.any(), "Vanilla Fixes gate diff");
+    require(
+        vanillaFixesGateChanges.vanillaFixesGate,
+        "Vanilla Fixes gate classification");
+    require(
+        !vanillaFixesGateChanges.vanillaFixes,
+        "Vanilla Fixes gate attempted live renderer teardown");
+    require(
+        vanillaFixesGateChanges.liveFeatureCount() == 0,
+        "Vanilla Fixes gate incorrectly counted as live feature");
+
     verifyLive(
-        [](Snapshot& value) { value.vanillaFixes.enabled = false; },
-        "Vanilla Fixes diff");
+        [](Snapshot& value) {
+            value.vanillaFixes.precipitationOcclusion = false;
+        },
+        "Vanilla Fixes individual setting diff");
     verifyLive(
         [](Snapshot& value) { value.skylighting.enabled = false; },
         "Skylighting diff");

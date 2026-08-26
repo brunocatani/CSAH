@@ -4,7 +4,6 @@
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "support/Logger.h"
-#include "support/SettingsPath.h"
 
 #include <Windows.h>
 
@@ -15,7 +14,6 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
-#include <filesystem>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -25,7 +23,8 @@ namespace community_shaders::vanilla_fixes
 {
     namespace
     {
-        constexpr auto kPollInterval = std::chrono::milliseconds(250);
+        constexpr auto kPolicyMaintenanceInterval =
+            std::chrono::milliseconds(250);
         constexpr std::uintptr_t kIniSettingVtableRva = 0x02C81230;
         constexpr std::uintptr_t kIniPrefSettingVtableRva = 0x02C8C1B0;
         constexpr std::uintptr_t kRendererConfigRva = 0x068787F0;
@@ -265,27 +264,27 @@ namespace community_shaders::vanilla_fixes
                     started_.store(false, std::memory_order_release);
                     return false;
                 }
-                configPath_ = settings_path::resolveIniPath();
                 apply(settings);
                 (void)saveSettings(settings);
-                refreshAcceptedWriteTime();
                 try {
-                    monitor_ = std::jthread(
+                    policyMaintenanceThread_ = std::jthread(
                         [this](const std::stop_token stopToken) noexcept {
-                            monitorMain(stopToken);
+                            policyMaintenanceMain(stopToken);
                         });
-                    hotReloadActive_.store(true, std::memory_order_release);
+                    policyMaintenanceActive_.store(
+                        true,
+                        std::memory_order_release);
                 } catch (const std::exception& error) {
                     logging::warn(
-                        "Vanilla Fixes INI monitor could not start: {}.",
+                        "Vanilla Fixes policy maintenance could not start: {}.",
                         error.what());
                 } catch (...) {
                     logging::warn(
-                        "Vanilla Fixes INI monitor could not start.");
+                        "Vanilla Fixes policy maintenance could not start.");
                 }
                 logging::info(
-                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the isolated directional-light ownership diagnostic; shared-INI hot reload active={}.",
-                    hotReloadActive_.load(std::memory_order_acquire));
+                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the isolated directional-light ownership diagnostic; shared settings exclusively own INI reloads and native policy maintenance active={}.",
+                    policyMaintenanceActive_.load(std::memory_order_acquire));
                 return true;
             }
 
@@ -337,12 +336,8 @@ namespace community_shaders::vanilla_fixes
                 return {
                     .settings = settings(),
                     .nativeContractValid = contractValid_,
-                    .hotReloadActive =
-                        hotReloadActive_.load(std::memory_order_acquire),
                     .appliedPolicies =
                         appliedPolicies_.load(std::memory_order_relaxed),
-                    .externalReloads =
-                        externalReloads_.load(std::memory_order_relaxed),
                 };
             }
 
@@ -367,89 +362,25 @@ namespace community_shaders::vanilla_fixes
         private:
             Controller() = default;
 
-            void refreshAcceptedWriteTime() noexcept
+            void policyMaintenanceMain(
+                const std::stop_token stopToken) noexcept
             {
-                if (configPath_.empty()) {
-                    return;
-                }
-                std::error_code error;
-                const auto value = std::filesystem::last_write_time(
-                    configPath_,
-                    error);
-                if (!error) {
-                    acceptedWriteTime_ = value;
-                }
-            }
-
-            void monitorMain(const std::stop_token stopToken) noexcept
-            {
-                std::unique_lock lock(monitorMutex_);
+                std::unique_lock lock(policyMaintenanceMutex_);
                 while (!stopToken.stop_requested()) {
-                    monitorWake_.wait_for(
+                    policyMaintenanceWake_.wait_for(
                         lock,
                         stopToken,
-                        kPollInterval,
+                        kPolicyMaintenanceInterval,
                         []() noexcept { return false; });
                     if (stopToken.stop_requested()) {
                         break;
                     }
                     lock.unlock();
-                    reloadIfChanged();
                     {
                         std::scoped_lock settingsLock(settingsMutex_);
                         applyMemoryPolicy(effectivePolicy(activeSettings_));
                     }
                     lock.lock();
-                }
-            }
-
-            void reloadIfChanged() noexcept
-            {
-                try {
-                    if (configPath_.empty()) {
-                        return;
-                    }
-                    std::error_code timeError;
-                    std::error_code sizeError;
-                    const auto beforeTime = std::filesystem::last_write_time(
-                        configPath_,
-                        timeError);
-                    const auto beforeSize = std::filesystem::file_size(
-                        configPath_,
-                        sizeError);
-                    if (timeError || sizeError || beforeSize > 1024 * 1024 ||
-                        (acceptedWriteTime_ &&
-                            *acceptedWriteTime_ == beforeTime)) {
-                        return;
-                    }
-                    const auto reloaded = loadSettings(configPath_);
-                    std::error_code stableTimeError;
-                    std::error_code stableSizeError;
-                    const auto stableTime = std::filesystem::last_write_time(
-                        configPath_,
-                        stableTimeError);
-                    const auto stableSize = std::filesystem::file_size(
-                        configPath_,
-                        stableSizeError);
-                    if (stableTimeError || stableSizeError ||
-                        stableTime != beforeTime || stableSize != beforeSize) {
-                        return;
-                    }
-                    acceptedWriteTime_ = stableTime;
-                    if (reloaded == settings()) {
-                        return;
-                    }
-                    apply(reloaded);
-                    externalReloads_.fetch_add(1, std::memory_order_relaxed);
-                    logging::info(
-                        "Vanilla Fixes reloaded the shared INI in-game.");
-                } catch (const std::exception& error) {
-                    logging::warn(
-                        "Vanilla Fixes rejected an INI reload: {}.",
-                        error.what());
-                } catch (...) {
-                    logging::warn(
-                        "Vanilla Fixes rejected an INI reload.");
                 }
             }
 
@@ -919,13 +850,11 @@ namespace community_shaders::vanilla_fixes
 
 
             std::uintptr_t moduleBase_{};
-            std::filesystem::path configPath_;
-            std::optional<std::filesystem::file_time_type> acceptedWriteTime_;
             Settings activeSettings_{};
             bool contractValid_{};
             bool saoIdentityFailureLogged_{};
             std::atomic_bool started_{};
-            std::atomic_bool hotReloadActive_{};
+            std::atomic_bool policyMaintenanceActive_{};
             std::atomic_bool gameDataReady_{};
             std::atomic_bool focusEnabled_{ true };
             std::atomic_uint8_t diagnosticMode_{};
@@ -941,11 +870,10 @@ namespace community_shaders::vanilla_fixes
             std::atomic_uint64_t screenSpacePolicyApplies_{};
             std::atomic_uint64_t nativePropertyRefreshes_{};
             std::atomic_uint64_t appliedPolicies_{};
-            std::atomic_uint64_t externalReloads_{};
             mutable std::mutex settingsMutex_;
-            std::mutex monitorMutex_;
-            std::condition_variable_any monitorWake_;
-            std::jthread monitor_;
+            std::mutex policyMaintenanceMutex_;
+            std::condition_variable_any policyMaintenanceWake_;
+            std::jthread policyMaintenanceThread_;
         };
     }
 
