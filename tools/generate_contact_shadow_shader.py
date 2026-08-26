@@ -17,6 +17,7 @@ from dxbc_transform import (
     OPERAND_RESOURCE,
     OPERAND_TEMP,
     DxbcChunk,
+    Operand,
     TransformError as ContractError,
     build_dxbc,
     executable_operands,
@@ -61,6 +62,7 @@ CONTACT_MASK_SLOT = 46
 WRAPPED_GRASS_CONSTANT_SLOT = 11
 HAIR_SPECULAR_CONSTANT_SLOT = 10
 BASIC_WETNESS_CONSTANT_SLOT = 9
+STABLE_DIRECTIONAL_LIGHT_CONSTANT_SLOT = 7
 SURFACE_CLASS_SLOT = 47
 DIRECTIONAL_DIAGNOSTIC_MODE_COUNT = 6
 MUL_OPCODE = 0x38
@@ -426,6 +428,58 @@ def compile_basic_wetness_template(
     return output.read_bytes()
 
 
+def compile_directional_light_stability_template(
+    root: Path, fxc: Path, temporary: Path
+) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "ContactShadows"
+        / "DirectionalLightStabilityTransform.hlsl"
+    )
+    output = temporary / "DirectionalLightStabilityTransform.dxbc"
+    assembly = temporary / "DirectionalLightStabilityTransform.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "ps_5_0",
+            "/E",
+            "PSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "directional-light stability transform compilation",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_constantbuffer CB2[46], dynamicIndexed",
+        "dcl_constantbuffer CB12[3], immediateIndexed",
+        "dcl_constantbuffer CB7[1], immediateIndexed",
+        "dcl_input_ps constant v1.x",
+        "cb12[0].xyzx",
+        "cb12[1].xyzx",
+        "cb12[2].xyzx",
+        "cb7[0].xyzx",
+        "cb7[0].w",
+    ):
+        if required not in text:
+            raise ContractError(
+                "directional-light stability transform assembly changed: "
+                + required
+            )
+    return output.read_bytes()
+
+
 def compile_directional_diagnostic_templates(
     root: Path, fxc: Path, temporary: Path
 ) -> tuple[bytes, bytes, bytes]:
@@ -686,6 +740,44 @@ def basic_wetness_template_contract(
     return [constant_declaration], transform[:-1], temp_count
 
 
+def directional_light_stability_template_contract(
+    template: bytes,
+) -> tuple[list[list[int]], list[list[int]], int]:
+    _, _, _, words = shader_words(template)
+    constant_declaration: list[int] | None = None
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) != OPCODE_DCL_CONSTANT_BUFFER:
+            continue
+        operands = executable_operands(words, start, end)
+        if (
+            operands
+            and operands[0].operand_type == OPERAND_CONSTANT_BUFFER
+            and operands[0].immediate_indices
+            and operands[0].immediate_indices[0]
+            == STABLE_DIRECTIONAL_LIGHT_CONSTANT_SLOT
+        ):
+            constant_declaration = words[start:end]
+    if constant_declaration is None:
+        raise ContractError(
+            "directional-light stability template no longer declares b7"
+        )
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    temp_count = words[temp_declaration[0] + 1]
+    transform = [words[start:end] for start, end in body]
+    if not transform or (transform[-1][0] & 0x7FF) != OPCODE_RET:
+        raise ContractError(
+            "directional-light stability template no longer terminates with ret"
+        )
+    if any(
+        (instruction[0] & 0x7FF) == OPCODE_RET
+        for instruction in transform[:-1]
+    ):
+        raise ContractError(
+            "directional-light stability template contains an early return"
+        )
+    return [constant_declaration], transform[:-1], temp_count
+
+
 def directional_diagnostic_template_contract(
     template: bytes,
 ) -> tuple[list[list[int]], int]:
@@ -888,6 +980,72 @@ def remap_directional_diagnostic_instruction(
     return replace_instruction_operands(instruction, replacements)
 
 
+def remap_directional_light_stability_instruction(
+    instruction: list[int],
+    first_scratch: int,
+    template_temp_count: int,
+    direction_scratch: int,
+) -> list[int]:
+    replacements: dict[int, list[int]] = {}
+    for operand in executable_operands(instruction, 0, len(instruction)):
+        if operand.operand_type == OPERAND_TEMP:
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] is None
+                or int(operand.immediate_indices[0]) >= template_temp_count
+            ):
+                raise ContractError(
+                    "directional-light stability template temporary changed"
+                )
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                first_scratch + int(operand.immediate_indices[0]),
+            )
+        elif operand.operand_type == OPERAND_INPUT:
+            if operand.immediate_indices != (1,):
+                raise ContractError(
+                    "directional-light stability template input changed"
+                )
+        elif operand.operand_type == OPERAND_OUTPUT:
+            if operand.immediate_indices != (0,):
+                raise ContractError(
+                    "directional-light stability template output changed"
+                )
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                direction_scratch,
+            )
+    return replace_instruction_operands(instruction, replacements)
+
+
+def is_eye_light_direction_operand(
+    words: list[int], operand: Operand
+) -> bool:
+    if (
+        operand.operand_type != OPERAND_CONSTANT_BUFFER
+        or operand.immediate_indices != (2, None)
+        or len(operand.relative_operands) != 1
+    ):
+        return False
+    token = words[operand.start]
+    cursor = operand.start + 1
+    extended = (token & 0x80000000) != 0
+    while extended:
+        extended = (words[cursor] & 0x80000000) != 0
+        cursor += 1
+    first_representation = (token >> 22) & 0x7
+    second_representation = (token >> 25) & 0x7
+    if first_representation != 0 or second_representation != 3:
+        raise ContractError(
+            "directional-light constant-buffer operand encoding changed"
+        )
+    if words[cursor] != 2:
+        return False
+    return words[cursor + 1] == 1
+
+
 def temp_mask(register: int, mask: int) -> list[int]:
     return [0x00100002 | (mask << 4), register]
 
@@ -1014,6 +1172,7 @@ def patch_shader(
     wrapped_grass_template: bytes,
     hair_specular_template: bytes,
     basic_wetness_template: bytes,
+    directional_light_stability_template: bytes,
 ) -> bytes:
     version, chunks, shader_index, words = shader_words(original)
     temp_declaration, _, body = shader_declarations_and_body(words)
@@ -1034,10 +1193,34 @@ def patch_shader(
     wetness_declarations, wetness_transform, wetness_template_temps = (
         basic_wetness_template_contract(basic_wetness_template)
     )
+    (
+        stability_declarations,
+        stability_transform,
+        stability_template_temps,
+    ) = directional_light_stability_template_contract(
+        directional_light_stability_template
+    )
     for start, end in instructions(words):
-        if (words[start] & 0x7FF) != OPCODE_DCL_RESOURCE:
+        opcode = words[start] & 0x7FF
+        if opcode not in (
+            OPCODE_DCL_CONSTANT_BUFFER,
+            OPCODE_DCL_RESOURCE,
+        ):
             continue
         operands = executable_operands(words, start, end)
+        if (
+            opcode == OPCODE_DCL_CONSTANT_BUFFER
+            and operands
+            and operands[0].operand_type == OPERAND_CONSTANT_BUFFER
+            and operands[0].immediate_indices
+            and operands[0].immediate_indices[0]
+            == STABLE_DIRECTIONAL_LIGHT_CONSTANT_SLOT
+        ):
+            raise ContractError(
+                "directional DFLight already owns reserved stability slot b7"
+            )
+        if opcode != OPCODE_DCL_RESOURCE:
+            continue
         if (
             operands
             and operands[0].operand_type == OPERAND_RESOURCE
@@ -1057,11 +1240,26 @@ def patch_shader(
         raise ContractError(
             "directional DFLight lost the G-buffer material resource at t0"
         )
-    first_scratch = original_temps
+    stability_first_scratch = original_temps
+    stability_direction_scratch = (
+        stability_first_scratch + stability_template_temps
+    )
+    first_scratch = stability_direction_scratch + 1
     visibility_scratch = first_scratch + template_temps
     wrapped_first_scratch = visibility_scratch + 1
     hair_first_scratch = wrapped_first_scratch + wrapped_template_temps
     wetness_first_scratch = hair_first_scratch + hair_template_temps
+
+    transformed_stability: list[int] = []
+    for instruction in stability_transform:
+        transformed_stability.extend(
+            remap_directional_light_stability_instruction(
+                instruction,
+                stability_first_scratch,
+                stability_template_temps,
+                stability_direction_scratch,
+            )
+        )
 
     o1_write = output_contract(words, body, 1, MUL_OPCODE)
     o0_write = output_contract(words, body, 0, DIV_OPCODE)
@@ -1126,10 +1324,29 @@ def patch_shader(
         prefix.extend(declaration)
     for declaration in wetness_declarations:
         prefix.extend(declaration)
+    for declaration in stability_declarations:
+        prefix.extend(declaration)
     updated_temps = words[temp_declaration[0] : temp_declaration[1]]
     updated_temps[1] = wetness_first_scratch + wetness_template_temps
-    rewritten: list[int] = []
+    rewritten: list[int] = list(transformed_stability)
+    light_direction_replacements = 0
     for start, end in body:
+        instruction = words[start:end]
+        replacements: dict[int, list[int]] = {}
+        for operand in executable_operands(words, start, end):
+            if not is_eye_light_direction_operand(words, operand):
+                continue
+            replacements[operand.start - start] = replace_operand_with_temp(
+                words,
+                operand,
+                stability_direction_scratch,
+            )
+            light_direction_replacements += 1
+        if replacements:
+            instruction = replace_instruction_operands(
+                instruction,
+                replacements,
+            )
         if (start, end) == o1_write:
             rewritten.extend(transformed_wetness)
             rewritten.extend(transformed_hair)
@@ -1137,9 +1354,14 @@ def patch_shader(
             rewritten.extend(multiply_rgb(1, visibility_scratch))
         elif (start, end) == o0_write:
             rewritten.extend(multiply_rgb(0, visibility_scratch))
-        rewritten.extend(words[start:end])
+        rewritten.extend(instruction)
         if (start, end) == wrapped_site:
             rewritten.extend(transformed_wrapped)
+
+    if light_direction_replacements == 0:
+        raise ContractError(
+            "directional DFLight contains no per-eye light-vector reads"
+        )
 
     patched_words = [*prefix, *updated_temps, *rewritten]
     patched_words[1] = len(patched_words)
@@ -1424,6 +1646,13 @@ def main() -> int:
             args.fxc.resolve(),
             temporary,
         )
+        directional_light_stability_template = (
+            compile_directional_light_stability_template(
+                root,
+                args.fxc.resolve(),
+                temporary,
+            )
+        )
         directional_diagnostic_templates = (
             compile_directional_diagnostic_templates(
                 root,
@@ -1445,6 +1674,7 @@ def main() -> int:
         candidates: list[
             tuple[census.DxbcContainer, bytes, tuple[bytes, ...]]
         ] = []
+        rejection_reasons: dict[tuple[int, str], str] = {}
         for original in originals:
             try:
                 candidate = patch_shader(
@@ -1453,7 +1683,14 @@ def main() -> int:
                     wrapped_grass_template,
                     hair_specular_template,
                     basic_wetness_template,
+                    directional_light_stability_template,
                 )
+            except ContractError as error:
+                rejection_reasons[original.identity] = (
+                    f"compositor patch: {error}"
+                )
+                continue
+            try:
                 diagnostics = tuple(
                     patch_directional_diagnostic(
                         original.data,
@@ -1462,7 +1699,10 @@ def main() -> int:
                     )
                     for mode_index in range(DIRECTIONAL_DIAGNOSTIC_MODE_COUNT)
                 )
-            except ContractError:
+            except ContractError as error:
+                rejection_reasons[original.identity] = (
+                    f"diagnostic patch: {error}"
+                )
                 continue
             candidates.append((original, candidate, diagnostics))
 
@@ -1476,9 +1716,13 @@ def main() -> int:
             unexpected = sorted(
                 compatible_identities - EXPECTED_COMPATIBLE_IDENTITIES
             )
+            missing_reasons = {
+                identity: rejection_reasons.get(identity, "not enumerated")
+                for identity in missing
+            }
             raise ContractError(
                 "structurally compatible directional DFLight inventory changed: "
-                f"missing={missing}, unexpected={unexpected}"
+                f"missing={missing_reasons}, unexpected={unexpected}"
             )
 
         required_assembly = (
@@ -1486,6 +1730,7 @@ def main() -> int:
             "dcl_constantbuffer CB11[1], immediateIndexed",
             "dcl_constantbuffer CB10[1], immediateIndexed",
             "dcl_constantbuffer CB9[1], immediateIndexed",
+            "dcl_constantbuffer CB7[1], immediateIndexed",
             "dcl_resource_texture2d (float,float,float,float) t46",
             "dcl_resource_texture2d (float,float,float,float) t47",
             "l(0.212600, 0.715200, 0.072200",

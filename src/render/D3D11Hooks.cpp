@@ -17,6 +17,7 @@
 #include "Features/sky_sync/SkySyncRuntime.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "Features/vanilla_fixes/DirectionalLightStabilityRuntime.h"
 #include "Features/vanilla_fixes/FocusShadowRuntime.h"
 #include "Features/vanilla_fixes/DirectionalLightDiagnosticSurface.h"
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
@@ -333,6 +334,7 @@ namespace community_shaders::render
         thread_local bool activeSubsurfaceScatteringEnabled{};
         thread_local bool activeBasicWetnessEnabled{};
         thread_local bool activeCloudShadowsEnabled{};
+        thread_local bool activeDirectionalLightStabilityEnabled{};
         thread_local ibl::Runtime::MaterialShaderBinding
             activeIblMaterialBinding{};
         thread_local ibl::CaptureProbePassState activeIblCaptureProbePass{};
@@ -1804,8 +1806,10 @@ namespace community_shaders::render
                         subsurface_scattering::Runtime::get().requested() ||
                         basic_wetness::Runtime::get().requested() ||
                         cloud_shadows::Runtime::get().requested()) &&
-                    linear_lighting::Runtime::get()
-                        .linearLightingEnabled())) {
+                        linear_lighting::Runtime::get()
+                            .linearLightingEnabled() ||
+                    vanilla_fixes::DirectionalLightStabilityRuntime::get()
+                        .requested())) {
                 if (originalPSSetShader) {
                     originalPSSetShader(
                         context,
@@ -1820,6 +1824,7 @@ namespace community_shaders::render
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
                 activeCloudShadowsEnabled = false;
+                activeDirectionalLightStabilityEnabled = false;
             }
             if (activeFilmicTonemappingBinding &&
                 !filmic_tonemapping::Runtime::get().bindingActive(
@@ -2325,8 +2330,14 @@ namespace community_shaders::render
             const auto wetnessBindings = wetnessRuntime.scopeDraw(
                 context,
                 activeBasicWetnessEnabled);
+            const auto stabilityBinding = vanilla_fixes::
+                DirectionalLightStabilityRuntime::get().scopeDraw(
+                    context,
+                    activeDirectionalLightStabilityEnabled);
             if (bindings.active() && wrappedBindings.active() &&
-                hairBindings.active() && wetnessBindings.active()) {
+                hairBindings.active() && wetnessBindings.active() &&
+                (!activeDirectionalLightStabilityEnabled ||
+                    stabilityBinding.active())) {
                 draw();
                 if (activeSubsurfaceScatteringEnabled) {
                     (void)subsurface_scattering::Runtime::get()
@@ -2843,6 +2854,7 @@ namespace community_shaders::render
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
                 activeCloudShadowsEnabled = false;
+                activeDirectionalLightStabilityEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -2863,6 +2875,7 @@ namespace community_shaders::render
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
                 activeCloudShadowsEnabled = false;
+                activeDirectionalLightStabilityEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -2920,11 +2933,16 @@ namespace community_shaders::render
             const auto filmicTonemappingFeatureActive =
                 !exclusiveDirectionalDiagnostic &&
                 filmicTonemappingRuntime.featureEnabled();
+            const auto directionalLightStabilityFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
+                vanilla_fixes::DirectionalLightStabilityRuntime::get()
+                    .requested();
             const auto dflightCompositorActive =
                 contactShadowRuntime.compositorReady(
                     wrappedGrassFeatureActive || hairSpecularFeatureActive ||
                     subsurfaceScatteringFeatureActive ||
-                    basicWetnessFeatureActive || cloudShadowFeatureActive);
+                    basicWetnessFeatureActive || cloudShadowFeatureActive ||
+                    directionalLightStabilityFeatureActive);
             if (contactShadowRuntime.tracksOriginal(shader) &&
                 !firstTrackedContactShaderBindLogged.exchange(
                     true,
@@ -2952,6 +2970,7 @@ namespace community_shaders::render
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
                 activeCloudShadowsEnabled = false;
+                activeDirectionalLightStabilityEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
                 original(context, shader, classInstances, classInstanceCount);
@@ -2986,7 +3005,8 @@ namespace community_shaders::render
                             hairSpecularFeatureActive ||
                             subsurfaceScatteringFeatureActive ||
                             basicWetnessFeatureActive ||
-                            cloudShadowFeatureActive);
+                            cloudShadowFeatureActive ||
+                            directionalLightStabilityFeatureActive);
             }
             const auto descriptorPending = pendingDFPrePassDescriptor.active;
             const auto activeDescriptor = activeDFPrePassDescriptor();
@@ -3107,6 +3127,9 @@ namespace community_shaders::render
             activeCloudShadowsEnabled =
                 contactShadowSelection.binding &&
                 cloudShadowFeatureActive;
+            activeDirectionalLightStabilityEnabled =
+                contactShadowSelection.binding &&
+                directionalLightStabilityFeatureActive;
             activeIblMaterialBinding = iblSelection.binding;
 
             if (!qualificationSessionActive.load(std::memory_order_acquire)) {
@@ -4237,6 +4260,8 @@ namespace community_shaders::render
                 *device,
                 *immediateContext,
                 originalCreatePixelShader);
+            vanilla_fixes::DirectionalLightStabilityRuntime::get()
+                .onDeviceCreated(*device);
             filmic_tonemapping::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,

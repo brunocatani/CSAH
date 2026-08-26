@@ -28,12 +28,14 @@ namespace community_shaders::sky_sync
         bool stereoCameraReady{};
         bool sunValid{};
         bool moonValid{};
+        bool nativeDirectionalLightValid{};
         bool applied{};
         CelestialSource source{ CelestialSource::none };
         std::uint32_t moonPhase{};
         std::array<float, 3> sunDirection{};
         std::array<float, 3> moonDirection{};
         std::array<float, 3> appliedDirection{};
+        std::array<float, 3> nativeDirectionalLightDirection{};
         std::array<float, 3> moonColor{};
         std::uint64_t skyUpdates{};
         std::uint64_t directionApplications{};
@@ -65,12 +67,15 @@ namespace community_shaders::sky_sync
         std::atomic_bool stereoCameraReady_{};
         std::atomic_bool sunValid_{};
         std::atomic_bool moonValid_{};
+        std::atomic_bool nativeDirectionalLightValid_{};
         std::atomic_bool applied_{};
         std::atomic_uint32_t source_{};
         std::atomic_uint32_t moonPhase_{};
         std::array<std::atomic_uint32_t, 3> sunDirectionBits_{};
         std::array<std::atomic_uint32_t, 3> moonDirectionBits_{};
         std::array<std::atomic_uint32_t, 3> appliedDirectionBits_{};
+        std::array<std::atomic_uint32_t, 3>
+            nativeDirectionalLightDirectionBits_{};
         std::array<std::atomic_uint32_t, 3> moonColorBits_{};
         std::array<float, 3> currentDirection_{};
         CelestialSource currentSource_{ CelestialSource::none };

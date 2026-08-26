@@ -72,7 +72,7 @@ int main()
         "bLensFlareVr=No\n"
         "bVrAllowFocusShadows=False\n"
         "bUseSunbeams=0\n"
-        "bVrSunOcclusion=0\n");
+        "bVrDirectionalLightStability=0\n");
     const auto disabled = loadSettings(ini.path());
     require(!disabled.enabled, "master key");
     require(!disabled.precipitationOcclusion, "precipitation key");
@@ -85,7 +85,9 @@ int main()
     require(!disabled.lensFlare, "lens-flare key");
     require(!disabled.focusShadows, "focus-shadow key");
     require(!disabled.sunbeams, "sunbeams key");
-    require(!disabled.stereoSunOcclusion, "stereo Sun-occlusion key");
+    require(
+        !disabled.directionalLightStability,
+        "directional-light stability key");
 
     ini.write(
         "[VanillaFixes]\n"
@@ -105,7 +107,7 @@ int main()
         .lensFlare = true,
         .focusShadows = false,
         .sunbeams = true,
-        .stereoSunOcclusion = false,
+        .directionalLightStability = false,
     };
     require(saveSettings(ini.path(), mixed), "temporary INI save");
     require(loadSettings(ini.path()) == mixed, "save/load round trip");

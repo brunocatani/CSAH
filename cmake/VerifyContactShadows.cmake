@@ -6,6 +6,7 @@ foreach(variable IN ITEMS
     CONTACT_SHADOW_SETTINGS_STORE_HEADER
     CONTACT_SHADOW_SHADER_SOURCE
     CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE
+    CONTACT_SHADOW_STABILITY_SHADER_SOURCE
     CONTACT_SHADOW_MASK_SHADER_SOURCE
     CONTACT_SHADOW_DISPATCH_SHADER_SOURCE
     CONTACT_SHADOW_RESOLVE_SHADER_SOURCE
@@ -26,6 +27,8 @@ file(READ "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}" settingsStoreHeader)
 file(READ "${CONTACT_SHADOW_SHADER_SOURCE}" shaderSource)
 file(READ "${CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE}"
   diagnosticShaderSource)
+file(READ "${CONTACT_SHADOW_STABILITY_SHADER_SOURCE}"
+  stabilityShaderSource)
 file(READ "${CONTACT_SHADOW_MASK_SHADER_SOURCE}" maskShaderSource)
 file(READ "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}" dispatchShaderSource)
 file(READ "${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}" resolveShaderSource)
@@ -149,6 +152,24 @@ foreach(required IN ITEMS
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Contact Shadows stereo shader regression: missing '${required}'")
+  endif()
+endforeach()
+
+foreach(required IN ITEMS
+    "NativeDFLight : register(b2)"
+    "NativeCamera : register(b12)"
+    "StableDirectionalLight : register(b7)"
+    "DFLight[input.eye + 1u].xyz"
+    "dot(Camera[0].xyz"
+    "dot(Camera[1].xyz"
+    "dot(Camera[2].xyz"
+    "stockViewDirection"
+    "stableViewDirection"
+    "selectedDirection")
+  string(FIND "${stabilityShaderSource}" "${required}" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR
+      "Directional-light stability shader regression: missing '${required}'")
   endif()
 endforeach()
 
@@ -294,6 +315,13 @@ foreach(required IN ITEMS
     "directional_diagnostic_template_contract"
     "remap_directional_diagnostic_instruction"
     "patch_directional_diagnostic"
+    "STABLE_DIRECTIONAL_LIGHT_CONSTANT_SLOT = 7"
+    "compile_directional_light_stability_template"
+    "directional_light_stability_template_contract"
+    "remap_directional_light_stability_instruction"
+    "is_eye_light_direction_operand"
+    "directional DFLight already owns reserved stability slot b7"
+    "light_direction_replacements"
     "diagnosticBytecode"
     "std::array<const unsigned char*, 6> diagnosticBytecode"
     "directional diagnostic candidate {index}/{mode_index} validation")
@@ -318,6 +346,8 @@ foreach(required IN ITEMS
     "issueDrawWithContactShadows(context"
     "activeContactShadowsEnabled"
     "wrappedRuntime.scopeDraw("
+    "DirectionalLightStabilityRuntime::get().scopeDraw("
+    "activeDirectionalLightStabilityEnabled"
     "activeContactShadowBinding.original")
   string(FIND "${hookSource}" "${required}" found)
   if(found EQUAL -1)

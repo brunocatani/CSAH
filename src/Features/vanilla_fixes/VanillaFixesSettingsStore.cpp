@@ -151,10 +151,10 @@ namespace community_shaders::vanilla_fixes
                 path,
                 L"bUseSunbeams",
                 defaults.sunbeams),
-            .stereoSunOcclusion = readBoolean(
+            .directionalLightStability = readBoolean(
                 path,
-                L"bVrSunOcclusion",
-                defaults.stereoSunOcclusion),
+                L"bVrDirectionalLightStability",
+                defaults.directionalLightStability),
             .directionalLightDiagnosticMode = readDiagnosticMode(
                 path,
                 defaults.directionalLightDiagnosticMode),
@@ -166,7 +166,7 @@ namespace community_shaders::vanilla_fixes
         const auto path = settings_path::resolveIniPath();
         const auto settings = loadSettings(path);
         logging::info(
-            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, stereoSunOcclusion={}, exclusiveDirectionalDiagnostic={}.",
+            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, directionalLightStability={}, exclusiveDirectionalDiagnostic={}.",
             path.string(),
             settings.enabled,
             settings.precipitationOcclusion,
@@ -177,7 +177,7 @@ namespace community_shaders::vanilla_fixes
             settings.lensFlare,
             settings.focusShadows,
             settings.sunbeams,
-            settings.stereoSunOcclusion,
+            settings.directionalLightStability,
             static_cast<unsigned>(settings.directionalLightDiagnosticMode));
         return settings;
     }
@@ -225,8 +225,8 @@ namespace community_shaders::vanilla_fixes
             success;
         success = writeBoolean(
                       path,
-                      L"bVrSunOcclusion",
-                      settings.stereoSunOcclusion) &&
+                      L"bVrDirectionalLightStability",
+                      settings.directionalLightStability) &&
             success;
         success = writeDiagnosticMode(
                       path,

@@ -1,7 +1,7 @@
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
-#include "Features/vanilla_fixes/SunOcclusionRuntime.h"
+#include "Features/vanilla_fixes/DirectionalLightStabilityRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
 #include "support/Logger.h"
@@ -265,7 +265,6 @@ namespace community_shaders::vanilla_fixes
                     started_.store(false, std::memory_order_release);
                     return false;
                 }
-                (void)installSunOcclusionNativeHook();
                 apply(settings);
                 (void)saveSettings(settings);
                 try {
@@ -302,8 +301,11 @@ namespace community_shaders::vanilla_fixes
                         settings.directionalLightDiagnosticMode ==
                             DirectionalLightDiagnosticMode::off,
                     std::memory_order_release);
-                setSunOcclusionFixEnabled(
-                    settings.enabled && settings.stereoSunOcclusion);
+                DirectionalLightStabilityRuntime::get().setEnabled(
+                    settings.enabled &&
+                    settings.directionalLightStability &&
+                    settings.directionalLightDiagnosticMode ==
+                        DirectionalLightDiagnosticMode::off);
                 setSslrSuiteRequested(
                     settings.enabled && settings.screenSpaceReflections &&
                     settings.directionalLightDiagnosticMode ==

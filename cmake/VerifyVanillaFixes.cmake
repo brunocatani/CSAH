@@ -18,7 +18,7 @@ endfunction()
 foreach(input IN ITEMS
     VANILLA_SHADER_RUNTIME_SOURCE
     VANILLA_FOCUS_RUNTIME_SOURCE
-    VANILLA_SUN_OCCLUSION_RUNTIME_SOURCE
+    VANILLA_DIRECTIONAL_LIGHT_STABILITY_RUNTIME_SOURCE
     VANILLA_RUNTIME_SOURCE
     VANILLA_SETTINGS_STORE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
@@ -100,19 +100,19 @@ vanilla_fixes_require_text("${focus_runtime}" "focus-shadow native/resource"
   "PSSetShaderResources"
   "ScopedFocusShadowBinding::~ScopedFocusShadowBinding")
 
-file(READ "${VANILLA_SUN_OCCLUSION_RUNTIME_SOURCE}" sun_occlusion_runtime)
-vanilla_fixes_require_text("${sun_occlusion_runtime}"
-  "stereo Sun occlusion"
-  "kAggregateSunOcclusionRva = 0x0281DD70"
-  "kMinimumAcceptedCoveragePixels = 10"
-  "kStoredSunOcclusionOffset = 0xF618"
-  "kSunTestsOffset = 0xF620"
-  "sizeof(SunOcclusionTest) == 0x18"
-  "aggregateStereoSunOcclusion("
-  "installSunOcclusionNativeHook()"
-  "setSunOcclusionFixEnabled("
-  "MH_CreateHook("
-  "MH_EnableHook(")
+file(READ "${VANILLA_DIRECTIONAL_LIGHT_STABILITY_RUNTIME_SOURCE}"
+  directional_light_stability_runtime)
+vanilla_fixes_require_text("${directional_light_stability_runtime}"
+  "directional-light stability"
+  "kConstantSlot = 7"
+  "DirectionalLightStabilityRuntime::onDeviceCreated("
+  "DirectionalLightStabilityRuntime::scopeDraw("
+  "source.nativeDirectionalLightValid"
+  "source.nativeDirectionalLightDirection"
+  "PSGetConstantBuffers("
+  "PSSetConstantBuffers(kConstantSlot"
+  "UpdateSubresource("
+  "native b2 remains the fail-closed fallback")
 
 file(READ "${VANILLA_RUNTIME_SOURCE}" runtime)
 vanilla_fixes_require_text("${runtime}" "engine-gate"
@@ -177,7 +177,7 @@ vanilla_fixes_require_text("${settings_store}" "settings"
   "L\"bLensFlareVr\""
   "L\"bVrAllowFocusShadows\""
   "L\"bUseSunbeams\""
-  "L\"bVrSunOcclusion\""
+  "L\"bVrDirectionalLightStability\""
   "L\"iDirectionalLightingMode\""
   "readDiagnosticMode("
   "writeDiagnosticMode("
@@ -286,7 +286,10 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "observeFocusShadowRenderTargets(depthStencil)"
   "vanilla_fixes::isFocusShadowPixelShader(shader)"
   "ScopedFocusShadowBinding focusShadowBinding"
-  "installFocusShadowNativeHooks()")
+  "installFocusShadowNativeHooks()"
+  "DirectionalLightStabilityRuntime::get().scopeDraw("
+  "activeDirectionalLightStabilityEnabled"
+  ".onDeviceCreated(*device)")
 string(REGEX MATCHALL
   "ScopedFocusShadowBinding focusShadowBinding" focus_draw_bindings "${d3d11}")
 list(LENGTH focus_draw_bindings focus_draw_binding_count)
@@ -333,7 +336,7 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"key\": \"bLensFlareVr\""
   "\"key\": \"bVrAllowFocusShadows\""
   "\"key\": \"bUseSunbeams\""
-  "\"key\": \"bVrSunOcclusion\""
+  "\"key\": \"bVrDirectionalLightStability\""
   "\"id\": \"directional-diagnostic\""
   "\"section\": \"Diagnostics\""
   "\"key\": \"iDirectionalLightingMode\""

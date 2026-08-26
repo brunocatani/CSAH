@@ -295,6 +295,32 @@ namespace community_shaders::sky_sync
             return normalize(direction);
         }
 
+        [[nodiscard]] bool captureNativeDirectionalLight(
+            const std::uintptr_t sunOwner,
+            std::uintptr_t& lightAddress,
+            std::array<float, 3>& direction) noexcept
+        {
+            lightAddress = 0;
+            if (!sunOwner ||
+                !readValue(
+                    sunOwner + kSunLightNodeOffset,
+                    lightAddress) ||
+                !lightAddress ||
+                !readableRange(
+                    reinterpret_cast<const void*>(lightAddress),
+                    sizeof(RE::NiAVObject))) {
+                return false;
+            }
+            const auto* light = reinterpret_cast<const RE::NiAVObject*>(
+                lightAddress);
+            direction = {
+                -light->world.rotate.entry[0][0],
+                -light->world.rotate.entry[1][0],
+                -light->world.rotate.entry[2][0],
+            };
+            return normalize(direction);
+        }
+
         [[nodiscard]] std::array<float, 3> smoothDirection(
             const std::array<float, 3>& current,
             const std::array<float, 3>& target,
@@ -479,25 +505,60 @@ namespace community_shaders::sky_sync
         applied_.store(false, std::memory_order_release);
         currentDirectionValid_ = false;
         currentSource_ = CelestialSource::none;
+        nativeDirectionalLightValid_.store(
+            false,
+            std::memory_order_release);
     }
 
     void Runtime::onSkyUpdated(RE::Sky* sky, float deltaSeconds) noexcept
     {
         skyUpdates_.fetch_add(1, std::memory_order_relaxed);
-        if (!sky || !enabled_.load(std::memory_order_acquire) ||
-            !hookOwned_.load(std::memory_order_acquire) ||
+        if (!sky || !hookOwned_.load(std::memory_order_acquire) ||
             !worldReady_.load(std::memory_order_acquire)) {
             applied_.store(false, std::memory_order_release);
+            nativeDirectionalLightValid_.store(
+                false,
+                std::memory_order_release);
             currentDirectionValid_ = false;
             currentSource_ = CelestialSource::none;
             return;
         }
 
         const auto skyAddress = reinterpret_cast<std::uintptr_t>(sky);
-        std::array<float, 3> center{};
         std::uintptr_t sunOwner{};
-        if (!captureStereoCenter(center) ||
-            !readValue(skyAddress + kSunOwnerOffset, sunOwner) || !sunOwner) {
+        if (!readValue(skyAddress + kSunOwnerOffset, sunOwner) || !sunOwner) {
+            rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
+            applied_.store(false, std::memory_order_release);
+            nativeDirectionalLightValid_.store(
+                false,
+                std::memory_order_release);
+            return;
+        }
+
+        std::uintptr_t lightAddress{};
+        std::array<float, 3> nativeDirectionalLightDirection{};
+        const auto nativeDirectionalLightValid =
+            captureNativeDirectionalLight(
+                sunOwner,
+                lightAddress,
+                nativeDirectionalLightDirection);
+        if (nativeDirectionalLightValid) {
+            publishVector(
+                nativeDirectionalLightDirectionBits_,
+                nativeDirectionalLightDirection);
+        }
+        nativeDirectionalLightValid_.store(
+            nativeDirectionalLightValid,
+            std::memory_order_release);
+        if (!enabled_.load(std::memory_order_acquire)) {
+            applied_.store(false, std::memory_order_release);
+            currentDirectionValid_ = false;
+            currentSource_ = CelestialSource::none;
+            return;
+        }
+
+        std::array<float, 3> center{};
+        if (!captureStereoCenter(center)) {
             rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
             applied_.store(false, std::memory_order_release);
             return;
@@ -597,12 +658,7 @@ namespace community_shaders::sky_sync
             return;
         }
 
-        std::uintptr_t lightAddress{};
-        if (!readValue(sunOwner + kSunLightNodeOffset, lightAddress) ||
-            !lightAddress ||
-            !readableRange(
-                reinterpret_cast<const void*>(lightAddress),
-                sizeof(RE::NiAVObject))) {
+        if (!nativeDirectionalLightValid || !lightAddress) {
             rejectedFrames_.fetch_add(1, std::memory_order_relaxed);
             applied_.store(false, std::memory_order_release);
             return;
@@ -621,6 +677,10 @@ namespace community_shaders::sky_sync
         light->local.rotate.entry[2][0] = -localDirection[2];
         RE::NiUpdateData updateData{};
         light->Update(updateData);
+        publishVector(
+            nativeDirectionalLightDirectionBits_,
+            currentDirection_);
+        nativeDirectionalLightValid_.store(true, std::memory_order_release);
         publishVector(appliedDirectionBits_, currentDirection_);
         const auto previousApplications =
             directionApplications_.fetch_add(1, std::memory_order_relaxed);
@@ -647,6 +707,9 @@ namespace community_shaders::sky_sync
                 stereoCameraReady_.load(std::memory_order_acquire),
             .sunValid = sunValid_.load(std::memory_order_acquire),
             .moonValid = moonValid_.load(std::memory_order_acquire),
+            .nativeDirectionalLightValid =
+                nativeDirectionalLightValid_.load(
+                    std::memory_order_acquire),
             .applied = applied_.load(std::memory_order_acquire),
             .source = static_cast<CelestialSource>(
                 source_.load(std::memory_order_acquire)),
@@ -654,6 +717,8 @@ namespace community_shaders::sky_sync
             .sunDirection = loadVector(sunDirectionBits_),
             .moonDirection = loadVector(moonDirectionBits_),
             .appliedDirection = loadVector(appliedDirectionBits_),
+            .nativeDirectionalLightDirection = loadVector(
+                nativeDirectionalLightDirectionBits_),
             .moonColor = loadVector(moonColorBits_),
             .skyUpdates = skyUpdates_.load(std::memory_order_relaxed),
             .directionApplications =

@@ -94,7 +94,7 @@ foreach(required IN ITEMS
     filmic-strength white-point-scale diffuse-ibl-level grass-wrap
     hair-highlight skin-strength wetness-amount cloud-opacity strength
     quality precipitation native-shadows-enabled shadow-distance mode
-    center-width stereo-sun-occlusion directional-diagnostic)
+    center-width directional-light-stability directional-diagnostic)
   list(FIND controlIds "${required}" controlIndex)
   if(controlIndex EQUAL -1)
     message(FATAL_ERROR
