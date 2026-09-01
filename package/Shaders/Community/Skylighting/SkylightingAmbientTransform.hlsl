@@ -336,13 +336,13 @@ PixelOutput PSMain(PixelInput input)
             int2(input.Position.xy),
             int2(0, 0),
             int2((int)depthWidth - 1, (int)depthHeight - 1));
-        const float4 sampledDepth = NativeDepth.SampleLevel(
-            NativeDepthSampler,
-            screenUv,
-            0.0f);
         const float4 loadedDepth = NativeDepth.Load(
             int3(depthPixel, 0));
         if (diagnosticSample) {
+            const float4 sampledDepth = NativeDepth.SampleLevel(
+                NativeDepthSampler,
+                screenUv,
+                0.0f);
             SkylightingAmbientDiagnostic.InterlockedMin(
                 56u, asuint(sampledDepth.x), ignored);
             SkylightingAmbientDiagnostic.InterlockedMax(
