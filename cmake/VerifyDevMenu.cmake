@@ -74,9 +74,9 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 117)
+if(NOT controlCount EQUAL 132)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 117 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 132 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -89,6 +89,10 @@ foreach(required IN ITEMS
     skylighting-quality skylighting-diffuse-min skylighting-specular-min
     skylighting-zenith filmic-tonemapping
     cloud-shadows complex-environment complex-parallax wrapped-grass
+    pbr pbr-legacy pbr-direct-ggx pbr-grass-ggx
+    pbr-environment-fresnel pbr-energy-conservation pbr-multiscatter
+    pbr-specular-occlusion pbr-roughness pbr-roughness-blend pbr-base-f0
+    pbr-min-f0 pbr-cubemap-f0 pbr-complex-f0 pbr-direct-scale
     hair-specular subsurface-scattering basic-wetness contact-shadows
     contact-foveated dlaa vanilla-fixes native-auto-exposure exposure-ev
     filmic-strength white-point-scale diffuse-ibl-level grass-wrap
@@ -123,6 +127,7 @@ foreach(required IN ITEMS
     "hair_specular::Runtime::get().applySettings"
     "subsurface_scattering::Runtime::get().applySettings"
     "basic_wetness::Runtime::get().applySettings"
+    "pbr::Runtime::get().applySettings"
     "bloom_glare::Runtime::get().applySettings"
     "skylighting::Runtime::get().applySettings"
     "sky_sync::Runtime::get().applySettings")
@@ -145,6 +150,7 @@ foreach(required IN ITEMS
     "hair_specular::Runtime::get().applySettings"
     "subsurface_scattering::Runtime::get().applySettings"
     "basic_wetness::Runtime::get().applySettings"
+    "pbr::Runtime::get().applySettings"
     "cloud_shadows::Runtime::get().applySettings"
     "skylighting::Runtime::get().applySettings"
     "sky_sync::Runtime::get().applySettings"
@@ -217,4 +223,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 117 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 132 shared-INI controls, direct runtime publication, no wrist provider or assets")

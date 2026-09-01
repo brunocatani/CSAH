@@ -12,6 +12,7 @@
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/DFTiledPointLightHook.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
+#include "Features/pbr/PbrRuntime.h"
 #include "Features/skylighting/SkylightingNativeHooks.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/sky_sync/SkySyncRuntime.h"
@@ -340,6 +341,7 @@ namespace community_shaders::render
         thread_local bool activeHairSpecularEnabled{};
         thread_local bool activeSubsurfaceScatteringEnabled{};
         thread_local bool activeBasicWetnessEnabled{};
+        thread_local bool activePbrEnabled{};
         thread_local bool activeCloudShadowsEnabled{};
         thread_local ibl::Runtime::MaterialShaderBinding
             activeIblMaterialBinding{};
@@ -1877,7 +1879,8 @@ namespace community_shaders::render
                         hair_specular::Runtime::get().requested() ||
                         subsurface_scattering::Runtime::get().requested() ||
                         basic_wetness::Runtime::get().requested() ||
-                        cloud_shadows::Runtime::get().requested()) &&
+                        cloud_shadows::Runtime::get().requested() ||
+                        pbr::Runtime::get().requested()) &&
                     linear_lighting::Runtime::get()
                         .linearLightingEnabled())) {
                 if (originalPSSetShader) {
@@ -1893,6 +1896,7 @@ namespace community_shaders::render
                 activeHairSpecularEnabled = false;
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
+                activePbrEnabled = false;
                 activeCloudShadowsEnabled = false;
             }
             if (activeFilmicTonemappingBinding &&
@@ -2409,8 +2413,13 @@ namespace community_shaders::render
             const auto wetnessBindings = wetnessRuntime.scopeDraw(
                 context,
                 activeBasicWetnessEnabled);
+            auto& pbrRuntime = pbr::Runtime::get();
+            const auto pbrBindings = pbrRuntime.scopeDraw(
+                context,
+                activePbrEnabled);
             if (bindings.active() && wrappedBindings.active() &&
-                hairBindings.active() && wetnessBindings.active()) {
+                hairBindings.active() && wetnessBindings.active() &&
+                pbrBindings.active()) {
                 draw();
                 if (activeSubsurfaceScatteringEnabled) {
                     (void)subsurface_scattering::Runtime::get()
@@ -2425,6 +2434,7 @@ namespace community_shaders::render
             wrappedRuntime.recordDrawFallback();
             hairRuntime.recordDrawFallback();
             wetnessRuntime.recordDrawFallback();
+            pbrRuntime.recordDrawFallback();
             if (!originalPSSetShader) {
                 return;
             }
@@ -3021,6 +3031,7 @@ namespace community_shaders::render
                 activeHairSpecularEnabled = false;
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
+                activePbrEnabled = false;
                 activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
@@ -3041,6 +3052,7 @@ namespace community_shaders::render
                 activeHairSpecularEnabled = false;
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
+                activePbrEnabled = false;
                 activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
@@ -3057,6 +3069,7 @@ namespace community_shaders::render
             auto& subsurfaceScatteringRuntime =
                 subsurface_scattering::Runtime::get();
             auto& basicWetnessRuntime = basic_wetness::Runtime::get();
+            auto& pbrRuntime = pbr::Runtime::get();
             auto& cloudShadowRuntime = cloud_shadows::Runtime::get();
             auto& filmicTonemappingRuntime =
                 filmic_tonemapping::Runtime::get();
@@ -3092,6 +3105,10 @@ namespace community_shaders::render
                 !exclusiveDirectionalDiagnostic &&
                 basicWetnessRuntime.requested() &&
                 replacementRuntime.linearLightingEnabled();
+            const auto pbrFeatureActive =
+                !exclusiveDirectionalDiagnostic &&
+                pbrRuntime.requested() &&
+                replacementRuntime.linearLightingEnabled();
             const auto cloudShadowFeatureActive =
                 !exclusiveDirectionalDiagnostic &&
                 cloudShadowRuntime.requested() &&
@@ -3104,6 +3121,8 @@ namespace community_shaders::render
                     wrappedGrassFeatureActive || hairSpecularFeatureActive ||
                     subsurfaceScatteringFeatureActive ||
                     basicWetnessFeatureActive || cloudShadowFeatureActive);
+            const auto materialCompositorActive =
+                dflightCompositorActive || pbrFeatureActive;
             if (contactShadowRuntime.tracksOriginal(shader) &&
                 !firstTrackedContactShaderBindLogged.exchange(
                     true,
@@ -3115,7 +3134,7 @@ namespace community_shaders::render
             }
             if (!replacementFeaturesActive && !iblFeatureActive &&
                 !skylightingFeatureActive &&
-                !dflightCompositorActive &&
+                !materialCompositorActive &&
                 !filmicTonemappingFeatureActive &&
                 !qualificationActive) {
                 activeReplacementBinding = {};
@@ -3130,6 +3149,7 @@ namespace community_shaders::render
                 activeHairSpecularEnabled = false;
                 activeSubsurfaceScatteringEnabled = false;
                 activeBasicWetnessEnabled = false;
+                activePbrEnabled = false;
                 activeCloudShadowsEnabled = false;
                 activeIblMaterialBinding = {};
                 activeIblCaptureProbePass = {};
@@ -3157,7 +3177,7 @@ namespace community_shaders::render
             // while qualification is active and retain that bind for the
             // world session, so suppressing it here permanently loses every
             // feature composed through that pass.
-            if (dflightCompositorActive && classInstanceCount == 0) {
+            if (materialCompositorActive && classInstanceCount == 0) {
                 contactShadowSelection =
                     contactShadowRuntime.selectPixelShader(
                         shader,
@@ -3165,7 +3185,7 @@ namespace community_shaders::render
                             hairSpecularFeatureActive ||
                             subsurfaceScatteringFeatureActive ||
                             basicWetnessFeatureActive ||
-                            cloudShadowFeatureActive);
+                            cloudShadowFeatureActive || pbrFeatureActive);
             }
             const auto descriptorPending = pendingDFPrePassDescriptor.active;
             const auto activeDescriptor = activeDFPrePassDescriptor();
@@ -3283,6 +3303,8 @@ namespace community_shaders::render
             activeBasicWetnessEnabled =
                 contactShadowSelection.binding &&
                 basicWetnessFeatureActive;
+            activePbrEnabled =
+                contactShadowSelection.binding && pbrFeatureActive;
             activeCloudShadowsEnabled =
                 contactShadowSelection.binding &&
                 cloudShadowFeatureActive;
@@ -4393,6 +4415,9 @@ namespace community_shaders::render
                 *device,
                 *immediateContext);
             basic_wetness::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            pbr::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext);
             cloud_shadows::Runtime::get().onDeviceCreated(

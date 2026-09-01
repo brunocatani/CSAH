@@ -114,10 +114,11 @@ namespace
         ID3D11ShaderResourceView* previousValidity,
         ID3D11ShaderResourceView* position,
         ID3D11ShaderResourceView* previousPosition,
+        ID3D11ShaderResourceView* materialProperties,
         ID3D11Buffer* constants,
         const std::string& label)
     {
-        std::array<ID3D11ShaderResourceView*, 7> resources{};
+        std::array<ID3D11ShaderResourceView*, 8> resources{};
         context->PSGetShaderResources(
             ScopedMaterialBindings::kAlbedoSlot,
             static_cast<UINT>(resources.size()),
@@ -133,6 +134,7 @@ namespace
             resources[4] == previousValidity &&
             resources[5] == position &&
             resources[6] == previousPosition &&
+            resources[7] == materialProperties &&
             actualConstants == constants;
         for (auto* resource : resources) {
             if (resource) {
@@ -158,6 +160,7 @@ int main()
         auto previousTransitionValidity = createCube(primary.device.Get());
         auto previousPosition = createCube(primary.device.Get());
         auto previousTransitionPosition = createCube(primary.device.Get());
+        auto previousMaterialProperties = createCube(primary.device.Get());
         auto publishedAlbedo = createCube(primary.device.Get());
         auto publishedRadiance = createCube(primary.device.Get());
         auto publishedValidity = createCube(primary.device.Get());
@@ -165,12 +168,13 @@ int main()
         auto publishedPreviousValidity = createCube(primary.device.Get());
         auto publishedPosition = createCube(primary.device.Get());
         auto publishedPreviousPosition = createCube(primary.device.Get());
+        auto publishedMaterialProperties = createCube(primary.device.Get());
         auto previousConstants = createConstants(primary.device.Get(), 0.25F);
         auto enabledConstants = createConstants(primary.device.Get(), 1.0F);
         auto disabledConstants = createConstants(primary.device.Get(), 0.0F);
         auto foreignRadiance = createCube(foreign.device.Get());
 
-        std::array<ID3D11ShaderResourceView*, 7> previousResources{
+        std::array<ID3D11ShaderResourceView*, 8> previousResources{
             previousAlbedo.Get(),
             previousRadiance.Get(),
             previousValidity.Get(),
@@ -178,6 +182,7 @@ int main()
             previousTransitionValidity.Get(),
             previousPosition.Get(),
             previousTransitionPosition.Get(),
+            previousMaterialProperties.Get(),
         };
         auto* previousBuffer = previousConstants.Get();
         primary.context->PSSetShaderResources(
@@ -199,6 +204,7 @@ int main()
                 publishedPreviousValidity.Get(),
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
+                publishedMaterialProperties.Get(),
                 enabledConstants.Get());
             require(scope.active(), "published material scope was rejected");
             requireBindings(
@@ -210,6 +216,7 @@ int main()
                 publishedPreviousValidity.Get(),
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
+                publishedMaterialProperties.Get(),
                 enabledConstants.Get(),
                 "published material bindings were not applied exactly");
             require(scope.restore(), "published material scope did not restore");
@@ -223,6 +230,7 @@ int main()
             previousTransitionValidity.Get(),
             previousPosition.Get(),
             previousTransitionPosition.Get(),
+            previousMaterialProperties.Get(),
             previousConstants.Get(),
             "published material scope did not restore previous bindings");
 
@@ -236,10 +244,12 @@ int main()
                 nullptr,
                 nullptr,
                 nullptr,
+                nullptr,
                 disabledConstants.Get());
             require(scope.active(), "disabled material scope was rejected");
             requireBindings(
                 primary.context.Get(),
+                nullptr,
                 nullptr,
                 nullptr,
                 nullptr,
@@ -259,6 +269,7 @@ int main()
             previousTransitionValidity.Get(),
             previousPosition.Get(),
             previousTransitionPosition.Get(),
+            previousMaterialProperties.Get(),
             previousConstants.Get(),
             "disabled material scope did not restore previous bindings");
 
@@ -272,6 +283,7 @@ int main()
                 publishedPreviousValidity.Get(),
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
+                publishedMaterialProperties.Get(),
                 enabledConstants.Get());
             require(!rejected.active(), "foreign-device scope was accepted");
             require(
@@ -287,11 +299,12 @@ int main()
             previousTransitionValidity.Get(),
             previousPosition.Get(),
             previousTransitionPosition.Get(),
+            previousMaterialProperties.Get(),
             previousConstants.Get(),
             "rejected scope changed existing bindings");
 
         std::cout
-            << "FO4VR IBL t29..t35/b5 material transaction verified on D3D11 WARP\n";
+            << "FO4VR IBL t29..t36/b5 material transaction verified on D3D11 WARP\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

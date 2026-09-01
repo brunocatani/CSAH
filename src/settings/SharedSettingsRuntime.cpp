@@ -20,6 +20,8 @@
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
+#include "Features/pbr/PbrRuntime.h"
+#include "Features/pbr/PbrSettingsStore.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/skylighting/SkylightingSettingsStore.h"
 #include "Features/sky_sync/SkySyncRuntime.h"
@@ -109,6 +111,7 @@ namespace community_shaders::shared_settings
                 .cloudShadows = cloud_shadows::loadSettings(path),
                 .vanillaFixes = vanilla_fixes::loadSettings(path),
                 .nativeShadows = native_shadows::loadSettings(path),
+                .pbr = pbr::loadSettings(path),
                 .skylighting = skylighting::loadSettings(path),
                 .skySync = sky_sync::loadSettings(path),
             };
@@ -125,6 +128,8 @@ namespace community_shaders::shared_settings
             if (changes.linearLighting) {
                 linear_lighting::Runtime::get().queueSettings(
                     next.linearLighting);
+                pbr::Runtime::get().setLinearLightingEnabled(
+                    next.linearLighting.enabled);
             }
             if (changes.dlaa) {
                 dlaa::Runtime::get().applySettings(next.dlaa);
@@ -169,6 +174,9 @@ namespace community_shaders::shared_settings
             }
             if (changes.vanillaFixes) {
                 vanilla_fixes::applySettings(next.vanillaFixes);
+            }
+            if (changes.pbr) {
+                pbr::Runtime::get().applySettings(next.pbr);
             }
             if (changes.skylighting) {
                 skylighting::Runtime::get().applySettings(next.skylighting);

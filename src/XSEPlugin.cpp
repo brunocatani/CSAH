@@ -24,6 +24,8 @@
 #include "Features/linear_lighting/LinearLightingSettingsStore.h"
 #include "Features/native_shadows/NativeShadowRuntime.h"
 #include "Features/native_shadows/NativeShadowSettingsStore.h"
+#include "Features/pbr/PbrRuntime.h"
+#include "Features/pbr/PbrSettingsStore.h"
 #include "Features/skylighting/SkylightingNativeHooks.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "Features/skylighting/SkylightingSettingsStore.h"
@@ -379,12 +381,15 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::vanilla_fixes::loadSettings();
         const auto nativeShadowSettings =
             community_shaders::native_shadows::loadSettings();
+        const auto pbrSettings = community_shaders::pbr::loadSettings();
         const auto skylightingSettings =
             community_shaders::skylighting::loadSettings();
         const auto skySyncSettings =
             community_shaders::sky_sync::loadSettings();
         community_shaders::linear_lighting::Runtime::get().applySettings(
             settings);
+        community_shaders::pbr::Runtime::get().setLinearLightingEnabled(
+            settings.enabled);
         community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
         community_shaders::filmic_tonemapping::Runtime::get().applySettings(
             filmicTonemappingSettings);
@@ -405,6 +410,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             subsurfaceScatteringSettings);
         community_shaders::basic_wetness::Runtime::get().applySettings(
             basicWetnessSettings);
+        community_shaders::pbr::Runtime::get().applySettings(pbrSettings);
         community_shaders::skylighting::Runtime::get().applySettings(
             skylightingSettings);
         community_shaders::sky_sync::Runtime::get().applySettings(
@@ -454,7 +460,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             community_shaders::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
@@ -465,6 +471,9 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             iblSettings.dynamicCubemapsEnabled,
             iblSettings.diffuseEnabled,
             iblSettings.diffuseLevel,
+            pbrSettings.enabled,
+            pbrSettings.directGgx,
+            pbrSettings.environmentFresnel,
             skylightingSettings.enabled,
             community_shaders::skylighting::qualityName(
                 skylightingSettings.quality),

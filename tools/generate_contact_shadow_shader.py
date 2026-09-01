@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -61,6 +62,7 @@ CONTACT_MASK_SLOT = 46
 WRAPPED_GRASS_CONSTANT_SLOT = 11
 HAIR_SPECULAR_CONSTANT_SLOT = 10
 BASIC_WETNESS_CONSTANT_SLOT = 9
+PBR_CONSTANT_SLOT = 7
 SURFACE_CLASS_SLOT = 47
 DIRECTIONAL_DIAGNOSTIC_MODE_COUNT = 6
 MUL_OPCODE = 0x38
@@ -426,6 +428,79 @@ def compile_basic_wetness_template(
     return output.read_bytes()
 
 
+def compile_pbr_template(
+    root: Path, fxc: Path, temporary: Path
+) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "PBR"
+        / "PbrDirectionalTransform.hlsl"
+    )
+    output = temporary / "PbrDirectionalTransform.dxbc"
+    assembly = temporary / "PbrDirectionalTransform.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "ps_5_0",
+            "/E",
+            "PSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "PBR directional transform compilation",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    for required in (
+        "dcl_constantbuffer CB2[4], dynamicIndexed",
+        "dcl_constantbuffer CB7[4], immediateIndexed",
+        "dcl_constantbuffer CB9[2], immediateIndexed",
+        "dcl_resource_texture2d (float,float,float,float) t0",
+        "dcl_resource_texture2d (float,float,float,float) t2",
+        "dcl_resource_texture2d (float,float,float,float) t47",
+        "dcl_output o0.xyzw",
+        "dcl_output o1.xyzw",
+        "l(3.141593)",
+        "l(0.040000)",
+    ):
+        if required not in text:
+            raise ContractError(
+                "PBR directional transform assembly changed: " + required
+            )
+    pbr_branch = text.find("if_nz")
+    material_load = re.search(
+        r"^\s*ld_indexable\(texture2d\).*\bt2(?:\b|\.)",
+        text,
+        re.MULTILINE,
+    )
+    surface_load = re.search(
+        r"^\s*ld_indexable\(texture2d\).*\bt47(?:\b|\.)",
+        text,
+        re.MULTILINE,
+    )
+    if (
+        pbr_branch < 0
+        or material_load is None
+        or surface_load is None
+        or pbr_branch >= material_load.start()
+        or pbr_branch >= surface_load.start()
+    ):
+        raise ContractError(
+            "PBR disabled path no longer branches before material loads"
+        )
+    return output.read_bytes()
+
+
 def compile_directional_diagnostic_templates(
     root: Path, fxc: Path, temporary: Path
 ) -> tuple[bytes, bytes, bytes]:
@@ -686,6 +761,80 @@ def basic_wetness_template_contract(
     return [constant_declaration], transform[:-1], temp_count
 
 
+def pbr_template_contract(
+    template: bytes,
+) -> tuple[list[list[int]], list[list[int]], int]:
+    _, _, _, words = shader_words(template)
+    constant_declaration: list[int] | None = None
+    owns_wetness_constants = False
+    owns_albedo = False
+    owns_material = False
+    owns_surface_class = False
+    for start, end in instructions(words):
+        opcode = words[start] & 0x7FF
+        operands = executable_operands(words, start, end)
+        if (
+            opcode == OPCODE_DCL_CONSTANT_BUFFER
+            and operands
+            and operands[0].operand_type == OPERAND_CONSTANT_BUFFER
+            and operands[0].immediate_indices
+            and operands[0].immediate_indices[0] == PBR_CONSTANT_SLOT
+        ):
+            constant_declaration = words[start:end]
+        if (
+            opcode == OPCODE_DCL_CONSTANT_BUFFER
+            and operands
+            and operands[0].operand_type == OPERAND_CONSTANT_BUFFER
+            and operands[0].immediate_indices
+            and operands[0].immediate_indices[0]
+            == BASIC_WETNESS_CONSTANT_SLOT
+        ):
+            owns_wetness_constants = True
+        if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (0,)
+        ):
+            owns_albedo = True
+        if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (2,)
+        ):
+            owns_material = True
+        if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (SURFACE_CLASS_SLOT,)
+        ):
+            owns_surface_class = True
+    if (
+        constant_declaration is None
+        or not owns_wetness_constants
+        or not owns_albedo
+        or not owns_material
+        or not owns_surface_class
+    ):
+        raise ContractError("PBR directional template resource contract changed")
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    temp_count = words[temp_declaration[0] + 1]
+    transform = [words[start:end] for start, end in body]
+    if not transform or (transform[-1][0] & 0x7FF) != OPCODE_RET:
+        raise ContractError("PBR directional template no longer terminates with ret")
+    if any(
+        (instruction[0] & 0x7FF) == OPCODE_RET
+        for instruction in transform[:-1]
+    ):
+        raise ContractError("PBR directional template contains an early return")
+    # t0/t2 are native DFLight resources, t47 is contributed by the surface
+    # transforms, and b9 is contributed by Basic Wetness. PBR adds only its
+    # verified-free b7.
+    return [constant_declaration], transform[:-1], temp_count
+
+
 def directional_diagnostic_template_contract(
     template: bytes,
 ) -> tuple[list[list[int]], int]:
@@ -845,6 +994,56 @@ def remap_basic_wetness_instruction(
                 )
             else:
                 raise ContractError("basic-wetness template output changed")
+    return replace_instruction_operands(instruction, replacements)
+
+
+def remap_pbr_instruction(
+    instruction: list[int], first_scratch: int, template_temp_count: int
+) -> list[int]:
+    replacements: dict[int, list[int]] = {}
+    input_to_temp = {
+        2: 0,  # vanilla diffuse
+        3: 1,  # vanilla specular
+        4: 5,  # decoded normal
+        5: 2,  # view carrier; template consumes xzw
+    }
+    for operand in executable_operands(instruction, 0, len(instruction)):
+        if operand.operand_type == OPERAND_TEMP:
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] is None
+                or int(operand.immediate_indices[0]) >= template_temp_count
+            ):
+                raise ContractError("PBR directional template temporary changed")
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                first_scratch + int(operand.immediate_indices[0]),
+            )
+        elif operand.operand_type == OPERAND_INPUT:
+            if operand.immediate_indices in ((0,), (1,)):
+                continue
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] not in input_to_temp
+            ):
+                raise ContractError("PBR directional template input changed")
+            replacements[operand.start] = replace_operand_with_temp(
+                instruction,
+                operand,
+                input_to_temp[int(operand.immediate_indices[0])],
+            )
+        elif operand.operand_type == OPERAND_OUTPUT:
+            if operand.immediate_indices == (0,):
+                replacements[operand.start] = replace_operand_with_temp(
+                    instruction, operand, 0
+                )
+            elif operand.immediate_indices == (1,):
+                replacements[operand.start] = replace_operand_with_temp(
+                    instruction, operand, 1
+                )
+            else:
+                raise ContractError("PBR directional template output changed")
     return replace_instruction_operands(instruction, replacements)
 
 
@@ -1014,6 +1213,7 @@ def patch_shader(
     wrapped_grass_template: bytes,
     hair_specular_template: bytes,
     basic_wetness_template: bytes,
+    pbr_template: bytes,
 ) -> bytes:
     version, chunks, shader_index, words = shader_words(original)
     temp_declaration, _, body = shader_declarations_and_body(words)
@@ -1033,6 +1233,9 @@ def patch_shader(
     )
     wetness_declarations, wetness_transform, wetness_template_temps = (
         basic_wetness_template_contract(basic_wetness_template)
+    )
+    pbr_declarations, pbr_transform, pbr_template_temps = (
+        pbr_template_contract(pbr_template)
     )
     for start, end in instructions(words):
         if (words[start] & 0x7FF) != OPCODE_DCL_RESOURCE:
@@ -1057,11 +1260,25 @@ def patch_shader(
         raise ContractError(
             "directional DFLight lost the G-buffer material resource at t0"
         )
+    original_constant_slots = {
+        int(operands[0].immediate_indices[0])
+        for start, end in instructions(words)
+        if (words[start] & 0x7FF) == OPCODE_DCL_CONSTANT_BUFFER
+        if (operands := executable_operands(words, start, end))
+        if operands[0].operand_type == OPERAND_CONSTANT_BUFFER
+        and operands[0].immediate_indices
+        and operands[0].immediate_indices[0] is not None
+    }
+    if PBR_CONSTANT_SLOT in original_constant_slots:
+        raise ContractError(
+            "directional DFLight unexpectedly owns the private PBR b7 slot"
+        )
     first_scratch = original_temps
     visibility_scratch = first_scratch + template_temps
     wrapped_first_scratch = visibility_scratch + 1
     hair_first_scratch = wrapped_first_scratch + wrapped_template_temps
     wetness_first_scratch = hair_first_scratch + hair_template_temps
+    pbr_first_scratch = wetness_first_scratch + wetness_template_temps
 
     o1_write = output_contract(words, body, 1, MUL_OPCODE)
     o0_write = output_contract(words, body, 0, DIV_OPCODE)
@@ -1106,6 +1323,16 @@ def patch_shader(
             )
         )
 
+    transformed_pbr: list[int] = []
+    for instruction in pbr_transform:
+        transformed_pbr.extend(
+            remap_pbr_instruction(
+                instruction,
+                pbr_first_scratch,
+                pbr_template_temps,
+            )
+        )
+
     wrapped_sites = [
         (start, end)
         for start, end in body
@@ -1126,12 +1353,15 @@ def patch_shader(
         prefix.extend(declaration)
     for declaration in wetness_declarations:
         prefix.extend(declaration)
+    for declaration in pbr_declarations:
+        prefix.extend(declaration)
     updated_temps = words[temp_declaration[0] : temp_declaration[1]]
-    updated_temps[1] = wetness_first_scratch + wetness_template_temps
+    updated_temps[1] = pbr_first_scratch + pbr_template_temps
     rewritten: list[int] = []
     for start, end in body:
         if (start, end) == o1_write:
             rewritten.extend(transformed_wetness)
+            rewritten.extend(transformed_pbr)
             rewritten.extend(transformed_hair)
             rewritten.extend(transformed)
             rewritten.extend(multiply_rgb(1, visibility_scratch))
@@ -1424,6 +1654,11 @@ def main() -> int:
             args.fxc.resolve(),
             temporary,
         )
+        pbr_template = compile_pbr_template(
+            root,
+            args.fxc.resolve(),
+            temporary,
+        )
         directional_diagnostic_templates = (
             compile_directional_diagnostic_templates(
                 root,
@@ -1453,6 +1688,7 @@ def main() -> int:
                     wrapped_grass_template,
                     hair_specular_template,
                     basic_wetness_template,
+                    pbr_template,
                 )
                 diagnostics = tuple(
                     patch_directional_diagnostic(
@@ -1486,6 +1722,7 @@ def main() -> int:
             "dcl_constantbuffer CB11[1], immediateIndexed",
             "dcl_constantbuffer CB10[1], immediateIndexed",
             "dcl_constantbuffer CB9[1], immediateIndexed",
+            "dcl_constantbuffer CB7[4], immediateIndexed",
             "dcl_resource_texture2d (float,float,float,float) t46",
             "dcl_resource_texture2d (float,float,float,float) t47",
             "l(0.212600, 0.715200, 0.072200",

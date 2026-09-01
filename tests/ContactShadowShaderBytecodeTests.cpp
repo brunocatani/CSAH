@@ -93,6 +93,10 @@ int main(int argumentCount, char** arguments)
             "Wrapped Grass settings buffer must remain at b11");
         require(
             assembly.contains(
+                "dcl_constantbuffer CB7[4], immediateIndexed"),
+            "PBR settings buffer must remain at private b7");
+        require(
+            assembly.contains(
                 "dcl_resource_texture2d (float,float,float,float) t47"),
             "surface-classification input must remain at t47");
         require(
@@ -173,8 +177,8 @@ int main(int argumentCount, char** arguments)
             &threadHeight,
             &threadDepth);
         require(
-            threadWidth == 8 && threadHeight == 8 && threadDepth == 1,
-            "Contact Shadows mask compute group must remain 8x8x1");
+            threadWidth == 64 && threadHeight == 1 && threadDepth == 1,
+            "Contact Shadows wavefront mask group must remain 64x1x1");
         ComPtr<ID3D11ComputeShader> computeShader;
         require(
             SUCCEEDED(device->CreateComputeShader(

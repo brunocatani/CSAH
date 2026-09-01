@@ -11,6 +11,7 @@
 #include "Features/ibl/IblSettings.h"
 #include "Features/linear_lighting/LinearLightingSettings.h"
 #include "Features/native_shadows/NativeShadowSettings.h"
+#include "Features/pbr/PbrSettings.h"
 #include "Features/skylighting/SkylightingSettings.h"
 #include "Features/sky_sync/SkySyncSettings.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
@@ -40,6 +41,7 @@ namespace community_shaders::shared_settings
         cloud_shadows::Settings cloudShadows{};
         vanilla_fixes::Settings vanillaFixes{};
         native_shadows::Settings nativeShadows{};
+        pbr::Settings pbr{};
         skylighting::Settings skylighting{};
         sky_sync::Settings skySync{};
 
@@ -65,6 +67,7 @@ namespace community_shaders::shared_settings
         bool vanillaFixesGate{};
         bool vanillaFixes{};
         bool nativeShadows{};
+        bool pbr{};
         bool skylighting{};
         bool skySync{};
 
@@ -90,6 +93,7 @@ namespace community_shaders::shared_settings
                 static_cast<std::size_t>(basicWetness) +
                 static_cast<std::size_t>(cloudShadows) +
                 static_cast<std::size_t>(vanillaFixes) +
+                static_cast<std::size_t>(pbr) +
                 static_cast<std::size_t>(skylighting) +
                 static_cast<std::size_t>(skySync);
         }
@@ -129,6 +133,7 @@ namespace community_shaders::shared_settings
                 next.vanillaFixes.enabled &&
                 previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
+            .pbr = previous.pbr != next.pbr,
             .skylighting = previous.skylighting != next.skylighting,
             .skySync = previous.skySync != next.skySync,
         };

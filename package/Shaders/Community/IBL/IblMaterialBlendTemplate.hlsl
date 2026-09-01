@@ -1,3 +1,7 @@
+// Shared with the directional DFLight transform so direct and environment
+// material response use the same GGX/Fresnel approximations.
+#include "../PBR/PbrCommon.hlsli"
+
 TextureCubeArray<float4> VanillaEnvironment : register(t8);
 Texture2D<float3> DFLightAlbedo : register(t29);
 TextureCube<float3> PublishedEnvironment : register(t30);
@@ -6,10 +10,21 @@ TextureCube<float3> PreviousPublishedEnvironment : register(t32);
 TextureCube<float> PreviousPublishedValidity : register(t33);
 TextureCube<float4> PublishedPosition : register(t34);
 TextureCube<float4> PreviousPublishedPosition : register(t35);
+Texture2D<float4> GBufferMaterial : register(t36);
 Texture2D<float> SurfaceClass : register(t47);
 Texture2D<float> SceneDepth : register(t7);
+#ifndef PBR_NATIVE_OCCLUSION
+#define PBR_NATIVE_OCCLUSION 1
+#endif
+
+#if PBR_NATIVE_OCCLUSION
+Texture2D<float4> NativeOcclusion : register(t9);
+#endif
 SamplerState EnvironmentSampler : register(s8);
 SamplerState MaterialSampler : register(s3);
+#if PBR_NATIVE_OCCLUSION
+SamplerState OcclusionSampler : register(s9);
+#endif
 
 cbuffer IblMaterialConstants : register(b5)
 {
@@ -21,6 +36,17 @@ cbuffer IblMaterialConstants : register(b5)
     float PublishedProbeOriginValid : packoffset(c1.w);
     float3 PreviousPublishedProbeOrigin : packoffset(c2.x);
     float PreviousPublishedProbeOriginValid : packoffset(c2.w);
+    // c3: enabled, legacy materials, direct GGX, grass GGX.
+    float4 PbrFeatureParams0 : packoffset(c3);
+    // c4: environment Fresnel, energy conservation, multiscatter,
+    // specular occlusion.
+    float4 PbrFeatureParams1 : packoffset(c4);
+    // c5: roughness multiplier, specular roughness blend, base F0
+    // multiplier, minimum F0.
+    float4 PbrMaterialParams0 : packoffset(c5);
+    // c6: cubemap-to-F0 multiplier, complex-material F0 multiplier,
+    // direct-light scale, reserved.
+    float4 PbrMaterialParams1 : packoffset(c6);
 };
 
 // Every exact FO4VR DFComposite material contract owns t7 and b12. The
@@ -50,11 +76,19 @@ struct PixelInput
     float2 ScreenUv : TEXCOORD3;
 };
 
+struct PixelOutput
+{
+    float4 Reflection : SV_Target0;
+    float4 ReflectionLobe : SV_Target1;
+};
+
 bool ReconstructReceiverWorldPosition(
     float2 packedUv,
-    out float3 receiverWorldPosition)
+    out float3 receiverWorldPosition,
+    out float3 viewDirection)
 {
     receiverWorldPosition = 0.0f;
+    viewDirection = float3(0.0f, 0.0f, 1.0f);
     const float depth = SceneDepth.SampleLevel(
         MaterialSampler,
         packedUv,
@@ -105,8 +139,17 @@ bool ReconstructReceiverWorldPosition(
         dot(Scene[22].xyz, midpointRelativeView));
     receiverWorldPosition = midpointOrigin + midpointRelativeWorld +
         Scene[80u + eye].xyz;
-    return all(receiverWorldPosition == receiverWorldPosition) &&
-        all(abs(receiverWorldPosition) < 8000000.0f);
+    const float3 persistentEyeOrigin = eyeOrigin + Scene[80u + eye].xyz;
+    const float3 eyeVector = persistentEyeOrigin - receiverWorldPosition;
+    const float eyeDistanceSquared = dot(eyeVector, eyeVector);
+    if (!(all(receiverWorldPosition == receiverWorldPosition) &&
+          all(abs(receiverWorldPosition) < 8000000.0f) &&
+          eyeDistanceSquared > 1.0e-5f))
+    {
+        return false;
+    }
+    viewDirection = eyeVector * rsqrt(eyeDistanceSquared);
+    return all(viewDirection == viewDirection);
 }
 
 float3 CorrectProbeDirection(
@@ -150,14 +193,19 @@ float3 CorrectProbeDirection(
     return normalize(lerp(direction, corrected, correctionStrength));
 }
 
-float4 PSMain(PixelInput input) : SV_Target0
+PixelOutput PSMain(PixelInput input)
 {
+    PixelOutput output;
     const float surfaceClass = SurfaceClass.SampleLevel(
         MaterialSampler,
         input.ScreenUv,
         0.0);
     const float surfaceCode = surfaceClass * 255.0;
     const float ordinaryOrGrass = 1.0 - step(1.5, surfaceCode);
+    const float ordinarySurface = 1.0 - step(
+        0.5f, abs(surfaceCode));
+    const float grassSurface = 1.0 - step(
+        0.5f, abs(surfaceCode - 1.0f));
     const float terrain = 1.0 - step(0.5, abs(surfaceCode - 4.0));
     const float wetness = saturate(
         BasicWetnessParams.x * BasicWetnessParams.y *
@@ -166,10 +214,50 @@ float4 PSMain(PixelInput input) : SV_Target0
         1.0,
         saturate(BasicWetnessMaterialParams.x),
         wetness);
+    const float ordinaryMaterialTag = step(
+        0.5f,
+        input.EncodedMaterialTag);
+    const float metalness = PbrDecodeMetalness(
+        input.EncodedMaterialTag) * ComplexMaterialWeight;
+    const float complexMaterial = step(1.0f / 255.0f, metalness);
+    const float supportedSurface = saturate(
+        ordinarySurface + terrain +
+        grassSurface * saturate(PbrFeatureParams0.w));
+    float4 material = 0.0f;
+    float pbrActive = 0.0f;
+    float pbrRoughness = saturate(wetLod / 7.0f);
+    float environmentLod = wetLod;
+    [branch]
+    if (PbrFeatureParams0.x > 1.0f / 255.0f)
+    {
+        material = GBufferMaterial.SampleLevel(
+            MaterialSampler,
+            input.ScreenUv,
+            0.0f);
+        pbrActive = ordinaryMaterialTag * supportedSurface *
+            saturate(complexMaterial + saturate(PbrFeatureParams0.y));
+        pbrRoughness = PbrMaterialRoughness(
+            wetLod,
+            material.x,
+            material.y,
+            PbrMaterialParams0.x,
+            PbrMaterialParams0.y);
+        environmentLod = lerp(
+            wetLod,
+            pbrRoughness * 7.0f,
+            pbrActive);
+    }
+    float3 receiverWorldPosition;
+    float3 viewDirection;
+    const bool receiverPositionValid =
+        ReconstructReceiverWorldPosition(
+            input.ScreenUv,
+            receiverWorldPosition,
+            viewDirection);
     float4 vanilla = VanillaEnvironment.SampleLevel(
         EnvironmentSampler,
         input.DirectionAndArray,
-        wetLod);
+        environmentLod);
     [branch]
     if (IblWeight > 1.0 / 255.0)
     {
@@ -179,27 +267,22 @@ float4 PSMain(PixelInput input) : SV_Target0
         // sign is deliberately local to specular materials; Diffuse IBL keeps
         // the provider's proven world-direction convention.
         const float3 dynamicDirection = -input.DirectionAndArray.xyz;
-        float3 receiverWorldPosition;
-        const bool receiverPositionValid =
-            ReconstructReceiverWorldPosition(
-                input.ScreenUv,
-                receiverWorldPosition);
         const float3 publishedDirection = receiverPositionValid ?
             CorrectProbeDirection(
                 PublishedPosition,
                 dynamicDirection,
                 receiverWorldPosition,
                 PublishedProbeOrigin,
-                input.Lod,
+                environmentLod,
                 PublishedProbeOriginValid) : dynamicDirection;
         float3 published = PublishedEnvironment.SampleLevel(
             EnvironmentSampler,
             publishedDirection,
-            input.Lod);
+            environmentLod);
         float validity = PublishedValidity.SampleLevel(
             EnvironmentSampler,
             publishedDirection,
-            input.Lod);
+            environmentLod);
         [branch]
         if (PreviousEnvironmentAvailable > 0.5 &&
             EnvironmentTransitionWeight < 1.0)
@@ -210,18 +293,18 @@ float4 PSMain(PixelInput input) : SV_Target0
                     dynamicDirection,
                     receiverWorldPosition,
                     PreviousPublishedProbeOrigin,
-                    input.Lod,
+                    environmentLod,
                     PreviousPublishedProbeOriginValid) : dynamicDirection;
             const float3 previousPublished =
                 PreviousPublishedEnvironment.SampleLevel(
                     EnvironmentSampler,
                     previousDirection,
-                    input.Lod);
+                    environmentLod);
             const float previousValidity =
                 PreviousPublishedValidity.SampleLevel(
                     EnvironmentSampler,
                     previousDirection,
-                    input.Lod);
+                    environmentLod);
             published = lerp(
                 previousPublished,
                 published,
@@ -235,24 +318,69 @@ float4 PSMain(PixelInput input) : SV_Target0
         vanilla.xyz = lerp(vanilla.xyz, published, weight);
     }
 
-    float ordinaryMaterialTag = step(0.5, input.EncodedMaterialTag);
-    float metalness = saturate(
-        (1.0 - input.EncodedMaterialTag) * 2.0) *
-        ComplexMaterialWeight * ordinaryMaterialTag;
+    float3 retainedDiffuse = DFLightAlbedo.SampleLevel(
+        MaterialSampler,
+        input.ScreenUv,
+        0.0f);
+    float3 baseColour = retainedDiffuse /
+        max(1.0 - metalness, 1.0 / 255.0);
+    float3 reflectionLobe = 1.0f;
     [branch]
-    if (metalness > 1.0 / 255.0)
+    if (pbrActive > 1.0f / 255.0f &&
+        PbrFeatureParams1.x > 0.5f)
     {
-        float3 retainedDiffuse = DFLightAlbedo.SampleLevel(
-            MaterialSampler,
-            input.ScreenUv,
-            0.0);
-        float3 baseColour =
-            retainedDiffuse / max(1.0 - metalness, 1.0 / 255.0);
-        vanilla.xyz *= lerp(1.0.xxx, baseColour, metalness);
+        const float dielectricF0 = PbrDielectricF0(
+            material.y,
+            PbrMaterialParams0.z,
+            PbrMaterialParams0.w,
+            PbrMaterialParams1.x);
+        const float3 f0 = lerp(
+            dielectricF0.xxx,
+            saturate(baseColour * PbrMaterialParams1.y),
+            metalness);
+        float normalDotView = 0.5f;
+        if (receiverPositionValid)
+        {
+            const float3 reflectionDirection =
+                -input.DirectionAndArray.xyz;
+            const float3 reconstructedNormal = normalize(
+                reflectionDirection + viewDirection);
+            normalDotView = saturate(abs(dot(
+                reconstructedNormal,
+                viewDirection)));
+        }
+        const float2 environmentBrdf = PbrEnvironmentBrdf(
+            pbrRoughness,
+            normalDotView);
+        reflectionLobe = f0 * environmentBrdf.x +
+            environmentBrdf.y;
+        if (PbrFeatureParams1.w > 0.5f)
+        {
+#if PBR_NATIVE_OCCLUSION
+            const float ambientOcclusion = saturate(
+                NativeOcclusion.SampleLevel(
+                    OcclusionSampler,
+                    input.ScreenUv,
+                    0.0f).x);
+#else
+            const float ambientOcclusion = 1.0f;
+#endif
+            reflectionLobe *= PbrSpecularOcclusion(
+                normalDotView,
+                pbrRoughness,
+                ambientOcclusion);
+        }
     }
-    vanilla.xyz *= lerp(
+    else if (metalness > 1.0f / 255.0f)
+    {
+        reflectionLobe = lerp(1.0f.xxx, baseColour, metalness);
+    }
+    reflectionLobe *= lerp(
         1.0,
         max(BasicWetnessParams.w, 0.0),
         wetness);
-    return vanilla;
+    vanilla.xyz *= max(reflectionLobe, 0.0f);
+    output.Reflection = vanilla;
+    output.ReflectionLobe = float4(max(reflectionLobe, 0.0f), 1.0f);
+    return output;
 }

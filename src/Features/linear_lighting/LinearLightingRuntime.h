@@ -304,6 +304,7 @@ namespace community_shaders::linear_lighting
         void queueSettings(const Settings& settings) noexcept;
         void queueComplexParallaxSettings(
             const complex_materials::Settings& settings) noexcept;
+        void setPbrMaterialsEnabled(bool enabled) noexcept;
 
         void setGeometryProviderReady(bool ready) noexcept;
 
@@ -482,6 +483,7 @@ namespace community_shaders::linear_lighting
         std::atomic_bool enabled_{};
         std::atomic_bool complexParallaxEnabled_{};
         std::atomic_bool complexEnvironmentEnabled_{ true };
+        std::atomic_bool pbrMaterialsEnabled_{};
         std::atomic_bool complexEnvironmentConsumerReady_{};
         std::atomic_bool complexParallaxResourcesReady_{};
         std::atomic_int32_t complexParallaxQuality_{ 1 };

@@ -381,6 +381,26 @@ set(IBL_MATERIAL_DXBC_TRANSFORM
   "${ROOT_DIR}/tools/dxbc_transform.py")
 set(IBL_MATERIAL_GENERATED_CONTRACTS
   "${SOURCE_DIR}/Features/ibl/GeneratedIblMaterialContracts.inl")
+set(PBR_RUNTIME_SOURCE
+  "${SOURCE_DIR}/Features/pbr/PbrRuntime.cpp")
+set(PBR_RUNTIME_HEADER
+  "${SOURCE_DIR}/Features/pbr/PbrRuntime.h")
+set(PBR_SETTINGS_HEADER
+  "${SOURCE_DIR}/Features/pbr/PbrSettings.h")
+set(PBR_SETTINGS_STORE_SOURCE
+  "${SOURCE_DIR}/Features/pbr/PbrSettingsStore.cpp")
+set(PBR_SETTINGS_STORE_HEADER
+  "${SOURCE_DIR}/Features/pbr/PbrSettingsStore.h")
+set(PBR_MATERIAL_MODEL_HEADER
+  "${SOURCE_DIR}/Features/pbr/PbrMaterialModel.h")
+set(PBR_COMMON_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/PBR/PbrCommon.hlsli")
+set(PBR_DIRECTIONAL_SHADER_SOURCE
+  "${ROOT_DIR}/package/Shaders/Community/PBR/PbrDirectionalTransform.hlsl")
+set_source_files_properties(
+  "${PBR_COMMON_SHADER_SOURCE}"
+  "${PBR_DIRECTIONAL_SHADER_SOURCE}"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 set(CONTACT_SHADOW_RUNTIME_SOURCE
   "${SOURCE_DIR}/Features/contact_shadows/ContactShadowRuntime.cpp")
 set(CONTACT_SHADOW_RUNTIME_HEADER
@@ -725,6 +745,14 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${PBR_RUNTIME_SOURCE}"
+  "${PBR_RUNTIME_HEADER}"
+  "${PBR_SETTINGS_HEADER}"
+  "${PBR_SETTINGS_STORE_SOURCE}"
+  "${PBR_SETTINGS_STORE_HEADER}"
+  "${PBR_MATERIAL_MODEL_HEADER}"
+  "${PBR_COMMON_SHADER_SOURCE}"
+  "${PBR_DIRECTIONAL_SHADER_SOURCE}"
   "${SKYLIGHTING_RUNTIME_SOURCE}"
   "${SKYLIGHTING_RUNTIME_HEADER}"
   "${SKYLIGHTING_NATIVE_HOOK_SOURCE}"
@@ -1532,6 +1560,8 @@ add_custom_command(
     "${CONTACT_SHADOW_WRAPPED_SHADER_SOURCE}"
     "${CONTACT_SHADOW_HAIR_SHADER_SOURCE}"
     "${CONTACT_SHADOW_WETNESS_SHADER_SOURCE}"
+    "${PBR_DIRECTIONAL_SHADER_SOURCE}"
+    "${PBR_COMMON_SHADER_SOURCE}"
     "${CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE}"
     "${CONTACT_SHADOW_MASK_SHADER_SOURCE}"
     "${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}"
@@ -1962,6 +1992,14 @@ add_library(${PROJECT_NAME} SHARED
   "${IBL_MATERIAL_CONTRACT_GENERATOR}"
   "${IBL_MATERIAL_DXBC_TRANSFORM}"
   "${IBL_MATERIAL_GENERATED_CONTRACTS}"
+  "${PBR_RUNTIME_SOURCE}"
+  "${PBR_RUNTIME_HEADER}"
+  "${PBR_SETTINGS_HEADER}"
+  "${PBR_SETTINGS_STORE_SOURCE}"
+  "${PBR_SETTINGS_STORE_HEADER}"
+  "${PBR_MATERIAL_MODEL_HEADER}"
+  "${PBR_COMMON_SHADER_SOURCE}"
+  "${PBR_DIRECTIONAL_SHADER_SOURCE}"
   "${SKYLIGHTING_RUNTIME_SOURCE}"
   "${SKYLIGHTING_RUNTIME_HEADER}"
   "${SKYLIGHTING_NATIVE_HOOK_SOURCE}"
@@ -2876,6 +2914,48 @@ if(BUILD_FO4VR_CS_TESTS)
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.IblSettings
     COMMAND FO4VRCommunityShadersIblSettingsTests)
+
+  add_executable(FO4VRCommunityShadersPbrMaterialModelTests
+    "${ROOT_DIR}/tests/PbrMaterialModelTests.cpp"
+    "${PBR_MATERIAL_MODEL_HEADER}"
+    "${PBR_SETTINGS_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE cxx_std_23)
+  target_include_directories(
+    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.PbrMaterialModel
+    COMMAND FO4VRCommunityShadersPbrMaterialModelTests)
+
+  add_executable(FO4VRCommunityShadersPbrSettingsTests
+    "${ROOT_DIR}/tests/PbrSettingsTests.cpp"
+    "${PBR_SETTINGS_STORE_SOURCE}"
+    "${PBR_SETTINGS_STORE_HEADER}"
+    "${PBR_SETTINGS_HEADER}"
+    "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
+    "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
+    "${CONTACT_SHADOW_SETTINGS_HEADER}"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+  target_link_libraries(
+    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
+  add_test(NAME FO4VRCommunityShaders.PbrSettings
+    COMMAND FO4VRCommunityShadersPbrSettingsTests)
 
   add_executable(FO4VRCommunityShadersLinearLightingQualificationTests
     "${ROOT_DIR}/tests/LinearLightingQualificationTests.cpp"

@@ -1791,7 +1791,8 @@ namespace community_shaders::linear_lighting
             complexParallaxEnabled_.load(std::memory_order_acquire) &&
             complexParallaxResourcesReady_.load(std::memory_order_acquire);
         const auto complexEnvironmentRequested =
-            complexEnvironmentEnabled_.load(std::memory_order_acquire);
+            complexEnvironmentEnabled_.load(std::memory_order_acquire) ||
+            pbrMaterialsEnabled_.load(std::memory_order_acquire);
         const auto complexEnvironmentMayRun =
             linearLightingEnabled && complexEnvironmentRequested;
         if (!complexEnvironmentMayRun) {
@@ -2138,9 +2139,18 @@ namespace community_shaders::linear_lighting
     {
         applyQueuedSettingsForRenderBoundary();
         return enabled_.load(std::memory_order_acquire) ||
+            pbrMaterialsEnabled_.load(std::memory_order_acquire) ||
             (complexParallaxEnabled_.load(std::memory_order_acquire) &&
                 complexParallaxResourcesReady_.load(
                     std::memory_order_acquire));
+    }
+
+    void Runtime::setPbrMaterialsEnabled(bool enabled) noexcept
+    {
+        pbrMaterialsEnabled_.store(enabled, std::memory_order_release);
+        render::setDFPrePassComplexEnvironmentEnabled(
+            enabled || complexEnvironmentEnabled_.load(
+                std::memory_order_acquire));
     }
 
     ScopedReplacementPixelConstants Runtime::scopeReplacementPixelConstants(
@@ -2526,7 +2536,8 @@ namespace community_shaders::linear_lighting
             complexParallaxSettings_.environmentResponseEnabled,
             std::memory_order_release);
         render::setDFPrePassComplexEnvironmentEnabled(
-            complexParallaxSettings_.environmentResponseEnabled);
+            complexParallaxSettings_.environmentResponseEnabled ||
+                pbrMaterialsEnabled_.load(std::memory_order_acquire));
         publishFrameData();
     }
 

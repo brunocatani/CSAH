@@ -12,6 +12,7 @@ from dxbc_transform import (
     OPCODE_CUSTOMDATA,
     OPCODE_DCL_CONSTANT_BUFFER,
     OPCODE_DCL_RESOURCE,
+    OPCODE_DCL_SAMPLER,
     OPCODE_RET,
     OPERAND_CONSTANT_BUFFER,
     OPERAND_INPUT,
@@ -34,6 +35,7 @@ from dxbc_transform import (
 
 EXPECTED_CONTRACT_COUNT = 41
 EXPECTED_ALIAS_COUNT = 83
+SAMPLE_OPCODE = 0x45
 SAMPLE_L_OPCODE = 0x48
 MUL_OPCODE = 0x38
 ADD_OPCODE = 0x00
@@ -42,6 +44,7 @@ MOV_OPCODE = 0x36
 IBL_CONSTANT_SLOT = 5
 BASIC_WETNESS_CONSTANT_SLOT = 9
 VANILLA_ENVIRONMENT_SLOT = 8
+SSLR_SLOT = 14
 MATERIAL_DATA_SLOT = 3
 DFLIGHT_ALBEDO_SLOT = 29
 PUBLISHED_ENVIRONMENT_SLOT = 30
@@ -50,11 +53,14 @@ PREVIOUS_PUBLISHED_ENVIRONMENT_SLOT = 32
 PREVIOUS_PUBLISHED_VALIDITY_SLOT = 33
 PUBLISHED_POSITION_SLOT = 34
 PREVIOUS_PUBLISHED_POSITION_SLOT = 35
+MATERIAL_PROPERTIES_SLOT = 36
 SURFACE_CLASS_SLOT = 47
 SCENE_DEPTH_SLOT = 7
+NATIVE_OCCLUSION_SLOT = 9
 SCENE_CONSTANT_SLOT = 12
 ENVIRONMENT_SAMPLER_SLOT = 8
 MATERIAL_SAMPLER_SLOT = 3
+OCCLUSION_SAMPLER_SLOT = 9
 FIRST_RESOURCE_ID = 1054
 SURFACE_ANCHORED_IDENTITIES = {
     (9348, "93edc6af41cbb2d290962e995a4fce25"),
@@ -145,7 +151,12 @@ def run_fxc(arguments: list[str], label: str) -> None:
         raise ContractError(f"fxc failed for {label}: {details}")
 
 
-def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
+def compile_template(
+    root: Path,
+    fxc: Path,
+    temporary: Path,
+    native_occlusion: bool,
+) -> bytes:
     source = (
         root
         / "package"
@@ -164,9 +175,12 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "PreviousPublishedValidity : register(t33)",
         "PublishedPosition : register(t34)",
         "PreviousPublishedPosition : register(t35)",
+        "GBufferMaterial : register(t36)",
         "SceneDepth : register(t7)",
+        "NativeOcclusion : register(t9)",
         "EnvironmentSampler : register(s8)",
         "MaterialSampler : register(s3)",
+        "OcclusionSampler : register(s9)",
         "IblMaterialConstants : register(b5)",
         "BasicWetnessSettings : register(b9)",
         "SurfaceClass : register(t47)",
@@ -182,17 +196,20 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "Scene[80u + eye].xyz",
         "lerp(vanilla.xyz, published, weight)",
         "ComplexMaterialWeight",
+        "PbrFeatureParams0",
+        "PbrEnvironmentBrdf",
         "input.EncodedMaterialTag",
         "[branch]",
-        "retainedDiffuse / max(1.0 - metalness, 1.0 / 255.0)",
+        "retainedDiffuse /\n        max(1.0 - metalness, 1.0 / 255.0)",
         "BasicWetnessMaterialParams.x",
     ):
         if required not in source_text:
             raise ContractError(
                 f"IBL material template is missing contract: {required}"
             )
-    output = temporary / "IblMaterialBlendTemplate.dxbc"
-    assembly = temporary / "IblMaterialBlendTemplate.asm.txt"
+    suffix = "NativeAo" if native_occlusion else "NoNativeAo"
+    output = temporary / f"IblMaterialBlendTemplate{suffix}.dxbc"
+    assembly = temporary / f"IblMaterialBlendTemplate{suffix}.asm.txt"
     run_fxc(
         [
             str(fxc),
@@ -204,6 +221,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
             "/O3",
             "/Ges",
             "/WX",
+            f"/DPBR_NATIVE_OCCLUSION={1 if native_occlusion else 0}",
             "/Fo",
             str(output),
             "/Fc",
@@ -214,7 +232,7 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB5[3], immediateIndexed",
+        "dcl_constantbuffer CB5[7], immediateIndexed",
         "dcl_constantbuffer CB9[2], immediateIndexed",
         "dcl_constantbuffer CB12[82], dynamicIndexed",
         "dcl_sampler s3, mode_default",
@@ -228,13 +246,79 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
         "dcl_resource_texturecube (float,float,float,float) t33",
         "dcl_resource_texturecube (float,float,float,float) t34",
         "dcl_resource_texturecube (float,float,float,float) t35",
+        "dcl_resource_texture2d (float,float,float,float) t36",
         "dcl_resource_texture2d (float,float,float,float) t47",
+        "dcl_output o0.xyzw",
+        "dcl_output o1.xyzw",
     ):
         if required not in text:
             raise ContractError(
                 "IBL material template assembly changed: " + required
             )
+    for required in (
+        "dcl_sampler s9, mode_default",
+        "dcl_resource_texture2d (float,float,float,float) t9",
+    ):
+        present = required in text
+        if present != native_occlusion:
+            raise ContractError(
+                "IBL native-occlusion template contract changed: " + required
+            )
+    pbr_branch = text.find("if_nz")
+    material_sample = re.search(
+        r"^\s*sample_l_indexable\(texture2d\).*\bt36(?:\b|\.)",
+        text,
+        re.MULTILINE,
+    )
+    if (
+        pbr_branch < 0
+        or material_sample is None
+        or pbr_branch >= material_sample.start()
+    ):
+        raise ContractError(
+            "IBL PBR-disabled path no longer branches before t36"
+        )
     return output.read_bytes()
+
+
+def has_native_occlusion(shader: bytes) -> bool:
+    _, _, _, words = shader_words(shader)
+    has_resource = False
+    has_sampler = False
+    for start, end in instructions(words):
+        opcode = words[start] & 0x7FF
+        operands = executable_operands(words, start, end)
+        if not operands or not operands[0].immediate_indices:
+            continue
+        slot = operands[0].immediate_indices[0]
+        if slot is None:
+            continue
+        if opcode == OPCODE_DCL_RESOURCE and int(slot) == NATIVE_OCCLUSION_SLOT:
+            has_resource = True
+        elif opcode == OPCODE_DCL_SAMPLER and int(slot) == OCCLUSION_SAMPLER_SLOT:
+            has_sampler = True
+    if has_resource != has_sampler:
+        raise ContractError(
+            "DFComposite native-occlusion t9/s9 declaration is incomplete"
+        )
+    return has_resource
+
+
+def has_sslr_sample(shader: bytes) -> bool:
+    _, _, _, words = shader_words(shader)
+    samples = 0
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) != SAMPLE_OPCODE:
+            continue
+        operands = executable_operands(words, start, end)
+        samples += int(any(
+            operand.operand_type == OPERAND_RESOURCE
+            and operand.immediate_indices == (SSLR_SLOT,)
+            for operand in operands
+        ))
+    if samples > 1:
+        raise ContractError("DFComposite declares multiple t14 SSLR samples")
+    return samples == 1
 
 
 def apply_reflection_patch(
@@ -417,12 +501,18 @@ def template_contract(
             words,
             OPCODE_DCL_RESOURCE,
             OPERAND_RESOURCE,
+            MATERIAL_PROPERTIES_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
             SURFACE_CLASS_SLOT,
         ),
     ]
     temp_declaration, _, body = shader_declarations_and_body(words)
     template_temp_count = words[temp_declaration[0] + 1]
-    if template_temp_count == 0 or template_temp_count > 16:
+    if template_temp_count == 0 or template_temp_count > 64:
         raise ContractError("IBL material template temporary count changed")
     body_words = [words[start:end] for start, end in body]
     opcodes = [instruction[0] & 0x7FF for instruction in body_words]
@@ -437,9 +527,10 @@ def template_contract(
         for operand in executable_operands(instruction, 0, len(instruction))
         if operand.operand_type == OPERAND_OUTPUT
     ]
-    if not output_writes or any(
-        operand.immediate_indices != (0,) for operand in output_writes
-    ):
+    output_indices = {
+        operand.immediate_indices for operand in output_writes
+    }
+    if output_indices != {(0,), (1,)}:
         raise ContractError("IBL material template output contract changed")
     return declarations, body_words[:-1], template_temp_count
 
@@ -495,6 +586,7 @@ def remap_template_instruction(
     first_scratch: int,
     template_temp_count: int,
     output_scratch: int,
+    lobe_scratch: int,
 ) -> list[int]:
     replacements: dict[int, list[int]] = {}
     for operand in executable_operands(instruction, 0, len(instruction)):
@@ -572,14 +664,18 @@ def remap_template_instruction(
                     "IBL material template uses an unexpected input"
                 )
         elif operand.operand_type == OPERAND_OUTPUT:
-            if operand.immediate_indices != (0,):
+            output_register = {
+                (0,): output_scratch,
+                (1,): lobe_scratch,
+            }.get(operand.immediate_indices)
+            if output_register is None:
                 raise ContractError(
                     "IBL material template uses an unexpected output"
                 )
             replacements[operand.start] = replace_operand_with_temp(
                 instruction,
                 operand,
-                output_scratch,
+                output_register,
             )
     return replace_instruction_operands(instruction, replacements)
 
@@ -627,6 +723,15 @@ def final_material_move(destination: list[int], source_register: int) -> list[in
         )
     source = [0x00100000 | swizzle, source_register]
     result = [MOV_OPCODE, *destination, *source]
+    result[0] |= len(result) << 24
+    return result
+
+
+def multiply_temp_rgb(register: int, lobe_register: int) -> list[int]:
+    destination = temp_mask_operand(register, 0x7)
+    source = [0x00100000 | 0xE46, register]
+    lobe = [0x00100000 | 0xE46, lobe_register]
+    result = [MUL_OPCODE, *destination, *source, *lobe]
     result[0] |= len(result) << 24
     return result
 
@@ -686,9 +791,10 @@ def patch_shader(
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
+        MATERIAL_PROPERTIES_SLOT,
     } & occupied_resources:
         raise ContractError(
-            "DFComposite unexpectedly owns an injected t29..t35 slot"
+            "DFComposite unexpectedly owns an injected t29..t36 slot"
         )
     if SCENE_DEPTH_SLOT not in occupied_resources:
         raise ContractError("DFComposite does not expose the verified t7 depth")
@@ -740,6 +846,34 @@ def patch_shader(
     ):
         raise ContractError(
             "DFComposite t8 sample no longer maps RGB into a verified destination shape"
+        )
+
+    sslr_samples: list[tuple[int, int, list[Operand]]] = []
+    for start, end in body:
+        if (words[start] & 0x7FF) != SAMPLE_OPCODE:
+            continue
+        operands = executable_operands(words, start, end)
+        if any(
+            operand.operand_type == OPERAND_RESOURCE
+            and operand.immediate_indices == (SSLR_SLOT,)
+            for operand in operands
+        ):
+            sslr_samples.append((start, end, operands))
+    if len(sslr_samples) > 1:
+        raise ContractError("DFComposite declares multiple t14 SSLR samples")
+    sslr_sample = sslr_samples[0] if sslr_samples else None
+    sslr_destination_register = None
+    if sslr_sample is not None:
+        sslr_destination = sslr_sample[2][0]
+        if (
+            sslr_destination.operand_type != OPERAND_TEMP
+            or len(sslr_destination.immediate_indices) != 1
+            or sslr_destination.immediate_indices[0] is None
+            or ((words[sslr_destination.start] >> 4) & 0xF) != 0xF
+        ):
+            raise ContractError("DFComposite t14 destination contract changed")
+        sslr_destination_register = int(
+            sslr_destination.immediate_indices[0]
         )
 
     material_samples: list[tuple[int, int, list[Operand]]] = []
@@ -817,6 +951,7 @@ def patch_shader(
     output_scratch = original_temp_count + template_temp_count
     material_tag_scratch = output_scratch + 1
     material_restore_scratch = material_tag_scratch + 1
+    lobe_scratch = material_restore_scratch + 1
     replacement: list[int] = []
     for instruction in transform:
         replacement.extend(
@@ -829,6 +964,7 @@ def patch_shader(
                 first_scratch,
                 template_temp_count,
                 output_scratch,
+                lobe_scratch,
             )
         )
     replacement.extend(
@@ -839,7 +975,7 @@ def patch_shader(
     for declaration in declarations:
         prefix.extend(declaration)
     updated_temp_declaration = words[temp_declaration[0] : temp_declaration[1]]
-    updated_temp_declaration[1] = original_temp_count + template_temp_count + 3
+    updated_temp_declaration[1] = original_temp_count + template_temp_count + 4
 
     rewritten_body: list[int] = []
     for start, end in body:
@@ -888,6 +1024,16 @@ def patch_shader(
                 )
         elif start == sample_start and end == sample_end:
             rewritten_body.extend(replacement)
+        elif sslr_sample is not None and (
+            start == sslr_sample[0] and end == sslr_sample[1]
+        ):
+            rewritten_body.extend(words[start:end])
+            rewritten_body.extend(
+                multiply_temp_rgb(
+                    int(sslr_destination_register),
+                    lobe_scratch,
+                )
+            )
         else:
             rewritten_body.extend(words[start:end])
     patched_words = [*prefix, *updated_temp_declaration, *rewritten_body]
@@ -919,6 +1065,8 @@ def validate_candidate(
     original: bytes,
     candidate: bytes,
     temporary: Path,
+    native_occlusion: bool,
+    sslr_lobe_expected: bool,
 ) -> None:
     original_path = temporary / f"{name}.vanilla.dxbc"
     candidate_path = temporary / f"{name}.dxbc"
@@ -956,8 +1104,8 @@ def validate_candidate(
     candidate_declarations = census.parse_declarations(candidate_text)
     original_buffers = dict(original_declarations.constant_buffers)
     candidate_buffers = dict(candidate_declarations.constant_buffers)
-    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 3:
-        raise ContractError(f"{name} does not add exact b5[3]")
+    if candidate_buffers.pop(IBL_CONSTANT_SLOT, None) != 7:
+        raise ContractError(f"{name} does not add exact b5[7]")
     if candidate_buffers.pop(BASIC_WETNESS_CONSTANT_SLOT, None) != 2:
         raise ContractError(f"{name} does not add exact b9[2]")
     expected_buffers = dict(original_buffers)
@@ -978,6 +1126,7 @@ def validate_candidate(
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
+        MATERIAL_PROPERTIES_SLOT,
         SURFACE_CLASS_SLOT,
     } != original_textures or not {
         DFLIGHT_ALBEDO_SLOT,
@@ -987,6 +1136,7 @@ def validate_candidate(
         PREVIOUS_PUBLISHED_VALIDITY_SLOT,
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
+        MATERIAL_PROPERTIES_SLOT,
         SURFACE_CLASS_SLOT,
     }.issubset(candidate_textures):
         raise ContractError(f"{name} changed the texture contract")
@@ -1006,6 +1156,7 @@ def validate_candidate(
         "dcl_resource_texturecube (float,float,float,float) t33",
         "dcl_resource_texturecube (float,float,float,float) t34",
         "dcl_resource_texturecube (float,float,float,float) t35",
+        "dcl_resource_texture2d (float,float,float,float) t36",
         "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if declaration not in candidate_text:
@@ -1022,10 +1173,21 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t34 exactly once")
     if len(re.findall(r"\bt35(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t35 exactly once")
+    if len(re.findall(r"\bt36(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t36 exactly once")
     if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t29 exactly once")
     if len(re.findall(r"\bt47(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t47 exactly once")
+    expected_occlusion_references = len(
+        re.findall(r"\bt9(?:\b|\.)", original_text)
+    ) + int(native_occlusion)
+    if len(re.findall(r"\bt9(?:\b|\.)", candidate_text)) != (
+        expected_occlusion_references
+    ):
+        raise ContractError(
+            f"{name} changed its native-occlusion sample contract"
+        )
     if len(re.findall(r"\bt3(?:\b|\.)", candidate_text)) != len(
         re.findall(r"\bt3(?:\b|\.)", original_text)
     ):
@@ -1036,35 +1198,30 @@ def validate_candidate(
         raise ContractError(f"{name} did not add exactly one receiver-depth sample")
     if candidate_text.count("if_nz") <= original_text.count("if_nz"):
         raise ContractError(f"{name} did not branch around sparse metal work")
-    metal_block_start = re.search(
-        r"^\s*sample_l_indexable\(texturecube\).*\bt30(?:\b|\.)",
+    sslr_lobe = re.search(
+        r"sample_indexable\(texture2d\).*r(\d+)\.xyzw,.*\bt14(?:\b|\.).*\n"
+        r"\s*mul r\1\.xyz, r\1\.[xyzw]{4}, r\d+\.[xyzw]{4}",
         candidate_text,
-        re.MULTILINE,
     )
-    metal_block_end = re.search(
-        r"^\s*sample_l_indexable\(texture2d\).*\bt29(?:\b|\.)",
-        candidate_text,
-        re.MULTILINE,
-    )
+    if (sslr_lobe is not None) != sslr_lobe_expected:
+        sslr_sample_text = re.search(
+            r"sample_indexable\(texture2d\).*\bt14(?:\b|\.)",
+            candidate_text,
+        )
+        sslr_start = sslr_sample_text.start() if sslr_sample_text else 0
+        sslr_excerpt = candidate_text[
+            (max)(0, sslr_start - 160) : sslr_start + 420
+        ].replace("\n", " | ")
+        raise ContractError(
+            f"{name} changed the exact SSLR PBR-lobe integration: "
+            + sslr_excerpt
+        )
     if (
-        metal_block_start is None
-        or metal_block_end is None
-        or metal_block_start.start() >= metal_block_end.start()
+        "l(-1.000000, -0.027500, -0.572000, 0.022000)"
+        not in candidate_text
+        or "l(0.040000)" not in candidate_text
     ):
-        raise ContractError(f"{name} lost its ordered complex-material block")
-    metal_block = candidate_text[
-        metal_block_start.start() : metal_block_end.end()
-    ]
-    if not re.search(
-        r"add\s+r\d+\.[xyzw]+,\s+-r\d+\.[xyzw]+,\s+l\(1\.000000\)",
-        metal_block,
-    ):
-        raise ContractError(f"{name} lost the encoded-tag subtraction")
-    if not re.search(
-        r"sample_l_indexable\(texture2d\).*r\d+\.[xyzw]{2,4},\s+t29",
-        metal_block,
-    ):
-        raise ContractError(f"{name} lost the retained-albedo screen coordinate")
+        raise ContractError(f"{name} lost the shared PBR BRDF constants")
     if re.search(r"^\s*dcl_uav", candidate_text, re.MULTILINE):
         raise ContractError(f"{name} unexpectedly declares a UAV")
 
@@ -1152,14 +1309,21 @@ def main() -> int:
             prefix="fo4vr_cs_ibl_material_"
         ) as directory:
             temporary = Path(directory)
-            template = compile_template(root, fxc, temporary)
-            (
-                declarations,
-                transform,
-                template_temp_count,
-            ) = template_contract(template)
+            templates = {
+                native_occlusion: template_contract(
+                    compile_template(
+                        root,
+                        fxc,
+                        temporary,
+                        native_occlusion,
+                    )
+                )
+                for native_occlusion in (False, True)
+            }
             candidates: list[bytes] = []
             anchored_count = 0
+            native_occlusion_count = 0
+            sslr_lobe_count = 0
             for index, original in enumerate(originals):
                 name = contract_name(index, original.checksum)
                 anchored_original, surface_anchored = apply_surface_anchor(
@@ -1169,6 +1333,13 @@ def main() -> int:
                     name,
                 )
                 anchored_count += int(surface_anchored)
+                native_occlusion = has_native_occlusion(anchored_original)
+                sslr_lobe_expected = has_sslr_sample(anchored_original)
+                native_occlusion_count += int(native_occlusion)
+                sslr_lobe_count += int(sslr_lobe_expected)
+                declarations, transform, template_temp_count = templates[
+                    native_occlusion
+                ]
                 candidate = patch_shader(
                     anchored_original,
                     declarations,
@@ -1181,6 +1352,8 @@ def main() -> int:
                     original.data,
                     candidate,
                     temporary,
+                    native_occlusion,
+                    sslr_lobe_expected,
                 )
                 candidates.append(candidate)
             if anchored_count != len(SURFACE_ANCHORED_IDENTITIES):
@@ -1271,8 +1444,10 @@ def main() -> int:
         print(
             "IBL material contracts verified: 41 exact DFComposite identities, "
             "including four surface-anchored cubemap permutations; "
+            f"{sslr_lobe_count} SSLR variants share the PBR lobe and "
+            f"{native_occlusion_count} variants consume native AO; "
             "vanilla t8/s8 fallback and weight-gated, validity-aware "
-            "position-corrected t29..t35/b5 consumption."
+            "position-corrected t29..t36/b5 PBR consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)

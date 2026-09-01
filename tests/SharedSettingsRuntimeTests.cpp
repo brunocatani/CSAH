@@ -99,6 +99,9 @@ int main()
         [](Snapshot& value) { value.basicWetness.enabled = true; },
         "Basic Wetness diff");
     verifyLive(
+        [](Snapshot& value) { value.pbr.enabled = false; },
+        "PBR diff");
+    verifyLive(
         [](Snapshot& value) { value.cloudShadows.enabled = false; },
         "Cloud Shadows diff");
     auto vanillaFixesOff = baseline;

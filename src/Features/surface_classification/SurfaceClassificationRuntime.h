@@ -26,6 +26,7 @@ namespace community_shaders::surface_classification
         subsurfaceScattering = 1u << 2,
         terrainBlending = 1u << 3,
         basicWetness = 1u << 4,
+        pbr = 1u << 5,
     };
 
     enum class ProducerEvidence : std::uint32_t

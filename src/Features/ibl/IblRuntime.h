@@ -8,6 +8,7 @@
 #include "Features/ibl/IblReflectionFreeCapture.h"
 #include "Features/ibl/IblSceneRadianceProbeModel.h"
 #include "Features/ibl/IblSettings.h"
+#include "Features/pbr/PbrSettings.h"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -112,6 +113,7 @@ namespace community_shaders::ibl
         // material substitution or diffuse ambient lighting.
         void setSslrConsumerEnabled(bool enabled) noexcept;
         void applySettings(const Settings& settings) noexcept;
+        void applyPbrSettings(const pbr::Settings& settings) noexcept;
 
         // Render-thread-only immutable view of the currently published
         // provider generation. Raw pointers remain owned by this runtime.
@@ -301,6 +303,7 @@ namespace community_shaders::ibl
             std::uint64_t session,
             std::uint64_t tickMilliseconds) noexcept;
         [[nodiscard]] bool environmentAcquisitionEnabled() const noexcept;
+        [[nodiscard]] bool materialResponseEnabled() const noexcept;
         void refreshComplexMaterialProducerGate() noexcept;
         void beginMaterialEnvironmentTransition(
             std::uint64_t tickMilliseconds) noexcept;
@@ -324,6 +327,8 @@ namespace community_shaders::ibl
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialDisabledConstants_;
         Microsoft::WRL::ComPtr<ID3D11Buffer> materialEnabledConstants_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> materialAlbedo_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            materialProperties_;
         std::array<SceneRadianceReadbackSlot, 2>
             sceneRadianceReadbackSlots_{};
         mutable std::mutex captureShaderMutex_;
@@ -360,6 +365,23 @@ namespace community_shaders::ibl
         std::atomic_bool enabled_{ true };
         std::atomic_bool dynamicCubemapsEnabled_{ true };
         std::atomic_bool diffuseEnabled_{ true };
+        std::atomic_bool pbrEnabled_{ true };
+        std::atomic_bool pbrLegacyMaterials_{ true };
+        std::atomic_bool pbrDirectGgx_{ true };
+        std::atomic_bool pbrGrassGgx_{};
+        std::atomic_bool pbrEnvironmentFresnel_{ true };
+        std::atomic_bool pbrEnergyConservation_{ true };
+        std::atomic_bool pbrMultiscatterCompensation_{ true };
+        std::atomic_bool pbrSpecularOcclusion_{ true };
+        std::atomic<float> pbrRoughnessMultiplier_{ 1.0f };
+        std::atomic<float> pbrSpecularRoughnessBlend_{ 1.0f };
+        std::atomic<float> pbrBaseF0Multiplier_{ 0.32f };
+        std::atomic<float> pbrMinimumF0_{ 0.02f };
+        std::atomic<float> pbrCubemapToF0Multiplier_{ 1.0f };
+        std::atomic<float> pbrComplexMaterialF0Multiplier_{ 1.0f };
+        std::atomic<float> pbrDirectLightingScale_{ 1.0f };
+        std::atomic_uint64_t pbrSettingsRevision_{ 1 };
+        std::uint64_t uploadedPbrSettingsRevision_{};
         std::atomic_bool sslrConsumerEnabled_{};
         std::atomic_uint32_t diffuseLevelBits_{
             std::bit_cast<std::uint32_t>(1.0f) };

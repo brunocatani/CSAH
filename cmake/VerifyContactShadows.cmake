@@ -313,11 +313,15 @@ foreach(required IN ITEMS
     "contactShadowRuntime.tracksOriginal(shader)"
     "firstTrackedContactShaderBindLogged"
     "wrappedGrassFeatureActive"
+    "pbr::Runtime::get().onDeviceCreated"
+    "pbrFeatureActive"
     "contactShadowRuntime.compositorReady("
-    "if (dflightCompositorActive && classInstanceCount == 0)"
+    "if (materialCompositorActive && classInstanceCount == 0)"
     "issueDrawWithContactShadows(context"
     "activeContactShadowsEnabled"
     "wrappedRuntime.scopeDraw("
+    "pbrRuntime.scopeDraw("
+    "activePbrEnabled"
     "activeContactShadowBinding.original")
   string(FIND "${hookSource}" "${required}" found)
   if(found EQUAL -1)

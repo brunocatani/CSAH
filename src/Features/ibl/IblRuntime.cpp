@@ -92,9 +92,10 @@ namespace community_shaders::ibl
             float publishedProbeOriginValid{};
             Float3 previousPublishedProbeOrigin{};
             float previousPublishedProbeOriginValid{};
+            pbr::FrameData pbr{};
         };
 
-        static_assert(sizeof(MaterialEnvironmentConstants) == 48);
+        static_assert(sizeof(MaterialEnvironmentConstants) == 112);
 
         struct TextureViewRange
         {
@@ -452,11 +453,18 @@ namespace community_shaders::ibl
             sslrConsumerEnabled_.load(std::memory_order_acquire);
     }
 
+    bool Runtime::materialResponseEnabled() const noexcept
+    {
+        const auto dynamicEnvironment =
+            enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire);
+        return dynamicEnvironment ||
+            pbrEnabled_.load(std::memory_order_acquire);
+    }
+
     void Runtime::refreshComplexMaterialProducerGate() noexcept
     {
-        render::setDFPrePassIblEnabled(
-            enabled_.load(std::memory_order_acquire) &&
-            dynamicCubemapsEnabled_.load(std::memory_order_acquire));
+        render::setDFPrePassIblEnabled(materialResponseEnabled());
     }
 
     void Runtime::beginMaterialEnvironmentTransition(
@@ -473,8 +481,13 @@ namespace community_shaders::ibl
     void Runtime::updateMaterialEnvironmentTransition(
         std::uint64_t tickMilliseconds) noexcept
     {
+        const auto pbrRevision = pbrSettingsRevision_.load(
+            std::memory_order_acquire);
+        const auto pbrSettingsChanged =
+            pbrRevision != uploadedPbrSettingsRevision_;
         if ((!materialEnvironmentTransitionActive_ &&
-                nextMaterialEnvironmentTransitionTickMilliseconds_ != 0) ||
+                nextMaterialEnvironmentTransitionTickMilliseconds_ != 0 &&
+                !pbrSettingsChanged) ||
             !context_ ||
             !materialEnabledConstants_ ||
             tickMilliseconds <
@@ -488,6 +501,15 @@ namespace community_shaders::ibl
         const auto previousAvailable =
             environmentProvider_.previousEnvironment() &&
             environmentProvider_.previousValidity();
+        const auto requestedSession = requestedCaptureProbeSessionId_.load(
+            std::memory_order_acquire);
+        const auto dynamicMaterialAvailable =
+            enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ == requestedSession &&
+            environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity();
         const auto publishedProbeOrigin =
             environmentProvider_.publishedProbeOrigin();
         const auto previousProbeOrigin =
@@ -504,17 +526,50 @@ namespace community_shaders::ibl
                     kMaterialEnvironmentTransitionMilliseconds) :
             1.0F;
         materialEnvironmentTransitionWeight_ = transitionWeight;
+        const pbr::Settings pbrSettings{
+            .enabled = pbrEnabled_.load(std::memory_order_acquire),
+            .legacyMaterials = pbrLegacyMaterials_.load(
+                std::memory_order_relaxed),
+            .directGgx = pbrDirectGgx_.load(std::memory_order_relaxed),
+            .grassGgx = pbrGrassGgx_.load(std::memory_order_relaxed),
+            .environmentFresnel = pbrEnvironmentFresnel_.load(
+                std::memory_order_relaxed),
+            .energyConservation = pbrEnergyConservation_.load(
+                std::memory_order_relaxed),
+            .multiscatterCompensation =
+                pbrMultiscatterCompensation_.load(
+                    std::memory_order_relaxed),
+            .specularOcclusion = pbrSpecularOcclusion_.load(
+                std::memory_order_relaxed),
+            .roughnessMultiplier = pbrRoughnessMultiplier_.load(
+                std::memory_order_relaxed),
+            .specularRoughnessBlend = pbrSpecularRoughnessBlend_.load(
+                std::memory_order_relaxed),
+            .baseF0Multiplier = pbrBaseF0Multiplier_.load(
+                std::memory_order_relaxed),
+            .minimumF0 = pbrMinimumF0_.load(
+                std::memory_order_relaxed),
+            .cubemapToF0Multiplier = pbrCubemapToF0Multiplier_.load(
+                std::memory_order_relaxed),
+            .complexMaterialF0Multiplier =
+                pbrComplexMaterialF0Multiplier_.load(
+                    std::memory_order_relaxed),
+            .directLightingScale = pbrDirectLightingScale_.load(
+                std::memory_order_relaxed),
+        };
         const MaterialEnvironmentConstants constants{
-            .iblWeight = 1.0F,
+            .iblWeight = dynamicMaterialAvailable ? 1.0F : 0.0F,
             .complexMaterialWeight = 1.0F,
             .transitionWeight = transitionWeight,
-            .previousEnvironmentAvailable = previousAvailable ? 1.0F : 0.0F,
+            .previousEnvironmentAvailable =
+                dynamicMaterialAvailable && previousAvailable ? 1.0F : 0.0F,
             .publishedProbeOrigin = publishedProbeOrigin.position,
             .publishedProbeOriginValid =
                 publishedProbeOrigin.valid ? 1.0F : 0.0F,
             .previousPublishedProbeOrigin = previousProbeOrigin.position,
             .previousPublishedProbeOriginValid =
                 previousProbeOrigin.valid ? 1.0F : 0.0F,
+            .pbr = pbr::makeFrameData(pbrSettings),
         };
         context_->UpdateSubresource(
             materialEnabledConstants_.Get(),
@@ -523,6 +578,7 @@ namespace community_shaders::ibl
             &constants,
             0,
             0);
+        uploadedPbrSettingsRevision_ = pbrRevision;
         if (transitionWeight >= 1.0F) {
             materialEnvironmentTransitionActive_ = false;
         }
@@ -665,6 +721,39 @@ namespace community_shaders::ibl
                 safe.dynamicCubemapsEnabled ? "enabled" : "disabled",
                 safe.dynamicCubemapsEnabled ? "armed" : "retired");
         }
+    }
+
+    void Runtime::applyPbrSettings(const pbr::Settings& settings) noexcept
+    {
+        const auto safe = pbr::sanitize(settings);
+        pbrEnabled_.store(safe.enabled, std::memory_order_release);
+        pbrLegacyMaterials_.store(
+            safe.legacyMaterials, std::memory_order_relaxed);
+        pbrDirectGgx_.store(safe.directGgx, std::memory_order_relaxed);
+        pbrGrassGgx_.store(safe.grassGgx, std::memory_order_relaxed);
+        pbrEnvironmentFresnel_.store(
+            safe.environmentFresnel, std::memory_order_relaxed);
+        pbrEnergyConservation_.store(
+            safe.energyConservation, std::memory_order_relaxed);
+        pbrMultiscatterCompensation_.store(
+            safe.multiscatterCompensation, std::memory_order_relaxed);
+        pbrSpecularOcclusion_.store(
+            safe.specularOcclusion, std::memory_order_relaxed);
+        pbrRoughnessMultiplier_.store(
+            safe.roughnessMultiplier, std::memory_order_relaxed);
+        pbrSpecularRoughnessBlend_.store(
+            safe.specularRoughnessBlend, std::memory_order_relaxed);
+        pbrBaseF0Multiplier_.store(
+            safe.baseF0Multiplier, std::memory_order_relaxed);
+        pbrMinimumF0_.store(safe.minimumF0, std::memory_order_relaxed);
+        pbrCubemapToF0Multiplier_.store(
+            safe.cubemapToF0Multiplier, std::memory_order_relaxed);
+        pbrComplexMaterialF0Multiplier_.store(
+            safe.complexMaterialF0Multiplier, std::memory_order_relaxed);
+        pbrDirectLightingScale_.store(
+            safe.directLightingScale, std::memory_order_relaxed);
+        pbrSettingsRevision_.fetch_add(1, std::memory_order_release);
+        refreshComplexMaterialProducerGate();
     }
 
     bool Runtime::tryGetDiffuseAmbient(
@@ -949,17 +1038,20 @@ namespace community_shaders::ibl
         ID3D11PixelShader* original) noexcept
     {
         MaterialPixelShaderSelection selection{ original, {} };
-        if (!context || context != context_.Get() || !original ||
-            !enabled_.load(std::memory_order_acquire) ||
-            !dynamicCubemapsEnabled_.load(std::memory_order_acquire) ||
-            materialConsumptionFailed_ ||
-            !resourcesReady_.load(std::memory_order_acquire) ||
-            publishedEnvironmentSessionId_ == 0 ||
-            publishedEnvironmentSessionId_ !=
+        const auto dynamicMaterialAvailable =
+            enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ ==
                 requestedCaptureProbeSessionId_.load(
-                    std::memory_order_acquire) ||
-            !environmentProvider_.publishedEnvironment() ||
-            !environmentProvider_.publishedValidity()) {
+                    std::memory_order_acquire) &&
+            environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedValidity();
+        if (!context || context != context_.Get() || !original ||
+            (!dynamicMaterialAvailable &&
+                !pbrEnabled_.load(std::memory_order_acquire)) ||
+            materialConsumptionFailed_ ||
+            !resourcesReady_.load(std::memory_order_acquire)) {
             return selection;
         }
         const auto capture = captureProbeBindingForShader(original);
@@ -995,23 +1087,29 @@ namespace community_shaders::ibl
 
     bool Runtime::featureEnabled() const noexcept
     {
-        return environmentAcquisitionEnabled();
+        return environmentAcquisitionEnabled() || materialResponseEnabled();
     }
 
     bool Runtime::materialBindingActive(
         MaterialShaderBinding binding) const noexcept
     {
-        return binding && enabled_.load(std::memory_order_acquire) &&
+        const auto pbrActive = pbrEnabled_.load(std::memory_order_acquire);
+        const auto dynamicMaterialAvailable =
+            enabled_.load(std::memory_order_acquire) &&
             dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
-            !materialConsumptionFailed_ &&
-            resourcesReady_.load(std::memory_order_acquire) &&
             publishedEnvironmentSessionId_ != 0 &&
             publishedEnvironmentSessionId_ ==
                 requestedCaptureProbeSessionId_.load(
                     std::memory_order_acquire) &&
-            materialAlbedo_ && environmentProvider_.publishedEnvironment() &&
+            environmentProvider_.publishedEnvironment() &&
             environmentProvider_.publishedValidity() &&
             environmentProvider_.publishedPosition();
+        return binding &&
+            (dynamicMaterialAvailable ||
+                pbrEnabled_.load(std::memory_order_acquire)) &&
+            !materialConsumptionFailed_ &&
+            resourcesReady_.load(std::memory_order_acquire) &&
+            materialAlbedo_ && (!pbrActive || materialProperties_);
     }
 
     ScopedMaterialBindings Runtime::scopeMaterialBindings(
@@ -1027,24 +1125,37 @@ namespace community_shaders::ibl
         }
         auto* constants = enabled ? materialEnabledConstants_.Get() :
                                     materialDisabledConstants_.Get();
-        auto* radiance = enabled ?
+        const auto dynamicActive = enabled &&
+            enabled_.load(std::memory_order_acquire) &&
+            dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
+            publishedEnvironmentSessionId_ != 0 &&
+            publishedEnvironmentSessionId_ ==
+                requestedCaptureProbeSessionId_.load(
+                    std::memory_order_acquire);
+        auto* radiance = dynamicActive ?
             environmentProvider_.publishedEnvironment() : nullptr;
-        auto* validity = enabled ?
+        auto* validity = dynamicActive ?
             environmentProvider_.publishedValidity() : nullptr;
-        auto* previousRadiance = enabled &&
+        auto* previousRadiance = dynamicActive &&
                 materialEnvironmentTransitionActive_ ?
             environmentProvider_.previousEnvironment() : nullptr;
-        auto* previousValidity = enabled &&
+        auto* previousValidity = dynamicActive &&
                 materialEnvironmentTransitionActive_ ?
             environmentProvider_.previousValidity() : nullptr;
-        auto* position = enabled ?
+        auto* position = dynamicActive ?
             environmentProvider_.publishedPosition() : nullptr;
-        auto* previousPosition = enabled &&
+        auto* previousPosition = dynamicActive &&
                 materialEnvironmentTransitionActive_ ?
             environmentProvider_.previousPosition() : nullptr;
         auto* albedo = enabled ? materialAlbedo_.Get() : nullptr;
+        const auto pbrActive = enabled &&
+            pbrEnabled_.load(std::memory_order_acquire);
+        auto* materialProperties = pbrActive ? materialProperties_.Get() :
+                                               nullptr;
         if (!constants || (enabled &&
-                (!albedo || !radiance || !validity || !position))) {
+                (!albedo || (pbrActive && !materialProperties) ||
+                    (dynamicActive &&
+                        (!radiance || !validity || !position))))) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
             materialConsumptionFailed_ = true;
             return {};
@@ -1059,6 +1170,7 @@ namespace community_shaders::ibl
             previousValidity,
             position,
             previousPosition,
+            materialProperties,
             constants);
         if (!scope.active()) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -1706,10 +1818,11 @@ namespace community_shaders::ibl
         auto enabledDescription = disabledDescription;
         enabledDescription.Usage = D3D11_USAGE_DEFAULT;
         constexpr MaterialEnvironmentConstants disabled{};
-        constexpr MaterialEnvironmentConstants enabled{
-            .iblWeight = 1.0F,
+        const MaterialEnvironmentConstants enabled{
+            .iblWeight = 0.0F,
             .complexMaterialWeight = 1.0F,
             .transitionWeight = 1.0F,
+            .pbr = pbr::makeFrameData(pbr::Settings{}),
         };
         D3D11_SUBRESOURCE_DATA disabledData{};
         disabledData.pSysMem = &disabled;
@@ -1727,7 +1840,7 @@ namespace community_shaders::ibl
                 &enabledConstants)) ||
             !disabledConstants || !enabledConstants) {
             logging::error(
-                "IBL material b5 disable and transition constants could not be created.");
+                "IBL/PBR material b5 disable and transition constants could not be created.");
             return false;
         }
 
@@ -2020,15 +2133,24 @@ namespace community_shaders::ibl
     {
         if (!context || context != context_.Get() ||
             !resourcesReady_.load(std::memory_order_acquire) ||
-            !environmentAcquisitionEnabled()) {
+            (!environmentAcquisitionEnabled() &&
+                !pbrEnabled_.load(std::memory_order_acquire))) {
             return;
         }
 
-        if (dynamicCubemapsEnabled_.load(std::memory_order_acquire)) {
-            ID3D11ShaderResourceView* albedoRaw{};
-            context->PSGetShaderResources(0, 1, &albedoRaw);
+        if (materialResponseEnabled()) {
+            std::array<ID3D11ShaderResourceView*, 3> materialViews{};
+            context->PSGetShaderResources(
+                0,
+                static_cast<UINT>(materialViews.size()),
+                materialViews.data());
             ComPtr<ID3D11ShaderResourceView> albedo;
-            albedo.Attach(albedoRaw);
+            ComPtr<ID3D11ShaderResourceView> materialProperties;
+            albedo.Attach(materialViews[0]);
+            if (materialViews[1]) {
+                materialViews[1]->Release();
+            }
+            materialProperties.Attach(materialViews[2]);
             if (albedo) {
                 D3D11_SHADER_RESOURCE_VIEW_DESC description{};
                 albedo->GetDesc(&description);
@@ -2037,10 +2159,22 @@ namespace community_shaders::ibl
                     materialAlbedo_ = std::move(albedo);
                 }
             }
+            if (pbrEnabled_.load(std::memory_order_acquire) &&
+                materialProperties) {
+                D3D11_SHADER_RESOURCE_VIEW_DESC description{};
+                materialProperties->GetDesc(&description);
+                if (description.ViewDimension ==
+                    D3D11_SRV_DIMENSION_TEXTURE2D) {
+                    materialProperties_ = std::move(materialProperties);
+                }
+            }
         }
 
         const auto now = GetTickCount64();
         updateMaterialEnvironmentTransition(now);
+        if (!environmentAcquisitionEnabled()) {
+            return;
+        }
         if (now < nextCadenceTickMilliseconds_) {
             return;
         }
@@ -2172,14 +2306,16 @@ namespace community_shaders::ibl
         const auto requestedSession =
             requestedCaptureProbeSessionId_.load(
                 std::memory_order_acquire);
-        return enabled_.load(std::memory_order_acquire) &&
+        const auto dynamicReady =
+            enabled_.load(std::memory_order_acquire) &&
             dynamicCubemapsEnabled_.load(std::memory_order_acquire) &&
-            resourcesReady_.load(std::memory_order_acquire) &&
-            !materialConsumptionFailed_ && materialAlbedo_ &&
             publishedEnvironmentSessionId_ != 0 &&
             publishedEnvironmentSessionId_ == requestedSession &&
             environmentProvider_.publishedEnvironment() &&
             environmentProvider_.publishedValidity();
+        return resourcesReady_.load(std::memory_order_acquire) &&
+            !materialConsumptionFailed_ &&
+            (dynamicReady || pbrEnabled_.load(std::memory_order_acquire));
     }
 
     void Runtime::publishUsable(
@@ -2365,6 +2501,7 @@ namespace community_shaders::ibl
         materialDisabledConstants_.Reset();
         materialEnabledConstants_.Reset();
         materialAlbedo_.Reset();
+        materialProperties_.Reset();
         context_.Reset();
         device_.Reset();
         nextCadenceTickMilliseconds_ = 0;
@@ -2403,6 +2540,7 @@ namespace community_shaders::ibl
         materialConsumptionFailed_ = false;
         materialEnvironmentTransitionActive_ = false;
         materialEnvironmentTransitionWeight_ = 1.0f;
+        uploadedPbrSettingsRevision_ = 0;
         materialEnvironmentTransitionStartMilliseconds_ = 0;
         nextMaterialEnvironmentTransitionTickMilliseconds_ = 0;
         publishedSequence_.fetch_add(1, std::memory_order_acq_rel);
