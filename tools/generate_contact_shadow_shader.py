@@ -462,7 +462,7 @@ def compile_pbr_template(
     )
     text = assembly.read_text(encoding="utf-8")
     for required in (
-        "dcl_constantbuffer CB2[4], dynamicIndexed",
+        "dcl_constantbuffer CB2[4], immediateIndexed",
         "dcl_constantbuffer CB7[4], immediateIndexed",
         "dcl_constantbuffer CB9[2], immediateIndexed",
         "dcl_resource_texture2d (float,float,float,float) t0",
@@ -476,6 +476,16 @@ def compile_pbr_template(
         if required not in text:
             raise ContractError(
                 "PBR directional transform assembly changed: " + required
+            )
+    if re.search(r"\bcb2\[r", text, re.IGNORECASE):
+        raise ContractError(
+            "PBR directional transform retained a relative b2 index"
+        )
+    for required_eye_constant in ("cb2[1]", "cb2[2]"):
+        if required_eye_constant not in text:
+            raise ContractError(
+                "PBR directional transform lost static stereo light "
+                + required_eye_constant
             )
     pbr_branch = text.find("if_nz")
     material_load = re.search(

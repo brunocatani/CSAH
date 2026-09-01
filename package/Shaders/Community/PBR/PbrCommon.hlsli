@@ -5,6 +5,13 @@ static const float PbrPi = 3.14159265358979323846f;
 static const float PbrEpsilon = 1.0e-5f;
 static const float PbrMinimumRoughness = 0.04f;
 
+float3 PbrSafeNormalize(float3 value, float3 fallback)
+{
+    const float lengthSquared = dot(value, value);
+    return lengthSquared > PbrEpsilon ?
+        value * rsqrt(lengthSquared) : fallback;
+}
+
 float3 PbrFresnelSchlick(float3 f0, float viewDotHalf)
 {
     const float oneMinus = 1.0f - saturate(viewDotHalf);

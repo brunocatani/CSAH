@@ -101,12 +101,24 @@ PixelOutput PSMain(PixelInput input)
                 PbrMinimumRoughness,
                 1.0f);
 
-            const float3 normal = normalize(input.NormalCarrier.xyz);
-            const float3 viewDirection = normalize(input.ViewCarrier.xzw);
-            const float3 lightDirection = normalize(
-                DFLight[min(input.Eye + 1u, 2u)].xyz);
-            const float3 halfDirection = normalize(
-                viewDirection + lightDirection);
+            const float3 normal = PbrSafeNormalize(
+                input.NormalCarrier.xyz,
+                float3(0.0f, 0.0f, 1.0f));
+            const float3 viewDirection = PbrSafeNormalize(
+                input.ViewCarrier.xzw,
+                normal);
+            // Keep both native stereo constants immediate-indexed. The DXBC
+            // transform remaps top-level temporaries, but a relative
+            // constant-buffer index owns a nested operand; retaining that
+            // template register would index b2 with view-direction bits.
+            const float3 eyeLightDirection = input.Eye == 0u ?
+                DFLight[1].xyz : DFLight[2].xyz;
+            const float3 lightDirection = PbrSafeNormalize(
+                eyeLightDirection,
+                normal);
+            const float3 halfDirection = PbrSafeNormalize(
+                viewDirection + lightDirection,
+                normal);
             const float normalDotLight = saturate(
                 dot(normal, lightDirection));
             const float normalDotView = max(
