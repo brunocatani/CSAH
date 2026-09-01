@@ -4,11 +4,13 @@
 #include <fstream>
 #include <iterator>
 #include <span>
+#include <string_view>
 #include <vector>
 
 int main(int argc, char** argv)
 {
-    if (argc != 3 || !argv[1] || !argv[2]) {
+    if ((argc != 3 && argc != 4) || !argv[1] || !argv[2] ||
+        (argc == 4 && !argv[3])) {
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -24,8 +26,25 @@ int main(int argc, char** argv)
         raw.size(),
     };
     std::vector<std::byte> patched;
-    const auto patchedReady = community_shaders::vanilla_fixes::
-        patchStockReflectionCompositeSurfaceAnchoredCubemap(bytes, patched);
+    const auto mode = argc == 4 ? std::string_view{ argv[3] } :
+                                  std::string_view{ "surface-anchor" };
+    const auto patchedReady = [&]() noexcept {
+        using namespace community_shaders::vanilla_fixes;
+        if (mode == "surface-anchor") {
+            return patchStockReflectionCompositeSurfaceAnchoredCubemap(
+                bytes,
+                patched);
+        }
+        if (mode == "raw-sslr") {
+            return patchStockReflectionCompositeRawSslr(bytes, patched);
+        }
+        if (mode == "raw-stock-cubemap") {
+            return patchStockReflectionCompositeRawStockCubemap(
+                bytes,
+                patched);
+        }
+        return false;
+    }();
     if (!patchedReady) {
         return 4;
     }

@@ -237,19 +237,20 @@ def compile_template(root: Path, fxc: Path, temporary: Path) -> bytes:
     return output.read_bytes()
 
 
-def apply_surface_anchor(
+def apply_reflection_patch(
     original: census.DxbcContainer,
     tool: Path,
     temporary: Path,
     name: str,
+    mode: str,
 ) -> tuple[bytes, bool]:
     if original.identity not in SURFACE_ANCHORED_IDENTITIES:
         return original.data, False
-    source = temporary / f"{name}.surface-anchor-input.dxbc"
-    output = temporary / f"{name}.surface-anchor-output.dxbc"
+    source = temporary / f"{name}.{mode}-input.dxbc"
+    output = temporary / f"{name}.{mode}-output.dxbc"
     source.write_bytes(original.data)
     result = subprocess.run(
-        [str(tool), str(source), str(output)],
+        [str(tool), str(source), str(output), mode],
         capture_output=True,
         text=True,
         errors="replace",
@@ -258,13 +259,74 @@ def apply_surface_anchor(
     if result.returncode != 0 or not output.is_file():
         details = (result.stdout + result.stderr).strip()
         raise ContractError(
-            f"{name} surface-anchor transform failed "
+            f"{name} {mode} transform failed "
             f"({result.returncode}): {details}"
         )
     candidate = output.read_bytes()
     if candidate == original.data:
-        raise ContractError(f"{name} surface-anchor transform was a no-op")
+        raise ContractError(f"{name} {mode} transform was a no-op")
     return candidate, True
+
+
+def apply_surface_anchor(
+    original: census.DxbcContainer,
+    tool: Path,
+    temporary: Path,
+    name: str,
+) -> tuple[bytes, bool]:
+    return apply_reflection_patch(
+        original,
+        tool,
+        temporary,
+        name,
+        "surface-anchor",
+    )
+
+
+def validate_reflection_diagnostic_candidate(
+    fxc: Path,
+    name: str,
+    mode: str,
+    original: bytes,
+    candidate: bytes,
+    temporary: Path,
+) -> None:
+    original_path = temporary / f"{name}.{mode}.vanilla.dxbc"
+    candidate_path = temporary / f"{name}.{mode}.dxbc"
+    original_assembly = temporary / f"{name}.{mode}.vanilla.asm.txt"
+    candidate_assembly = temporary / f"{name}.{mode}.asm.txt"
+    original_path.write_bytes(original)
+    candidate_path.write_bytes(candidate)
+    run_fxc(
+        [
+            str(fxc),
+            "/nologo",
+            "/dumpbin",
+            "/Fc",
+            str(original_assembly),
+            str(original_path),
+        ],
+        f"{name} {mode} vanilla",
+    )
+    run_fxc(
+        [
+            str(fxc),
+            "/nologo",
+            "/dumpbin",
+            "/Fc",
+            str(candidate_assembly),
+            str(candidate_path),
+        ],
+        f"{name} {mode} replacement",
+    )
+    original_text = original_assembly.read_text(encoding="utf-8")
+    candidate_text = candidate_assembly.read_text(encoding="utf-8")
+    if signature_contract(original_text) != signature_contract(candidate_text):
+        raise ContractError(f"{name} {mode} changed exact shader signatures")
+    original_declarations = census.parse_declarations(original_text)
+    candidate_declarations = census.parse_declarations(candidate_text)
+    if candidate_declarations != original_declarations:
+        raise ContractError(f"{name} {mode} changed shader declarations")
 
 
 def declaration_for_slot(
@@ -1125,6 +1187,33 @@ def main() -> int:
                 raise ContractError(
                     "IBL generation did not surface-anchor all four exact "
                     "cubemap identities"
+                )
+            diagnostic_count = 0
+            for index, original in enumerate(originals):
+                if original.identity not in SURFACE_ANCHORED_IDENTITIES:
+                    continue
+                name = contract_name(index, original.checksum)
+                for mode in ("raw-sslr", "raw-stock-cubemap"):
+                    candidate, transformed = apply_reflection_patch(
+                        original,
+                        surface_anchor_tool,
+                        temporary,
+                        name,
+                        mode,
+                    )
+                    diagnostic_count += int(transformed)
+                    validate_reflection_diagnostic_candidate(
+                        fxc,
+                        name,
+                        mode,
+                        original.data,
+                        candidate,
+                        temporary,
+                    )
+            if diagnostic_count != 2 * len(SURFACE_ANCHORED_IDENTITIES):
+                raise ContractError(
+                    "IBL verification did not validate both diagnostic "
+                    "variants for all four reflection composites"
                 )
 
         generated = render_contracts(originals, candidates)

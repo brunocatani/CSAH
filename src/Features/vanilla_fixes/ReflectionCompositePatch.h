@@ -19,4 +19,18 @@ namespace community_shaders::vanilla_fixes
         std::span<const std::byte> stockBytecode,
         std::vector<std::byte>& patchedBytecode) noexcept;
 
+    // Publish only the stock SSLR source already computed inside the exact
+    // reflection-composite permutation. Cubemap fallback, validity blending,
+    // and final material modulation cannot contaminate the diagnostic.
+    [[nodiscard]] bool patchStockReflectionCompositeRawSslr(
+        std::span<const std::byte> stockBytecode,
+        std::vector<std::byte>& patchedBytecode) noexcept;
+
+    // Publish only the uncorrected stock cubemap already computed inside the
+    // exact reflection-composite permutation. SSLR and final material
+    // modulation cannot contaminate the diagnostic.
+    [[nodiscard]] bool patchStockReflectionCompositeRawStockCubemap(
+        std::span<const std::byte> stockBytecode,
+        std::vector<std::byte>& patchedBytecode) noexcept;
+
 }

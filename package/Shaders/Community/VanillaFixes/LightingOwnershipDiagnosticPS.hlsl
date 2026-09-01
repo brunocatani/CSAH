@@ -4,11 +4,6 @@
 #define LIGHTING_OWNERSHIP_MODE 0
 #endif
 
-cbuffer NativeCompositeControl : register(b0)
-{
-    float4 CompositeControl[3];
-};
-
 cbuffer NativeCompositeScale : register(b2)
 {
     float4 PackedPixelScale;
@@ -16,11 +11,9 @@ cbuffer NativeCompositeScale : register(b2)
 
 Texture2D<float3> DirectSpecular : register(t4);
 Texture2D<float3> DirectDiffuse : register(t5);
-Texture2D<float4> ScreenSpaceReflection : register(t14);
 
 SamplerState DirectSpecularSampler : register(s4);
 SamplerState DirectDiffuseSampler : register(s5);
-SamplerState ScreenSpaceReflectionSampler : register(s14);
 
 struct PixelInput
 {
@@ -42,15 +35,6 @@ float4 main(PixelInput input) : SV_Target0
         DirectSpecularSampler,
         packedUv,
         0.0f);
-#elif LIGHTING_OWNERSHIP_MODE == 3
-    const float4 reflection = ScreenSpaceReflection.SampleLevel(
-        ScreenSpaceReflectionSampler,
-        packedUv,
-        0.0f);
-    const float weight = saturate(
-        reflection.w * CompositeControl[2].z);
-    const float3 value = reflection.xyz *
-        CompositeControl[1].x * weight;
 #elif LIGHTING_OWNERSHIP_MODE == 5
     const float3 value = 0.0f;
 #else

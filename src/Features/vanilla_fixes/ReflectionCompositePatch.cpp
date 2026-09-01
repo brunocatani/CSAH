@@ -63,6 +63,18 @@ namespace community_shaders::vanilla_fixes
             0x00000000u,
         };
 
+        // mov r4.xyz, l(0,0,0,0)
+        constexpr std::array<std::uint32_t, 8> kBlackCubemapSample{
+            0x08000036u,
+            0x00100072u,
+            0x00000004u,
+            0x00004002u,
+            0x00000000u,
+            0x00000000u,
+            0x00000000u,
+            0x00000000u,
+        };
+
         // Stock eye-matrix selector:
         // ishl r1.w, v1.x, l(2)
         constexpr std::array<std::uint32_t, 7> kStockEyeMatrixOffset{
@@ -310,6 +322,18 @@ namespace community_shaders::vanilla_fixes
             0x00000004u,
         };
 
+        // mul r4.xyz, r5.xyzx, cb0[1].xxxx
+        constexpr std::array<std::uint32_t, 8> kRawSslrColor{
+            0x08000038u,
+            0x00100072u,
+            0x00000004u,
+            0x00100246u,
+            0x00000005u,
+            0x00208006u,
+            0x00000000u,
+            0x00000001u,
+        };
+
         // Exact stock final RGB output:
         // mul o0.xyz, r0.xxxx, r1.xyzx
         constexpr std::array<std::uint32_t, 7> kStockFinalCompositeOutput{
@@ -320,6 +344,25 @@ namespace community_shaders::vanilla_fixes
             0x00000000u,
             0x00100246u,
             0x00000001u,
+        };
+
+        // mov o0.xyz, r4.xyzx
+        constexpr std::array<std::uint32_t, 5> kRawSslrFinalOutput{
+            0x05000036u,
+            0x00102072u,
+            0x00000000u,
+            0x00100246u,
+            0x00000004u,
+        };
+
+        // mov o0.xyz, r4.xyzx. The stock cube-array sample and saturation
+        // processing leave the uncorrected cubemap in r4.
+        constexpr std::array<std::uint32_t, 5> kRawCubemapFinalOutput{
+            0x05000036u,
+            0x00102072u,
+            0x00000000u,
+            0x00100246u,
+            0x00000004u,
         };
 
         // Exact stock cube-array sample in the conditional siblings:
@@ -371,6 +414,47 @@ namespace community_shaders::vanilla_fixes
                 0x00100246u,
                 0x00000002u,
             };
+
+        // mul o0.xyz, r6.xyzx, cb0[1].xxxx
+        constexpr std::array<std::uint32_t, 8>
+            kConditionalRawSslrFinalOutput{
+                0x08000038u,
+                0x00102072u,
+                0x00000000u,
+                0x00100246u,
+                0x00000006u,
+                0x00208006u,
+                0x00000000u,
+                0x00000001u,
+            };
+
+        // mov r6.xyzw, r5.xzwx. Stage the stock cubemap at the t14 sample
+        // location because the remaining conditional code repurposes r5.
+        constexpr std::array<std::uint32_t, 5>
+            kConditionalCubemapStage{
+                0x05000036u,
+                0x001000F2u,
+                0x00000006u,
+                0x00100386u,
+                0x00000005u,
+            };
+
+        // mov o0.xyz, r6.xyzx
+        constexpr std::array<std::uint32_t, 5>
+            kConditionalRawCubemapFinalOutput{
+                0x05000036u,
+                0x00102072u,
+                0x00000000u,
+                0x00100246u,
+                0x00000006u,
+            };
+
+        enum class CompositePatchMode : std::uint8_t
+        {
+            surfaceAnchoredCubemap,
+            rawSslrIsolation,
+            rawStockCubemapIsolation,
+        };
 
         struct Chunk
         {
@@ -505,7 +589,8 @@ namespace community_shaders::vanilla_fixes
     {
         bool patchStockReflectionComposite(
             std::span<const std::byte> stockBytecode,
-            std::vector<std::byte>& patchedBytecode) noexcept
+            std::vector<std::byte>& patchedBytecode,
+            const CompositePatchMode mode) noexcept
         {
         patchedBytecode.clear();
         try {
@@ -635,37 +720,113 @@ namespace community_shaders::vanilla_fixes
                 return false;
             }
             if (regularLayout) {
-                words.insert(
-                    words.begin() + *regularReconstructionPosition +
-                        kStockRegularPositionReconstruction.size(),
-                    kRegularSurfaceAnchorCorrection.begin(),
-                    kRegularSurfaceAnchorCorrection.end());
-                words.insert(
-                    words.begin() + *regularReconstructionPosition,
-                    kRegularSurfaceRaySetup.begin(),
-                    kRegularSurfaceRaySetup.end());
-                std::copy(
-                    kSurfaceAnchoredRegularCameraDeclaration.begin(),
-                    kSurfaceAnchoredRegularCameraDeclaration.end(),
-                    words.begin() + *regularCameraDeclarationPosition);
-                words[*regularCompressedPosition + 5] = 32;
-                words[*regularCompressedPosition + 13] = 33;
-                words[*regularCompressedPosition + 21] = 34;
-                words[*regularCompressedPosition + 29] = 35;
+                if (mode == CompositePatchMode::rawSslrIsolation) {
+                    words.erase(
+                        words.begin() + *outputPosition,
+                        words.begin() + *outputPosition +
+                            kStockFinalCompositeOutput.size());
+                    words.insert(
+                        words.begin() + *outputPosition,
+                        kRawSslrFinalOutput.begin(),
+                        kRawSslrFinalOutput.end());
+                    words.erase(
+                        words.begin() + *blendPosition,
+                        words.begin() + *blendPosition +
+                            kStockSslrAlphaBlend.size());
+                    words.insert(
+                        words.begin() + *blendPosition,
+                        kRawSslrColor.begin(),
+                        kRawSslrColor.end());
+                    words.erase(
+                        words.begin() + *samplePosition,
+                        words.begin() + *samplePosition +
+                            kStockCubemapSample.size());
+                    words.insert(
+                        words.begin() + *samplePosition,
+                        kBlackCubemapSample.begin(),
+                        kBlackCubemapSample.end());
+                } else {
+                    if (mode == CompositePatchMode::
+                            rawStockCubemapIsolation) {
+                        words.erase(
+                            words.begin() + *outputPosition,
+                            words.begin() + *outputPosition +
+                                kStockFinalCompositeOutput.size());
+                        words.insert(
+                            words.begin() + *outputPosition,
+                            kRawCubemapFinalOutput.begin(),
+                            kRawCubemapFinalOutput.end());
+                        words.erase(
+                            words.begin() + *blendPosition,
+                            words.begin() + *blendPosition +
+                                kStockSslrAlphaBlend.size());
+                    }
+                    if (mode == CompositePatchMode::surfaceAnchoredCubemap) {
+                        words.insert(
+                            words.begin() + *regularReconstructionPosition +
+                                kStockRegularPositionReconstruction.size(),
+                            kRegularSurfaceAnchorCorrection.begin(),
+                            kRegularSurfaceAnchorCorrection.end());
+                        words.insert(
+                            words.begin() + *regularReconstructionPosition,
+                            kRegularSurfaceRaySetup.begin(),
+                            kRegularSurfaceRaySetup.end());
+                        std::copy(
+                            kSurfaceAnchoredRegularCameraDeclaration.begin(),
+                            kSurfaceAnchoredRegularCameraDeclaration.end(),
+                            words.begin() + *regularCameraDeclarationPosition);
+                        words[*regularCompressedPosition + 5] = 32;
+                        words[*regularCompressedPosition + 13] = 33;
+                        words[*regularCompressedPosition + 21] = 34;
+                        words[*regularCompressedPosition + 29] = 35;
+                    }
+                }
             } else {
-                words.insert(
-                    words.begin() + *conditionalReconstructionPosition +
-                        kStockConditionalPositionReconstruction.size(),
-                    kConditionalSurfaceAnchorCorrection.begin(),
-                    kConditionalSurfaceAnchorCorrection.end());
-                words.insert(
-                    words.begin() + *conditionalReconstructionPosition,
-                    kConditionalSurfaceRaySetup.begin(),
-                    kConditionalSurfaceRaySetup.end());
-                words[*conditionalCompressedPosition + 5] = 32;
-                words[*conditionalCompressedPosition + 13] = 33;
-                words[*conditionalCompressedPosition + 21] = 34;
-                words[*conditionalCompressedPosition + 29] = 35;
+                if (mode == CompositePatchMode::rawSslrIsolation) {
+                    words.erase(
+                        words.begin() + *conditionalOutputPosition,
+                        words.begin() + *conditionalOutputPosition +
+                            kStockConditionalFinalOutput.size());
+                    words.insert(
+                        words.begin() + *conditionalOutputPosition,
+                        kConditionalRawSslrFinalOutput.begin(),
+                        kConditionalRawSslrFinalOutput.end());
+                } else {
+                    if (mode == CompositePatchMode::
+                            rawStockCubemapIsolation) {
+                        words.erase(
+                            words.begin() + *conditionalOutputPosition,
+                            words.begin() + *conditionalOutputPosition +
+                                kStockConditionalFinalOutput.size());
+                        words.insert(
+                            words.begin() + *conditionalOutputPosition,
+                            kConditionalRawCubemapFinalOutput.begin(),
+                            kConditionalRawCubemapFinalOutput.end());
+                        words.erase(
+                            words.begin() + *conditionalSamplePosition,
+                            words.begin() + *conditionalSamplePosition +
+                                kConditionalSslrSample.size());
+                        words.insert(
+                            words.begin() + *conditionalSamplePosition,
+                            kConditionalCubemapStage.begin(),
+                            kConditionalCubemapStage.end());
+                    }
+                    if (mode == CompositePatchMode::surfaceAnchoredCubemap) {
+                        words.insert(
+                            words.begin() + *conditionalReconstructionPosition +
+                                kStockConditionalPositionReconstruction.size(),
+                            kConditionalSurfaceAnchorCorrection.begin(),
+                            kConditionalSurfaceAnchorCorrection.end());
+                        words.insert(
+                            words.begin() + *conditionalReconstructionPosition,
+                            kConditionalSurfaceRaySetup.begin(),
+                            kConditionalSurfaceRaySetup.end());
+                        words[*conditionalCompressedPosition + 5] = 32;
+                        words[*conditionalCompressedPosition + 13] = 33;
+                        words[*conditionalCompressedPosition + 21] = 34;
+                        words[*conditionalCompressedPosition + 29] = 35;
+                    }
+                }
             }
             if (words.size() >
                 (std::numeric_limits<std::uint32_t>::max)()) {
@@ -762,6 +923,27 @@ namespace community_shaders::vanilla_fixes
     {
         return patchStockReflectionComposite(
             stockBytecode,
-            patchedBytecode);
+            patchedBytecode,
+            CompositePatchMode::surfaceAnchoredCubemap);
+    }
+
+    bool patchStockReflectionCompositeRawSslr(
+        const std::span<const std::byte> stockBytecode,
+        std::vector<std::byte>& patchedBytecode) noexcept
+    {
+        return patchStockReflectionComposite(
+            stockBytecode,
+            patchedBytecode,
+            CompositePatchMode::rawSslrIsolation);
+    }
+
+    bool patchStockReflectionCompositeRawStockCubemap(
+        const std::span<const std::byte> stockBytecode,
+        std::vector<std::byte>& patchedBytecode) noexcept
+    {
+        return patchStockReflectionComposite(
+            stockBytecode,
+            patchedBytecode,
+            CompositePatchMode::rawStockCubemapIsolation);
     }
 }

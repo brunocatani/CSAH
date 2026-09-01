@@ -7,11 +7,8 @@
 #include "VanillaFixesLightingOwnershipBlackPS.h"
 #include "VanillaFixesLightingOwnershipDiffusePS.h"
 #include "VanillaFixesLightingOwnershipSpecularPS.h"
-#include "VanillaFixesLightingOwnershipSslrPS.h"
 
 #include <array>
-#include <atomic>
-#include <cstdint>
 #include <ranges>
 #include <utility>
 
@@ -20,37 +17,6 @@ namespace community_shaders::vanilla_fixes
     namespace
     {
         using Microsoft::WRL::ComPtr;
-
-        constexpr UINT kLightingOwnershipFirstSlot = 4;
-        constexpr std::size_t kLightingOwnershipResourceCount = 11;
-
-        [[nodiscard]] bool setAndVerifyShaderResources(
-            ID3D11DeviceContext* context,
-            const std::array<ID3D11ShaderResourceView*,
-                kLightingOwnershipResourceCount>& resources) noexcept
-        {
-            if (!context) {
-                return false;
-            }
-            context->PSSetShaderResources(
-                kLightingOwnershipFirstSlot,
-                static_cast<UINT>(resources.size()),
-                resources.data());
-            std::array<ID3D11ShaderResourceView*,
-                kLightingOwnershipResourceCount> verified{};
-            context->PSGetShaderResources(
-                kLightingOwnershipFirstSlot,
-                static_cast<UINT>(verified.size()),
-                verified.data());
-            auto matches = true;
-            for (std::size_t index = 0; index < verified.size(); ++index) {
-                matches = matches && verified[index] == resources[index];
-                if (verified[index]) {
-                    verified[index]->Release();
-                }
-            }
-            return matches;
-        }
 
         [[nodiscard]] bool sameDevice(
             ID3D11Device* expected,
@@ -62,74 +28,6 @@ namespace community_shaders::vanilla_fixes
             ComPtr<ID3D11Device> actual;
             child->GetDevice(&actual);
             return actual.Get() == expected;
-        }
-    }
-
-    ScopedLightingOwnershipCubemapBindings::
-        ScopedLightingOwnershipCubemapBindings(
-            ID3D11DeviceContext* context,
-            ID3D11ShaderResourceView* black,
-            ID3D11ShaderResourceView* white) noexcept :
-        context_(context)
-    {
-        if (!context_ || !black || !white) {
-            context_ = nullptr;
-            return;
-        }
-        std::array<ID3D11ShaderResourceView*,
-            kLightingOwnershipResourceCount> previous{};
-        context_->PSGetShaderResources(
-            kLightingOwnershipFirstSlot,
-            static_cast<UINT>(previous.size()),
-            previous.data());
-        std::array<ID3D11ShaderResourceView*,
-            kLightingOwnershipResourceCount> applied{};
-        for (std::size_t index = 0; index < previous.size(); ++index) {
-            previous_[index].Attach(previous[index]);
-            applied[index] = previous_[index].Get();
-        }
-        applied[0] = black;  // t4 direct specular
-        applied[1] = black;  // t5 direct diffuse
-        applied[2] = black;  // t6 additive light
-        applied[5] = white;  // t9 AO multiplier
-        applied[6] = black;  // t10 scene colour
-        applied[10] = black; // t14 screen-space reflection
-        if (!setAndVerifyShaderResources(context_, applied)) {
-            std::array<ID3D11ShaderResourceView*,
-                kLightingOwnershipResourceCount> restore{};
-            for (std::size_t index = 0; index < restore.size(); ++index) {
-                restore[index] = previous_[index].Get();
-            }
-            (void)setAndVerifyShaderResources(context_, restore);
-            context_ = nullptr;
-            return;
-        }
-        active_ = true;
-    }
-
-    ScopedLightingOwnershipCubemapBindings::
-        ~ScopedLightingOwnershipCubemapBindings() noexcept
-    {
-        if (!context_ || !active_) {
-            return;
-        }
-        std::array<ID3D11ShaderResourceView*,
-            kLightingOwnershipResourceCount> restore{};
-        for (std::size_t index = 0; index < restore.size(); ++index) {
-            restore[index] = previous_[index].Get();
-        }
-        if (setAndVerifyShaderResources(context_, restore)) {
-            return;
-        }
-        const auto restoredOnRetry = setAndVerifyShaderResources(
-            context_,
-            restore);
-        static std::atomic_bool firstRestoreFailureLogged{};
-        if (!restoredOnRetry && !firstRestoreFailureLogged.exchange(
-                true,
-                std::memory_order_relaxed)) {
-            logging::error(
-                "Exclusive cubemap ownership diagnostic could not restore the exact t4-through-t14 shader-resource bindings after one retry.");
         }
     }
 
@@ -150,10 +48,6 @@ namespace community_shaders::vanilla_fixes
         for (auto& shader : lightingOwnershipPixelShaders_) {
             shader.Reset();
         }
-        lightingOwnershipBlackView_.Reset();
-        lightingOwnershipBlackTexture_.Reset();
-        lightingOwnershipWhiteView_.Reset();
-        lightingOwnershipWhiteTexture_.Reset();
         coverageVertexShader_.Reset();
         compositeDevice_.Reset();
         coverageDepthStencilState_.Reset();
@@ -208,16 +102,14 @@ namespace community_shaders::vanilla_fixes
         compositeDevice_ = device;
         compositePixelShader_.Attach(shader);
         coverageVertexShader_.Attach(coverageVertexShader);
-        const std::array<const unsigned char*, 4> ownershipBytecode{
+        const std::array<const unsigned char*, 3> ownershipBytecode{
             fo4vr_cs_vanilla_lighting_ownership_diffuse_ps,
             fo4vr_cs_vanilla_lighting_ownership_specular_ps,
-            fo4vr_cs_vanilla_lighting_ownership_sslr_ps,
             fo4vr_cs_vanilla_lighting_ownership_black_ps,
         };
-        const std::array<SIZE_T, 4> ownershipBytecodeLength{
+        const std::array<SIZE_T, 3> ownershipBytecodeLength{
             sizeof(fo4vr_cs_vanilla_lighting_ownership_diffuse_ps),
             sizeof(fo4vr_cs_vanilla_lighting_ownership_specular_ps),
-            sizeof(fo4vr_cs_vanilla_lighting_ownership_sslr_ps),
             sizeof(fo4vr_cs_vanilla_lighting_ownership_black_ps),
         };
         auto ownershipShadersReady = true;
@@ -237,7 +129,7 @@ namespace community_shaders::vanilla_fixes
                 }
                 ownershipShadersReady = false;
                 logging::error(
-                    "Exclusive lighting ownership diagnostic shader {} creation failed (HRESULT=0x{:08X}); modes 12 through 15 remain fail-closed.",
+                    "Exclusive lighting ownership diagnostic shader {} creation failed (HRESULT=0x{:08X}); generic ownership draws remain fail-closed.",
                     index,
                     static_cast<unsigned>(ownershipResult));
                 break;
@@ -250,66 +142,9 @@ namespace community_shaders::vanilla_fixes
                 ownershipShader.Reset();
             }
         }
-        auto cubemapIsolationReady = ownershipShadersReady;
-        if (cubemapIsolationReady) {
-            D3D11_TEXTURE2D_DESC neutralDescription{};
-            neutralDescription.Width = 1;
-            neutralDescription.Height = 1;
-            neutralDescription.MipLevels = 1;
-            neutralDescription.ArraySize = 1;
-            neutralDescription.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            neutralDescription.SampleDesc.Count = 1;
-            neutralDescription.Usage = D3D11_USAGE_IMMUTABLE;
-            neutralDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-            constexpr std::array<std::uint16_t, 4> black{};
-            const D3D11_SUBRESOURCE_DATA blackData{
-                .pSysMem = black.data(),
-                .SysMemPitch = static_cast<UINT>(sizeof(black)),
-            };
-            auto resourceResult = device->CreateTexture2D(
-                &neutralDescription,
-                &blackData,
-                lightingOwnershipBlackTexture_.GetAddressOf());
-            if (SUCCEEDED(resourceResult)) {
-                resourceResult = device->CreateShaderResourceView(
-                    lightingOwnershipBlackTexture_.Get(),
-                    nullptr,
-                    lightingOwnershipBlackView_.GetAddressOf());
-            }
-            neutralDescription.Format = DXGI_FORMAT_R32_FLOAT;
-            constexpr float white = 1.0f;
-            const D3D11_SUBRESOURCE_DATA whiteData{
-                .pSysMem = &white,
-                .SysMemPitch = sizeof(white),
-            };
-            if (SUCCEEDED(resourceResult)) {
-                resourceResult = device->CreateTexture2D(
-                    &neutralDescription,
-                    &whiteData,
-                    lightingOwnershipWhiteTexture_.GetAddressOf());
-            }
-            if (SUCCEEDED(resourceResult)) {
-                resourceResult = device->CreateShaderResourceView(
-                    lightingOwnershipWhiteTexture_.Get(),
-                    nullptr,
-                    lightingOwnershipWhiteView_.GetAddressOf());
-            }
-            if (FAILED(resourceResult) || !lightingOwnershipBlackView_ ||
-                !lightingOwnershipWhiteView_) {
-                cubemapIsolationReady = false;
-                lightingOwnershipBlackView_.Reset();
-                lightingOwnershipBlackTexture_.Reset();
-                lightingOwnershipWhiteView_.Reset();
-                lightingOwnershipWhiteTexture_.Reset();
-                logging::error(
-                    "Exclusive cubemap ownership diagnostic could not create its scoped black/white neutral resources (HRESULT=0x{:08X}); mode 15 remains fail-closed.",
-                    static_cast<unsigned>(resourceResult));
-            }
-        }
         logging::info(
-            "Exclusive directional diagnostic armed its generic packed-stereo t5 presenter; lighting ownership shaders armed={}, scoped stock-cubemap DFComposite isolation armed={}.",
-            ownershipShadersReady,
-            cubemapIsolationReady);
+            "Exclusive directional diagnostic armed its generic packed-stereo t5 presenter; direct-light/black ownership shaders armed={}. Exact raw SSR and stock-cubemap variants are owned by the reflection-composite patch path.",
+            ownershipShadersReady);
         return true;
     }
 
@@ -363,34 +198,15 @@ namespace community_shaders::vanilla_fixes
             return nullptr;
         }
         if (!environmentContract) {
-            return lightingOwnershipPixelShaders_[3].Get();
+            return lightingOwnershipPixelShaders_[2].Get();
         }
-        if (mode == DirectionalLightDiagnosticMode::cubemapLookupOnly) {
-            return nullptr;
+        if (mode == DirectionalLightDiagnosticMode::directDiffuseOnly) {
+            return lightingOwnershipPixelShaders_[0].Get();
         }
-        const auto index = static_cast<std::size_t>(mode) -
-            static_cast<std::size_t>(
-                DirectionalLightDiagnosticMode::directDiffuseOnly);
-        if (index >= 3) {
-            return nullptr;
+        if (mode == DirectionalLightDiagnosticMode::directSpecularOnly) {
+            return lightingOwnershipPixelShaders_[1].Get();
         }
-        return lightingOwnershipPixelShaders_[index].Get();
-    }
-
-    ID3D11PixelShader* DirectionalLightDiagnosticSurface::
-        lightingOwnershipBlackPixelShader() const noexcept
-    {
-        return lightingOwnershipPixelShaders_[3].Get();
-    }
-
-    ScopedLightingOwnershipCubemapBindings
-        DirectionalLightDiagnosticSurface::scopeLightingOwnershipCubemap(
-            ID3D11DeviceContext* context) noexcept
-    {
-        return ScopedLightingOwnershipCubemapBindings(
-            context,
-            lightingOwnershipBlackView_.Get(),
-            lightingOwnershipWhiteView_.Get());
+        return lightingOwnershipPixelShaders_[2].Get();
     }
 
     bool DirectionalLightDiagnosticSurface::isLightingOwnershipPixelShader(

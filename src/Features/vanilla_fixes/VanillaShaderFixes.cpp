@@ -93,6 +93,8 @@ namespace community_shaders::vanilla_fixes
             std::atomic<ID3D11PixelShader*> key{};
             ID3D11PixelShader* fixed{};
             ID3D11PixelShader* stock{};
+            ID3D11PixelShader* rawSslr{};
+            ID3D11PixelShader* rawStockCubemap{};
         };
 
         constexpr std::size_t kSurfaceAnchoredCubemapPairCapacity = 8;
@@ -310,9 +312,44 @@ namespace community_shaders::vanilla_fixes
             });
     }
 
-    bool publishSurfaceAnchoredCubemapPixelShaderPair(
+    bool buildReflectionCompositeDiagnosticVariants(
+        const void* bytecode,
+        const std::size_t bytecodeLength,
+        std::vector<std::byte>& rawSslrStorage,
+        std::vector<std::byte>& rawStockCubemapStorage) noexcept
+    {
+        rawSslrStorage.clear();
+        rawStockCubemapStorage.clear();
+        const auto identity = identifyShader(bytecode, bytecodeLength);
+        if (!std::ranges::any_of(
+                kReflectionComposite,
+                [&identity](const CompleteIdentity& candidate) noexcept {
+                    return matches(identity, candidate);
+                })) {
+            return false;
+        }
+        const auto stock = std::span<const std::byte>{
+            static_cast<const std::byte*>(bytecode),
+            bytecodeLength,
+        };
+        const auto ready = patchStockReflectionCompositeRawSslr(
+                stock,
+                rawSslrStorage) &&
+            patchStockReflectionCompositeRawStockCubemap(
+                stock,
+                rawStockCubemapStorage);
+        if (!ready) {
+            rawSslrStorage.clear();
+            rawStockCubemapStorage.clear();
+        }
+        return ready;
+    }
+
+    bool publishReflectionCompositePixelShaderVariants(
         ID3D11PixelShader* fixedShader,
         ID3D11PixelShader* stockShader,
+        ID3D11PixelShader* rawSslrShader,
+        ID3D11PixelShader* rawStockCubemapShader,
         const ShaderFix fix) noexcept
     {
         if (!fixedShader || !stockShader ||
@@ -334,8 +371,16 @@ namespace community_shaders::vanilla_fixes
             }
             fixedShader->AddRef();
             stockShader->AddRef();
+            if (rawSslrShader) {
+                rawSslrShader->AddRef();
+            }
+            if (rawStockCubemapShader) {
+                rawStockCubemapShader->AddRef();
+            }
             pair.fixed = fixedShader;
             pair.stock = stockShader;
+            pair.rawSslr = rawSslrShader;
+            pair.rawStockCubemap = rawStockCubemapShader;
             pair.key.store(fixedShader, std::memory_order_release);
             return true;
         }
@@ -356,6 +401,42 @@ namespace community_shaders::vanilla_fixes
             }
         }
         return engineShader;
+    }
+
+    ID3D11PixelShader*
+        selectReflectionCompositeDiagnosticPixelShaderForBinding(
+            ID3D11PixelShader* engineShader,
+            const DirectionalLightDiagnosticMode mode) noexcept
+    {
+        if (!engineShader ||
+            (mode != DirectionalLightDiagnosticMode::
+                    screenSpaceReflectionOnly &&
+                mode != DirectionalLightDiagnosticMode::cubemapLookupOnly)) {
+            return nullptr;
+        }
+        for (const auto& pair : surfaceAnchoredCubemapPixelShaderPairs) {
+            if (pair.key.load(std::memory_order_acquire) != engineShader) {
+                continue;
+            }
+            return mode ==
+                    DirectionalLightDiagnosticMode::screenSpaceReflectionOnly ?
+                pair.rawSslr : pair.rawStockCubemap;
+        }
+        return nullptr;
+    }
+
+    bool isReflectionCompositeDiagnosticPixelShader(
+        ID3D11PixelShader* shader) noexcept
+    {
+        if (!shader) {
+            return false;
+        }
+        return std::ranges::any_of(
+            surfaceAnchoredCubemapPixelShaderPairs,
+            [shader](const auto& pair) noexcept {
+                return pair.rawSslr == shader ||
+                    pair.rawStockCubemap == shader;
+            });
     }
 
     void setSurfaceAnchoredCubemapFixRequested(const bool requested) noexcept

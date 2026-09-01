@@ -81,13 +81,26 @@ namespace community_shaders::vanilla_fixes
         ID3D11PixelShader* correctedShader) noexcept;
     [[nodiscard]] bool isSslrRaytracePixelShader(
         ID3D11PixelShader* shader) noexcept;
-    [[nodiscard]] bool publishSurfaceAnchoredCubemapPixelShaderPair(
+    [[nodiscard]] bool buildReflectionCompositeDiagnosticVariants(
+        const void* bytecode,
+        std::size_t bytecodeLength,
+        std::vector<std::byte>& rawSslrStorage,
+        std::vector<std::byte>& rawStockCubemapStorage) noexcept;
+    [[nodiscard]] bool publishReflectionCompositePixelShaderVariants(
         ID3D11PixelShader* fixedShader,
         ID3D11PixelShader* stockShader,
+        ID3D11PixelShader* rawSslrShader,
+        ID3D11PixelShader* rawStockCubemapShader,
         ShaderFix fix) noexcept;
     [[nodiscard]] ID3D11PixelShader*
         selectSurfaceAnchoredCubemapPixelShaderForBinding(
             ID3D11PixelShader* engineShader) noexcept;
+    [[nodiscard]] ID3D11PixelShader*
+        selectReflectionCompositeDiagnosticPixelShaderForBinding(
+            ID3D11PixelShader* engineShader,
+            DirectionalLightDiagnosticMode mode) noexcept;
+    [[nodiscard]] bool isReflectionCompositeDiagnosticPixelShader(
+        ID3D11PixelShader* shader) noexcept;
     void setSurfaceAnchoredCubemapFixRequested(bool requested) noexcept;
     void reportShaderCreationResult(
         const ShaderSelection& selection,

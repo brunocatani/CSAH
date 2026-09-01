@@ -162,11 +162,19 @@ namespace community_shaders::vanilla_fixes
             const auto screenSpaceReflectionOnly =
                 policy.directionalLightDiagnosticMode ==
                 DirectionalLightDiagnosticMode::screenSpaceReflectionOnly;
+            const auto lightingOwnershipDiagnostic =
+                isLightingOwnershipDiagnostic(
+                    policy.directionalLightDiagnosticMode);
             policy.precipitationOcclusion = false;
             policy.imageSpaceModifiers = screenSpaceReflectionOnly;
             policy.sao = false;
             policy.screenSpaceReflections = screenSpaceReflectionOnly;
-            policy.nativeScreenSpaceMaterialPipeline = false;
+            // The exact ownership consumers can isolate their final output
+            // only if Fallout continues producing the shared DFComposite
+            // lighting/material inputs. Older directional diagnostics do not
+            // consume that graph and retain their fully suppressed policy.
+            policy.nativeScreenSpaceMaterialPipeline =
+                lightingOwnershipDiagnostic;
             policy.lensFlare = false;
             policy.focusShadows = false;
             policy.sunbeams = false;

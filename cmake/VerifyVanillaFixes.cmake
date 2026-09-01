@@ -26,6 +26,7 @@ foreach(input IN ITEMS
     VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_SOURCE
     VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
+    VANILLA_REFLECTION_PATCH_TOOL_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
     VANILLA_D3D11_HOOK_SOURCE
@@ -73,8 +74,11 @@ vanilla_fixes_require_text("${shader_runtime}" "shader identity"
   "fo4vr_cs_vanilla_sslr_raytrace_ps"
   "publishSslrPixelShaderPair"
   "selectSslrPixelShaderForBinding"
-  "publishSurfaceAnchoredCubemapPixelShaderPair"
+  "buildReflectionCompositeDiagnosticVariants"
+  "publishReflectionCompositePixelShaderVariants"
   "selectSurfaceAnchoredCubemapPixelShaderForBinding"
+  "selectReflectionCompositeDiagnosticPixelShaderForBinding"
+  "isReflectionCompositeDiagnosticPixelShader"
   "setSurfaceAnchoredCubemapFixRequested")
 
 file(READ "${VANILLA_FOCUS_RUNTIME_SOURCE}" focus_runtime)
@@ -142,6 +146,8 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "effectivePolicy(activeSettings_)"
   "DirectionalLightDiagnosticMode::screenSpaceReflectionOnly"
   "policy.screenSpaceReflections = screenSpaceReflectionOnly"
+  "policy.nativeScreenSpaceMaterialPipeline ="
+  "lightingOwnershipDiagnostic"
   "settings.directionalLightDiagnosticMode =="
   "setSslrSuiteRequested("
   "F4SE::GetTaskInterface()"
@@ -191,8 +197,21 @@ vanilla_fixes_require_text("${settings_store}" "settings"
 file(READ "${VANILLA_REFLECTION_PATCH_SOURCE}" reflection_patch)
 vanilla_fixes_require_text("${reflection_patch}" "reflection transform"
   "patchStockReflectionCompositeSurfaceAnchoredCubemap"
+  "patchStockReflectionCompositeRawSslr"
+  "patchStockReflectionCompositeRawStockCubemap"
+  "kRawSslrColor"
+  "kConditionalRawSslrFinalOutput"
+  "kRawCubemapFinalOutput"
+  "kConditionalRawCubemapFinalOutput"
   "recomputeDxbcChecksum"
   "patchedBytecode.swap(candidate)")
+file(READ "${VANILLA_REFLECTION_PATCH_TOOL_SOURCE}" reflection_patch_tool)
+vanilla_fixes_require_text("${reflection_patch_tool}"
+  "reflection diagnostic patch tool"
+  "raw-sslr"
+  "raw-stock-cubemap"
+  "patchStockReflectionCompositeRawSslr"
+  "patchStockReflectionCompositeRawStockCubemap")
 file(READ "${VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE}"
   directional_diagnostic_surface)
 vanilla_fixes_require_text("${directional_diagnostic_surface}"
@@ -206,14 +225,8 @@ vanilla_fixes_require_text("${directional_diagnostic_surface}"
   "coverageRasterizerState("
   "lightingOwnershipPixelShader("
   "isLightingOwnershipPixelShader("
-  "ScopedLightingOwnershipCubemapBindings"
-  "scopeLightingOwnershipCubemap("
-  "applied[0] = black"
-  "applied[5] = white"
-  "applied[10] = black"
   "fo4vr_cs_vanilla_lighting_ownership_diffuse_ps"
   "fo4vr_cs_vanilla_lighting_ownership_specular_ps"
-  "fo4vr_cs_vanilla_lighting_ownership_sslr_ps"
   "fo4vr_cs_vanilla_lighting_ownership_black_ps"
   "DepthEnable = FALSE"
   "ScissorEnable = FALSE"
@@ -249,11 +262,8 @@ vanilla_fixes_require_text("${lighting_ownership_diagnostic}"
   "LIGHTING_OWNERSHIP_MODE"
   "DirectSpecular : register(t4)"
   "DirectDiffuse : register(t5)"
-  "ScreenSpaceReflection : register(t14)"
   "DirectDiffuse.SampleLevel("
   "DirectSpecular.SampleLevel("
-  "ScreenSpaceReflection.SampleLevel("
-  "CompositeControl[2].z"
   "const float3 value = 0.0f")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
@@ -321,10 +331,10 @@ vanilla_fixes_require_text("${d3d11}" "lighting ownership D3D selection"
   "lightingOwnershipPixelShader("
   "isLightingOwnershipPixelShader(shader)"
   "activeLightingOwnershipDiagnosticPixel"
-  "activeLightingOwnershipCubemapPixel"
-  "desiredLightingOwnershipCubemap"
-  "scopeLightingOwnershipCubemap(context)"
-  "logLightingOwnershipDiagnosticBind("
+  "activeLightingOwnershipReflectionDiagnosticPixel"
+  "selectReflectionCompositeDiagnosticPixelShaderForBinding("
+  "isReflectionCompositeDiagnosticPixelShader(shader)"
+  "logLightingOwnershipDiagnosticDraw("
   "engineCaptureBinding.isDFComposite")
 string(REGEX MATCHALL
   "ScopedFocusShadowBinding focusShadowBinding" focus_draw_bindings "${d3d11}")
@@ -422,6 +432,9 @@ endif()
 file(READ "${VANILLA_IBL_GENERATOR_SOURCE}" ibl_generator)
 vanilla_fixes_require_text("${ibl_generator}" "IBL composition"
   "--surface-anchor-tool"
+  "raw-sslr"
+  "raw-stock-cubemap"
+  "validate_reflection_diagnostic_candidate"
   "len(SURFACE_ANCHORED_IDENTITIES)"
   "anchored_count"
   "9348"
