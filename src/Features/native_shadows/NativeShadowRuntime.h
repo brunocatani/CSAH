@@ -2,6 +2,7 @@
 
 #include "Features/native_shadows/NativeShadowSettings.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace community_shaders::native_shadows
@@ -30,5 +31,7 @@ namespace community_shaders::native_shadows
     [[nodiscard]] bool startRuntime(const Settings& settings) noexcept;
     void onGameDataReady() noexcept;
     void onWorldReady(const char* boundary) noexcept;
+    [[nodiscard]] std::size_t verifiedNodeAllocatorPatchPrefix(
+        const void* entry) noexcept;
     [[nodiscard]] RuntimeSnapshot snapshot() noexcept;
 }

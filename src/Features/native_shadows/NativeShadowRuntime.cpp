@@ -27,6 +27,14 @@ namespace community_shaders::native_shadows
     {
         using patch_model::BytePatch;
 
+        constexpr std::size_t kSafetyCavePageSize = 512;
+        constexpr std::size_t kRelativeJumpSize = 5;
+        constexpr std::uint8_t kRelativeJumpOpcode = 0xE9;
+        constexpr std::array<std::uint8_t, 13> kNodeAllocatorClearNext{
+            0x48, 0x85, 0xD2, 0x74, 0x08,
+            0x48, 0xC7, 0x42, 0x40, 0x00, 0x00, 0x00, 0x00,
+        };
+
         struct MovImmediatePatch
         {
             std::uintptr_t address{};
@@ -56,6 +64,7 @@ namespace community_shaders::native_shadows
             std::uint32_t lateAttempts{};
             std::uint32_t failures{};
             void* cavePage{};
+            std::uintptr_t nodeAllocatorCave{};
         };
 
         std::mutex g_mutex;
@@ -135,6 +144,118 @@ namespace community_shaders::native_shadows
                     reinterpret_cast<const void*>(address),
                     bytes.data(),
                     bytes.size()) == 0;
+        }
+
+        [[nodiscard]] bool relativeJumpTarget(
+            const std::uintptr_t source,
+            std::uintptr_t& target) noexcept
+        {
+            if (!isAccessible(source, kRelativeJumpSize)) {
+                return false;
+            }
+            const auto* bytes = reinterpret_cast<const std::uint8_t*>(source);
+            if (bytes[0] != kRelativeJumpOpcode) {
+                return false;
+            }
+
+            std::int32_t displacement{};
+            std::memcpy(&displacement, bytes + 1, sizeof(displacement));
+            std::uintptr_t next{};
+            if (!addWithoutOverflow(source, kRelativeJumpSize, next)) {
+                return false;
+            }
+            if (displacement >= 0) {
+                return addWithoutOverflow(
+                    next,
+                    static_cast<std::size_t>(displacement),
+                    target);
+            }
+
+            const auto magnitude = static_cast<std::size_t>(
+                -static_cast<std::int64_t>(displacement));
+            if (magnitude > next) {
+                return false;
+            }
+            target = next - magnitude;
+            return true;
+        }
+
+        [[nodiscard]] bool executableReadOnlyRange(
+            const std::uintptr_t address,
+            const std::size_t bytes) noexcept
+        {
+            if (!isAccessible(address, bytes)) {
+                return false;
+            }
+            MEMORY_BASIC_INFORMATION information{};
+            if (VirtualQuery(
+                    reinterpret_cast<const void*>(address),
+                    &information,
+                    sizeof(information)) != sizeof(information) ||
+                information.State != MEM_COMMIT ||
+                (information.Protect & 0xFFu) != PAGE_EXECUTE_READ) {
+                return false;
+            }
+            const auto region = reinterpret_cast<std::uintptr_t>(
+                information.BaseAddress);
+            std::uintptr_t regionEnd{};
+            std::uintptr_t requestedEnd{};
+            return addWithoutOverflow(
+                       region, information.RegionSize, regionEnd) &&
+                addWithoutOverflow(address, bytes, requestedEnd) &&
+                address >= region && requestedEnd <= regionEnd;
+        }
+
+        [[nodiscard]] bool verifiedNodeAllocatorPatchLocked(
+            const std::uintptr_t entry) noexcept
+        {
+            constexpr auto displacedPrefix =
+                patch_model::kNodeAllocatorSignature.size();
+            constexpr auto caveSize = kNodeAllocatorClearNext.size() +
+                displacedPrefix + kRelativeJumpSize;
+            if (!g_state.safetyCavesReady || !g_state.safetyCavesOwned ||
+                !g_state.cavePage || !g_state.nodeAllocatorCave ||
+                entry != moduleBase() + patch_model::kNodeAllocatorRva ||
+                !isAccessible(entry, displacedPrefix)) {
+                return false;
+            }
+
+            const auto page = reinterpret_cast<std::uintptr_t>(
+                g_state.cavePage);
+            const auto cave = g_state.nodeAllocatorCave;
+            std::uintptr_t pageEnd{};
+            std::uintptr_t caveEnd{};
+            if (!addWithoutOverflow(page, kSafetyCavePageSize, pageEnd) ||
+                !addWithoutOverflow(cave, caveSize, caveEnd) || cave < page ||
+                caveEnd > pageEnd || !executableReadOnlyRange(cave, caveSize)) {
+                return false;
+            }
+
+            std::uintptr_t entryTarget{};
+            if (!relativeJumpTarget(entry, entryTarget) ||
+                entryTarget != cave) {
+                return false;
+            }
+            const auto* entryBytes = reinterpret_cast<const std::uint8_t*>(
+                entry);
+            for (auto index = kRelativeJumpSize; index < displacedPrefix;
+                 ++index) {
+                if (entryBytes[index] != 0x90) {
+                    return false;
+                }
+            }
+
+            if (!matches(cave, kNodeAllocatorClearNext) ||
+                !matches(
+                    cave + kNodeAllocatorClearNext.size(),
+                    patch_model::kNodeAllocatorSignature)) {
+                return false;
+            }
+            const auto caveReturn = cave + kNodeAllocatorClearNext.size() +
+                displacedPrefix;
+            std::uintptr_t returnTarget{};
+            return relativeJumpTarget(caveReturn, returnTarget) &&
+                returnTarget == entry + displacedPrefix;
         }
 
         [[nodiscard]] std::span<const std::uint8_t> expectedBytes(
@@ -468,11 +589,7 @@ namespace community_shaders::native_shadows
         {
             emitter.align(16);
             const auto result = emitter.address();
-            constexpr std::array<std::uint8_t, 13> clearNext{
-                0x48, 0x85, 0xD2, 0x74, 0x08,
-                0x48, 0xC7, 0x42, 0x40, 0x00, 0x00, 0x00, 0x00,
-            };
-            emitter.bytes(clearNext);
+            emitter.bytes(kNodeAllocatorClearNext);
             emitter.bytes(patch_model::kNodeAllocatorSignature);
             emitter.jump(
                 base + patch_model::kNodeAllocatorRva +
@@ -613,14 +730,14 @@ namespace community_shaders::native_shadows
                 support::near_allocation::allocateReachablePage(
                     absoluteSites,
                     base + 0x02800000,
-                    512));
+                    kSafetyCavePageSize));
             if (!page) {
                 logging::error(
                     "Native Shadows could not reserve one rel32-reachable page for the cascade safety transaction.");
                 return false;
             }
 
-            Emitter emitter{ .page = page, .capacity = 512 };
+            Emitter emitter{ .page = page, .capacity = kSafetyCavePageSize };
             const auto zeroCave = emitZeroInitCave(emitter, base);
             const auto nullCave = emitNullSafetyCave(emitter, base);
             const auto nodeCave = emitNodeAllocatorCave(emitter, base);
@@ -635,7 +752,7 @@ namespace community_shaders::native_shadows
             DWORD previous{};
             if (VirtualProtect(
                     page,
-                    512,
+                    kSafetyCavePageSize,
                     PAGE_EXECUTE_READ,
                     &previous) == FALSE) {
                 (void)VirtualFree(page, 0, MEM_RELEASE);
@@ -673,6 +790,7 @@ namespace community_shaders::native_shadows
                 return false;
             }
             g_state.cavePage = page;
+            g_state.nodeAllocatorCave = nodeCave;
             owned = true;
             logging::info(
                 "Native Shadows installed four verified cascade safety caves in one sealed process-lifetime page ({} bytes used).",
@@ -1320,6 +1438,15 @@ namespace community_shaders::native_shadows
             ++g_state.failures;
         }
         attemptLateCascadeInitialization(boundary ? boundary : "WorldReady");
+    }
+
+    std::size_t verifiedNodeAllocatorPatchPrefix(const void* entry) noexcept
+    {
+        std::scoped_lock lock(g_mutex);
+        return verifiedNodeAllocatorPatchLocked(
+                   reinterpret_cast<std::uintptr_t>(entry)) ?
+            patch_model::kNodeAllocatorSignature.size() :
+            0;
     }
 
     RuntimeSnapshot snapshot() noexcept

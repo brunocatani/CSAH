@@ -1,5 +1,6 @@
 foreach(variable IN ITEMS
     NATIVE_SHADOW_RUNTIME_SOURCE
+    NATIVE_SHADOW_RUNTIME_HEADER
     NATIVE_SHADOW_SETTINGS_HEADER
     NATIVE_SHADOW_SETTINGS_STORE_SOURCE
     NATIVE_SHADOW_PATCH_MODEL
@@ -10,6 +11,7 @@ foreach(variable IN ITEMS
 endforeach()
 
 file(READ "${NATIVE_SHADOW_RUNTIME_SOURCE}" runtime)
+file(READ "${NATIVE_SHADOW_RUNTIME_HEADER}" runtimeHeader)
 file(READ "${NATIVE_SHADOW_SETTINGS_HEADER}" settings)
 file(READ "${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}" store)
 file(READ "${NATIVE_SHADOW_PATCH_MODEL}" model)
@@ -52,6 +54,11 @@ foreach(required IN ITEMS
     "validatePatch(base, patch)"
     "buildMovImmediatePatch("
     "installSafetyCaves(base, safetyOwned)"
+    "verifiedNodeAllocatorPatchPrefix("
+    "verifiedNodeAllocatorPatchLocked("
+    "g_state.nodeAllocatorCave"
+    "kNodeAllocatorClearNext"
+    "relativeJumpTarget("
     "allocateReachablePage("
     "PAGE_EXECUTE_READ"
     "capacity < patch_model::kExtendedCascadeCount"
@@ -64,7 +71,7 @@ foreach(required IN ITEMS
     "cached orthographic shadow filter"
     "REL::Module::IsVR()"
     "F4SE::RUNTIME_VR_1_2_72")
-  string(FIND "${runtime}" "${required}" found)
+  string(FIND "${runtime}\n${runtimeHeader}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
       "Native Shadows runtime-safety regression: missing '${required}'")

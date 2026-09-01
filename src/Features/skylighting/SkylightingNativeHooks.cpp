@@ -16,6 +16,7 @@
 
 #include "Features/skylighting/SkylightingNativeHooks.h"
 
+#include "Features/native_shadows/NativeShadowRuntime.h"
 #include "Features/skylighting/SkylightingRuntime.h"
 #include "support/Logger.h"
 
@@ -1121,16 +1122,32 @@ namespace community_shaders::skylighting
                 "Skylighting native pass-list clear signature mismatch at RVA 0x0278E3E0.");
             return false;
         }
-        if (!isExecutableRange(
-                passListEmplace,
-                kPassListEmplaceSignature.size()) ||
+        const auto passListEmplaceExecutable = isExecutableRange(
+            passListEmplace,
+            kPassListEmplaceSignature.size());
+        const auto passListEmplacePristine = passListEmplaceExecutable &&
             std::memcmp(
                 passListEmplace,
                 kPassListEmplaceSignature.data(),
-                kPassListEmplaceSignature.size()) != 0) {
+                kPassListEmplaceSignature.size()) == 0;
+        const auto nativeShadowPrefix = passListEmplacePristine ? 0 :
+            native_shadows::verifiedNodeAllocatorPatchPrefix(passListEmplace);
+        const auto nativeShadowOwned = passListEmplaceExecutable &&
+            nativeShadowPrefix > 0 &&
+            nativeShadowPrefix < kPassListEmplaceSignature.size() &&
+            std::memcmp(
+                passListEmplace + nativeShadowPrefix,
+                kPassListEmplaceSignature.data() + nativeShadowPrefix,
+                kPassListEmplaceSignature.size() - nativeShadowPrefix) == 0;
+        if (!passListEmplacePristine && !nativeShadowOwned) {
             logging::error(
-                "Skylighting native pass-list emplace signature mismatch at RVA 0x0278E610.");
+                "Skylighting native pass-list emplace contract mismatch at RVA 0x0278E610; live bytes are neither pristine FO4VR nor the verified Native Shadows safety owner.");
             return false;
+        }
+        if (nativeShadowOwned) {
+            logging::info(
+                "Skylighting accepted the verified Native Shadows pass-list safety owner at RVA 0x0278E610 ({} displaced bytes); both four-cascade shadows and world-occlusion capture remain active.",
+                nativeShadowPrefix);
         }
         if (!isReadableRange(
                 expectedSpecialGeometryNiRtti,
