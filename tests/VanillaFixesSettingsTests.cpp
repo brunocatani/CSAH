@@ -55,6 +55,7 @@ namespace
 int main()
 {
     using community_shaders::vanilla_fixes::Settings;
+    using community_shaders::vanilla_fixes::DirectionalLightDiagnosticMode;
     using community_shaders::vanilla_fixes::loadSettings;
     using community_shaders::vanilla_fixes::saveSettings;
 
@@ -95,6 +96,26 @@ int main()
         "bEnabled=0\n");
     require(loadSettings(ini.path()) == Settings{}, "invalid-value fallback");
 
+    ini.write(
+        "[VanillaFixes]\n"
+        "bEnabled=1\n"
+        "[Diagnostics]\n"
+        "iDirectionalLightingMode=15\n");
+    require(
+        loadSettings(ini.path()).directionalLightDiagnosticMode ==
+            DirectionalLightDiagnosticMode::cubemapLookupOnly,
+        "cubemap diagnostic key");
+
+    ini.write(
+        "[VanillaFixes]\n"
+        "bEnabled=1\n"
+        "[Diagnostics]\n"
+        "iDirectionalLightingMode=16\n");
+    require(
+        loadSettings(ini.path()).directionalLightDiagnosticMode ==
+            DirectionalLightDiagnosticMode::off,
+        "out-of-range diagnostic fallback");
+
     const Settings mixed{
         .enabled = true,
         .precipitationOcclusion = false,
@@ -106,6 +127,8 @@ int main()
         .focusShadows = false,
         .sunbeams = true,
         .stereoSunOcclusion = false,
+        .directionalLightDiagnosticMode =
+            DirectionalLightDiagnosticMode::directSpecularOnly,
     };
     require(saveSettings(ini.path(), mixed), "temporary INI save");
     require(loadSettings(ini.path()) == mixed, "save/load round trip");

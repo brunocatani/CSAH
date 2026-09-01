@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Features/vanilla_fixes/VanillaFixesSettings.h"
+
 #include <d3d11.h>
 #include <wrl/client.h>
 
@@ -18,6 +20,38 @@ namespace community_shaders::vanilla_fixes
         {
             return renderTarget && shaderResource;
         }
+    };
+
+    class ScopedLightingOwnershipCubemapBindings final
+    {
+    public:
+        ScopedLightingOwnershipCubemapBindings() noexcept = default;
+        ~ScopedLightingOwnershipCubemapBindings() noexcept;
+        ScopedLightingOwnershipCubemapBindings(
+            const ScopedLightingOwnershipCubemapBindings&) = delete;
+        ScopedLightingOwnershipCubemapBindings(
+            ScopedLightingOwnershipCubemapBindings&&) = delete;
+        ScopedLightingOwnershipCubemapBindings& operator=(
+            const ScopedLightingOwnershipCubemapBindings&) = delete;
+        ScopedLightingOwnershipCubemapBindings& operator=(
+            ScopedLightingOwnershipCubemapBindings&&) = delete;
+
+        [[nodiscard]] bool active() const noexcept
+        {
+            return active_;
+        }
+
+    private:
+        friend class DirectionalLightDiagnosticSurface;
+        ScopedLightingOwnershipCubemapBindings(
+            ID3D11DeviceContext* context,
+            ID3D11ShaderResourceView* black,
+            ID3D11ShaderResourceView* white) noexcept;
+
+        ID3D11DeviceContext* context_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 11>
+            previous_{};
+        bool active_{};
     };
 
     // Render-thread-only owner for the private packed-stereo directional
@@ -54,6 +88,16 @@ namespace community_shaders::vanilla_fixes
         [[nodiscard]] ID3D11PixelShader* compositePixelShader() const noexcept;
         [[nodiscard]] bool isCompositePixelShader(
             ID3D11PixelShader* shader) const noexcept;
+        [[nodiscard]] ID3D11PixelShader* lightingOwnershipPixelShader(
+            DirectionalLightDiagnosticMode mode,
+            bool environmentContract) const noexcept;
+        [[nodiscard]] bool isLightingOwnershipPixelShader(
+            ID3D11PixelShader* shader) const noexcept;
+        [[nodiscard]] ID3D11PixelShader*
+            lightingOwnershipBlackPixelShader() const noexcept;
+        [[nodiscard]] ScopedLightingOwnershipCubemapBindings
+            scopeLightingOwnershipCubemap(
+                ID3D11DeviceContext* context) noexcept;
         [[nodiscard]] ID3D11DepthStencilState*
             coverageDepthStencilState() const noexcept;
         [[nodiscard]] ID3D11RasterizerState* coverageRasterizerState(
@@ -82,6 +126,16 @@ namespace community_shaders::vanilla_fixes
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResource_;
         Microsoft::WRL::ComPtr<ID3D11Device> compositeDevice_;
         Microsoft::WRL::ComPtr<ID3D11PixelShader> compositePixelShader_;
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>, 4>
+            lightingOwnershipPixelShaders_{};
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>
+            lightingOwnershipBlackTexture_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            lightingOwnershipBlackView_;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D>
+            lightingOwnershipWhiteTexture_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            lightingOwnershipWhiteView_;
         Microsoft::WRL::ComPtr<ID3D11VertexShader> coverageVertexShader_;
         Microsoft::WRL::ComPtr<ID3D11DepthStencilState>
             coverageDepthStencilState_;

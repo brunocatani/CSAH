@@ -24,6 +24,7 @@ foreach(input IN ITEMS
     VANILLA_DIRECTIONAL_DIAGNOSTIC_SURFACE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_SOURCE
     VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_SOURCE
+    VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE
     VANILLA_REFLECTION_PATCH_SOURCE
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
@@ -139,6 +140,9 @@ vanilla_fixes_require_text("${runtime}" "engine-gate"
   "InterlockedExchange8"
   "preserveStartupCapability"
   "effectivePolicy(activeSettings_)"
+  "DirectionalLightDiagnosticMode::screenSpaceReflectionOnly"
+  "policy.screenSpaceReflections = screenSpaceReflectionOnly"
+  "settings.directionalLightDiagnosticMode =="
   "setSslrSuiteRequested("
   "F4SE::GetTaskInterface()"
   "applyScreenSpacePolicyOnMainThread()"
@@ -179,6 +183,7 @@ vanilla_fixes_require_text("${settings_store}" "settings"
   "L\"bUseSunbeams\""
   "L\"bVrSunOcclusion\""
   "L\"iDirectionalLightingMode\""
+  "DirectionalLightDiagnosticMode::cubemapLookupOnly"
   "readDiagnosticMode("
   "writeDiagnosticMode("
   "settings_path::resolveIniPath()")
@@ -199,6 +204,17 @@ vanilla_fixes_require_text("${directional_diagnostic_surface}"
   "CreateShaderResourceView"
   "coverageDepthStencilState()"
   "coverageRasterizerState("
+  "lightingOwnershipPixelShader("
+  "isLightingOwnershipPixelShader("
+  "ScopedLightingOwnershipCubemapBindings"
+  "scopeLightingOwnershipCubemap("
+  "applied[0] = black"
+  "applied[5] = white"
+  "applied[10] = black"
+  "fo4vr_cs_vanilla_lighting_ownership_diffuse_ps"
+  "fo4vr_cs_vanilla_lighting_ownership_specular_ps"
+  "fo4vr_cs_vanilla_lighting_ownership_sslr_ps"
+  "fo4vr_cs_vanilla_lighting_ownership_black_ps"
   "DepthEnable = FALSE"
   "ScissorEnable = FALSE"
   "CullMode = D3D11_CULL_NONE"
@@ -226,6 +242,19 @@ vanilla_fixes_require_text("${directional_diagnostic_coverage}"
   "kRectangle[6]"
   "localPosition.x * 0.5f + eyeCenter"
   "SV_Position")
+file(READ "${VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE}"
+  lighting_ownership_diagnostic)
+vanilla_fixes_require_text("${lighting_ownership_diagnostic}"
+  "exclusive lighting ownership shader"
+  "LIGHTING_OWNERSHIP_MODE"
+  "DirectSpecular : register(t4)"
+  "DirectDiffuse : register(t5)"
+  "ScreenSpaceReflection : register(t14)"
+  "DirectDiffuse.SampleLevel("
+  "DirectSpecular.SampleLevel("
+  "ScreenSpaceReflection.SampleLevel("
+  "CompositeControl[2].z"
+  "const float3 value = 0.0f")
 file(READ "${VANILLA_SSLR_ENVIRONMENT_SOURCE}" sslr_environment)
 vanilla_fixes_require_text("${sslr_environment}" "SSLR environment binding"
   "kFirstResourceSlot = 4"
@@ -287,6 +316,16 @@ vanilla_fixes_require_text("${d3d11}" "D3D11 ownership"
   "vanilla_fixes::isFocusShadowPixelShader(shader)"
   "ScopedFocusShadowBinding focusShadowBinding"
   "installFocusShadowNativeHooks()")
+vanilla_fixes_require_text("${d3d11}" "lighting ownership D3D selection"
+  "isLightingOwnershipDiagnostic("
+  "lightingOwnershipPixelShader("
+  "isLightingOwnershipPixelShader(shader)"
+  "activeLightingOwnershipDiagnosticPixel"
+  "activeLightingOwnershipCubemapPixel"
+  "desiredLightingOwnershipCubemap"
+  "scopeLightingOwnershipCubemap(context)"
+  "logLightingOwnershipDiagnosticBind("
+  "engineCaptureBinding.isDFComposite")
 string(REGEX MATCHALL
   "ScopedFocusShadowBinding focusShadowBinding" focus_draw_bindings "${d3d11}")
 list(LENGTH focus_draw_bindings focus_draw_binding_count)
@@ -346,6 +385,11 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"label\": \"Synthetic DFLight Coverage (RGB)\""
   "\"label\": \"Synthetic Composite Coverage (RGB)\""
   "\"label\": \"Final HDR Output (RGB)\"")
+vanilla_fixes_require_text("${devmenu}" "lighting ownership controls"
+  "\"label\": \"Direct Diffuse Only\""
+  "\"label\": \"Direct Specular Only\""
+  "\"label\": \"Native SSR Only\""
+  "\"label\": \"Vanilla Cubemap Only\"")
 file(READ "${VANILLA_SHARED_SETTINGS_SOURCE}" shared_settings)
 vanilla_fixes_require_text("${shared_settings}" "live settings publication"
   "vanilla_fixes::applySettings(next.vanillaFixes)")

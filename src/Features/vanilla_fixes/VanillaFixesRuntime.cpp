@@ -159,10 +159,13 @@ namespace community_shaders::vanilla_fixes
                 DirectionalLightDiagnosticMode::off) {
                 return policy;
             }
+            const auto screenSpaceReflectionOnly =
+                policy.directionalLightDiagnosticMode ==
+                DirectionalLightDiagnosticMode::screenSpaceReflectionOnly;
             policy.precipitationOcclusion = false;
-            policy.imageSpaceModifiers = false;
+            policy.imageSpaceModifiers = screenSpaceReflectionOnly;
             policy.sao = false;
-            policy.screenSpaceReflections = false;
+            policy.screenSpaceReflections = screenSpaceReflectionOnly;
             policy.nativeScreenSpaceMaterialPipeline = false;
             policy.lensFlare = false;
             policy.focusShadows = false;
@@ -303,7 +306,9 @@ namespace community_shaders::vanilla_fixes
                             DirectionalLightDiagnosticMode::off,
                     std::memory_order_release);
                 setSunOcclusionFixEnabled(
-                    settings.enabled && settings.stereoSunOcclusion);
+                    settings.enabled && settings.stereoSunOcclusion &&
+                    settings.directionalLightDiagnosticMode ==
+                        DirectionalLightDiagnosticMode::off);
                 setSslrSuiteRequested(
                     settings.enabled && settings.screenSpaceReflections &&
                     settings.directionalLightDiagnosticMode ==
@@ -322,7 +327,7 @@ namespace community_shaders::vanilla_fixes
                     std::memory_order_acq_rel);
                 if (previousDiagnosticMode != rawDiagnosticMode) {
                     logging::info(
-                        "Exclusive directional diagnostic mode transition: {} -> {}; saved feature settings are preserved and draw-boundary shader reconciliation is armed.",
+                        "Exclusive lighting diagnostic mode transition: {} -> {}; saved feature settings are preserved and draw-boundary shader reconciliation is armed.",
                         previousDiagnosticMode,
                         rawDiagnosticMode);
                 }

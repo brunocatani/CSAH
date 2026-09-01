@@ -18,7 +18,18 @@ namespace community_shaders::vanilla_fixes
         coverageSyntheticProducer = 9,
         coverageSyntheticComposite = 10,
         finalOutputPresentation = 11,
+        directDiffuseOnly = 12,
+        directSpecularOnly = 13,
+        screenSpaceReflectionOnly = 14,
+        cubemapLookupOnly = 15,
     };
+
+    [[nodiscard]] constexpr bool isLightingOwnershipDiagnostic(
+        const DirectionalLightDiagnosticMode mode) noexcept
+    {
+        return mode >= DirectionalLightDiagnosticMode::directDiffuseOnly &&
+            mode <= DirectionalLightDiagnosticMode::cubemapLookupOnly;
+    }
 
     struct Settings final
     {

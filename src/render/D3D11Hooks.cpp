@@ -248,6 +248,10 @@ namespace community_shaders::render
         thread_local ID3D11PixelShader*
             activeStockDirectionalLightPixel{};
         thread_local bool activeDirectionalDiagnosticCompositePixel{};
+        thread_local bool activeLightingOwnershipDiagnosticPixel{};
+        thread_local bool activeLightingOwnershipCubemapPixel{};
+        thread_local ID3D11PixelShader*
+            activeLightingOwnershipCubemapShader{};
         thread_local ID3D11PixelShader*
             activeDirectionalDiagnosticCompositeShader{};
         thread_local ID3D11PixelShader*
@@ -262,6 +266,9 @@ namespace community_shaders::render
         std::atomic_bool firstDirectionalDiagnosticCompositeFallbackLogged{};
         std::atomic_bool firstDirectionalDiagnosticCompositeBindLogged{};
         std::atomic_bool firstDirectionalDiagnosticBindReconciledLogged{};
+        std::array<std::atomic_bool, 4>
+            firstLightingOwnershipDiagnosticBindLogged{};
+        std::atomic_bool firstLightingOwnershipCubemapFallbackLogged{};
         std::atomic_bool firstDirectionalCoverageDepthLogged{};
         std::atomic_bool firstDirectionalCoverageRasterLogged{};
         std::atomic_bool firstDirectionalSyntheticProducerLogged{};
@@ -357,6 +364,65 @@ namespace community_shaders::render
         private:
             bool& active_;
         };
+
+        void logLightingOwnershipDiagnosticBind(
+            ID3D11DeviceContext* context,
+            const vanilla_fixes::DirectionalLightDiagnosticMode mode,
+            const std::uint16_t environmentContractPlusOne) noexcept
+        {
+            if (!context || !vanilla_fixes::isLightingOwnershipDiagnostic(
+                    mode) || environmentContractPlusOne == 0) {
+                return;
+            }
+            const auto index = static_cast<std::size_t>(mode) -
+                static_cast<std::size_t>(vanilla_fixes::
+                    DirectionalLightDiagnosticMode::directDiffuseOnly);
+            if (index >= firstLightingOwnershipDiagnosticBindLogged.size() ||
+                firstLightingOwnershipDiagnosticBindLogged[index].exchange(
+                    true,
+                    std::memory_order_relaxed)) {
+                return;
+            }
+
+            constexpr std::array<UINT, 4> kInputSlots{ 5, 4, 14, 8 };
+            ID3D11ShaderResourceView* rawView{};
+            context->PSGetShaderResources(kInputSlots[index], 1, &rawView);
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+            view.Attach(rawView);
+            Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            D3D11_TEXTURE2D_DESC textureDescription{};
+            if (view) {
+                view->GetResource(&resource);
+                if (resource) {
+                    (void)resource.As(&texture);
+                }
+                if (texture) {
+                    texture->GetDesc(&textureDescription);
+                }
+            }
+            std::array<D3D11_VIEWPORT,
+                D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE>
+                viewports{};
+            UINT viewportCount = static_cast<UINT>(viewports.size());
+            context->RSGetViewports(&viewportCount, viewports.data());
+            const auto firstViewport = viewportCount != 0 ?
+                viewports[0] : D3D11_VIEWPORT{};
+            logging::info(
+                "Exclusive lighting ownership mode {} selected DFComposite environment contract {}; packedEyes=true, input=t{}, texture={}x{} array={} format={}, viewports={}, first=({},{} {}x{}).",
+                static_cast<unsigned>(mode),
+                environmentContractPlusOne,
+                kInputSlots[index],
+                textureDescription.Width,
+                textureDescription.Height,
+                textureDescription.ArraySize,
+                static_cast<unsigned>(textureDescription.Format),
+                viewportCount,
+                firstViewport.TopLeftX,
+                firstViewport.TopLeftY,
+                firstViewport.Width,
+                firstViewport.Height);
+        }
 
         class ScopedDirectionalDiagnosticOutput final
         {
@@ -1988,6 +2054,8 @@ namespace community_shaders::render
                 activeCorrectedSslrRaytracePixel ||
                 activeDirectionalLightDiagnosticPixel ||
                 activeDirectionalDiagnosticCompositePixel ||
+                activeLightingOwnershipDiagnosticPixel ||
+                activeLightingOwnershipCubemapPixel ||
                 activeIblMaterialBinding ||
                 activeContactShadowBinding ||
                 activeFilmicTonemappingBinding ||
@@ -2014,6 +2082,46 @@ namespace community_shaders::render
                     DiagnosticMode::coverageSyntheticComposite ||
                 activeDirectionalDiagnosticModeAtBind ==
                     DiagnosticMode::finalOutputPresentation;
+            if (activeLightingOwnershipCubemapPixel) {
+                auto& diagnosticSurface = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get();
+                const auto bindings = diagnosticSurface.
+                    scopeLightingOwnershipCubemap(context);
+                if (bindings.active()) {
+                    draw();
+                    return;
+                }
+                if (originalPSSetShader &&
+                    activeLightingOwnershipCubemapShader) {
+                    if (auto* blackShader = diagnosticSurface.
+                            lightingOwnershipBlackPixelShader()) {
+                        originalPSSetShader(
+                            context,
+                            blackShader,
+                            nullptr,
+                            0);
+                        draw();
+                        originalPSSetShader(
+                            context,
+                            activeLightingOwnershipCubemapShader,
+                            nullptr,
+                            0);
+                        if (!firstLightingOwnershipCubemapFallbackLogged.
+                                exchange(true, std::memory_order_relaxed)) {
+                            logging::error(
+                                "Exclusive cubemap ownership diagnostic could not establish its neutral t4-through-t14 transaction; the affected DFComposite draw was rendered black and its stock shader restored.");
+                        }
+                        return;
+                    }
+                }
+                if (!firstLightingOwnershipCubemapFallbackLogged.exchange(
+                        true,
+                        std::memory_order_relaxed)) {
+                    logging::error(
+                        "Exclusive cubemap ownership diagnostic suppressed a DFComposite draw because neither its neutral resource transaction nor black fail-closed shader was available.");
+                }
+                return;
+            }
             if (activeDirectionalLightDiagnosticPixel) {
                 ScopedDirectionalDiagnosticOutput output(
                     context,
@@ -2774,8 +2882,12 @@ namespace community_shaders::render
                              shader,
                              static_cast<std::uint8_t>(
                                  requestedDirectionalDiagnosticMode))
-                         .shader;
-            if (requestedDirectionalDiagnosticMode !=
+                          .shader;
+            const auto lightingOwnershipDiagnostic =
+                vanilla_fixes::isLightingOwnershipDiagnostic(
+                    requestedDirectionalDiagnosticMode);
+            if (!lightingOwnershipDiagnostic &&
+                requestedDirectionalDiagnosticMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::off &&
                 requestedDirectionalDiagnosticMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::
@@ -2785,6 +2897,24 @@ namespace community_shaders::render
                         DirectionalLightDiagnosticSurface::get()
                             .compositePixelShader()) {
                     shader = diagnosticComposite;
+                }
+            }
+            if (lightingOwnershipDiagnostic &&
+                engineCaptureBinding.isDFComposite) {
+                auto& diagnosticSurface = vanilla_fixes::
+                    DirectionalLightDiagnosticSurface::get();
+                if (auto* ownershipShader = diagnosticSurface.
+                        lightingOwnershipPixelShader(
+                            requestedDirectionalDiagnosticMode,
+                            engineCaptureBinding.environmentContractPlusOne !=
+                                0)) {
+                    shader = ownershipShader;
+                }
+                if (engineCaptureBinding.environmentContractPlusOne != 0) {
+                    logLightingOwnershipDiagnosticBind(
+                        context,
+                        requestedDirectionalDiagnosticMode,
+                        engineCaptureBinding.environmentContractPlusOne);
                 }
             }
             if (requestedDirectionalDiagnosticMode ==
@@ -2822,6 +2952,17 @@ namespace community_shaders::render
             activeDirectionalDiagnosticCompositePixel = vanilla_fixes::
                 DirectionalLightDiagnosticSurface::get()
                     .isCompositePixelShader(shader);
+            activeLightingOwnershipDiagnosticPixel = vanilla_fixes::
+                DirectionalLightDiagnosticSurface::get()
+                    .isLightingOwnershipPixelShader(shader);
+            activeLightingOwnershipCubemapPixel =
+                requestedDirectionalDiagnosticMode ==
+                    vanilla_fixes::DirectionalLightDiagnosticMode::
+                        cubemapLookupOnly &&
+                engineCaptureBinding.isDFComposite &&
+                engineCaptureBinding.environmentContractPlusOne != 0;
+            activeLightingOwnershipCubemapShader =
+                activeLightingOwnershipCubemapPixel ? shader : nullptr;
             activeDirectionalDiagnosticCompositeShader =
                 activeDirectionalDiagnosticCompositePixel ? shader : nullptr;
             activeNormalDirectionalDiagnosticCompositePixel =
@@ -3143,9 +3284,12 @@ namespace community_shaders::render
                                               requestedMode))
                                       .shader;
             const auto captureBinding = ibl::Runtime::get()
-                                            .captureProbeBindingForShader(
-                                                engineShader);
-            if (requestedMode !=
+                                             .captureProbeBindingForShader(
+                                                 engineShader);
+            const auto lightingOwnershipDiagnostic =
+                vanilla_fixes::isLightingOwnershipDiagnostic(
+                    requestedMode);
+            if (!lightingOwnershipDiagnostic && requestedMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::off &&
                 requestedMode !=
                     vanilla_fixes::DirectionalLightDiagnosticMode::
@@ -3157,6 +3301,22 @@ namespace community_shaders::render
                     desiredShader = diagnosticComposite;
                 }
             }
+            if (lightingOwnershipDiagnostic &&
+                captureBinding.isDFComposite) {
+                if (auto* ownershipShader = vanilla_fixes::
+                        DirectionalLightDiagnosticSurface::get()
+                            .lightingOwnershipPixelShader(
+                                requestedMode,
+                                captureBinding.environmentContractPlusOne !=
+                                    0)) {
+                    desiredShader = ownershipShader;
+                }
+            }
+            const auto desiredLightingOwnershipCubemap =
+                requestedMode == vanilla_fixes::
+                    DirectionalLightDiagnosticMode::cubemapLookupOnly &&
+                captureBinding.isDFComposite &&
+                captureBinding.environmentContractPlusOne != 0;
             if (requestedMode ==
                     vanilla_fixes::DirectionalLightDiagnosticMode::
                         finalOutputPresentation &&
@@ -3170,7 +3330,10 @@ namespace community_shaders::render
             }
             const auto trackedDirectionalPath = desiredShader != engineShader ||
                 activeDirectionalLightDiagnosticPixel ||
-                activeDirectionalDiagnosticCompositePixel;
+                activeDirectionalDiagnosticCompositePixel ||
+                activeLightingOwnershipDiagnosticPixel ||
+                activeLightingOwnershipCubemapPixel ||
+                desiredLightingOwnershipCubemap;
             if (!trackedDirectionalPath) {
                 activeDirectionalDiagnosticModeAtBind = requestedMode;
                 return;
@@ -3181,7 +3344,7 @@ namespace community_shaders::render
                     true,
                     std::memory_order_relaxed)) {
                 logging::info(
-                    "Exclusive directional diagnostic reconciled a retained world-session shader bind at the draw boundary; requested mode={}.",
+                    "Exclusive lighting diagnostic reconciled a retained world-session shader bind at the draw boundary; requested mode={}.",
                     static_cast<unsigned>(requestedMode));
             }
         }
@@ -4229,6 +4392,12 @@ namespace community_shaders::render
                 false,
                 std::memory_order_relaxed);
             firstDirectionalFinalOutputLogged.store(
+                false,
+                std::memory_order_relaxed);
+            for (auto& logged : firstLightingOwnershipDiagnosticBindLogged) {
+                logged.store(false, std::memory_order_relaxed);
+            }
+            firstLightingOwnershipCubemapFallbackLogged.store(
                 false,
                 std::memory_order_relaxed);
             activeDFPrePassTechniques = {};
