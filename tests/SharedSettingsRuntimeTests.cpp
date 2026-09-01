@@ -34,13 +34,21 @@ int main()
 
     auto masterOff = baseline;
     masterOff.masterEnabled = false;
-    masterOff.vanillaFixes.enabled = false;
     const auto masterChanges = diff(baseline, masterOff);
     require(masterChanges.any(), "master gate diff");
     require(masterChanges.masterGate, "master gate classification");
     require(
+        !masterChanges.dlaa,
+        "visual master gate changed DLAA/DLSS ownership");
+    require(
+        !masterChanges.vanillaFixesGate,
+        "visual master gate changed Vanilla Fixes ownership");
+    require(
         !masterChanges.vanillaFixes,
         "master gate attempted live Vanilla Fixes teardown");
+    require(
+        !masterChanges.nativeShadows,
+        "visual master gate changed Native Shadows ownership");
     require(
         masterChanges.liveFeatureCount() == 0,
         "master gate incorrectly counted as live feature");

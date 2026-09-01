@@ -2340,14 +2340,27 @@ if(BUILD_FO4VR_CS_TESTS)
   find_program(PWSH_EXECUTABLE NAMES pwsh REQUIRED)
 
   add_executable(FO4VRCommunityShadersUpscalingSettingsTests
-    "${ROOT_DIR}/tests/UpscalingSettingsTests.cpp")
+    "${ROOT_DIR}/tests/UpscalingSettingsTests.cpp"
+    "${DLAA_SETTINGS_STORE_SOURCE}"
+    "${DLAA_SOURCE_DIR}/DlaaSettingsStore.h"
+    "${DLAA_SOURCE_DIR}/DlaaSettings.h"
+    "${SETTINGS_PATH_SOURCE}"
+    "${SETTINGS_PATH_HEADER}")
   target_compile_features(
     FO4VRCommunityShadersUpscalingSettingsTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
     FO4VRCommunityShadersUpscalingSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
     FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+  target_link_libraries(
+    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.UpscalingSettings
     COMMAND FO4VRCommunityShadersUpscalingSettingsTests)
 

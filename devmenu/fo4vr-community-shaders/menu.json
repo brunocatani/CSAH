@@ -17,10 +17,10 @@
           "groups": [
             {
               "id": "core-lighting",
-              "label": "Core lighting",
-              "description": "Master feature gates are applied live by the Community Shaders shared-INI bridge.",
+              "label": "Visual suite",
+              "description": "The visual suite, DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent master gates.",
               "controls": [
-                { "id": "community-shaders", "type": "toggle", "label": "Community Shaders", "help": "Master switch. Off preserves every individual selection while stopping live feature execution. Restart while off to keep startup-only Native Shadows and Vanilla Fixes inactive.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CommunityShaders", "key": "bEnabled" } },
+                { "id": "community-shaders", "type": "toggle", "label": "Community Shaders Visual Suite", "help": "Controls only the lighting, material, shadow, and output effects in this suite. DLAA/DLSS, Vanilla Fixes, and Native Shadows retain their own settings and continue independently.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CommunityShaders", "key": "bEnabled" } },
                 { "id": "linear-lighting", "type": "toggle", "label": "Linear Lighting", "help": "Evaluates supported lighting and material colour operations in linear space.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "LinearLighting", "key": "bEnabled" } },
                 { "id": "native-darkness", "type": "toggle", "label": "Preserve Native Darkness", "help": "Keeps native light, ambient, fog, and sky producers at Fallout's darker response floor.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "LinearLighting", "key": "bPreserveNativeDarkness" } },
                 { "id": "ibl", "type": "toggle", "label": "Image Based Lighting", "help": "Master gate for the shared validated environment used by Dynamic Cubemaps and Diffuse IBL.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "ImageBasedLighting", "key": "bEnabled" } },
@@ -76,14 +76,14 @@
               "id": "upscaling-feature",
               "label": "Neural image quality",
               "controls": [
-                { "id": "dlaa", "type": "toggle", "label": "DLAA / DLSS", "help": "Enables the selected Streamline image-quality mode.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DLAA", "key": "bEnabled" } }
+                { "id": "dlaa", "type": "toggle", "label": "DLAA / DLSS", "help": "Independent Streamline image-quality master. It can remain enabled while the Community Shaders visual suite and Vanilla Fixes are disabled.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "DLAA", "key": "bEnabled" } }
               ]
             },
             {
               "id": "vanilla-master",
               "label": "Vanilla renderer fixes",
               "controls": [
-                { "id": "vanilla-fixes", "type": "toggle", "label": "Vanilla Fixes", "help": "Master gate for the verified FO4VR renderer corrections.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bEnabled" } }
+                { "id": "vanilla-fixes", "type": "toggle", "label": "Vanilla Fixes", "help": "Independent master for the verified FO4VR renderer corrections. It does not require the Community Shaders visual suite or DLAA/DLSS. Restart after changing this master.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bEnabled" } }
               ]
             }
           ]
@@ -354,7 +354,7 @@
               "label": "Native shadow contract",
               "description": "These settings patch verified engine state during plugin startup. Changes are saved immediately and take effect on the next game launch.",
               "controls": [
-                { "id": "native-shadows-enabled", "type": "toggle", "label": "Native Shadow Fixes", "help": "Restart required.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "NativeShadows", "key": "bEnabled" } },
+                { "id": "native-shadows-enabled", "type": "toggle", "label": "Native Shadow Fixes", "help": "Independent from the Community Shaders visual suite; restart required.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "NativeShadows", "key": "bEnabled" } },
                 { "id": "extended-cascades", "type": "toggle", "label": "Extended Directional Cascades", "help": "Restart required.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "NativeShadows", "key": "bExtendedDirectionalCascades" } },
                 { "id": "tiled-lighting", "type": "toggle", "label": "Tiled Deferred Lighting", "help": "Restart required.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "NativeShadows", "key": "bTiledDeferredLighting" } },
                 { "id": "shadow-distance", "type": "number", "label": "Directional Shadow Distance", "help": "Restart required.", "default": 15000.0, "min": 3000.0, "max": 50000.0, "step": 250.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "NativeShadows", "key": "fDirectionalShadowDistance" } },

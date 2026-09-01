@@ -121,12 +121,12 @@ namespace community_shaders::shared_settings
             .cloudShadows = previous.cloudShadows != next.cloudShadows,
             .vanillaFixesGate = previous.vanillaFixes.enabled !=
                 next.vanillaFixes.enabled,
-            // Both master gates persist startup-native policy for the next
-            // launch. While the suite remains active, its individual fixes
-            // can still be changed live. Never dismantle the active
-            // SAO/SSLR/shared renderer graph during a world session.
-            .vanillaFixes = previous.masterEnabled && next.masterEnabled &&
-                previous.vanillaFixes.enabled && next.vanillaFixes.enabled &&
+            // Vanilla Fixes is an independent startup-owned suite. Its
+            // individual policy can change live while its own master remains
+            // active, regardless of the Community Shaders visual-suite gate.
+            // Never dismantle the active SAO/SSLR renderer graph mid-session.
+            .vanillaFixes = previous.vanillaFixes.enabled &&
+                next.vanillaFixes.enabled &&
                 previous.vanillaFixes != next.vanillaFixes,
             .nativeShadows = previous.nativeShadows != next.nativeShadows,
             .skylighting = previous.skylighting != next.skylighting,

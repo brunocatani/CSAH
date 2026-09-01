@@ -2,7 +2,6 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
-#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -89,7 +88,7 @@ namespace community_shaders::dlaa
             error) {
             return defaults;
         }
-        return master_settings::gate(path, sanitize({
+        return sanitize({
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .mode = static_cast<Mode>(readUnsigned(
                 path,
@@ -135,7 +134,7 @@ namespace community_shaders::dlaa
                 path,
                 L"bVerboseDiagnostics",
                 defaults.verboseDiagnostics),
-        }));
+        });
     }
 
     Settings loadSettings() noexcept

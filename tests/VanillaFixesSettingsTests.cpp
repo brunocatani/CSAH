@@ -63,6 +63,15 @@ int main()
     require(loadSettings(ini.path()) == Settings{}, "missing-file defaults");
 
     ini.write(
+        "[CommunityShaders]\n"
+        "bEnabled=0\n"
+        "[VanillaFixes]\n"
+        "bEnabled=1\n");
+    require(
+        loadSettings(ini.path()).enabled,
+        "Community Shaders visual gate disabled independent Vanilla Fixes");
+
+    ini.write(
         "[VanillaFixes]\n"
         "bEnabled=0\n"
         "bPrecipitationOcclusion=off\n"

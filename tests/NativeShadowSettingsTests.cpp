@@ -62,6 +62,15 @@ int main()
     require(loadSettings(ini.path()) == Settings{}, "missing-file defaults");
 
     ini.write(
+        "[CommunityShaders]\n"
+        "bEnabled=0\n"
+        "[NativeShadows]\n"
+        "bEnabled=1\n");
+    require(
+        loadSettings(ini.path()).enabled,
+        "Community Shaders visual gate disabled independent Native Shadows");
+
+    ini.write(
         "[NativeShadows]\n"
         "bEnabled=off\n"
         "bExtendedDirectionalCascades=no\n"

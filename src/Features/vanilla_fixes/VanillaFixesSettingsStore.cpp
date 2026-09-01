@@ -2,7 +2,6 @@
 
 #include "support/Logger.h"
 #include "support/SettingsPath.h"
-#include "settings/MasterSettings.h"
 
 #include <Windows.h>
 
@@ -121,7 +120,7 @@ namespace community_shaders::vanilla_fixes
             error) {
             return defaults;
         }
-        return master_settings::gate(path, Settings{
+        return Settings{
             .enabled = readBoolean(path, L"bEnabled", defaults.enabled),
             .precipitationOcclusion = readBoolean(
                 path,
@@ -159,7 +158,7 @@ namespace community_shaders::vanilla_fixes
             .directionalLightDiagnosticMode = readDiagnosticMode(
                 path,
                 defaults.directionalLightDiagnosticMode),
-        });
+        };
     }
 
     Settings loadSettings() noexcept

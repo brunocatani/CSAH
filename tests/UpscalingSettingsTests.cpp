@@ -1,9 +1,13 @@
-#include "Features/dlaa/DlaaSettings.h"
+#include "Features/dlaa/DlaaSettingsStore.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <string>
 
 namespace
 {
@@ -14,6 +18,40 @@ namespace
         }
         return condition;
     }
+
+    class TemporaryIni final
+    {
+    public:
+        TemporaryIni() :
+            path_(std::filesystem::temp_directory_path() /
+                ("FO4VRCommunityShaders-Upscaling-" +
+                    std::to_string(
+                        std::chrono::steady_clock::now()
+                            .time_since_epoch()
+                            .count()) +
+                    ".ini"))
+        {}
+
+        ~TemporaryIni()
+        {
+            std::error_code error;
+            std::filesystem::remove(path_, error);
+        }
+
+        void write(const char* text) const
+        {
+            std::ofstream stream(path_, std::ios::binary | std::ios::trunc);
+            stream << text;
+        }
+
+        [[nodiscard]] const std::filesystem::path& path() const noexcept
+        {
+            return path_;
+        }
+
+    private:
+        std::filesystem::path path_;
+    };
 }
 
 int main()
@@ -146,5 +184,26 @@ int main()
             false,
             false),
         "DLSS rejected an actively scaled render viewport");
+
+    TemporaryIni ini;
+    ini.write(
+        "[CommunityShaders]\n"
+        "bEnabled=0\n"
+        "[DLAA]\n"
+        "bEnabled=1\n"
+        "iMode=2\n");
+    const auto independent = loadSettings(ini.path());
+    valid &= expect(
+        independent.enabled && independent.mode == Mode::dlssBalanced,
+        "Community Shaders visual gate disabled independent DLAA/DLSS");
+
+    ini.write(
+        "[CommunityShaders]\n"
+        "bEnabled=1\n"
+        "[DLAA]\n"
+        "bEnabled=0\n");
+    valid &= expect(
+        !loadSettings(ini.path()).enabled,
+        "DLAA/DLSS ignored its independent master gate");
     return valid ? 0 : 1;
 }

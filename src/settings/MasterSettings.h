@@ -22,6 +22,9 @@ namespace community_shaders::master_settings
                    path.c_str()) != 0;
     }
 
+    // Applies only to Community Shaders visual features. DLAA/DLSS,
+    // Vanilla Fixes, and Native Shadows own independent master gates and
+    // deliberately do not call this helper.
     template <class Settings>
     [[nodiscard]] Settings gate(
         const std::filesystem::path& path,

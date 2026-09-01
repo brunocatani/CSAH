@@ -226,7 +226,7 @@ namespace community_shaders::shared_settings
                 }
 
                 logging::info(
-                    "Shared Community Shaders INI monitor started for '{}'; DevMenu remains optional and Native Shadows/Vanilla Fixes master changes remain restart-only.",
+                    "Shared Community Shaders INI monitor started for '{}'; the visual suite, DLAA/DLSS, Vanilla Fixes, and Native Shadows retain independent master gates, with Native Shadows/Vanilla Fixes master changes restart-only.",
                     configPath_.string());
                 return true;
             }
@@ -311,8 +311,7 @@ namespace community_shaders::shared_settings
                         "Shared Community Shaders INI reload #{} accepted: live feature groups={}, startup-native restart pending={}.",
                         reloadNumber,
                         changes.liveFeatureCount(),
-                        changes.nativeShadows || changes.vanillaFixesGate ||
-                            changes.masterGate);
+                        changes.nativeShadows || changes.vanillaFixesGate);
                 } catch (const std::exception& error) {
                     logging::warn(
                         "Shared settings monitor rejected an INI reload: {}.",
