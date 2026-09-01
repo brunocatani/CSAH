@@ -439,6 +439,15 @@ def compile_pbr_template(
         / "PBR"
         / "PbrDirectionalTransform.hlsl"
     )
+    source_text = source.read_text(encoding="utf-8")
+    direct_gate = (
+        "if (PbrFeatureParams0.x > 1.0f / 255.0f &&\n"
+        "        PbrFeatureParams0.z > 0.5f)"
+    )
+    if direct_gate not in source_text:
+        raise ContractError(
+            "PBR Direct-Light GGX no longer owns the complete direct branch"
+        )
     output = temporary / "PbrDirectionalTransform.dxbc"
     assembly = temporary / "PbrDirectionalTransform.asm.txt"
     run(
@@ -472,8 +481,6 @@ def compile_pbr_template(
         "dcl_output o1.xyzw",
         "l(3.141593)",
         "l(0.040000)",
-        "deriv_rtx_coarse",
-        "deriv_rty_coarse",
     ):
         if required not in text:
             raise ContractError(

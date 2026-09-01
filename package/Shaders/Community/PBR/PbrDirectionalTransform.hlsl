@@ -46,7 +46,8 @@ PixelOutput PSMain(PixelInput input)
     output.Specular = input.VanillaSpecular;
 
     [branch]
-    if (PbrFeatureParams0.x > 1.0f / 255.0f)
+    if (PbrFeatureParams0.x > 1.0f / 255.0f &&
+        PbrFeatureParams0.z > 0.5f)
     {
         const int2 pixel = int2(input.Position.xy);
         const float4 material = GBufferMaterial.Load(int3(pixel, 0));
@@ -62,13 +63,6 @@ PixelOutput PSMain(PixelInput input)
         const float wettableSurface = saturate(ordinary + terrain + grass);
         const float wetness = saturate(
             BasicWetnessParams.x * BasicWetnessParams.y * wettableSurface);
-        const float3 normal = PbrSafeNormalize(
-            input.NormalCarrier.xyz,
-            float3(0.0f, 0.0f, 1.0f));
-        // Evaluate derivatives under the draw-uniform PBR gate, before the
-        // material-varying branch. This turns sub-pixel normal variance into
-        // footprint roughness instead of temporally unstable GGX fireflies.
-        const float normalVariance = PbrNormalVariance(normal);
         const float ordinaryMaterialTag = step(0.5f, material.w);
         const float metalness = PbrDecodeMetalness(material.w);
         const float complexMaterial = step(1.0f / 255.0f, metalness);
@@ -107,8 +101,9 @@ PixelOutput PSMain(PixelInput input)
                     wetness),
                 PbrMinimumRoughness,
                 1.0f);
-            roughness = PbrFilterRoughness(roughness, normalVariance);
-
+            const float3 normal = PbrSafeNormalize(
+                input.NormalCarrier.xyz,
+                float3(0.0f, 0.0f, 1.0f));
             const float3 viewDirection = PbrSafeNormalize(
                 input.ViewCarrier.xzw,
                 normal);
@@ -155,12 +150,10 @@ PixelOutput PSMain(PixelInput input)
                         PbrEpsilon) - 1.0f);
             }
 
-            const float ggxWeight = active *
-                saturate(PbrFeatureParams0.z);
             output.Specular.xyz = lerp(
                 input.VanillaSpecular.xyz,
                 ggxSpecular,
-                ggxWeight);
+                active);
             [branch]
             if (PbrFeatureParams1.y > 0.5f)
             {
