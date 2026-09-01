@@ -18,6 +18,7 @@
 
 #include "Features/native_shadows/NativeShadowRuntime.h"
 #include "Features/skylighting/SkylightingRuntime.h"
+#include "support/NearAllocation.h"
 #include "support/Logger.h"
 
 #include <MinHook.h>
@@ -42,6 +43,12 @@ namespace community_shaders::skylighting
         constexpr std::uintptr_t kWrapperRva = 0x00634300;
         constexpr std::uintptr_t kRenderRva = 0x006350C0;
         constexpr std::uintptr_t kProjectionRva = 0x00635530;
+        // FO4VR precipitation projection calls this VR frustum fan-out at
+        // 0x140635A76 before it builds the capture matrix used by traversal
+        // and probes. Own only that callsite. The shared function has other
+        // engine and plugin consumers that must remain in their current chain.
+        constexpr std::uintptr_t kSetViewFrustumVrCallsiteRva = 0x00635A76;
+        constexpr std::uintptr_t kSetViewFrustumVrRva = 0x01C2BFA0;
         constexpr std::uintptr_t kWrapperFirstCallTargetRva = 0x0012FB50;
         constexpr std::uintptr_t kDepthTargetMapperRva = 0x01DB9E40;
         constexpr std::uintptr_t kRendererStateRva = 0x038AC010;
@@ -82,6 +89,8 @@ namespace community_shaders::skylighting
         constexpr std::uint32_t kUtilityShaderKind = 1;
         constexpr std::size_t kUtilityShaderIdentitySize = 0x1C;
         constexpr std::size_t kMaximumParentTraversal = 64;
+        constexpr std::size_t kRelativeCallSize = 5;
+        constexpr std::size_t kAbsoluteJumpSize = 14;
         constexpr float kMinimumOccluderRadius = 32.0f;
         constexpr std::uint32_t kUtilityVertexColorDescriptor = 1u << 0;
         constexpr std::uint32_t kUtilityTextureDescriptor = 1u << 1;
@@ -126,6 +135,14 @@ namespace community_shaders::skylighting
             std::byte{ 0xFF }, std::byte{ 0xFF }, std::byte{ 0x48 },
             std::byte{ 0x81 }, std::byte{ 0xEC }, std::byte{ 0xE0 },
             std::byte{ 0x01 }, std::byte{ 0x00 }, std::byte{ 0x00 },
+        };
+        constexpr std::array<std::byte, 16> kSetViewFrustumVrSignature{
+            std::byte{ 0x57 }, std::byte{ 0x44 }, std::byte{ 0x8B },
+            std::byte{ 0x99 }, std::byte{ 0xB0 }, std::byte{ 0x01 },
+            std::byte{ 0x00 }, std::byte{ 0x00 }, std::byte{ 0x33 },
+            std::byte{ 0xFF }, std::byte{ 0x4C }, std::byte{ 0x8B },
+            std::byte{ 0xC2 }, std::byte{ 0x4C }, std::byte{ 0x8B },
+            std::byte{ 0xD1 },
         };
         constexpr std::array<std::byte, 27> kRenderDepthTargetSetupSignature{
             std::byte{ 0x45 }, std::byte{ 0x33 }, std::byte{ 0xC9 },
@@ -244,6 +261,9 @@ namespace community_shaders::skylighting
         using WrapperFunction = void(__fastcall*)();
         using NativeSkySingleton = void*(__fastcall*)();
         using NativeGpuCullingEnabled = std::uint8_t(__fastcall*)();
+        using SetViewFrustumVr = void(__fastcall*)(
+            void* camera,
+            RE::NiFrustum* frustum);
         using Pass14Resolver = std::uint64_t(__fastcall*)(
             void* accumulator,
             void* geometry,
@@ -269,6 +289,12 @@ namespace community_shaders::skylighting
         struct DetourIdentity
         {
             const std::byte* patch{};
+            const void* destination{};
+        };
+
+        struct DirectCallIdentity
+        {
+            const std::byte* callsite{};
             const void* destination{};
         };
 
@@ -300,6 +326,7 @@ namespace community_shaders::skylighting
         NativePrecipitationRender nativeRender{};
         NativeProjectionSetup nativeProjection{};
         NativeGpuCullingEnabled originalGpuCullingEnabled{};
+        SetViewFrustumVr originalSetViewFrustumVr{};
         Pass14Resolver originalPass14Resolver{};
         AccumulatorPassCollector collectAccumulatorPass{};
         LightingPassListResolver resolveLightingPassList{};
@@ -312,12 +339,15 @@ namespace community_shaders::skylighting
         std::optional<RE::BSFixedString> bsxKey;
         std::byte* wrapperTarget{};
         std::byte* gpuCullingEnabledTarget{};
+        std::byte* setViewFrustumVrCallsite{};
+        void* setViewFrustumVrCallThunk{};
         const void* privateRenderGpuCullingReturnAddress{};
         std::byte* pass14Target{};
         const RE::NiRTTI* specialGeometryNiRtti{};
         const void* lightingPrecipitationPassBuilder{};
         DetourIdentity installedWrapperIdentity{};
         DetourIdentity installedGpuCullingEnabledIdentity{};
+        DirectCallIdentity installedSetViewFrustumVrCallIdentity{};
         DetourIdentity installedPass14Identity{};
         std::atomic_bool installed{};
         std::atomic_bool passProducerReady{};
@@ -325,6 +355,7 @@ namespace community_shaders::skylighting
         std::atomic_bool firstCallbackLogged{};
         std::atomic_bool missingManagerLogged{};
         std::atomic_bool passProductionActive{};
+        std::atomic_uint32_t activeCaptureQuadrant{ 4u };
 
         [[nodiscard]] bool isReadableRange(
             const void* address,
@@ -573,6 +604,39 @@ namespace community_shaders::skylighting
             return passList;
         }
 
+        void __fastcall hookSetViewFrustumVr(
+            void* camera,
+            RE::NiFrustum* frustum) noexcept
+        {
+            if (!originalSetViewFrustumVr) {
+                return;
+            }
+            const auto quadrant =
+                activeCaptureQuadrant.load(std::memory_order_acquire);
+            if (!passProductionActive.load(std::memory_order_acquire) ||
+                quadrant >= 4u || !frustum) {
+                originalSetViewFrustumVr(camera, frustum);
+                return;
+            }
+
+            auto quarter = *frustum;
+            const auto horizontalCenter =
+                (quarter.left + quarter.right) * 0.5f;
+            const auto verticalCenter =
+                (quarter.top + quarter.bottom) * 0.5f;
+            if ((quadrant & 1u) == 0u) {
+                quarter.right = horizontalCenter;
+            } else {
+                quarter.left = horizontalCenter;
+            }
+            if ((quadrant & 2u) == 0u) {
+                quarter.top = verticalCenter;
+            } else {
+                quarter.bottom = verticalCenter;
+            }
+            originalSetViewFrustumVr(camera, &quarter);
+        }
+
         __declspec(noinline) std::uint8_t __fastcall
             hookGpuCullingEnabled() noexcept
         {
@@ -776,6 +840,115 @@ namespace community_shaders::skylighting
             return true;
         }
 
+        [[nodiscard]] bool captureDirectCallIdentity(
+            const std::byte* callsite,
+            DirectCallIdentity& identity) noexcept
+        {
+            identity = {};
+            const auto* destination = relativeTarget(callsite);
+            if (!destination || !isExecutableRange(destination, 1)) {
+                return false;
+            }
+            identity = { callsite, destination };
+            return true;
+        }
+
+        [[nodiscard]] bool writeCallBytes(
+            std::byte* callsite,
+            const std::array<std::byte, kRelativeCallSize>& bytes) noexcept
+        {
+            if (!isExecutableRange(callsite, bytes.size())) {
+                return false;
+            }
+            DWORD previousProtection{};
+            if (!VirtualProtect(
+                    callsite,
+                    bytes.size(),
+                    PAGE_EXECUTE_READWRITE,
+                    &previousProtection)) {
+                return false;
+            }
+            std::memcpy(callsite, bytes.data(), bytes.size());
+            const auto flushed = FlushInstructionCache(
+                                     GetCurrentProcess(),
+                                     callsite,
+                                     bytes.size()) != FALSE;
+            DWORD ignored{};
+            const auto restored = VirtualProtect(
+                                      callsite,
+                                      bytes.size(),
+                                      previousProtection,
+                                      &ignored) != FALSE;
+            return flushed && restored;
+        }
+
+        [[nodiscard]] bool encodeRelativeCall(
+            const std::byte* callsite,
+            const void* destination,
+            std::array<std::byte, kRelativeCallSize>& bytes) noexcept
+        {
+            const auto next = reinterpret_cast<std::uintptr_t>(callsite) +
+                kRelativeCallSize;
+            const auto difference = static_cast<std::int64_t>(
+                                        reinterpret_cast<std::uintptr_t>(
+                                            destination)) -
+                static_cast<std::int64_t>(next);
+            if (difference < (std::numeric_limits<std::int32_t>::min)() ||
+                difference > (std::numeric_limits<std::int32_t>::max)()) {
+                return false;
+            }
+            bytes.fill(std::byte{});
+            bytes[0] = std::byte{ 0xE8 };
+            const auto displacement = static_cast<std::int32_t>(difference);
+            std::memcpy(
+                bytes.data() + 1,
+                &displacement,
+                sizeof(displacement));
+            return true;
+        }
+
+        [[nodiscard]] void* createAbsoluteJumpThunk(
+            std::byte* callsite,
+            const void* destination) noexcept
+        {
+            const std::array nextInstructions{
+                reinterpret_cast<std::uintptr_t>(callsite) +
+                    kRelativeCallSize };
+            auto* allocation = support::near_allocation::allocateReachablePage(
+                nextInstructions,
+                reinterpret_cast<std::uintptr_t>(callsite),
+                kAbsoluteJumpSize);
+            if (!allocation) {
+                return nullptr;
+            }
+            std::array<std::byte, kAbsoluteJumpSize> thunk{
+                std::byte{ 0xFF }, std::byte{ 0x25 }, std::byte{},
+                std::byte{}, std::byte{}, std::byte{} };
+            const auto destinationAddress =
+                reinterpret_cast<std::uintptr_t>(destination);
+            std::memcpy(
+                thunk.data() + 6,
+                &destinationAddress,
+                sizeof(destinationAddress));
+            std::memcpy(allocation, thunk.data(), thunk.size());
+            DWORD previousProtection{};
+            const auto executable = VirtualProtect(
+                                        allocation,
+                                        thunk.size(),
+                                        PAGE_EXECUTE_READ,
+                                        &previousProtection) != FALSE;
+            const auto flushed = executable &&
+                FlushInstructionCache(
+                    GetCurrentProcess(),
+                    allocation,
+                    thunk.size()) != FALSE;
+            if (!flushed) {
+                (void)VirtualFree(allocation, 0, MEM_RELEASE);
+                return nullptr;
+            }
+            return allocation;
+        }
+
         void __fastcall hookWrapper() noexcept
         {
             if (originalWrapper) {
@@ -801,10 +974,13 @@ namespace community_shaders::skylighting
         }
     }
 
-    ScopedOcclusionPassProduction::ScopedOcclusionPassProduction() noexcept
+    ScopedOcclusionPassProduction::ScopedOcclusionPassProduction(
+        std::uint32_t captureQuadrant) noexcept
     {
         active_ = passProducerReady.load(std::memory_order_acquire) &&
             originalGpuCullingEnabled && gpuCullingEnabledTarget &&
+            originalSetViewFrustumVr && setViewFrustumVrCallsite &&
+            setViewFrustumVrCallThunk &&
             privateRenderGpuCullingReturnAddress &&
             originalPass14Resolver &&
             collectAccumulatorPass &&
@@ -818,12 +994,18 @@ namespace community_shaders::skylighting
                 true,
                 std::memory_order_acq_rel,
                 std::memory_order_acquire);
+            if (active_) {
+                activeCaptureQuadrant.store(
+                    captureQuadrant % 4u,
+                    std::memory_order_release);
+            }
         }
     }
 
     ScopedOcclusionPassProduction::~ScopedOcclusionPassProduction() noexcept
     {
         if (active_) {
+            activeCaptureQuadrant.store(4u, std::memory_order_release);
             passProductionActive.store(false, std::memory_order_release);
         }
     }
@@ -879,6 +1061,16 @@ namespace community_shaders::skylighting
         if (!inImage(kProjectionRva, kProjectionSignature.size())) {
             logging::error(
                 "Skylighting native projection contract at RVA 0x00635530 is outside the FO4VR image.");
+            return false;
+        }
+        if (!inImage(
+                kSetViewFrustumVrCallsiteRva,
+                kRelativeCallSize) ||
+            !inImage(
+                kSetViewFrustumVrRva,
+                kSetViewFrustumVrSignature.size())) {
+            logging::error(
+                "Skylighting native VR frustum call contract at RVA 0x00635A76 -> 0x01C2BFA0 is outside the FO4VR image.");
             return false;
         }
         if (!inImage(
@@ -940,6 +1132,9 @@ namespace community_shaders::skylighting
         auto* wrapper = image + kWrapperRva;
         auto* render = image + kRenderRva;
         auto* projection = image + kProjectionRva;
+        auto* setViewFrustumVrCall =
+            image + kSetViewFrustumVrCallsiteRva;
+        auto* setViewFrustumVr = image + kSetViewFrustumVrRva;
         auto* renderDepthTargetSetup =
             render + kRenderDepthTargetSetupOffset;
         auto* depthTargetMapper = image + kDepthTargetMapperRva;
@@ -1040,6 +1235,44 @@ namespace community_shaders::skylighting
             logging::error(
                 "Skylighting native projection signature mismatch at RVA 0x00635530.");
             return false;
+        }
+        DirectCallIdentity preexistingSetViewFrustumCall{};
+        if (!captureDirectCallIdentity(
+                setViewFrustumVrCall,
+                preexistingSetViewFrustumCall) ||
+            preexistingSetViewFrustumCall.destination ==
+                reinterpret_cast<const void*>(&hookSetViewFrustumVr)) {
+            logging::error(
+                "Skylighting native precipitation VR-frustum callsite at RVA 0x00635A76 has no safe executable predecessor.");
+            return false;
+        }
+        const auto callTargetsNativeEntry =
+            preexistingSetViewFrustumCall.destination == setViewFrustumVr;
+        const auto nativeSetViewFrustum = callTargetsNativeEntry &&
+            isExecutableRange(
+                setViewFrustumVr,
+                kSetViewFrustumVrSignature.size()) &&
+            std::memcmp(
+                setViewFrustumVr,
+                kSetViewFrustumVrSignature.data(),
+                kSetViewFrustumVrSignature.size()) == 0;
+        DetourIdentity preexistingSetViewFrustumDetour{};
+        const auto chainedNativeEntry = callTargetsNativeEntry &&
+            !nativeSetViewFrustum &&
+            captureDetourIdentity(
+                setViewFrustumVr,
+                preexistingSetViewFrustumDetour);
+        if (!callTargetsNativeEntry) {
+            logging::info(
+                "Skylighting found an existing precipitation VR-frustum call owner at RVA 0x00635A76 and will preserve its executable destination {}.",
+                fmt::ptr(preexistingSetViewFrustumCall.destination));
+        } else if (chainedNativeEntry) {
+            logging::info(
+                "Skylighting found an existing VR-frustum detour at RVA 0x01C2BFA0 and will preserve it through the precipitation-only callsite chain (destination={}).",
+                fmt::ptr(preexistingSetViewFrustumDetour.destination));
+        } else if (!nativeSetViewFrustum) {
+            logging::warn(
+                "Skylighting found externally modified bytes at the executable VR-frustum entry RVA 0x01C2BFA0; the exact precipitation call predecessor is retained without assuming detour encoding.");
         }
         if (!isReadableRange(image + kCubeSizeRva, sizeof(float))) {
             logging::error(
@@ -1218,6 +1451,7 @@ namespace community_shaders::skylighting
         const auto resetResolvedContracts = []() noexcept {
             originalWrapper = nullptr;
             originalGpuCullingEnabled = nullptr;
+            originalSetViewFrustumVr = nullptr;
             originalPass14Resolver = nullptr;
             nativeSkySingleton = nullptr;
             nativeRender = nullptr;
@@ -1234,13 +1468,23 @@ namespace community_shaders::skylighting
             lightingPrecipitationPassBuilder = nullptr;
             wrapperTarget = nullptr;
             gpuCullingEnabledTarget = nullptr;
+            setViewFrustumVrCallsite = nullptr;
+            if (setViewFrustumVrCallThunk) {
+                (void)VirtualFree(
+                    setViewFrustumVrCallThunk,
+                    0,
+                    MEM_RELEASE);
+                setViewFrustumVrCallThunk = nullptr;
+            }
             privateRenderGpuCullingReturnAddress = nullptr;
             pass14Target = nullptr;
             installedWrapperIdentity = {};
             installedGpuCullingEnabledIdentity = {};
+            installedSetViewFrustumVrCallIdentity = {};
             installedPass14Identity = {};
             passProducerReady.store(false, std::memory_order_release);
             bsxKey.reset();
+            activeCaptureQuadrant.store(4u, std::memory_order_release);
         };
 
         void* wrapperTrampoline{};
@@ -1304,6 +1548,8 @@ namespace community_shaders::skylighting
         originalGpuCullingEnabled =
             reinterpret_cast<NativeGpuCullingEnabled>(
                 gpuCullingEnabledTrampoline);
+        originalSetViewFrustumVr = reinterpret_cast<SetViewFrustumVr>(
+            preexistingSetViewFrustumCall.destination);
         originalPass14Resolver = reinterpret_cast<Pass14Resolver>(
             pass14Trampoline);
         nativeSkySingleton =
@@ -1367,17 +1613,60 @@ namespace community_shaders::skylighting
             return false;
         }
 
+        std::array<std::byte, kRelativeCallSize> originalFrustumCall{};
+        std::memcpy(
+            originalFrustumCall.data(),
+            setViewFrustumVrCall,
+            originalFrustumCall.size());
+        auto* frustumCallThunk = createAbsoluteJumpThunk(
+            setViewFrustumVrCall,
+            reinterpret_cast<const void*>(&hookSetViewFrustumVr));
+        std::array<std::byte, kRelativeCallSize> replacementFrustumCall{};
+        DirectCallIdentity frustumCallIdentity{};
+        const auto callEncoded = frustumCallThunk && encodeRelativeCall(
+            setViewFrustumVrCall,
+            frustumCallThunk,
+            replacementFrustumCall);
+        const auto callWritten = callEncoded && writeCallBytes(
+            setViewFrustumVrCall,
+            replacementFrustumCall);
+        const auto callOwned = callWritten && captureDirectCallIdentity(
+            setViewFrustumVrCall,
+            frustumCallIdentity) &&
+            frustumCallIdentity.destination == frustumCallThunk;
+        if (!callOwned) {
+            (void)writeCallBytes(
+                setViewFrustumVrCall,
+                originalFrustumCall);
+            if (frustumCallThunk) {
+                (void)VirtualFree(frustumCallThunk, 0, MEM_RELEASE);
+            }
+            (void)MH_DisableHook(wrapper);
+            (void)MH_DisableHook(pass14Resolver);
+            (void)MH_DisableHook(gpuCullingEnabled);
+            (void)MH_RemoveHook(wrapper);
+            (void)MH_RemoveHook(pass14Resolver);
+            (void)MH_RemoveHook(gpuCullingEnabled);
+            logging::error(
+                "Skylighting could not own the precipitation-only VR-frustum callsite at RVA 0x00635A76; all native capture hooks were rolled back.");
+            resetResolvedContracts();
+            return false;
+        }
+
         wrapperTarget = wrapper;
         gpuCullingEnabledTarget = gpuCullingEnabled;
+        setViewFrustumVrCallsite = setViewFrustumVrCall;
+        setViewFrustumVrCallThunk = frustumCallThunk;
         pass14Target = pass14Resolver;
         installedWrapperIdentity = wrapperIdentity;
         installedGpuCullingEnabledIdentity = gpuCullingEnabledIdentity;
+        installedSetViewFrustumVrCallIdentity = frustumCallIdentity;
         installedPass14Identity = pass14Identity;
         passProducerReady.store(true, std::memory_order_release);
         installed.store(true, std::memory_order_release);
         Runtime::get().setNativeHookOwned(true);
         logging::info(
-            "Installed verified FO4VR Skylighting capture and world-occlusion producer (wrapper RVA 0x00634300, scoped GPU-culling query RVA 0x027E0D50, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
+            "Installed verified FO4VR Skylighting quadrant capture and world-occlusion producer (wrapper RVA 0x00634300, precipitation VR-frustum callsite RVA 0x00635A76 preserving target RVA 0x01C2BFA0, scoped GPU-culling query RVA 0x027E0D50, pass-14 resolver RVA 0x0281CB50, accumulator collector RVA 0x0281E760, pass-list resolver RVA 0x027A51E0, utility shader RVA 0x0689B4F0).");
         return true;
     }
 
@@ -1404,6 +1693,21 @@ namespace community_shaders::skylighting
                 installedGpuCullingEnabledIdentity.patch &&
             currentGpuCullingEnabled.destination ==
                 installedGpuCullingEnabledIdentity.destination;
+        DirectCallIdentity currentSetViewFrustumVrCall{};
+        const auto setViewFrustumVrOwned =
+            installed.load(std::memory_order_acquire) &&
+            setViewFrustumVrCallsite && setViewFrustumVrCallThunk &&
+            installedSetViewFrustumVrCallIdentity.callsite &&
+            installedSetViewFrustumVrCallIdentity.destination &&
+            captureDirectCallIdentity(
+                setViewFrustumVrCallsite,
+                currentSetViewFrustumVrCall) &&
+            currentSetViewFrustumVrCall.callsite ==
+                installedSetViewFrustumVrCallIdentity.callsite &&
+            currentSetViewFrustumVrCall.destination ==
+                installedSetViewFrustumVrCallIdentity.destination &&
+            currentSetViewFrustumVrCall.destination ==
+                setViewFrustumVrCallThunk;
         DetourIdentity currentPass14{};
         const auto pass14Owned = installed.load(std::memory_order_acquire) &&
             pass14Target && installedPass14Identity.patch &&
@@ -1416,15 +1720,16 @@ namespace community_shaders::skylighting
             utilityShaderVtable,
             utilityShaderSecondaryVtable);
         const auto utilityShaderOwned = utilityIdentity.valid();
-        const auto owned = wrapperOwned && gpuCullingEnabledOwned &&
-            pass14Owned && utilityShaderOwned;
+        const auto owned = wrapperOwned && setViewFrustumVrOwned &&
+            gpuCullingEnabledOwned && pass14Owned && utilityShaderOwned;
         passProducerReady.store(owned, std::memory_order_release);
         Runtime::get().setNativeHookOwned(owned);
         if (!owned && installed.load(std::memory_order_acquire)) {
             logging::error(
-                "Skylighting native ownership validation failed at '{}' (wrapper={}, gpuCullingQuery={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
+                "Skylighting native ownership validation failed at '{}' (wrapper={}, vrFrustumCall={}, gpuCullingQuery={}, pass14={}, utilityShader={}); ambient consumption and private capture are disabled.",
                 trigger ? trigger : "unknown",
                 wrapperOwned,
+                setViewFrustumVrOwned,
                 gpuCullingEnabledOwned,
                 pass14Owned,
                 utilityShaderOwned);

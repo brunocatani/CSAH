@@ -175,6 +175,7 @@ namespace community_shaders::skylighting
             bool previousCellValid{};
             bool dataValid{};
             std::uint32_t updateSliceCursor{};
+            std::uint32_t captureQuadrant{};
         };
 
         [[nodiscard]] static Dimensions dimensionsFor(Quality quality) noexcept;
