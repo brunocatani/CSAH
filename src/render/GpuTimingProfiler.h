@@ -4,6 +4,7 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +14,13 @@ namespace community_shaders::render
     class GpuTimingProfiler final
     {
     public:
+        enum class Group : std::uint32_t
+        {
+            ContactShadows = 1u,
+            Skylighting = 2u,
+            General = 4u,
+        };
+
         static constexpr std::size_t kMaximumSegments = 4;
         static constexpr std::size_t kSlotCount = 8;
         static constexpr std::uint32_t kMaximumReports = 6;
@@ -53,7 +61,9 @@ namespace community_shaders::render
             const std::array<const char*, kMaximumSegments>& labels,
             std::uint32_t segmentCount,
             std::uint32_t reportSampleCount = 120,
-            std::uint32_t sampleStride = 1) noexcept;
+            std::uint32_t sampleStride = 1,
+            Group group = Group::General) noexcept;
+        static void setOnDemandGroups(std::uint32_t groups) noexcept;
         void reset() noexcept;
         [[nodiscard]] Scope begin() noexcept;
         void poll() noexcept;
@@ -75,6 +85,7 @@ namespace community_shaders::render
         void finish(Scope& scope) noexcept;
         void discard(Slot& slot) noexcept;
         void logIfReady() noexcept;
+        void synchronizeCollectionRequest() noexcept;
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
@@ -92,6 +103,9 @@ namespace community_shaders::render
         std::uint64_t completedCpuSamples_{};
         std::chrono::steady_clock::time_point nextReport_{};
         std::uint32_t reportsEmitted_{};
+        std::uint64_t collectionRequestRevision_{};
+        Group group_{ Group::General };
+        bool continuousCollection_{};
         bool collecting_{};
     };
 }

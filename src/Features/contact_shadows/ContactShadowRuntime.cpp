@@ -426,7 +426,8 @@ namespace community_shaders::contact_shadows
                 { "wavefront setup", "raymarch", "resolve", nullptr },
                 3,
                 120,
-                10)) {
+                10,
+                render::GpuTimingProfiler::Group::ContactShadows)) {
             logging::warn(
                 "Contact Shadows could not allocate image-neutral GPU timing queries; rendering remains active without performance telemetry.");
         }
@@ -437,7 +438,8 @@ namespace community_shaders::contact_shadows
                 { "DFLight replacement draw", nullptr, nullptr, nullptr },
                 1,
                 120,
-                31)) {
+                31,
+                render::GpuTimingProfiler::Group::ContactShadows)) {
             logging::warn(
                 "Contact Shadows could not allocate replacement-draw GPU timing queries; rendering remains active without performance telemetry.");
         }

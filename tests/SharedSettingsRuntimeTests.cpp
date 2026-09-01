@@ -23,6 +23,15 @@ int main()
     const Snapshot baseline{};
     require(!diff(baseline, baseline).any(), "equal snapshots changed");
 
+    auto profiling = baseline;
+    profiling.diagnostics.gpuProfilingGroups = 3;
+    const auto profilingChanges = diff(baseline, profiling);
+    require(profilingChanges.any(), "GPU profiling mode diff");
+    require(profilingChanges.diagnostics, "GPU profiling classification");
+    require(
+        profilingChanges.liveFeatureCount() == 1,
+        "GPU profiling live group count");
+
     auto masterOff = baseline;
     masterOff.masterEnabled = false;
     masterOff.vanillaFixes.enabled = false;

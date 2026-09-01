@@ -74,9 +74,9 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 116)
+if(NOT controlCount EQUAL 117)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 116 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 117 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -94,7 +94,8 @@ foreach(required IN ITEMS
     filmic-strength white-point-scale diffuse-ibl-level grass-wrap
     hair-highlight skin-strength wetness-amount cloud-opacity strength
     quality precipitation native-shadows-enabled shadow-distance mode
-    center-width stereo-sun-occlusion directional-diagnostic)
+    center-width stereo-sun-occlusion directional-diagnostic
+    gpu-profiling-mode)
   list(FIND controlIds "${required}" controlIndex)
   if(controlIndex EQUAL -1)
     message(FATAL_ERROR
@@ -147,7 +148,8 @@ foreach(required IN ITEMS
     "cloud_shadows::Runtime::get().applySettings"
     "skylighting::Runtime::get().applySettings"
     "sky_sync::Runtime::get().applySettings"
-    "vanilla_fixes::applySettings")
+    "vanilla_fixes::applySettings"
+    "GpuTimingProfiler::setOnDemandGroups")
   string(FIND "${sharedSettingsSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
@@ -215,4 +217,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 116 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 117 shared-INI controls, direct runtime publication, no wrist provider or assets")

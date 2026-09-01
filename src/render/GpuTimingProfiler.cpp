@@ -1,6 +1,7 @@
 #include "render/GpuTimingProfiler.h"
 
 #include <algorithm>
+#include <atomic>
 #include <spdlog/spdlog.h>
 #include <utility>
 
@@ -12,6 +13,13 @@ namespace community_shaders::render
         // Permit one disjoint interval at a time so nested feature scopes do
         // not create overlapping D3D11 timestamp-disjoint transactions.
         GpuTimingProfiler* activeProfiler{};
+        constexpr std::uint32_t kOnDemandGroupMask =
+            static_cast<std::uint32_t>(
+                GpuTimingProfiler::Group::ContactShadows) |
+            static_cast<std::uint32_t>(
+                GpuTimingProfiler::Group::Skylighting);
+        std::atomic_uint32_t onDemandGroups{};
+        std::atomic_uint64_t collectionRequestRevision{};
     }
 
     GpuTimingProfiler::Scope::Scope(
@@ -72,7 +80,8 @@ namespace community_shaders::render
         const std::array<const char*, kMaximumSegments>& labels,
         std::uint32_t segmentCount,
         std::uint32_t reportSampleCount,
-        std::uint32_t sampleStride) noexcept
+        std::uint32_t sampleStride,
+        Group group) noexcept
     {
         reset();
         if (!device || !context || !name || segmentCount == 0 ||
@@ -113,10 +122,30 @@ namespace community_shaders::render
         segmentCount_ = segmentCount;
         reportSampleCount_ = reportSampleCount;
         sampleStride_ = (std::max)(1u, sampleStride);
+        group_ = group;
+        collectionRequestRevision_ =
+            collectionRequestRevision.load(std::memory_order_acquire);
+        const auto requestedGroups =
+            onDemandGroups.load(std::memory_order_acquire);
+        continuousCollection_ =
+            (requestedGroups & static_cast<std::uint32_t>(group_)) != 0;
         nextReport_ = std::chrono::steady_clock::now() +
             std::chrono::seconds(5);
-        collecting_ = true;
+        collecting_ = requestedGroups == 0 || continuousCollection_;
         return true;
+    }
+
+    void GpuTimingProfiler::setOnDemandGroups(
+        std::uint32_t groups) noexcept
+    {
+        groups &= kOnDemandGroupMask;
+        if (onDemandGroups.exchange(
+                groups,
+                std::memory_order_acq_rel) != groups) {
+            collectionRequestRevision.fetch_add(
+                1,
+                std::memory_order_acq_rel);
+        }
     }
 
     void GpuTimingProfiler::reset() noexcept
@@ -140,11 +169,15 @@ namespace community_shaders::render
         completedCpuSamples_ = 0;
         nextReport_ = {};
         reportsEmitted_ = 0;
+        collectionRequestRevision_ = 0;
+        group_ = Group::General;
+        continuousCollection_ = false;
         collecting_ = false;
     }
 
     GpuTimingProfiler::Scope GpuTimingProfiler::begin() noexcept
     {
+        synchronizeCollectionRequest();
         poll();
         if (!context_ || segmentCount_ == 0 || !collecting_) {
             return {};
@@ -297,10 +330,32 @@ namespace community_shaders::render
         logIfReady();
     }
 
+    void GpuTimingProfiler::synchronizeCollectionRequest() noexcept
+    {
+        const auto revision =
+            collectionRequestRevision.load(std::memory_order_acquire);
+        if (collectionRequestRevision_ == revision) {
+            return;
+        }
+        collectionRequestRevision_ = revision;
+        const auto requestedGroups =
+            onDemandGroups.load(std::memory_order_acquire);
+        continuousCollection_ =
+            (requestedGroups & static_cast<std::uint32_t>(group_)) != 0;
+        collecting_ = continuousCollection_;
+        accumulatedMilliseconds_ = {};
+        completedSamples_ = 0;
+        accumulatedCpuMilliseconds_ = 0.0;
+        completedCpuSamples_ = 0;
+        reportsEmitted_ = 0;
+        nextReport_ = std::chrono::steady_clock::now() +
+            std::chrono::seconds(5);
+    }
+
     void GpuTimingProfiler::logIfReady() noexcept
     {
         const auto now = std::chrono::steady_clock::now();
-        if (completedSamples_ < reportSampleCount_ || !name_ ||
+        if (!collecting_ || completedSamples_ < reportSampleCount_ || !name_ ||
             now < nextReport_) {
             return;
         }
@@ -350,7 +405,8 @@ namespace community_shaders::render
         completedCpuSamples_ = 0;
         nextReport_ = now + std::chrono::seconds(5);
         ++reportsEmitted_;
-        if (reportsEmitted_ >= kMaximumReports) {
+        if (!continuousCollection_ &&
+            reportsEmitted_ >= kMaximumReports) {
             collecting_ = false;
         }
     }
