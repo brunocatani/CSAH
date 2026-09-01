@@ -42,6 +42,18 @@ int main()
                  0.0f),
         "invalid metalness did not fail closed");
 
+    require(near(filterRoughness(0.25f, 0.0f, 0.0f), 0.25f),
+        "flat-normal footprint changed material roughness");
+    require(filterRoughness(0.04f, 0.25f, 0.25f) > 0.42f,
+        "high normal variance did not broaden the sub-pixel GGX lobe");
+    require(near(
+                filterRoughness(
+                    0.04f,
+                    std::numeric_limits<float>::infinity(),
+                    0.0f),
+                0.04f),
+        "non-finite normal variance did not fail closed");
+
     require(phongEncodedToRoughness(1.0f) <
             phongEncodedToRoughness(0.0f),
         "Phong conversion did not preserve gloss ordering");

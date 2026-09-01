@@ -210,6 +210,20 @@ PixelOutput PSMain(PixelInput input)
     const float wetness = saturate(
         BasicWetnessParams.x * BasicWetnessParams.y *
         saturate(ordinaryOrGrass + terrain));
+    float3 receiverWorldPosition;
+    float3 viewDirection;
+    const bool receiverPositionValid =
+        ReconstructReceiverWorldPosition(
+            input.ScreenUv,
+            receiverWorldPosition,
+            viewDirection);
+    const float3 reflectionDirection =
+        -input.DirectionAndArray.xyz;
+    const float3 reconstructedNormal = PbrSafeNormalize(
+        reflectionDirection + viewDirection,
+        reflectionDirection);
+    const float normalVariance = receiverPositionValid ?
+        PbrNormalVariance(reconstructedNormal) : 0.0f;
     const float wetLod = input.Lod * lerp(
         1.0,
         saturate(BasicWetnessMaterialParams.x),
@@ -242,18 +256,14 @@ PixelOutput PSMain(PixelInput input)
             material.y,
             PbrMaterialParams0.x,
             PbrMaterialParams0.y);
+        pbrRoughness = PbrFilterRoughness(
+            pbrRoughness,
+            normalVariance);
         environmentLod = lerp(
             wetLod,
             pbrRoughness * 7.0f,
             pbrActive);
     }
-    float3 receiverWorldPosition;
-    float3 viewDirection;
-    const bool receiverPositionValid =
-        ReconstructReceiverWorldPosition(
-            input.ScreenUv,
-            receiverWorldPosition,
-            viewDirection);
     float4 vanilla = VanillaEnvironment.SampleLevel(
         EnvironmentSampler,
         input.DirectionAndArray,
@@ -341,10 +351,6 @@ PixelOutput PSMain(PixelInput input)
         float normalDotView = 0.5f;
         if (receiverPositionValid)
         {
-            const float3 reflectionDirection =
-                -input.DirectionAndArray.xyz;
-            const float3 reconstructedNormal = normalize(
-                reflectionDirection + viewDirection);
             normalDotView = saturate(abs(dot(
                 reconstructedNormal,
                 viewDirection)));

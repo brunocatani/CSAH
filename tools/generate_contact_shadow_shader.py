@@ -472,6 +472,8 @@ def compile_pbr_template(
         "dcl_output o1.xyzw",
         "l(3.141593)",
         "l(0.040000)",
+        "deriv_rtx_coarse",
+        "deriv_rty_coarse",
     ):
         if required not in text:
             raise ContractError(

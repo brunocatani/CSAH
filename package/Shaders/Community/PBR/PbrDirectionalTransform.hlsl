@@ -62,6 +62,13 @@ PixelOutput PSMain(PixelInput input)
         const float wettableSurface = saturate(ordinary + terrain + grass);
         const float wetness = saturate(
             BasicWetnessParams.x * BasicWetnessParams.y * wettableSurface);
+        const float3 normal = PbrSafeNormalize(
+            input.NormalCarrier.xyz,
+            float3(0.0f, 0.0f, 1.0f));
+        // Evaluate derivatives under the draw-uniform PBR gate, before the
+        // material-varying branch. This turns sub-pixel normal variance into
+        // footprint roughness instead of temporally unstable GGX fireflies.
+        const float normalVariance = PbrNormalVariance(normal);
         const float ordinaryMaterialTag = step(0.5f, material.w);
         const float metalness = PbrDecodeMetalness(material.w);
         const float complexMaterial = step(1.0f / 255.0f, metalness);
@@ -100,10 +107,8 @@ PixelOutput PSMain(PixelInput input)
                     wetness),
                 PbrMinimumRoughness,
                 1.0f);
+            roughness = PbrFilterRoughness(roughness, normalVariance);
 
-            const float3 normal = PbrSafeNormalize(
-                input.NormalCarrier.xyz,
-                float3(0.0f, 0.0f, 1.0f));
             const float3 viewDirection = PbrSafeNormalize(
                 input.ViewCarrier.xzw,
                 normal);

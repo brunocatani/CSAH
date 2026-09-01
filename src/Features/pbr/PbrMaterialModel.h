@@ -8,6 +8,33 @@
 namespace community_shaders::pbr
 {
     constexpr float kMinimumPerceptualRoughness = 0.04f;
+    constexpr float kMaximumKernelRoughnessSquared = 0.18f;
+
+    [[nodiscard]] inline float filterRoughness(
+        float roughness,
+        float normalDerivativeXLengthSquared,
+        float normalDerivativeYLengthSquared) noexcept
+    {
+        const auto safeRoughness = std::isfinite(roughness) ?
+            std::clamp(roughness, kMinimumPerceptualRoughness, 1.0f) :
+            1.0f;
+        const auto derivativeX =
+            std::isfinite(normalDerivativeXLengthSquared) ?
+            (std::max)(normalDerivativeXLengthSquared, 0.0f) : 0.0f;
+        const auto derivativeY =
+            std::isfinite(normalDerivativeYLengthSquared) ?
+            (std::max)(normalDerivativeYLengthSquared, 0.0f) : 0.0f;
+        const auto variance = 0.5f * (derivativeX + derivativeY);
+        const auto kernelRoughnessSquared = (std::min)(
+            2.0f * variance,
+            kMaximumKernelRoughnessSquared);
+        return std::clamp(
+            std::sqrt(
+                safeRoughness * safeRoughness +
+                kernelRoughnessSquared),
+            kMinimumPerceptualRoughness,
+            1.0f);
+    }
 
     [[nodiscard]] inline float decodeComplexMetalness(
         float encodedMaterialTag) noexcept

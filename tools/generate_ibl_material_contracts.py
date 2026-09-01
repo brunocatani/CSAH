@@ -198,6 +198,8 @@ def compile_template(
         "ComplexMaterialWeight",
         "PbrFeatureParams0",
         "PbrEnvironmentBrdf",
+        "PbrNormalVariance",
+        "PbrFilterRoughness",
         "input.EncodedMaterialTag",
         "[branch]",
         "retainedDiffuse /\n        max(1.0 - metalness, 1.0 / 255.0)",
@@ -250,6 +252,8 @@ def compile_template(
         "dcl_resource_texture2d (float,float,float,float) t47",
         "dcl_output o0.xyzw",
         "dcl_output o1.xyzw",
+        "deriv_rtx_coarse",
+        "deriv_rty_coarse",
     ):
         if required not in text:
             raise ContractError(

@@ -4,12 +4,33 @@
 static const float PbrPi = 3.14159265358979323846f;
 static const float PbrEpsilon = 1.0e-5f;
 static const float PbrMinimumRoughness = 0.04f;
+static const float PbrMaximumKernelRoughnessSquared = 0.18f;
 
 float3 PbrSafeNormalize(float3 value, float3 fallback)
 {
     const float lengthSquared = dot(value, value);
     return lengthSquared > PbrEpsilon ?
         value * rsqrt(lengthSquared) : fallback;
+}
+
+float PbrNormalVariance(float3 normal)
+{
+    const float3 derivativeX = ddx_coarse(normal);
+    const float3 derivativeY = ddy_coarse(normal);
+    return 0.5f * (
+        dot(derivativeX, derivativeX) +
+        dot(derivativeY, derivativeY));
+}
+
+float PbrFilterRoughness(float roughness, float normalVariance)
+{
+    const float kernelRoughnessSquared = min(
+        2.0f * max(normalVariance, 0.0f),
+        PbrMaximumKernelRoughnessSquared);
+    return clamp(
+        sqrt(saturate(roughness * roughness + kernelRoughnessSquared)),
+        PbrMinimumRoughness,
+        1.0f);
 }
 
 float3 PbrFresnelSchlick(float3 f0, float viewDotHalf)
