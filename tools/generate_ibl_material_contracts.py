@@ -738,6 +738,20 @@ def multiply_temp_rgb(register: int, lobe_register: int) -> list[int]:
     return result
 
 
+def initialize_temp_unity(register: int) -> list[int]:
+    destination = temp_mask_operand(register, 0xF)
+    source = [
+        0x00004002,
+        0x3F800000,
+        0x3F800000,
+        0x3F800000,
+        0x3F800000,
+    ]
+    result = [MOV_OPCODE, *destination, *source]
+    result[0] |= len(result) << 24
+    return result
+
+
 def patch_shader(
     original: bytes,
     declarations: list[list[int]],
@@ -980,6 +994,12 @@ def patch_shader(
     updated_temp_declaration[1] = original_temp_count + template_temp_count + 4
 
     rewritten_body: list[int] = []
+    if sslr_sample is not None:
+        # The environment sample can sit inside an original DFComposite
+        # branch while the native SSLR sample is outside it. Seed the shared
+        # lobe before all original control flow so a skipped environment path
+        # leaves SSLR unchanged instead of consuming an uninitialized temp.
+        rewritten_body.extend(initialize_temp_unity(lobe_scratch))
     for start, end in body:
         if start == material_start and end == material_end:
             material_sample = list(words[start:end])
@@ -1202,7 +1222,7 @@ def validate_candidate(
         raise ContractError(f"{name} did not branch around sparse metal work")
     sslr_lobe = re.search(
         r"sample_indexable\(texture2d\).*r(\d+)\.xyzw,.*\bt14(?:\b|\.).*\n"
-        r"\s*mul r\1\.xyz, r\1\.[xyzw]{4}, r\d+\.[xyzw]{4}",
+        r"\s*mul r\1\.xyz, r\1\.[xyzw]{4}, r(\d+)\.[xyzw]{4}",
         candidate_text,
     )
     if (sslr_lobe is not None) != sslr_lobe_expected:
@@ -1218,6 +1238,23 @@ def validate_candidate(
             f"{name} changed the exact SSLR PBR-lobe integration: "
             + sslr_excerpt
         )
+    if sslr_lobe is not None:
+        lobe_register = sslr_lobe.group(2)
+        lobe_initializer = re.search(
+            rf"^\s*mov r{lobe_register}\.xyzw, "
+            r"l\(1\.000000,\s*1\.000000,\s*1\.000000,\s*1\.000000\)",
+            candidate_text,
+            re.MULTILINE,
+        )
+        first_branch = candidate_text.find("if_nz")
+        if (
+            lobe_initializer is None
+            or first_branch < 0
+            or lobe_initializer.start() >= first_branch
+        ):
+            raise ContractError(
+                f"{name} does not initialize its SSLR lobe before control flow"
+            )
     if (
         "l(-1.000000, -0.027500, -0.572000, 0.022000)"
         not in candidate_text
