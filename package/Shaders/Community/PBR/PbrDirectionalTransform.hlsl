@@ -2,6 +2,7 @@
 
 Texture2D<float4> GBufferAlbedo : register(t0);
 Texture2D<float4> GBufferMaterial : register(t2);
+Texture2D<float4> AuthoredPbrMaterial : register(t45);
 Texture2D<float> SurfaceClass : register(t47);
 
 cbuffer NativeDFLight : register(b2)
@@ -51,6 +52,11 @@ PixelOutput PSMain(PixelInput input)
     {
         const int2 pixel = int2(input.Position.xy);
         const float4 material = GBufferMaterial.Load(int3(pixel, 0));
+        const float4 authoredMaterial =
+            AuthoredPbrMaterial.Load(int3(pixel, 0));
+        const float authoredActive = step(0.5f, authoredMaterial.x);
+        const float authoredRoughness = saturate(
+            authoredMaterial.x * 2.0f - 1.0f);
         const float surfaceCode =
             SurfaceClass.Load(int3(pixel, 0)) * 255.0f;
         const float ordinary = 1.0f - step(0.5f, abs(surfaceCode));
@@ -64,12 +70,17 @@ PixelOutput PSMain(PixelInput input)
         const float wetness = saturate(
             BasicWetnessParams.x * BasicWetnessParams.y * wettableSurface);
         const float ordinaryMaterialTag = step(0.5f, material.w);
-        const float metalness = PbrDecodeMetalness(material.w);
-        const float complexMaterial = step(1.0f / 255.0f, metalness);
-        const float authoredOrLegacy = saturate(
+        const float legacyMetalness = PbrDecodeMetalness(material.w);
+        const float metalness = lerp(
+            legacyMetalness,
+            saturate(authoredMaterial.y),
+            authoredActive);
+        const float complexMaterial = step(
+            1.0f / 255.0f, legacyMetalness);
+        const float legacyActive = ordinaryMaterialTag * saturate(
             complexMaterial + saturate(PbrFeatureParams0.y));
-        const float active = supportedSurface * ordinaryMaterialTag *
-            authoredOrLegacy;
+        const float active = supportedSurface * saturate(
+            authoredActive + legacyActive);
 
         [branch]
         if (active > 1.0f / 255.0f)
@@ -77,10 +88,18 @@ PixelOutput PSMain(PixelInput input)
             const float3 retainedDiffuse = max(
                 GBufferAlbedo.Load(int3(pixel, 0)).rgb,
                 0.0f);
-            const float3 baseColour = retainedDiffuse /
+            const float3 legacyBaseColour = retainedDiffuse /
                 max(1.0f - metalness, 1.0f / 255.0f);
+            // The legacy complex-material producer already removes the
+            // metallic diffuse share before this pass. Authored RMAOS is an
+            // independent material overlay, so its retained G-buffer albedo
+            // is still the unattenuated base colour.
+            const float3 baseColour = lerp(
+                legacyBaseColour,
+                retainedDiffuse,
+                authoredActive);
             const float dielectricF0 = PbrDielectricF0(
-                material.y,
+                lerp(material.y, authoredMaterial.w, authoredActive),
                 PbrMaterialParams0.z,
                 PbrMaterialParams0.w,
                 PbrMaterialParams1.x);
@@ -94,6 +113,14 @@ PixelOutput PSMain(PixelInput input)
                 material.y,
                 PbrMaterialParams0.x,
                 PbrMaterialParams0.y);
+            roughness = lerp(
+                roughness,
+                clamp(
+                    authoredRoughness *
+                        max(PbrMaterialParams0.x, 0.0f),
+                    PbrMinimumRoughness,
+                    1.0f),
+                authoredActive);
             roughness = clamp(
                 roughness * lerp(
                     1.0f,
@@ -153,6 +180,13 @@ PixelOutput PSMain(PixelInput input)
             output.Specular.xyz = lerp(
                 input.VanillaSpecular.xyz,
                 ggxSpecular,
+                active);
+            output.Diffuse.xyz *= lerp(
+                1.0f.xxx,
+                lerp(
+                    1.0f.xxx,
+                    (1.0f - metalness).xxx,
+                    authoredActive),
                 active);
             [branch]
             if (PbrFeatureParams1.y > 0.5f)

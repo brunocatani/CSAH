@@ -512,6 +512,12 @@ namespace community_shaders::linear_lighting
         static_assert(
             kSpecializedSurfaceClassContracts.size() ==
             kSpecializedSurfaceClassContractCount);
+        static_assert(
+            kAuthoredPbrSurfaceClassContracts.size() ==
+            kShaderContractCount);
+        static_assert(
+            kAuthoredPbrSpecializedSurfaceClassContracts.size() ==
+            kSpecializedSurfaceClassContractCount);
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kShaderContracts.size()>
             replacements{};
@@ -605,6 +611,83 @@ namespace community_shaders::linear_lighting
             if (FAILED(result)) {
                 logging::error(
                     "Surface Classification specialized replacement {} (class {}) CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    index,
+                    contract.classCode,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kAuthoredPbrSurfaceClassContracts.size()>
+            authoredPbrSurfaceClassReplacements{};
+        for (std::size_t index = 0;
+             index < kAuthoredPbrSurfaceClassContracts.size();
+             ++index) {
+            const auto& contract =
+                kAuthoredPbrSurfaceClassContracts[index];
+            if (contract.resourceId == 0) {
+                continue;
+            }
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacementSize,
+                    contract.replacementChecksum)) {
+                logging::error(
+                    "Authored PBR class-zero material replacement {} is missing or invalid.",
+                    index);
+                return false;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                authoredPbrSurfaceClassReplacements[index].GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Authored PBR class-zero material replacement {} CreatePixelShader failed (HRESULT 0x{:08X}).",
+                    index,
+                    static_cast<std::uint32_t>(result));
+                return false;
+            }
+        }
+
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kAuthoredPbrSpecializedSurfaceClassContracts.size()>
+            authoredPbrSpecializedSurfaceClassReplacements{};
+        for (std::size_t index = 0;
+             index < kAuthoredPbrSpecializedSurfaceClassContracts.size();
+             ++index) {
+            const auto& contract =
+                kAuthoredPbrSpecializedSurfaceClassContracts[index];
+            if (contract.resourceId == 0) {
+                continue;
+            }
+            const auto embedded = loadEmbeddedShader(contract.resourceId);
+            if (!matchesDxbcIdentity(
+                    embedded.data,
+                    embedded.size,
+                    contract.replacementSize,
+                    contract.replacementChecksum)) {
+                logging::error(
+                    "Authored PBR specialized material replacement {} (class {}) is missing or invalid.",
+                    index,
+                    contract.classCode);
+                return false;
+            }
+            const auto result = createPixelShader(
+                device,
+                embedded.data,
+                embedded.size,
+                nullptr,
+                authoredPbrSpecializedSurfaceClassReplacements[index]
+                    .GetAddressOf());
+            if (FAILED(result)) {
+                logging::error(
+                    "Authored PBR specialized material replacement {} (class {}) CreatePixelShader failed (HRESULT 0x{:08X}).",
                     index,
                     contract.classCode,
                     static_cast<std::uint32_t>(result));
@@ -959,6 +1042,10 @@ namespace community_shaders::linear_lighting
             std::move(surfaceClassReplacements);
         specializedSurfaceClassReplacementShaders_ =
             std::move(specializedSurfaceClassReplacements);
+        authoredPbrSurfaceClassReplacementShaders_ =
+            std::move(authoredPbrSurfaceClassReplacements);
+        authoredPbrSpecializedSurfaceClassReplacementShaders_ =
+            std::move(authoredPbrSpecializedSurfaceClassReplacements);
         complexParallaxReplacementShaders_ =
             std::move(complexParallaxReplacements);
         surfaceClassComplexParallaxReplacementShaders_ =
@@ -1744,6 +1831,51 @@ namespace community_shaders::linear_lighting
         ID3D11PixelShader* requested) noexcept
     {
         return selectPixelShaderImpl(context, requested, 0, false, true);
+    }
+
+    ID3D11PixelShader* Runtime::authoredPbrSurfaceShader(
+        ReplacementShaderBinding binding,
+        std::uint32_t surfaceClassCode,
+        ID3D11PixelShader* currentShader) const noexcept
+    {
+        if (!currentShader ||
+            binding.family != ReplacementShaderFamily::material ||
+            binding.contractPlusOne == 0 ||
+            binding.contractPlusOne > kShaderContractCount) {
+            return nullptr;
+        }
+        const auto contractIndex = static_cast<std::size_t>(
+            binding.contractPlusOne - 1);
+        const auto& material =
+            kSurfaceClassMaterialContracts[contractIndex];
+        auto variantPlusOne = 0u;
+        if (surfaceClassCode == static_cast<std::uint32_t>(
+                surface_classification::SurfaceClassCode::grass)) {
+            variantPlusOne = material.grassVariantIndexPlusOne;
+        } else if (material.classCode == surfaceClassCode) {
+            variantPlusOne = material.variantIndexPlusOne;
+        }
+        const auto specializedIndex = specializedSurfaceClassSlot(
+            contractIndex,
+            surfaceClassCode,
+            variantPlusOne);
+        if (specializedIndex <
+                specializedSurfaceClassReplacementShaders_.size()) {
+            if (currentShader !=
+                specializedSurfaceClassReplacementShaders_[specializedIndex]
+                    .Get()) {
+                return nullptr;
+            }
+            return authoredPbrSpecializedSurfaceClassReplacementShaders_[
+                       specializedIndex]
+                .Get();
+        }
+        if (currentShader !=
+            surfaceClassReplacementShaders_[contractIndex].Get()) {
+            return nullptr;
+        }
+        return authoredPbrSurfaceClassReplacementShaders_[contractIndex]
+            .Get();
     }
 
     void Runtime::observeDFPrePassDescriptor(

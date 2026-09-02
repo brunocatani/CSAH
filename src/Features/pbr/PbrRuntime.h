@@ -7,6 +7,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
+
+namespace community_shaders::linear_lighting
+{
+    struct ReplacementShaderBinding;
+}
 
 namespace community_shaders::pbr
 {
@@ -18,7 +24,51 @@ namespace community_shaders::pbr
         std::uint64_t drawRestores{};
         std::uint64_t drawFallbacks{};
         std::uint64_t settingsUploads{};
+        std::uint32_t authoredMaterials{};
+        std::uint32_t resolvedAuthoredMaterials{};
+        std::uint64_t manifestFailures{};
         std::uint64_t failures{};
+    };
+
+    class ScopedAuthoredMaterialBindings final
+    {
+    public:
+        ScopedAuthoredMaterialBindings() noexcept = default;
+        ~ScopedAuthoredMaterialBindings() noexcept;
+        ScopedAuthoredMaterialBindings(
+            const ScopedAuthoredMaterialBindings&) = delete;
+        ScopedAuthoredMaterialBindings(
+            ScopedAuthoredMaterialBindings&& other) noexcept;
+        ScopedAuthoredMaterialBindings& operator=(
+            const ScopedAuthoredMaterialBindings&) = delete;
+        ScopedAuthoredMaterialBindings& operator=(
+            ScopedAuthoredMaterialBindings&&) = delete;
+
+        [[nodiscard]] bool active() const noexcept
+        {
+            return context_ && authoredShader_;
+        }
+        [[nodiscard]] ID3D11PixelShader* authoredShader() const noexcept
+        {
+            return authoredShader_;
+        }
+        [[nodiscard]] ID3D11PixelShader* previousShader() const noexcept
+        {
+            return previousShader_.Get();
+        }
+
+    private:
+        friend class Runtime;
+        ScopedAuthoredMaterialBindings(
+            ID3D11DeviceContext* context,
+            ID3D11ShaderResourceView* rmaos,
+            ID3D11PixelShader* previousShader,
+            ID3D11PixelShader* authoredShader) noexcept;
+
+        ID3D11DeviceContext* context_{};
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> previousRmaos_;
+        Microsoft::WRL::ComPtr<ID3D11PixelShader> previousShader_;
+        ID3D11PixelShader* authoredShader_{};
     };
 
     class ScopedDrawBindings final
@@ -38,13 +88,16 @@ namespace community_shaders::pbr
         ScopedDrawBindings(
             ID3D11DeviceContext* context,
             ID3D11Buffer* constants,
+            ID3D11ShaderResourceView* pbrMaterial,
             ID3D11ShaderResourceView* surfaceClass,
             std::atomic_uint64_t* restoreCounter) noexcept;
 
         ID3D11DeviceContext* context_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousConstants_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            previousPbrMaterial_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> previousSurfaceClass_;
-        bool surfaceClassBound_{};
+        bool materialResourcesBound_{};
         std::atomic_uint64_t* restoreCounter_{};
     };
 
@@ -57,17 +110,26 @@ namespace community_shaders::pbr
             ID3D11Device* device,
             ID3D11DeviceContext* context) noexcept;
         void applySettings(const Settings& settings) noexcept;
+        void onGameDataReady() noexcept;
         void setLinearLightingEnabled(bool enabled) noexcept;
         [[nodiscard]] bool requested() const noexcept;
         [[nodiscard]] Settings settings() const noexcept;
         [[nodiscard]] ScopedDrawBindings scopeDraw(
             ID3D11DeviceContext* context,
             bool active) noexcept;
+        [[nodiscard]] ScopedAuthoredMaterialBindings
+            scopeAuthoredMaterialDraw(
+                ID3D11DeviceContext* context,
+                const linear_lighting::ReplacementShaderBinding& binding,
+                std::uint32_t surfaceClassCode) noexcept;
         void recordDrawFallback() noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
     private:
+        struct MaterialRegistry;
+
         Runtime() = default;
+        ~Runtime();
         void uploadSettings(
             ID3D11DeviceContext* context,
             bool active) noexcept;
@@ -100,6 +162,10 @@ namespace community_shaders::pbr
         std::atomic_uint64_t drawRestores_{};
         std::atomic_uint64_t drawFallbacks_{};
         std::atomic_uint64_t settingsUploads_{};
+        std::unique_ptr<MaterialRegistry> materialRegistryOwner_;
+        std::atomic<MaterialRegistry*> materialRegistry_{};
+        std::atomic_bool materialRegistryLoaded_{};
+        std::atomic_uint64_t manifestFailures_{};
         std::atomic_uint64_t failures_{};
     };
 }

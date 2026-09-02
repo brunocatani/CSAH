@@ -118,6 +118,7 @@ namespace
         {
             community_shaders::native_shadows::onGameDataReady();
             community_shaders::vanilla_fixes::onGameDataReady();
+            community_shaders::pbr::Runtime::get().onGameDataReady();
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameDataReady");
             (void)community_shaders::render::

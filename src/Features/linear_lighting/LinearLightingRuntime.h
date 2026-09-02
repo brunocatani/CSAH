@@ -260,6 +260,15 @@ namespace community_shaders::linear_lighting
             ID3D11DeviceContext* context,
             ID3D11PixelShader* requested) noexcept;
 
+        // Exact classified DFPrepass replacement only. Returns the authored
+        // RMAOS variant for the same contract/class when the currently bound
+        // shader is the ordinary classified variant. Complex Parallax and
+        // every other specialized owner remain untouched.
+        [[nodiscard]] ID3D11PixelShader* authoredPbrSurfaceShader(
+            ReplacementShaderBinding binding,
+            std::uint32_t surfaceClassCode,
+            ID3D11PixelShader* currentShader) const noexcept;
+
         // Verified BSDFPrePass technique boundary only. This records whether
         // an exact FXP descriptor reaches the engine independently of whether
         // the retained D3D shader can be replaced for that draw.
@@ -371,6 +380,12 @@ namespace community_shaders::linear_lighting
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kSpecializedSurfaceClassContractCount>
             specializedSurfaceClassReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kShaderContractCount>
+            authoredPbrSurfaceClassReplacementShaders_{};
+        std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
+            kSpecializedSurfaceClassContractCount>
+            authoredPbrSpecializedSurfaceClassReplacementShaders_{};
         std::array<Microsoft::WRL::ComPtr<ID3D11PixelShader>,
             kComplexParallaxShaderContractCount>
             complexParallaxReplacementShaders_{};

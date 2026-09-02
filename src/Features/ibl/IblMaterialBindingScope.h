@@ -33,6 +33,8 @@ namespace community_shaders::ibl
         static constexpr UINT kPositionSlot = 34;
         static constexpr UINT kPreviousPositionSlot = 35;
         static constexpr UINT kMaterialPropertiesSlot = 36;
+        static constexpr UINT kPbrMaterialSlot = 45;
+        static constexpr UINT kSurfaceClassSlot = 47;
         static constexpr UINT kConstantSlot = 5;
 
         ScopedMaterialBindings() noexcept = default;
@@ -46,6 +48,8 @@ namespace community_shaders::ibl
             ID3D11ShaderResourceView* position,
             ID3D11ShaderResourceView* previousPosition,
             ID3D11ShaderResourceView* materialProperties,
+            ID3D11ShaderResourceView* pbrMaterial,
+            ID3D11ShaderResourceView* surfaceClass,
             ID3D11Buffer* constants) noexcept;
         ~ScopedMaterialBindings();
 
@@ -70,10 +74,15 @@ namespace community_shaders::ibl
             8>
             previousResources_{};
         Microsoft::WRL::ComPtr<ID3D11Buffer> previousConstants_;
+        std::array<
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>,
+            2>
+            previousPbrResources_{};
         MaterialBindingRejection rejection_{
             MaterialBindingRejection::nullContext
         };
         bool captured_{};
+        bool pbrResourcesCaptured_{};
         bool active_{};
         bool restored_{};
     };

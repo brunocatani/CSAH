@@ -2387,6 +2387,38 @@ namespace community_shaders::render
         }
 
         template <class Draw>
+        void issueDrawWithAuthoredPbrMaterial(
+            ID3D11DeviceContext* context,
+            Draw&& draw) noexcept
+        {
+            if (!originalPSSetShader ||
+                activeReplacementBinding.family !=
+                    linear_lighting::ReplacementShaderFamily::material) {
+                draw();
+                return;
+            }
+            auto bindings = pbr::Runtime::get().scopeAuthoredMaterialDraw(
+                context,
+                activeReplacementBinding,
+                activeSurfaceClassCode);
+            if (!bindings.active()) {
+                draw();
+                return;
+            }
+            originalPSSetShader(
+                context,
+                bindings.authoredShader(),
+                nullptr,
+                0);
+            draw();
+            originalPSSetShader(
+                context,
+                bindings.previousShader(),
+                nullptr,
+                0);
+        }
+
+        template <class Draw>
         void issueDrawWithContactShadows(
             ID3D11DeviceContext* context,
             Draw&& draw) noexcept
@@ -2863,7 +2895,8 @@ namespace community_shaders::render
                 unorderedAccessViewCount == 0 ||
                 (unorderedAccessViewCount !=
                         D3D11_KEEP_UNORDERED_ACCESS_VIEWS &&
-                    unorderedAccessStartSlot >= 7);
+                    unorderedAccessStartSlot >=
+                        surfaceRuntime.requiredRenderTargetCount());
             if (shaderInterceptionActive.load(std::memory_order_acquire) &&
                 renderTargetCount !=
                     D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&
@@ -3476,11 +3509,15 @@ namespace community_shaders::render
                                     issueDrawWithIblMaterial(
                                         context,
                                         [&]() noexcept {
-                                            originalDrawIndexed(
+                                            issueDrawWithAuthoredPbrMaterial(
                                                 context,
-                                                indexCount,
-                                                startIndexLocation,
-                                                baseVertexLocation);
+                                                [&]() noexcept {
+                                                    originalDrawIndexed(
+                                                        context,
+                                                        indexCount,
+                                                        startIndexLocation,
+                                                        baseVertexLocation);
+                                                });
                                         });
                                 });
                         });
@@ -3546,10 +3583,14 @@ namespace community_shaders::render
                                     issueDrawWithIblMaterial(
                                         context,
                                         [&]() noexcept {
-                                            originalDraw(
+                                            issueDrawWithAuthoredPbrMaterial(
                                                 context,
-                                                vertexCount,
-                                                startVertexLocation);
+                                                [&]() noexcept {
+                                                    originalDraw(
+                                                        context,
+                                                        vertexCount,
+                                                        startVertexLocation);
+                                                });
                                         });
                                 });
                         });
@@ -3626,13 +3667,17 @@ namespace community_shaders::render
                                     issueDrawWithIblMaterial(
                                         context,
                                         [&]() noexcept {
-                                            originalDrawIndexedInstanced(
+                                            issueDrawWithAuthoredPbrMaterial(
                                                 context,
-                                                indexCountPerInstance,
-                                                instanceCount,
-                                                startIndexLocation,
-                                                baseVertexLocation,
-                                                startInstanceLocation);
+                                                [&]() noexcept {
+                                                    originalDrawIndexedInstanced(
+                                                        context,
+                                                        indexCountPerInstance,
+                                                        instanceCount,
+                                                        startIndexLocation,
+                                                        baseVertexLocation,
+                                                        startInstanceLocation);
+                                                });
                                         });
                                 });
                         });
@@ -3707,12 +3752,16 @@ namespace community_shaders::render
                                     issueDrawWithIblMaterial(
                                         context,
                                         [&]() noexcept {
-                                            originalDrawInstanced(
+                                            issueDrawWithAuthoredPbrMaterial(
                                                 context,
-                                                vertexCountPerInstance,
-                                                instanceCount,
-                                                startVertexLocation,
-                                                startInstanceLocation);
+                                                [&]() noexcept {
+                                                    originalDrawInstanced(
+                                                        context,
+                                                        vertexCountPerInstance,
+                                                        instanceCount,
+                                                        startVertexLocation,
+                                                        startInstanceLocation);
+                                                });
                                         });
                                 });
                         });

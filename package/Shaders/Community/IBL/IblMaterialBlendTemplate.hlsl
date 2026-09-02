@@ -11,6 +11,7 @@ TextureCube<float> PreviousPublishedValidity : register(t33);
 TextureCube<float4> PublishedPosition : register(t34);
 TextureCube<float4> PreviousPublishedPosition : register(t35);
 Texture2D<float4> GBufferMaterial : register(t36);
+Texture2D<float4> AuthoredPbrMaterial : register(t45);
 Texture2D<float> SurfaceClass : register(t47);
 Texture2D<float> SceneDepth : register(t7);
 #ifndef PBR_NATIVE_OCCLUSION
@@ -217,9 +218,21 @@ PixelOutput PSMain(PixelInput input)
     const float ordinaryMaterialTag = step(
         0.5f,
         input.EncodedMaterialTag);
-    const float metalness = PbrDecodeMetalness(
+    const float4 authoredMaterial = AuthoredPbrMaterial.SampleLevel(
+        MaterialSampler,
+        input.ScreenUv,
+        0.0f);
+    const float authoredActive = step(0.5f, authoredMaterial.x);
+    const float authoredRoughness = saturate(
+        authoredMaterial.x * 2.0f - 1.0f);
+    const float legacyMetalness = PbrDecodeMetalness(
         input.EncodedMaterialTag) * ComplexMaterialWeight;
-    const float complexMaterial = step(1.0f / 255.0f, metalness);
+    const float metalness = lerp(
+        legacyMetalness,
+        saturate(authoredMaterial.y),
+        authoredActive);
+    const float complexMaterial = step(
+        1.0f / 255.0f, legacyMetalness);
     const float supportedSurface = saturate(
         ordinarySurface + terrain +
         grassSurface * saturate(PbrFeatureParams0.w));
@@ -235,14 +248,23 @@ PixelOutput PSMain(PixelInput input)
             MaterialSampler,
             input.ScreenUv,
             0.0f);
-        pbrActive = ordinaryMaterialTag * supportedSurface *
-            saturate(complexMaterial + saturate(PbrFeatureParams0.y));
+        const float legacyActive = ordinaryMaterialTag * saturate(
+            complexMaterial + saturate(PbrFeatureParams0.y));
+        pbrActive = supportedSurface * saturate(
+            authoredActive + legacyActive);
         pbrRoughness = PbrMaterialRoughness(
             wetLod,
             material.x,
             material.y,
             PbrMaterialParams0.x,
             PbrMaterialParams0.y);
+        pbrRoughness = lerp(
+            pbrRoughness,
+            clamp(
+                authoredRoughness * max(PbrMaterialParams0.x, 0.0f),
+                PbrMinimumRoughness,
+                1.0f),
+            authoredActive);
         environmentLod = lerp(
             wetLod,
             pbrRoughness * 7.0f,
@@ -323,14 +345,20 @@ PixelOutput PSMain(PixelInput input)
         MaterialSampler,
         input.ScreenUv,
         0.0f);
-    float3 baseColour = retainedDiffuse /
+    const float3 legacyBaseColour = retainedDiffuse /
         max(1.0 - metalness, 1.0 / 255.0);
+    // Authored RMAOS overlays a vanilla material, whose retained albedo has
+    // not yet been divided into metallic and diffuse shares.
+    float3 baseColour = lerp(
+        legacyBaseColour,
+        retainedDiffuse,
+        authoredActive);
     float3 reflectionLobe = 1.0f;
     [branch]
     if (pbrActive > 1.0f / 255.0f)
     {
         const float dielectricF0 = PbrDielectricF0(
-            material.y,
+            lerp(material.y, authoredMaterial.w, authoredActive),
             PbrMaterialParams0.z,
             PbrMaterialParams0.w,
             PbrMaterialParams1.x);
@@ -357,13 +385,20 @@ PixelOutput PSMain(PixelInput input)
         if (PbrFeatureParams1.w > 0.5f)
         {
 #if PBR_NATIVE_OCCLUSION
-            const float ambientOcclusion = saturate(
+            const float nativeAmbientOcclusion = saturate(
                 NativeOcclusion.SampleLevel(
                     OcclusionSampler,
                     input.ScreenUv,
                     0.0f).x);
+            const float ambientOcclusion = lerp(
+                nativeAmbientOcclusion,
+                saturate(authoredMaterial.z),
+                authoredActive);
 #else
-            const float ambientOcclusion = 1.0f;
+            const float ambientOcclusion = lerp(
+                1.0f,
+                saturate(authoredMaterial.z),
+                authoredActive);
 #endif
             reflectionLobe *= PbrSpecularOcclusion(
                 normalDotView,

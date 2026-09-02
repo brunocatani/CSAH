@@ -38,13 +38,14 @@ namespace community_shaders::surface_classification
 
     struct GBufferBinding
     {
-        std::array<ID3D11RenderTargetView*, 7> renderTargets{};
+        std::array<ID3D11RenderTargetView*, 8> renderTargets{};
         UINT renderTargetCount{};
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return renderTargetCount == renderTargets.size() &&
-                renderTargets[6] != nullptr;
+            return (renderTargetCount == 7 || renderTargetCount == 8) &&
+                renderTargets[6] != nullptr &&
+                (renderTargetCount == 7 || renderTargets[7] != nullptr);
         }
     };
 
@@ -84,7 +85,9 @@ namespace community_shaders::surface_classification
             ID3D11Device* device,
             ID3D11DeviceContext* context) noexcept;
         void setConsumerEnabled(Consumer consumer, bool enabled) noexcept;
+        void setPbrMaterialTransportEnabled(bool enabled) noexcept;
         [[nodiscard]] bool required() const noexcept;
+        [[nodiscard]] UINT requiredRenderTargetCount() const noexcept;
 
         // Called only from the immediate-context OMSetRenderTargets detour.
         // Exact FO4VR G-buffer identity is checked before a private seventh
@@ -103,6 +106,8 @@ namespace community_shaders::surface_classification
         // process-lifetime runtime and is used only inside one draw scope.
         [[nodiscard]] ID3D11ShaderResourceView* shaderResourceView() const
             noexcept;
+        [[nodiscard]] ID3D11ShaderResourceView*
+            pbrMaterialShaderResourceView() const noexcept;
 
         // Called only when a material replacement is actually selected. These
         // fixed counters prove which producer classes reach the G-buffer
@@ -140,11 +145,17 @@ namespace community_shaders::surface_classification
         Microsoft::WRL::ComPtr<ID3D11Texture2D> texture_;
         Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shaderResourceView_;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> pbrMaterialTexture_;
+        Microsoft::WRL::ComPtr<ID3D11RenderTargetView>
+            pbrMaterialRenderTargetView_;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            pbrMaterialShaderResourceView_;
         UINT width_{};
         UINT height_{};
         UINT sampleCount_{};
         bool worldFrameConsumed_{ true };
         std::atomic_uint32_t consumerMask_{};
+        std::atomic_bool pbrMaterialTransportEnabled_{};
         std::atomic_uint64_t acceptedGBufferBinds_{};
         std::atomic_uint64_t rejectedGBufferBinds_{};
         std::atomic_uint64_t targetRebuilds_{};

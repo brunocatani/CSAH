@@ -63,6 +63,7 @@ WRAPPED_GRASS_CONSTANT_SLOT = 11
 HAIR_SPECULAR_CONSTANT_SLOT = 10
 BASIC_WETNESS_CONSTANT_SLOT = 9
 PBR_CONSTANT_SLOT = 7
+PBR_MATERIAL_SLOT = 45
 SURFACE_CLASS_SLOT = 47
 DIRECTIONAL_DIAGNOSTIC_MODE_COUNT = 6
 MUL_OPCODE = 0x38
@@ -476,6 +477,7 @@ def compile_pbr_template(
         "dcl_constantbuffer CB9[2], immediateIndexed",
         "dcl_resource_texture2d (float,float,float,float) t0",
         "dcl_resource_texture2d (float,float,float,float) t2",
+        "dcl_resource_texture2d (float,float,float,float) t45",
         "dcl_resource_texture2d (float,float,float,float) t47",
         "dcl_output o0.xyzw",
         "dcl_output o1.xyzw",
@@ -788,6 +790,7 @@ def pbr_template_contract(
     owns_wetness_constants = False
     owns_albedo = False
     owns_material = False
+    pbr_material_declaration: list[int] | None = None
     owns_surface_class = False
     for start, end in instructions(words):
         opcode = words[start] & 0x7FF
@@ -827,6 +830,13 @@ def pbr_template_contract(
             opcode == OPCODE_DCL_RESOURCE
             and operands
             and operands[0].operand_type == OPERAND_RESOURCE
+            and operands[0].immediate_indices == (PBR_MATERIAL_SLOT,)
+        ):
+            pbr_material_declaration = words[start:end]
+        if (
+            opcode == OPCODE_DCL_RESOURCE
+            and operands
+            and operands[0].operand_type == OPERAND_RESOURCE
             and operands[0].immediate_indices == (SURFACE_CLASS_SLOT,)
         ):
             owns_surface_class = True
@@ -835,6 +845,7 @@ def pbr_template_contract(
         or not owns_wetness_constants
         or not owns_albedo
         or not owns_material
+        or pbr_material_declaration is None
         or not owns_surface_class
     ):
         raise ContractError("PBR directional template resource contract changed")
@@ -849,9 +860,9 @@ def pbr_template_contract(
     ):
         raise ContractError("PBR directional template contains an early return")
     # t0/t2 are native DFLight resources, t47 is contributed by the surface
-    # transforms, and b9 is contributed by Basic Wetness. PBR adds only its
-    # verified-free b7.
-    return [constant_declaration], transform[:-1], temp_count
+    # transforms, and b9 is contributed by Basic Wetness. Authored PBR adds
+    # private t45 alongside its verified-free b7.
+    return [constant_declaration, pbr_material_declaration], transform[:-1], temp_count
 
 
 def directional_diagnostic_template_contract(
@@ -1742,6 +1753,7 @@ def main() -> int:
             "dcl_constantbuffer CB10[1], immediateIndexed",
             "dcl_constantbuffer CB9[1], immediateIndexed",
             "dcl_constantbuffer CB7[4], immediateIndexed",
+            "dcl_resource_texture2d (float,float,float,float) t45",
             "dcl_resource_texture2d (float,float,float,float) t46",
             "dcl_resource_texture2d (float,float,float,float) t47",
             "l(0.212600, 0.715200, 0.072200",

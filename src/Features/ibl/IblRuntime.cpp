@@ -1,6 +1,7 @@
 #include "Features/ibl/IblRuntime.h"
 
 #include "resources.h"
+#include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "render/BSLightingGeometryHook.h"
 #include "render/BSDFPrePassShaderHook.h"
 #include "support/Logger.h"
@@ -1152,8 +1153,15 @@ namespace community_shaders::ibl
             pbrEnabled_.load(std::memory_order_acquire);
         auto* materialProperties = pbrActive ? materialProperties_.Get() :
                                                nullptr;
+        auto* pbrMaterial = pbrActive ? surface_classification::Runtime::get()
+                                           .pbrMaterialShaderResourceView() :
+                                       nullptr;
+        auto* surfaceClass = pbrActive ? surface_classification::Runtime::get()
+                                           .shaderResourceView() :
+                                       nullptr;
         if (!constants || (enabled &&
                 (!albedo || (pbrActive && !materialProperties) ||
+                    (pbrActive && !surfaceClass) ||
                     (dynamicActive &&
                         (!radiance || !validity || !position))))) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -1171,6 +1179,8 @@ namespace community_shaders::ibl
             position,
             previousPosition,
             materialProperties,
+            pbrMaterial,
+            surfaceClass,
             constants);
         if (!scope.active()) {
             materialBindingFailures_.fetch_add(1, std::memory_order_relaxed);

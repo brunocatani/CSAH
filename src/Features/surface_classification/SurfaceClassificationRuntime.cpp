@@ -42,12 +42,25 @@ namespace community_shaders::surface_classification
         texture_.Reset();
         renderTargetView_.Reset();
         shaderResourceView_.Reset();
+        pbrMaterialTexture_.Reset();
+        pbrMaterialRenderTargetView_.Reset();
+        pbrMaterialShaderResourceView_.Reset();
         width_ = 0;
         height_ = 0;
         sampleCount_ = 0;
         worldFrameConsumed_ = true;
         firstAcceptedBindingLogged_.store(false, std::memory_order_relaxed);
         firstCandidateRejectionLogged_.store(false, std::memory_order_relaxed);
+    }
+
+    void Runtime::setPbrMaterialTransportEnabled(bool enabled) noexcept
+    {
+        const auto previous = pbrMaterialTransportEnabled_.exchange(
+            enabled,
+            std::memory_order_acq_rel);
+        if (previous != enabled) {
+            worldFrameConsumed_ = true;
+        }
     }
 
     void Runtime::setConsumerEnabled(Consumer consumer, bool enabled) noexcept
@@ -71,6 +84,13 @@ namespace community_shaders::surface_classification
     bool Runtime::required() const noexcept
     {
         return consumerMask_.load(std::memory_order_acquire) != 0;
+    }
+
+    UINT Runtime::requiredRenderTargetCount() const noexcept
+    {
+        return pbrMaterialTransportEnabled_.load(
+                   std::memory_order_acquire) ?
+            8u : 7u;
     }
 
     bool Runtime::matchesGBuffer(
@@ -191,10 +211,15 @@ namespace community_shaders::surface_classification
     bool Runtime::ensureTarget(
         const D3D11_TEXTURE2D_DESC& sourceDescription) noexcept
     {
+        const auto pbrRequired = pbrMaterialTransportEnabled_.load(
+            std::memory_order_acquire);
         if (texture_ && renderTargetView_ && shaderResourceView_ &&
             width_ == sourceDescription.Width &&
             height_ == sourceDescription.Height &&
-            sampleCount_ == sourceDescription.SampleDesc.Count) {
+            sampleCount_ == sourceDescription.SampleDesc.Count &&
+            (!pbrRequired ||
+                (pbrMaterialTexture_ && pbrMaterialRenderTargetView_ &&
+                    pbrMaterialShaderResourceView_))) {
             return true;
         }
         if (!device_) {
@@ -244,19 +269,65 @@ namespace community_shaders::surface_classification
             return false;
         }
 
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> nextPbrMaterialTexture;
+        Microsoft::WRL::ComPtr<ID3D11RenderTargetView>
+            nextPbrMaterialRenderTarget;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>
+            nextPbrMaterialShaderResource;
+        if (pbrRequired) {
+            description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            const auto pbrTextureResult = device_->CreateTexture2D(
+                &description,
+                nullptr,
+                nextPbrMaterialTexture.GetAddressOf());
+            const auto pbrRenderTargetResult =
+                SUCCEEDED(pbrTextureResult) ?
+                device_->CreateRenderTargetView(
+                    nextPbrMaterialTexture.Get(),
+                    nullptr,
+                    nextPbrMaterialRenderTarget.GetAddressOf()) : E_FAIL;
+            const auto pbrShaderResourceResult =
+                SUCCEEDED(pbrRenderTargetResult) ?
+                device_->CreateShaderResourceView(
+                    nextPbrMaterialTexture.Get(),
+                    nullptr,
+                    nextPbrMaterialShaderResource.GetAddressOf()) : E_FAIL;
+            if (FAILED(pbrTextureResult) ||
+                FAILED(pbrRenderTargetResult) ||
+                FAILED(pbrShaderResourceResult) ||
+                !nextPbrMaterialTexture || !nextPbrMaterialRenderTarget ||
+                !nextPbrMaterialShaderResource) {
+                failures_.fetch_add(1, std::memory_order_relaxed);
+                logging::error(
+                    "Authored PBR material target allocation failed for {}x{} (texture=0x{:08X}, RTV=0x{:08X}, SRV=0x{:08X}).",
+                    sourceDescription.Width,
+                    sourceDescription.Height,
+                    static_cast<std::uint32_t>(pbrTextureResult),
+                    static_cast<std::uint32_t>(pbrRenderTargetResult),
+                    static_cast<std::uint32_t>(pbrShaderResourceResult));
+                return false;
+            }
+        }
+
         texture_ = std::move(nextTexture);
         renderTargetView_ = std::move(nextRenderTarget);
         shaderResourceView_ = std::move(nextShaderResource);
+        pbrMaterialTexture_ = std::move(nextPbrMaterialTexture);
+        pbrMaterialRenderTargetView_ =
+            std::move(nextPbrMaterialRenderTarget);
+        pbrMaterialShaderResourceView_ =
+            std::move(nextPbrMaterialShaderResource);
         width_ = sourceDescription.Width;
         height_ = sourceDescription.Height;
         sampleCount_ = sourceDescription.SampleDesc.Count;
         worldFrameConsumed_ = true;
         targetRebuilds_.fetch_add(1, std::memory_order_relaxed);
         logging::info(
-            "Surface classification target allocated at {}x{} R8_UNORM (samples={}).",
+            "Surface classification target allocated at {}x{} R8_UNORM (samples={}, authoredPbr={}).",
             width_,
             height_,
-            sampleCount_);
+            sampleCount_,
+            pbrRequired);
         return true;
     }
 
@@ -286,6 +357,10 @@ namespace community_shaders::surface_classification
         if (worldFrameConsumed_) {
             constexpr float clear[4]{};
             context->ClearRenderTargetView(renderTargetView_.Get(), clear);
+            if (pbrMaterialRenderTargetView_) {
+                context->ClearRenderTargetView(
+                    pbrMaterialRenderTargetView_.Get(), clear);
+            }
             targetClears_.fetch_add(1, std::memory_order_relaxed);
             worldFrameConsumed_ = false;
         }
@@ -296,14 +371,18 @@ namespace community_shaders::surface_classification
             kFO4VRGBufferFormats.size(),
             binding.renderTargets.begin());
         binding.renderTargets[6] = renderTargetView_.Get();
-        binding.renderTargetCount =
-            static_cast<UINT>(binding.renderTargets.size());
+        if (pbrMaterialTransportEnabled_.load(
+                std::memory_order_acquire)) {
+            binding.renderTargets[7] = pbrMaterialRenderTargetView_.Get();
+        }
+        binding.renderTargetCount = requiredRenderTargetCount();
         acceptedGBufferBinds_.fetch_add(1, std::memory_order_relaxed);
         if (!firstAcceptedBindingLogged_.exchange(
                 true,
                 std::memory_order_relaxed)) {
             logging::info(
-                "Surface classification accepted the exact double-wide stereo six-target FO4VR G-buffer and appended private MRT6.");
+                "Surface classification accepted the exact double-wide stereo six-target FO4VR G-buffer and appended private MRT6{}.",
+                binding.renderTargetCount == 8 ? "/MRT7" : "");
         }
         return binding;
     }
@@ -316,6 +395,12 @@ namespace community_shaders::surface_classification
     ID3D11ShaderResourceView* Runtime::shaderResourceView() const noexcept
     {
         return shaderResourceView_.Get();
+    }
+
+    ID3D11ShaderResourceView*
+        Runtime::pbrMaterialShaderResourceView() const noexcept
+    {
+        return pbrMaterialShaderResourceView_.Get();
     }
 
     void Runtime::recordProducerSelection(

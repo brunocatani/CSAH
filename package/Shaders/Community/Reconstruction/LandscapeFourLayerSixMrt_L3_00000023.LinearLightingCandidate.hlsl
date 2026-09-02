@@ -142,6 +142,7 @@ struct PSOutput
     float2 target5 : SV_Target5;
 #if LINEAR_LIGHTING_SURFACE_CLASSIFICATION
     float surfaceClass : SV_Target6;
+    float4 pbrMaterial : SV_Target7;
 #endif
 };
 
@@ -578,6 +579,7 @@ PSOutput PSMain(PSInput input)
     // Every shader produced from this reconstruction is a landscape contract.
     // Preserve the exact terrain class when Complex Parallax owns the draw.
     output.surfaceClass = 4.0 / 255.0;
+    output.pbrMaterial = 0.0;
 #endif
     return output;
 }

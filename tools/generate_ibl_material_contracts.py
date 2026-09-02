@@ -54,6 +54,7 @@ PREVIOUS_PUBLISHED_VALIDITY_SLOT = 33
 PUBLISHED_POSITION_SLOT = 34
 PREVIOUS_PUBLISHED_POSITION_SLOT = 35
 MATERIAL_PROPERTIES_SLOT = 36
+AUTHORED_PBR_MATERIAL_SLOT = 45
 SURFACE_CLASS_SLOT = 47
 SCENE_DEPTH_SLOT = 7
 NATIVE_OCCLUSION_SLOT = 9
@@ -176,6 +177,7 @@ def compile_template(
         "PublishedPosition : register(t34)",
         "PreviousPublishedPosition : register(t35)",
         "GBufferMaterial : register(t36)",
+        "AuthoredPbrMaterial : register(t45)",
         "SceneDepth : register(t7)",
         "NativeOcclusion : register(t9)",
         "EnvironmentSampler : register(s8)",
@@ -249,6 +251,7 @@ def compile_template(
         "dcl_resource_texturecube (float,float,float,float) t34",
         "dcl_resource_texturecube (float,float,float,float) t35",
         "dcl_resource_texture2d (float,float,float,float) t36",
+        "dcl_resource_texture2d (float,float,float,float) t45",
         "dcl_resource_texture2d (float,float,float,float) t47",
         "dcl_output o0.xyzw",
         "dcl_output o1.xyzw",
@@ -504,6 +507,12 @@ def template_contract(
             OPCODE_DCL_RESOURCE,
             OPERAND_RESOURCE,
             MATERIAL_PROPERTIES_SLOT,
+        ),
+        declaration_for_slot(
+            words,
+            OPCODE_DCL_RESOURCE,
+            OPERAND_RESOURCE,
+            AUTHORED_PBR_MATERIAL_SLOT,
         ),
         declaration_for_slot(
             words,
@@ -808,9 +817,10 @@ def patch_shader(
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
         MATERIAL_PROPERTIES_SLOT,
+        AUTHORED_PBR_MATERIAL_SLOT,
     } & occupied_resources:
         raise ContractError(
-            "DFComposite unexpectedly owns an injected t29..t36 slot"
+            "DFComposite unexpectedly owns an injected material slot"
         )
     if SCENE_DEPTH_SLOT not in occupied_resources:
         raise ContractError("DFComposite does not expose the verified t7 depth")
@@ -1149,6 +1159,7 @@ def validate_candidate(
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
         MATERIAL_PROPERTIES_SLOT,
+        AUTHORED_PBR_MATERIAL_SLOT,
         SURFACE_CLASS_SLOT,
     } != original_textures or not {
         DFLIGHT_ALBEDO_SLOT,
@@ -1159,6 +1170,7 @@ def validate_candidate(
         PUBLISHED_POSITION_SLOT,
         PREVIOUS_PUBLISHED_POSITION_SLOT,
         MATERIAL_PROPERTIES_SLOT,
+        AUTHORED_PBR_MATERIAL_SLOT,
         SURFACE_CLASS_SLOT,
     }.issubset(candidate_textures):
         raise ContractError(f"{name} changed the texture contract")
@@ -1179,6 +1191,7 @@ def validate_candidate(
         "dcl_resource_texturecube (float,float,float,float) t34",
         "dcl_resource_texturecube (float,float,float,float) t35",
         "dcl_resource_texture2d (float,float,float,float) t36",
+        "dcl_resource_texture2d (float,float,float,float) t45",
         "dcl_resource_texture2d (float,float,float,float) t47",
     ):
         if declaration not in candidate_text:
@@ -1197,6 +1210,8 @@ def validate_candidate(
         raise ContractError(f"{name} must declare and sample t35 exactly once")
     if len(re.findall(r"\bt36(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t36 exactly once")
+    if len(re.findall(r"\bt45(?:\b|\.)", candidate_text)) != 2:
+        raise ContractError(f"{name} must declare and sample t45 exactly once")
     if len(re.findall(r"\bt29(?:\b|\.)", candidate_text)) != 2:
         raise ContractError(f"{name} must declare and sample t29 exactly once")
     if len(re.findall(r"\bt47(?:\b|\.)", candidate_text)) != 2:
@@ -1486,7 +1501,7 @@ def main() -> int:
             f"{sslr_lobe_count} SSLR variants share the PBR lobe and "
             f"{native_occlusion_count} variants consume native AO; "
             "vanilla t8/s8 fallback and weight-gated, validity-aware "
-            "position-corrected t29..t36/b5 PBR consumption."
+            "position-corrected t29..t36/t45/b5 PBR consumption."
         )
     except (OSError, ContractError, census.CensusError) as error:
         print(f"IBL material contract generation failed: {error}", file=sys.stderr)

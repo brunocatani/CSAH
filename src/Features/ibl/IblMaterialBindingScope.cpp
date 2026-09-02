@@ -48,6 +48,8 @@ namespace community_shaders::ibl
         ID3D11ShaderResourceView* position,
         ID3D11ShaderResourceView* previousPosition,
         ID3D11ShaderResourceView* materialProperties,
+        ID3D11ShaderResourceView* pbrMaterial,
+        ID3D11ShaderResourceView* surfaceClass,
         ID3D11Buffer* constants) noexcept
     {
         if (!context) {
@@ -72,7 +74,9 @@ namespace community_shaders::ibl
             (previousPosition &&
                 !sameDevice(device.Get(), previousPosition)) ||
             (materialProperties &&
-                !sameDevice(device.Get(), materialProperties))) {
+                !sameDevice(device.Get(), materialProperties)) ||
+            (pbrMaterial && !sameDevice(device.Get(), pbrMaterial)) ||
+            (surfaceClass && !sameDevice(device.Get(), surfaceClass))) {
             rejection_ = MaterialBindingRejection::deviceMismatch;
             return;
         }
@@ -93,6 +97,22 @@ namespace community_shaders::ibl
             &previousConstants);
         previousConstants_.Attach(previousConstants);
         captured_ = true;
+        std::array<ID3D11ShaderResourceView*, 2> previousPbrResources{};
+        context_->PSGetShaderResources(
+            kPbrMaterialSlot,
+            1,
+            &previousPbrResources[0]);
+        context_->PSGetShaderResources(
+            kSurfaceClassSlot,
+            1,
+            &previousPbrResources[1]);
+        for (std::size_t index = 0;
+             index < previousPbrResources.size();
+             ++index) {
+            previousPbrResources_[index].Attach(
+                previousPbrResources[index]);
+        }
+        pbrResourcesCaptured_ = true;
 
         std::array<ID3D11ShaderResourceView*, 8> resources{
             albedo,
@@ -109,6 +129,14 @@ namespace community_shaders::ibl
             static_cast<UINT>(resources.size()),
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
+        context_->PSSetShaderResources(
+            kPbrMaterialSlot,
+            1,
+            &pbrMaterial);
+        context_->PSSetShaderResources(
+            kSurfaceClassSlot,
+            1,
+            &surfaceClass);
 
         std::array<ID3D11ShaderResourceView*, 8> appliedResources{};
         context_->PSGetShaderResources(
@@ -129,6 +157,18 @@ namespace community_shaders::ibl
             appliedResources[6] == previousPosition &&
             appliedResources[7] == materialProperties &&
             appliedConstants == constants;
+        std::array<ID3D11ShaderResourceView*, 2> appliedPbrResources{};
+        context_->PSGetShaderResources(
+            kPbrMaterialSlot,
+            1,
+            &appliedPbrResources[0]);
+        context_->PSGetShaderResources(
+            kSurfaceClassSlot,
+            1,
+            &appliedPbrResources[1]);
+        const auto pbrApplied =
+            appliedPbrResources[0] == pbrMaterial &&
+            appliedPbrResources[1] == surfaceClass;
         for (auto* resource : appliedResources) {
             if (resource) {
                 resource->Release();
@@ -137,7 +177,12 @@ namespace community_shaders::ibl
         if (appliedConstants) {
             appliedConstants->Release();
         }
-        if (!applied) {
+        for (auto* resource : appliedPbrResources) {
+            if (resource) {
+                resource->Release();
+            }
+        }
+        if (!applied || !pbrApplied) {
             rejection_ = MaterialBindingRejection::applyFailed;
             (void)restoreCaptured();
             restored_ = true;
@@ -219,6 +264,18 @@ namespace community_shaders::ibl
             static_cast<UINT>(resources.size()),
             resources.data());
         context_->PSSetConstantBuffers(kConstantSlot, 1, &constants);
+        if (pbrResourcesCaptured_) {
+            auto* previousPbrMaterial = previousPbrResources_[0].Get();
+            auto* previousSurfaceClass = previousPbrResources_[1].Get();
+            context_->PSSetShaderResources(
+                kPbrMaterialSlot,
+                1,
+                &previousPbrMaterial);
+            context_->PSSetShaderResources(
+                kSurfaceClassSlot,
+                1,
+                &previousSurfaceClass);
+        }
 
         std::array<ID3D11ShaderResourceView*, 8> restoredResources{};
         context_->PSGetShaderResources(
@@ -240,6 +297,22 @@ namespace community_shaders::ibl
             restoredResources[6] == resources[6] &&
             restoredResources[7] == resources[7] &&
             restoredConstants == constants;
+        std::array<ID3D11ShaderResourceView*, 2> restoredPbrResources{};
+        if (pbrResourcesCaptured_) {
+            context_->PSGetShaderResources(
+                kPbrMaterialSlot,
+                1,
+                &restoredPbrResources[0]);
+            context_->PSGetShaderResources(
+                kSurfaceClassSlot,
+                1,
+                &restoredPbrResources[1]);
+        }
+        const auto pbrRestored = !pbrResourcesCaptured_ ||
+            (restoredPbrResources[0] ==
+                    previousPbrResources_[0].Get() &&
+                restoredPbrResources[1] ==
+                    previousPbrResources_[1].Get());
         for (auto* resource : restoredResources) {
             if (resource) {
                 resource->Release();
@@ -248,7 +321,12 @@ namespace community_shaders::ibl
         if (restoredConstants) {
             restoredConstants->Release();
         }
-        return restored;
+        for (auto* resource : restoredPbrResources) {
+            if (resource) {
+                resource->Release();
+            }
+        }
+        return restored && pbrRestored;
     }
 
     void ScopedMaterialBindings::moveFrom(
@@ -257,11 +335,14 @@ namespace community_shaders::ibl
         context_ = std::move(other.context_);
         previousResources_ = std::move(other.previousResources_);
         previousConstants_ = std::move(other.previousConstants_);
+        previousPbrResources_ = std::move(other.previousPbrResources_);
         rejection_ = other.rejection_;
         captured_ = other.captured_;
+        pbrResourcesCaptured_ = other.pbrResourcesCaptured_;
         active_ = other.active_;
         restored_ = other.restored_;
         other.captured_ = false;
+        other.pbrResourcesCaptured_ = false;
         other.active_ = false;
         other.restored_ = true;
     }

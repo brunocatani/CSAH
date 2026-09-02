@@ -11,26 +11,41 @@ from pathlib import Path
 
 import census_linear_lighting_fxp as census
 from dxbc_transform import (
+    OPCODE_DCL_RESOURCE,
     OPCODE_RET,
+    OPERAND_INPUT,
     OPERAND_OUTPUT,
+    OPERAND_RESOURCE,
+    OPERAND_SAMPLER,
+    OPERAND_TEMP,
     DxbcChunk,
+    Operand,
     TransformError as ContractError,
     build_dxbc,
     executable_operands,
     instructions,
     pack_words,
     parse_dxbc,
+    replace_operand_with_temp,
+    shader_declarations_and_body,
     shader_words,
 )
 
 
 FIRST_RESOURCE_ID = 1095
+FIRST_AUTHORED_PBR_RESOURCE_ID = 2000
 EXPECTED_MATERIAL_CONTRACTS = 288
 EXPECTED_DESCRIPTOR_CONTRACTS = 459
 EXPECTED_SPECIALIZED_VARIANTS = 106
+EXPECTED_AUTHORED_PBR_CONTRACTS = 279
+EXPECTED_AUTHORED_PBR_SPECIALIZED_VARIANTS = 105
 EXPECTED_GRASS_VERTEX_SHADER_ROWS = 11
 EXPECTED_GRASS_VERTEX_SHADER_IDENTITIES = 5
 SURFACE_TARGET = 6
+PBR_MATERIAL_TARGET = 7
+PBR_RMAOS_SLOT = 48
+PBR_TEMPLATE_SAMPLER_SLOT = 15
+SAMPLE_OPCODES = {0x45, 0x46, 0x47, 0x48, 0x49, 0x4A}
 MOV_OPCODE = 0x36
 
 SURFACE_CLASS_ORDINARY = 0
@@ -69,9 +84,18 @@ class SignatureElement:
 
 @dataclass(frozen=True)
 class TransformTemplate:
+    output_declarations: tuple[tuple[int, ...], ...]
+    output_writes: tuple[tuple[int, ...], ...]
+    output_signatures: tuple[SignatureElement, ...]
+
+
+@dataclass(frozen=True)
+class AuthoredMaterialTemplate:
+    resource_declaration: tuple[int, ...]
     output_declaration: tuple[int, ...]
-    output_write: tuple[int, ...]
     output_signature: SignatureElement
+    body: tuple[tuple[int, ...], ...]
+    temporary_count: int
 
 
 @dataclass(frozen=True)
@@ -231,10 +255,60 @@ def compile_template(
         f"surface-class template {class_code}",
     )
     text = assembly.read_text(encoding="utf-8")
-    if "dcl_output o6.x" not in text or "SV_Target                6" not in text:
+    if (
+        "dcl_output o6.x" not in text
+        or "dcl_output o7.xyzw" not in text
+        or "SV_Target                6" not in text
+        or "SV_Target                7" not in text
+    ):
         raise ContractError(
-            f"surface-class template {class_code} lost SV_Target6"
+            f"surface-class template {class_code} lost MRT6/MRT7"
         )
+    return output.read_bytes()
+
+
+def compile_authored_template(
+    root: Path,
+    fxc: Path,
+    temporary: Path,
+) -> bytes:
+    source = (
+        root
+        / "package"
+        / "Shaders"
+        / "Community"
+        / "PBR"
+        / "PbrMaterialOutput.hlsl"
+    )
+    output = temporary / "PbrMaterialOutput.dxbc"
+    assembly = temporary / "PbrMaterialOutput.asm.txt"
+    run(
+        [
+            str(fxc),
+            "/nologo",
+            "/T",
+            "ps_5_0",
+            "/E",
+            "PSMain",
+            "/O3",
+            "/Ges",
+            "/WX",
+            "/Fo",
+            str(output),
+            "/Fc",
+            str(assembly),
+            str(source),
+        ],
+        "authored PBR material template",
+    )
+    text = assembly.read_text(encoding="utf-8")
+    if (
+        "dcl_resource_texture2d (float,float,float,float) t48" not in text
+        or "dcl_sampler s15" not in text
+        or "dcl_output o7.xyzw" not in text
+        or "SV_Target                7" not in text
+    ):
+        raise ContractError("authored PBR material template contract changed")
     return output.read_bytes()
 
 
@@ -244,39 +318,125 @@ def template_contract(data: bytes) -> TransformTemplate:
     if len(signature_chunks) != 1:
         raise ContractError("surface-class template must contain one OSGN chunk")
     _, signature = parse_signature(signature_chunks[0].payload)
+    outputs = {
+        element.semantic_index: element
+        for element in signature
+        if element.name == "SV_Target"
+        and element.semantic_index in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
+        and element.register == element.semantic_index
+    }
+    if (
+        set(outputs) != {SURFACE_TARGET, PBR_MATERIAL_TARGET}
+        or outputs[SURFACE_TARGET].mask != 0x1
+        or outputs[PBR_MATERIAL_TARGET].mask != 0xF
+    ):
+        raise ContractError("surface-class template output signature changed")
+
+    declarations: dict[int, tuple[int, ...]] = {}
+    output_writes: dict[int, tuple[int, ...]] = {}
+    for start, end in instructions(words):
+        operands = executable_operands(words, start, end)
+        owned_targets = {
+            int(operand.immediate_indices[0])
+            for operand in operands
+            if operand.operand_type == OPERAND_OUTPUT
+            and operand.immediate_indices
+            and operand.immediate_indices[0]
+            in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
+        }
+        if not owned_targets:
+            continue
+        if len(owned_targets) != 1:
+            raise ContractError("surface-class instruction owns two outputs")
+        target = next(iter(owned_targets))
+        opcode = words[start] & 0x7FF
+        destination = output_writes if opcode == MOV_OPCODE else declarations
+        if target in destination:
+            raise ContractError(
+                f"surface-class template owns target{target} twice"
+            )
+        destination[target] = tuple(words[start:end])
+    if set(declarations) != set(outputs) or set(output_writes) != set(outputs):
+        raise ContractError("surface-class template token contract is incomplete")
+    return TransformTemplate(
+        tuple(declarations[target] for target in sorted(declarations)),
+        tuple(output_writes[target] for target in sorted(output_writes)),
+        tuple(outputs[target] for target in sorted(outputs)),
+    )
+
+
+def declaration_for_slot(
+    words: list[int],
+    opcode: int,
+    operand_type: int,
+    slot: int,
+) -> tuple[int, ...]:
+    matches: list[tuple[int, ...]] = []
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) != opcode:
+            continue
+        operands = executable_operands(words, start, end)
+        if (
+            operands
+            and operands[0].operand_type == operand_type
+            and operands[0].immediate_indices == (slot,)
+        ):
+            matches.append(tuple(words[start:end]))
+    if len(matches) != 1:
+        raise ContractError(
+            f"template must declare opcode {opcode:#x} slot {slot} once"
+        )
+    return matches[0]
+
+
+def authored_template_contract(data: bytes) -> AuthoredMaterialTemplate:
+    _, chunks, _, words = shader_words(data)
+    signature_chunks = [chunk for chunk in chunks if chunk.tag == b"OSGN"]
+    if len(signature_chunks) != 1:
+        raise ContractError("authored PBR template must contain one OSGN chunk")
+    _, signature = parse_signature(signature_chunks[0].payload)
     outputs = [
         element
         for element in signature
         if element.name == "SV_Target"
-        and element.semantic_index == SURFACE_TARGET
-        and element.register == SURFACE_TARGET
+        and element.semantic_index == PBR_MATERIAL_TARGET
+        and element.register == PBR_MATERIAL_TARGET
     ]
-    if len(outputs) != 1 or outputs[0].mask != 0x1:
-        raise ContractError("surface-class template output signature changed")
-
-    declaration: tuple[int, ...] | None = None
-    output_write: tuple[int, ...] | None = None
+    if len(outputs) != 1 or outputs[0].mask != 0xF:
+        raise ContractError("authored PBR template output signature changed")
+    resource_declaration = declaration_for_slot(
+        words,
+        OPCODE_DCL_RESOURCE,
+        OPERAND_RESOURCE,
+        PBR_RMAOS_SLOT,
+    )
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    temporary_count = words[temp_declaration[0] + 1]
+    if temporary_count == 0 or temporary_count > 16:
+        raise ContractError("authored PBR template temporary count changed")
+    output_declarations: list[tuple[int, ...]] = []
     for start, end in instructions(words):
-        operands = executable_operands(words, start, end)
-        owns_target = any(
-            operand.operand_type == OPERAND_OUTPUT
-            and operand.immediate_indices == (SURFACE_TARGET,)
-            for operand in operands
-        )
-        if not owns_target:
+        if start >= temp_declaration[0]:
             continue
-        opcode = words[start] & 0x7FF
-        if opcode == MOV_OPCODE:
-            if output_write is not None:
-                raise ContractError("surface-class template writes target6 twice")
-            output_write = tuple(words[start:end])
-        else:
-            if declaration is not None:
-                raise ContractError("surface-class template declares target6 twice")
-            declaration = tuple(words[start:end])
-    if declaration is None or output_write is None:
-        raise ContractError("surface-class template token contract is incomplete")
-    return TransformTemplate(declaration, output_write, outputs[0])
+        operands = executable_operands(words, start, end)
+        if any(
+            operand.operand_type == OPERAND_OUTPUT
+            and operand.immediate_indices == (PBR_MATERIAL_TARGET,)
+            for operand in operands
+        ):
+            output_declarations.append(tuple(words[start:end]))
+    if len(output_declarations) != 1:
+        raise ContractError("authored PBR template output declaration changed")
+    body_words = tuple(tuple(words[start:end]) for start, end in body[:-1])
+    if not body_words or (words[body[-1][0]] & 0x7FF) != OPCODE_RET:
+        raise ContractError("authored PBR template must end in one return")
+    return AuthoredMaterialTemplate(
+        resource_declaration=resource_declaration,
+        output_declaration=output_declarations[0],
+        output_signature=outputs[0],
+        body=body_words,
+        temporary_count=temporary_count,
+    )
 
 
 def patch_shader(data: bytes, template: TransformTemplate) -> bytes:
@@ -291,12 +451,14 @@ def patch_shader(data: bytes, template: TransformTemplate) -> bytes:
     if any(
         any(
             operand.operand_type == OPERAND_OUTPUT
-            and operand.immediate_indices == (SURFACE_TARGET,)
+            and operand.immediate_indices
+            and operand.immediate_indices[0]
+            in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
             for operand in executable_operands(words, start, end)
         )
         for start, end in all_instructions
     ):
-        raise ContractError("material shader already owns output register 6")
+        raise ContractError("material shader already owns output register 6/7")
 
     temp_declarations = [
         item
@@ -308,9 +470,17 @@ def patch_shader(data: bytes, template: TransformTemplate) -> bytes:
     declaration_start = temp_declarations[0][0]
     patched_words = [
         *words[:declaration_start],
-        *template.output_declaration,
+        *(
+            word
+            for declaration in template.output_declarations
+            for word in declaration
+        ),
         *words[declaration_start:return_start],
-        *template.output_write,
+        *(
+            word
+            for output_write in template.output_writes
+            for word in output_write
+        ),
         *words[return_start:],
     ]
     patched_words[1] = len(patched_words)
@@ -325,16 +495,240 @@ def patch_shader(data: bytes, template: TransformTemplate) -> bytes:
     if any(
         element.name == "SV_Target"
         and (
-            element.semantic_index == SURFACE_TARGET
-            or element.register == SURFACE_TARGET
+            element.semantic_index in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
+            or element.register in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
         )
         for element in elements
     ):
-        raise ContractError("material output signature already owns target6")
+        raise ContractError("material output signature already owns target6/7")
     patched_chunks = list(chunks)
     patched_chunks[output_index] = DxbcChunk(
         b"OSGN",
-        build_signature(header, [*elements, template.output_signature]),
+        build_signature(header, [*elements, *template.output_signatures]),
+    )
+    patched_chunks[shader_index] = DxbcChunk(
+        patched_chunks[shader_index].tag,
+        pack_words(patched_words),
+    )
+    return build_dxbc(version, patched_chunks)
+
+
+def replace_instruction_operands(
+    instruction: list[int],
+    replacements: dict[int, list[int]],
+) -> list[int]:
+    operands = {
+        operand.start: operand
+        for operand in executable_operands(instruction, 0, len(instruction))
+    }
+    output: list[int] = []
+    cursor = 0
+    while cursor < len(instruction):
+        replacement = replacements.get(cursor)
+        if replacement is None:
+            output.append(instruction[cursor])
+            cursor += 1
+            continue
+        operand = operands.get(cursor)
+        if operand is None:
+            raise ContractError("authored operand replacement is misaligned")
+        output.extend(replacement)
+        cursor = operand.end
+    if len(output) > 0x7F:
+        raise ContractError("authored instruction exceeds the token limit")
+    output[0] = (output[0] & ~(0x7F << 24)) | (len(output) << 24)
+    return output
+
+
+def remap_authored_instruction(
+    instruction: tuple[int, ...],
+    coordinate: list[int],
+    sampler: list[int],
+    first_scratch: int,
+    template_temporary_count: int,
+) -> list[int]:
+    mutable = list(instruction)
+    replacements: dict[int, list[int]] = {}
+    for operand in executable_operands(mutable, 0, len(mutable)):
+        if operand.operand_type == OPERAND_TEMP:
+            if (
+                len(operand.immediate_indices) != 1
+                or operand.immediate_indices[0] is None
+                or int(operand.immediate_indices[0]) >= template_temporary_count
+            ):
+                raise ContractError(
+                    "authored PBR template uses an unexpected temporary"
+                )
+            replacements[operand.start] = replace_operand_with_temp(
+                mutable,
+                operand,
+                first_scratch + int(operand.immediate_indices[0]),
+            )
+        elif operand.operand_type == OPERAND_INPUT:
+            if operand.immediate_indices != (0,):
+                raise ContractError(
+                    "authored PBR template uses an unexpected input"
+                )
+            replacements[operand.start] = coordinate
+        elif operand.operand_type == OPERAND_SAMPLER:
+            if operand.immediate_indices != (PBR_TEMPLATE_SAMPLER_SLOT,):
+                raise ContractError(
+                    "authored PBR template uses an unexpected sampler"
+                )
+            replacements[operand.start] = sampler
+        elif operand.operand_type == OPERAND_OUTPUT:
+            if operand.immediate_indices != (PBR_MATERIAL_TARGET,):
+                raise ContractError(
+                    "authored PBR template uses an unexpected output"
+                )
+        elif operand.operand_type == OPERAND_RESOURCE:
+            if operand.immediate_indices != (PBR_RMAOS_SLOT,):
+                raise ContractError(
+                    "authored PBR template uses an unexpected resource"
+                )
+    return replace_instruction_operands(mutable, replacements)
+
+
+def patch_authored_shader(
+    data: bytes,
+    surface_template: TransformTemplate,
+    authored_template: AuthoredMaterialTemplate,
+) -> bytes | None:
+    version, chunks, shader_index, words = shader_words(data)
+    temp_declaration, _, body = shader_declarations_and_body(words)
+    original_temporary_count = words[temp_declaration[0] + 1]
+    if original_temporary_count == 0 or original_temporary_count > 4090:
+        raise ContractError("material shader temporary count is invalid")
+
+    resource_declarations: dict[int, tuple[int, ...]] = {}
+    for start, end in instructions(words):
+        if (words[start] & 0x7FF) != OPCODE_DCL_RESOURCE:
+            continue
+        operands = executable_operands(words, start, end)
+        if (
+            operands
+            and operands[0].operand_type == OPERAND_RESOURCE
+            and len(operands[0].immediate_indices) == 1
+            and operands[0].immediate_indices[0] is not None
+        ):
+            resource_declarations[int(operands[0].immediate_indices[0])] = (
+                tuple(words[start:end])
+            )
+    if PBR_RMAOS_SLOT in resource_declarations:
+        raise ContractError("material shader already owns t48")
+    diffuse_declaration = resource_declarations.get(0)
+    if diffuse_declaration is None:
+        return None
+    # Only a 2D base-colour sample can provide the authored RMAOS UV. Texture
+    # arrays and structured resources deliberately remain on the legacy path.
+    if diffuse_declaration[0] != authored_template.resource_declaration[0]:
+        return None
+
+    sample: tuple[int, int, list[Operand]] | None = None
+    for start, end in body:
+        if (words[start] & 0x7FF) not in SAMPLE_OPCODES:
+            continue
+        operands = executable_operands(words, start, end)
+        if len(operands) < 4:
+            continue
+        if any(
+            operand.operand_type == OPERAND_RESOURCE
+            and operand.immediate_indices == (0,)
+            for operand in operands
+        ):
+            sample = (start, end, operands)
+            break
+    if sample is None:
+        return None
+    sample_start, sample_end, sample_operands = sample
+    coordinate = sample_operands[1]
+    sampler_operands = [
+        operand
+        for operand in sample_operands
+        if operand.operand_type == OPERAND_SAMPLER
+    ]
+    if len(sampler_operands) != 1:
+        return None
+    coordinate_words = words[coordinate.start : coordinate.end]
+    sampler_words = words[
+        sampler_operands[0].start : sampler_operands[0].end
+    ]
+
+    surface_declaration = surface_template.output_declarations[0]
+    surface_write = surface_template.output_writes[0]
+    surface_signature = surface_template.output_signatures[0]
+    injected_body: list[int] = []
+    for instruction in authored_template.body:
+        injected_body.extend(
+            remap_authored_instruction(
+                instruction,
+                coordinate_words,
+                sampler_words,
+                original_temporary_count,
+                authored_template.temporary_count,
+            )
+        )
+
+    rewritten_body: list[int] = []
+    return_count = 0
+    for start, end in body:
+        opcode = words[start] & 0x7FF
+        if start == sample_start and end == sample_end:
+            rewritten_body.extend(words[start:end])
+            rewritten_body.extend(injected_body)
+        elif opcode == OPCODE_RET:
+            rewritten_body.extend(surface_write)
+            rewritten_body.extend(words[start:end])
+            return_count += 1
+        else:
+            rewritten_body.extend(words[start:end])
+    if return_count != 1 or (words[body[-1][0]] & 0x7FF) != OPCODE_RET:
+        raise ContractError("material shader must retain one final return")
+
+    prefix = words[: temp_declaration[0]]
+    prefix.extend(surface_declaration)
+    prefix.extend(authored_template.output_declaration)
+    prefix.extend(authored_template.resource_declaration)
+    updated_temp_declaration = words[
+        temp_declaration[0] : temp_declaration[1]
+    ]
+    updated_temp_declaration[1] = (
+        original_temporary_count + authored_template.temporary_count
+    )
+    patched_words = [
+        *prefix,
+        *updated_temp_declaration,
+        *rewritten_body,
+    ]
+    patched_words[1] = len(patched_words)
+
+    output_indices = [
+        index for index, chunk in enumerate(chunks) if chunk.tag == b"OSGN"
+    ]
+    if len(output_indices) != 1:
+        raise ContractError("material shader must contain one OSGN chunk")
+    output_index = output_indices[0]
+    header, elements = parse_signature(chunks[output_index].payload)
+    if any(
+        element.name == "SV_Target"
+        and (
+            element.semantic_index in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
+            or element.register in (SURFACE_TARGET, PBR_MATERIAL_TARGET)
+        )
+        for element in elements
+    ):
+        raise ContractError("material output signature already owns target6/7")
+    patched_chunks = list(chunks)
+    patched_chunks[output_index] = DxbcChunk(
+        b"OSGN",
+        build_signature(
+            header,
+            [
+                *elements,
+                surface_signature,
+                authored_template.output_signature,
+            ],
+        ),
     )
     patched_chunks[shader_index] = DxbcChunk(
         patched_chunks[shader_index].tag,
@@ -604,6 +998,8 @@ def render_contracts(
     grass_vertex_identities: list[tuple[int, str]],
     base_data: dict[int, bytes],
     variant_data: list[bytes],
+    authored_base_data: dict[int, bytes],
+    authored_variant_data: dict[int, bytes],
 ) -> str:
     rows = [
         "// Generated by tools/generate_surface_classification_shaders.py.",
@@ -645,6 +1041,67 @@ def render_contracts(
         )
         rows.extend(format_checksum(checksum, "            "))
         rows.extend(("        },",))
+    rows.extend(
+        (
+            "    } };",
+            "",
+            "constexpr std::array<SurfaceClassContractDefinition, 288>",
+            "    kAuthoredPbrSurfaceClassContracts{ {",
+        )
+    )
+    resource = FIRST_AUTHORED_PBR_RESOURCE_ID
+    for contract in contracts:
+        data = authored_base_data.get(contract.index)
+        if data is None:
+            rows.extend(("        { 0, 0, {} },",))
+            continue
+        size, checksum = identity(data)
+        rows.extend(
+            (
+                "        {",
+                f"            IDR_SURFACE_CLASS_PBR_LINEAR_{contract.index:03d}_PS,",
+                f"            {size},",
+            )
+        )
+        rows.extend(format_checksum(checksum, "            "))
+        rows.extend(("        },",))
+        resource += 1
+    rows.extend(
+        (
+            "    } };",
+            "",
+            f"constexpr std::array<SpecializedSurfaceClassContractDefinition, {len(variants)}>",
+            "    kAuthoredPbrSpecializedSurfaceClassContracts{ {",
+        )
+    )
+    for slot, variant in enumerate(variants):
+        data = authored_variant_data.get(slot)
+        if data is None:
+            rows.extend(
+                (
+                    "        {",
+                    f"            {variant.contract.index}u,",
+                    f"            {variant.class_code}u,",
+                    "            0,",
+                    "            0,",
+                    "            {},",
+                    "        },",
+                )
+            )
+            continue
+        size, checksum = identity(data)
+        rows.extend(
+            (
+                "        {",
+                f"            {variant.contract.index}u,",
+                f"            {variant.class_code}u,",
+                f"            IDR_SURFACE_CLASS_PBR_SPECIALIZED_{slot:03d}_PS,",
+                f"            {size},",
+            )
+        )
+        rows.extend(format_checksum(checksum, "            "))
+        rows.extend(("        },",))
+        resource += 1
     rows.extend(
         (
             "    } };",
@@ -699,7 +1156,10 @@ def render_contracts(
 
 
 def render_resource_header(
-    contracts: list[Contract], variants: list[SpecializedVariant]
+    contracts: list[Contract],
+    variants: list[SpecializedVariant],
+    authored_base_data: dict[int, bytes],
+    authored_variant_data: dict[int, bytes],
 ) -> str:
     rows = [
         "#pragma once",
@@ -717,12 +1177,30 @@ def render_resource_header(
             f"#define IDR_SURFACE_CLASS_SPECIALIZED_{slot:03d}_PS {resource}"
         )
         resource += 1
+    resource = FIRST_AUTHORED_PBR_RESOURCE_ID
+    for contract in contracts:
+        if contract.index not in authored_base_data:
+            continue
+        rows.append(
+            f"#define IDR_SURFACE_CLASS_PBR_LINEAR_{contract.index:03d}_PS {resource}"
+        )
+        resource += 1
+    for slot, _ in enumerate(variants):
+        if slot not in authored_variant_data:
+            continue
+        rows.append(
+            f"#define IDR_SURFACE_CLASS_PBR_SPECIALIZED_{slot:03d}_PS {resource}"
+        )
+        resource += 1
     rows.append("")
     return "\n".join(rows)
 
 
 def render_resource_script(
-    contracts: list[Contract], variants: list[SpecializedVariant]
+    contracts: list[Contract],
+    variants: list[SpecializedVariant],
+    authored_base_data: dict[int, bytes],
+    authored_variant_data: dict[int, bytes],
 ) -> str:
     rows = ["// Generated by tools/generate_surface_classification_shaders.py."]
     for contract in contracts:
@@ -733,6 +1211,19 @@ def render_resource_script(
         folder = SURFACE_CLASS_NAMES[variant.class_code]
         rows.append(
             f'IDR_SURFACE_CLASS_SPECIALIZED_{slot:03d}_PS RCDATA "../package/Shaders/Community/SurfaceClassification/{folder}/{variant.contract.name}.dxbc"'
+        )
+    for contract in contracts:
+        if contract.index not in authored_base_data:
+            continue
+        rows.append(
+            f'IDR_SURFACE_CLASS_PBR_LINEAR_{contract.index:03d}_PS RCDATA "../package/Shaders/Community/SurfaceClassification/PBR/Linear/{contract.name}.dxbc"'
+        )
+    for slot, variant in enumerate(variants):
+        if slot not in authored_variant_data:
+            continue
+        folder = SURFACE_CLASS_NAMES[variant.class_code]
+        rows.append(
+            f'IDR_SURFACE_CLASS_PBR_SPECIALIZED_{slot:03d}_PS RCDATA "../package/Shaders/Community/SurfaceClassification/PBR/{folder}/{variant.contract.name}.dxbc"'
         )
     rows.append("")
     return "\n".join(rows)
@@ -774,6 +1265,13 @@ def main() -> int:
             )
             for class_code in sorted(required_class_codes)
         }
+        authored_template = authored_template_contract(
+            compile_authored_template(
+                root,
+                args.fxc.resolve(),
+                temporary,
+            )
+        )
         base_data = {
             contract.index: patch_shader(
                 contract.source.read_bytes(), templates[SURFACE_CLASS_ORDINARY]
@@ -787,6 +1285,37 @@ def main() -> int:
             )
             for variant in variants
         ]
+        authored_base_data: dict[int, bytes] = {}
+        for contract in contracts:
+            candidate = patch_authored_shader(
+                contract.source.read_bytes(),
+                templates[SURFACE_CLASS_ORDINARY],
+                authored_template,
+            )
+            if candidate is not None:
+                authored_base_data[contract.index] = candidate
+        authored_variant_data: dict[int, bytes] = {}
+        for slot, variant in enumerate(variants):
+            candidate = patch_authored_shader(
+                variant.contract.source.read_bytes(),
+                templates[variant.class_code],
+                authored_template,
+            )
+            if candidate is not None:
+                authored_variant_data[slot] = candidate
+        if len(authored_base_data) != EXPECTED_AUTHORED_PBR_CONTRACTS:
+            raise ContractError(
+                "authored PBR 2D material coverage changed: "
+                f"{len(authored_base_data)}"
+            )
+        if (
+            len(authored_variant_data)
+            != EXPECTED_AUTHORED_PBR_SPECIALIZED_VARIANTS
+        ):
+            raise ContractError(
+                "authored PBR specialized coverage changed: "
+                f"{len(authored_variant_data)}"
+            )
 
     package = (
         root / "package" / "Shaders" / "Community" / "SurfaceClassification"
@@ -801,7 +1330,20 @@ def main() -> int:
         / f"{variant.contract.name}.dxbc"
         for variant in variants
     )
-    existing_assets = set(package.glob("*/*.dxbc"))
+    expected_assets.update(
+        package / "PBR" / "Linear" / f"{contract.name}.dxbc"
+        for contract in contracts
+        if contract.index in authored_base_data
+    )
+    expected_assets.update(
+        package
+        / "PBR"
+        / SURFACE_CLASS_NAMES[variant.class_code]
+        / f"{variant.contract.name}.dxbc"
+        for slot, variant in enumerate(variants)
+        if slot in authored_variant_data
+    )
+    existing_assets = set(package.rglob("*.dxbc"))
     stale_assets = sorted(existing_assets - expected_assets)
     if args.check and stale_assets:
         raise ContractError(
@@ -824,6 +1366,27 @@ def main() -> int:
             variant_data[slot],
             args.check,
         )
+    for contract in contracts:
+        data = authored_base_data.get(contract.index)
+        if data is None:
+            continue
+        compare_or_write(
+            package / "PBR" / "Linear" / f"{contract.name}.dxbc",
+            data,
+            args.check,
+        )
+    for slot, variant in enumerate(variants):
+        data = authored_variant_data.get(slot)
+        if data is None:
+            continue
+        compare_or_write(
+            package
+            / "PBR"
+            / SURFACE_CLASS_NAMES[variant.class_code]
+            / f"{variant.contract.name}.dxbc",
+            data,
+            args.check,
+        )
     compare_or_write(
         root
         / "src"
@@ -838,17 +1401,29 @@ def main() -> int:
             grass_vertex_identities,
             base_data,
             variant_data,
+            authored_base_data,
+            authored_variant_data,
         ),
         args.check,
     )
     compare_or_write(
         root / "src" / "GeneratedSurfaceClassificationResources.h",
-        render_resource_header(contracts, variants),
+        render_resource_header(
+            contracts,
+            variants,
+            authored_base_data,
+            authored_variant_data,
+        ),
         args.check,
     )
     compare_or_write(
         root / "src" / "GeneratedSurfaceClassificationResources.rc",
-        render_resource_script(contracts, variants),
+        render_resource_script(
+            contracts,
+            variants,
+            authored_base_data,
+            authored_variant_data,
+        ),
         args.check,
     )
     return 0

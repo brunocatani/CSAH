@@ -115,6 +115,8 @@ namespace
         ID3D11ShaderResourceView* position,
         ID3D11ShaderResourceView* previousPosition,
         ID3D11ShaderResourceView* materialProperties,
+        ID3D11ShaderResourceView* pbrMaterial,
+        ID3D11ShaderResourceView* surfaceClass,
         ID3D11Buffer* constants,
         const std::string& label)
     {
@@ -136,6 +138,16 @@ namespace
             resources[6] == previousPosition &&
             resources[7] == materialProperties &&
             actualConstants == constants;
+        ID3D11ShaderResourceView* actualPbrMaterial{};
+        ID3D11ShaderResourceView* actualSurfaceClass{};
+        context->PSGetShaderResources(
+            ScopedMaterialBindings::kPbrMaterialSlot,
+            1,
+            &actualPbrMaterial);
+        context->PSGetShaderResources(
+            ScopedMaterialBindings::kSurfaceClassSlot,
+            1,
+            &actualSurfaceClass);
         for (auto* resource : resources) {
             if (resource) {
                 resource->Release();
@@ -144,7 +156,15 @@ namespace
         if (actualConstants) {
             actualConstants->Release();
         }
-        require(matches, label);
+        const auto pbrMatches = actualPbrMaterial == pbrMaterial &&
+            actualSurfaceClass == surfaceClass;
+        if (actualPbrMaterial) {
+            actualPbrMaterial->Release();
+        }
+        if (actualSurfaceClass) {
+            actualSurfaceClass->Release();
+        }
+        require(matches && pbrMatches, label);
     }
 }
 
@@ -161,6 +181,8 @@ int main()
         auto previousPosition = createCube(primary.device.Get());
         auto previousTransitionPosition = createCube(primary.device.Get());
         auto previousMaterialProperties = createCube(primary.device.Get());
+        auto previousPbrMaterial = createCube(primary.device.Get());
+        auto previousSurfaceClass = createCube(primary.device.Get());
         auto publishedAlbedo = createCube(primary.device.Get());
         auto publishedRadiance = createCube(primary.device.Get());
         auto publishedValidity = createCube(primary.device.Get());
@@ -169,6 +191,8 @@ int main()
         auto publishedPosition = createCube(primary.device.Get());
         auto publishedPreviousPosition = createCube(primary.device.Get());
         auto publishedMaterialProperties = createCube(primary.device.Get());
+        auto publishedPbrMaterial = createCube(primary.device.Get());
+        auto publishedSurfaceClass = createCube(primary.device.Get());
         auto previousConstants = createConstants(primary.device.Get(), 0.25F);
         auto enabledConstants = createConstants(primary.device.Get(), 1.0F);
         auto disabledConstants = createConstants(primary.device.Get(), 0.0F);
@@ -193,6 +217,16 @@ int main()
             ScopedMaterialBindings::kConstantSlot,
             1,
             &previousBuffer);
+        auto* previousPbr = previousPbrMaterial.Get();
+        auto* previousClass = previousSurfaceClass.Get();
+        primary.context->PSSetShaderResources(
+            ScopedMaterialBindings::kPbrMaterialSlot,
+            1,
+            &previousPbr);
+        primary.context->PSSetShaderResources(
+            ScopedMaterialBindings::kSurfaceClassSlot,
+            1,
+            &previousClass);
 
         {
             ScopedMaterialBindings scope(
@@ -205,6 +239,8 @@ int main()
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
                 publishedMaterialProperties.Get(),
+                publishedPbrMaterial.Get(),
+                publishedSurfaceClass.Get(),
                 enabledConstants.Get());
             require(scope.active(), "published material scope was rejected");
             requireBindings(
@@ -217,6 +253,8 @@ int main()
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
                 publishedMaterialProperties.Get(),
+                publishedPbrMaterial.Get(),
+                publishedSurfaceClass.Get(),
                 enabledConstants.Get(),
                 "published material bindings were not applied exactly");
             require(scope.restore(), "published material scope did not restore");
@@ -231,6 +269,8 @@ int main()
             previousPosition.Get(),
             previousTransitionPosition.Get(),
             previousMaterialProperties.Get(),
+            previousPbrMaterial.Get(),
+            previousSurfaceClass.Get(),
             previousConstants.Get(),
             "published material scope did not restore previous bindings");
 
@@ -245,10 +285,14 @@ int main()
                 nullptr,
                 nullptr,
                 nullptr,
+                nullptr,
+                nullptr,
                 disabledConstants.Get());
             require(scope.active(), "disabled material scope was rejected");
             requireBindings(
                 primary.context.Get(),
+                nullptr,
+                nullptr,
                 nullptr,
                 nullptr,
                 nullptr,
@@ -270,6 +314,8 @@ int main()
             previousPosition.Get(),
             previousTransitionPosition.Get(),
             previousMaterialProperties.Get(),
+            previousPbrMaterial.Get(),
+            previousSurfaceClass.Get(),
             previousConstants.Get(),
             "disabled material scope did not restore previous bindings");
 
@@ -284,6 +330,8 @@ int main()
                 publishedPosition.Get(),
                 publishedPreviousPosition.Get(),
                 publishedMaterialProperties.Get(),
+                publishedPbrMaterial.Get(),
+                publishedSurfaceClass.Get(),
                 enabledConstants.Get());
             require(!rejected.active(), "foreign-device scope was accepted");
             require(
@@ -300,11 +348,13 @@ int main()
             previousPosition.Get(),
             previousTransitionPosition.Get(),
             previousMaterialProperties.Get(),
+            previousPbrMaterial.Get(),
+            previousSurfaceClass.Get(),
             previousConstants.Get(),
             "rejected scope changed existing bindings");
 
         std::cout
-            << "FO4VR IBL t29..t36/b5 material transaction verified on D3D11 WARP\n";
+            << "FO4VR IBL t29..t36/t45/t47/b5 material transaction verified on D3D11 WARP\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
