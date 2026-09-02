@@ -4,6 +4,11 @@
 
 #include <cstdint>
 
+namespace RE
+{
+    class NiTexture;
+}
+
 namespace community_shaders::render
 {
     struct HookSnapshot
@@ -74,11 +79,13 @@ namespace community_shaders::render
     // lifetime across retained material draws. SetupGeometry additionally
     // publishes a one-draw transaction so a retained shader can be specialized
     // immediately before its draw. All state is fixed-capacity render-thread
-    // storage; no engine pointer is retained.
+    // storage; the non-owning base texture survives only to that immediate
+    // draw boundary and is consumed before the draw is issued.
     void beginDFPrePassTechnique(std::uint32_t descriptor) noexcept;
     void endDFPrePassTechnique(std::uint32_t descriptor) noexcept;
-    void publishDFPrePassDescriptor(
-        std::uint32_t descriptor) noexcept;
+    void publishDFPrePassGeometry(
+        std::uint32_t descriptor,
+        RE::NiTexture* baseTexture) noexcept;
 
     // A new session invalidates render-thread-local proof state through its
     // monotonically increasing ID. All counters below are session-local.

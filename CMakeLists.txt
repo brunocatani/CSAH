@@ -393,6 +393,12 @@ set(PBR_SETTINGS_STORE_HEADER
   "${SOURCE_DIR}/Features/pbr/PbrSettingsStore.h")
 set(PBR_MATERIAL_MODEL_HEADER
   "${SOURCE_DIR}/Features/pbr/PbrMaterialModel.h")
+set(AUTHORED_PBR_PACK_BUILDER
+  "${ROOT_DIR}/tools/build_authored_pbr_pack.py")
+set(AUTHORED_PBR_PACK_TEST
+  "${ROOT_DIR}/tests/test_build_authored_pbr_pack.py")
+set(AUTHORED_PBR_VERIFY_SCRIPT
+  "${ROOT_DIR}/cmake/VerifyAuthoredPbrRuntime.cmake")
 set(PBR_COMMON_SHADER_SOURCE
   "${ROOT_DIR}/package/Shaders/Community/PBR/PbrCommon.hlsli")
 set(PBR_DIRECTIONAL_SHADER_SOURCE
@@ -662,6 +668,7 @@ set(GEOMETRY_HOOK_SOURCE "${RENDERER_HOOK_SOURCE}")
 set(VANILLA_DEVMENU_MANIFEST_SOURCE "${DEVMENU_MANIFEST_SOURCE}")
 set(VANILLA_SHARED_SETTINGS_SOURCE "${SHARED_SETTINGS_RUNTIME_SOURCE}")
 include("${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake")
+include("${AUTHORED_PBR_VERIFY_SCRIPT}")
 include("${DLAA_VERIFY_SCRIPT}")
 include("${VANILLA_VERIFY_SCRIPT}")
 include("${ROOT_DIR}/cmake/VerifyIblFoundation.cmake")
@@ -684,6 +691,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${RENDERER_HOOK_SOURCE}"
   "${DFPREPASS_HOOK_SOURCE}"
   "${ROOT_DIR}/cmake/VerifyBSDFPrePassHook.cmake"
+  "${PBR_RUNTIME_SOURCE}"
+  "${AUTHORED_PBR_PACK_BUILDER}"
+  "${AUTHORED_PBR_PACK_TEST}"
+  "${AUTHORED_PBR_VERIFY_SCRIPT}"
   "${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
   "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake"
   "${SETTINGS_PATH_SOURCE}"
@@ -900,6 +911,15 @@ add_custom_target(VerifyBSDFPrePassHook ALL
     "-DDFPREPASS_HOOK_SOURCE=${DFPREPASS_HOOK_SOURCE}"
     -P "${ROOT_DIR}/cmake/VerifyBSDFPrePassHook.cmake"
   COMMENT "Verifying FO4VR BSDFPrePass descriptor hook contract"
+  VERBATIM)
+
+add_custom_target(VerifyAuthoredPbrRuntime ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPBR_RUNTIME_SOURCE=${PBR_RUNTIME_SOURCE}"
+    "-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}"
+    "-DDFPREPASS_HOOK_SOURCE=${DFPREPASS_HOOK_SOURCE}"
+    -P "${AUTHORED_PBR_VERIFY_SCRIPT}"
+  COMMENT "Verifying lazy authored-PBR material runtime"
   VERBATIM)
 
 add_custom_target(VerifyDevMenu ALL
@@ -2199,6 +2219,7 @@ add_dependencies(${PROJECT_NAME}
   VerifyFo4VrLoader
   VerifyFo4VrRendererHook
   VerifyBSDFPrePassHook
+  VerifyAuthoredPbrRuntime
   VerifyD3D11Hooks
   VerifyDlaa
   VerifyStreamlinePayload
@@ -2961,6 +2982,9 @@ if(BUILD_FO4VR_CS_TESTS)
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.PbrSettings
     COMMAND FO4VRCommunityShadersPbrSettingsTests)
+
+  add_test(NAME FO4VRCommunityShaders.AuthoredPbrPackBuilder
+    COMMAND "${Python3_EXECUTABLE}" "${AUTHORED_PBR_PACK_TEST}")
 
   add_executable(FO4VRCommunityShadersLinearLightingQualificationTests
     "${ROOT_DIR}/tests/LinearLightingQualificationTests.cpp"

@@ -38,6 +38,17 @@ namespace community_shaders::render
         constexpr std::uintptr_t kGeometrySetupFunctionRva = 0x0287CF60;
         constexpr std::uintptr_t kGeometryDescriptorLoadRva = 0x0287D1AB;
         constexpr std::size_t kGeometryStateDescriptorOffset = 0x40;
+        // Two independent raw-disassembly witnesses establish the first
+        // three hops: BSDFPrePass SetupGeometry at 0x14287CF60 and general
+        // BSLighting SetupGeometry at 0x1428B6B70 both read pass+0x18,
+        // owner+0x178, and shader-property+0x58. The VR lighting-material
+        // constructor 0x14280B8B0, destructor 0x14280B9F0, GetTextures slot
+        // 0x14280C5F0, and texture-set loaders 0x142811E40/0x142811F10
+        // independently identify material+0x38 as texture slot zero.
+        constexpr std::size_t kPassGeometryOwnerOffset = 0x18;
+        constexpr std::size_t kGeometryShaderPropertyOffset = 0x178;
+        constexpr std::size_t kShaderPropertyMaterialOffset = 0x58;
+        constexpr std::size_t kLightingMaterialBaseTextureOffset = 0x38;
         constexpr std::array<std::byte, 26> kTechniqueSetupSignature{
             std::byte{ 0x40 }, std::byte{ 0x53 }, std::byte{ 0x55 },
             std::byte{ 0x56 }, std::byte{ 0x57 }, std::byte{ 0x41 },
@@ -111,7 +122,34 @@ namespace community_shaders::render
         constexpr std::uint32_t kComplexEnvironmentConsumer = 1u << 1;
         constexpr std::uint32_t kIblConsumer = 1u << 2;
         constexpr std::uint32_t kSurfaceClassificationConsumer = 1u << 3;
+        constexpr std::uint32_t kAuthoredPbrConsumer = 1u << 4;
         std::atomic_uint32_t descriptorConsumerMask{};
+        std::atomic_bool authoredPbrEnabled{};
+        std::atomic_uint32_t authoredPbrPointerFailureMask{};
+
+        [[nodiscard]] bool plausibleEnginePointer(
+            const void* pointer) noexcept
+        {
+            const auto value = reinterpret_cast<std::uintptr_t>(pointer);
+            constexpr auto minimum = std::uintptr_t{ 0x10000 };
+            constexpr auto maximum = std::uintptr_t{ 0x00007FFFFFFFFFFF };
+            return value >= minimum && value <= maximum &&
+                (value & (alignof(void*) - 1)) == 0;
+        }
+
+        void recordAuthoredPbrPointerFailure(
+            std::uint32_t stage,
+            const char* name) noexcept
+        {
+            const auto previous = authoredPbrPointerFailureMask.fetch_or(
+                stage,
+                std::memory_order_relaxed);
+            if ((previous & stage) == 0) {
+                logging::warn(
+                    "Authored PBR base-texture publication failed closed at the verified '{}' pointer hop.",
+                    name);
+            }
+        }
 
         [[nodiscard]] bool readable(
             const void* address,
@@ -302,7 +340,58 @@ namespace community_shaders::render
                     "BSDFPrePass SetupGeometry produced its first exact draw descriptor 0x{:08X}.",
                     descriptor);
             }
-            publishDFPrePassDescriptor(descriptor);
+            RE::NiTexture* baseTexture{};
+            if (authoredPbrEnabled.load(std::memory_order_acquire)) {
+                void* geometryOwner{};
+                if (!plausibleEnginePointer(pass)) {
+                    recordAuthoredPbrPointerFailure(1u << 0, "pass owner");
+                } else {
+                    std::memcpy(
+                        &geometryOwner,
+                        static_cast<const std::byte*>(pass) +
+                            kPassGeometryOwnerOffset,
+                        sizeof(geometryOwner));
+                    if (!plausibleEnginePointer(geometryOwner)) {
+                        recordAuthoredPbrPointerFailure(
+                            1u << 0, "pass owner");
+                    }
+                }
+                if (plausibleEnginePointer(geometryOwner)) {
+                    void* shaderProperty{};
+                    std::memcpy(
+                        &shaderProperty,
+                        static_cast<const std::byte*>(geometryOwner) +
+                            kGeometryShaderPropertyOffset,
+                        sizeof(shaderProperty));
+                    if (!plausibleEnginePointer(shaderProperty)) {
+                        recordAuthoredPbrPointerFailure(
+                            1u << 1, "shader property");
+                    } else {
+                        void* material{};
+                        std::memcpy(
+                            &material,
+                            static_cast<const std::byte*>(shaderProperty) +
+                                kShaderPropertyMaterialOffset,
+                            sizeof(material));
+                        if (!plausibleEnginePointer(material)) {
+                            recordAuthoredPbrPointerFailure(
+                                1u << 2, "lighting material");
+                        } else {
+                            std::memcpy(
+                                &baseTexture,
+                                static_cast<const std::byte*>(material) +
+                                    kLightingMaterialBaseTextureOffset,
+                                sizeof(baseTexture));
+                            if (!plausibleEnginePointer(baseTexture)) {
+                                recordAuthoredPbrPointerFailure(
+                                    1u << 3, "base texture");
+                                baseTexture = nullptr;
+                            }
+                        }
+                    }
+                }
+            }
+            publishDFPrePassGeometry(descriptor, baseTexture);
             original(receiver, pass, geometryState);
         }
     }
@@ -485,6 +574,12 @@ namespace community_shaders::render
     void setDFPrePassSurfaceClassificationEnabled(bool enabled) noexcept
     {
         setDescriptorConsumer(kSurfaceClassificationConsumer, enabled);
+    }
+
+    void setDFPrePassAuthoredPbrEnabled(bool enabled) noexcept
+    {
+        authoredPbrEnabled.store(enabled, std::memory_order_release);
+        setDescriptorConsumer(kAuthoredPbrConsumer, enabled);
     }
 
     DFPrePassHookSnapshot dFPrePassHookSnapshot() noexcept

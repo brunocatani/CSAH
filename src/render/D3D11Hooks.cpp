@@ -318,6 +318,7 @@ namespace community_shaders::render
         struct PendingDFPrePassDescriptor
         {
             std::uint32_t descriptor{};
+            RE::NiTexture* baseTexture{};
             bool active{};
         };
         constexpr std::size_t kMaxDFPrePassTechniqueDepth = 8;
@@ -329,6 +330,7 @@ namespace community_shaders::render
         };
         thread_local ActiveDFPrePassTechniques activeDFPrePassTechniques{};
         thread_local PendingDFPrePassDescriptor pendingDFPrePassDescriptor{};
+        thread_local RE::NiTexture* activeAuthoredPbrBaseTexture{};
         std::atomic_bool firstDFPrePassTechniqueOverflowLogged{};
         std::atomic_bool firstDFPrePassTechniqueMismatchLogged{};
         std::atomic_bool firstGrassVertexDrawRebindLogged{};
@@ -1937,6 +1939,7 @@ namespace community_shaders::render
             return {
                 activeDFPrePassTechniques.descriptors[
                     activeDFPrePassTechniques.depth - 1],
+                nullptr,
                 true,
             };
         }
@@ -1948,7 +1951,9 @@ namespace community_shaders::render
                 return;
             }
 
+            activeAuthoredPbrBaseTexture = nullptr;
             const auto descriptor = pendingDFPrePassDescriptor.descriptor;
+            auto* baseTexture = pendingDFPrePassDescriptor.baseTexture;
             pendingDFPrePassDescriptor = {};
             if (!shaderInterceptionActive.load(std::memory_order_acquire) ||
                 !originalPSSetShader || !activeReplacementContext ||
@@ -1979,6 +1984,7 @@ namespace community_shaders::render
             }
             activeReplacementBinding = selection.binding;
             activeSurfaceClassCode = selection.surfaceClassCode;
+            activeAuthoredPbrBaseTexture = baseTexture;
             recordDFPrePassDescriptorConsumed(descriptor, "draw reuse");
         }
 
@@ -2391,6 +2397,9 @@ namespace community_shaders::render
             ID3D11DeviceContext* context,
             Draw&& draw) noexcept
         {
+            auto* baseTexture = std::exchange(
+                activeAuthoredPbrBaseTexture,
+                nullptr);
             if (!originalPSSetShader ||
                 activeReplacementBinding.family !=
                     linear_lighting::ReplacementShaderFamily::material) {
@@ -2400,7 +2409,8 @@ namespace community_shaders::render
             auto bindings = pbr::Runtime::get().scopeAuthoredMaterialDraw(
                 context,
                 activeReplacementBinding,
-                activeSurfaceClassCode);
+                activeSurfaceClassCode,
+                baseTexture);
             if (!bindings.active()) {
                 draw();
                 return;
@@ -3057,6 +3067,7 @@ namespace community_shaders::render
                 activeReplacementOriginal = nullptr;
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
+                activeAuthoredPbrBaseTexture = nullptr;
                 activeContactShadowBinding = {};
                 activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
@@ -3078,6 +3089,7 @@ namespace community_shaders::render
                 activeReplacementOriginal = nullptr;
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
+                activeAuthoredPbrBaseTexture = nullptr;
                 activeContactShadowBinding = {};
                 activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
@@ -3175,6 +3187,7 @@ namespace community_shaders::render
                 activeReplacementOriginal = nullptr;
                 activeReplacementContext = nullptr;
                 pendingDFPrePassDescriptor = {};
+                activeAuthoredPbrBaseTexture = nullptr;
                 activeContactShadowBinding = {};
                 activeFilmicTonemappingBinding = {};
                 activeContactShadowsEnabled = false;
@@ -3262,6 +3275,8 @@ namespace community_shaders::render
             if (descriptorPending &&
                 selection.binding.family ==
                     linear_lighting::ReplacementShaderFamily::material) {
+                activeAuthoredPbrBaseTexture =
+                    pendingDFPrePassDescriptor.baseTexture;
                 pendingDFPrePassDescriptor = {};
                 recordDFPrePassDescriptorConsumed(
                     selectedDescriptor,
@@ -3462,6 +3477,7 @@ namespace community_shaders::render
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexed");
             if (!activeDrawInterceptionRequired()) {
+                activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawIndexed) {
                     originalDrawIndexed(
                         context,
@@ -3542,6 +3558,7 @@ namespace community_shaders::render
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "Draw");
             if (!activeDrawInterceptionRequired()) {
+                activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDraw) {
                     originalDraw(context, vertexCount, startVertexLocation);
                 }
@@ -3618,6 +3635,7 @@ namespace community_shaders::render
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexedInstanced");
             if (!activeDrawInterceptionRequired()) {
+                activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawIndexedInstanced) {
                     originalDrawIndexedInstanced(
                         context,
@@ -3704,6 +3722,7 @@ namespace community_shaders::render
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawInstanced");
             if (!activeDrawInterceptionRequired()) {
+                activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawInstanced) {
                     originalDrawInstanced(
                         context,
@@ -4516,6 +4535,7 @@ namespace community_shaders::render
                 std::memory_order_relaxed);
             activeDFPrePassTechniques = {};
             pendingDFPrePassDescriptor = {};
+            activeAuthoredPbrBaseTexture = nullptr;
             contact_shadows::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext,
@@ -4544,6 +4564,7 @@ namespace community_shaders::render
             activeDFPrePassTechniques.descriptors.size()) {
             activeDFPrePassTechniques = {};
             pendingDFPrePassDescriptor = {};
+            activeAuthoredPbrBaseTexture = nullptr;
             if (!firstDFPrePassTechniqueOverflowLogged.exchange(
                     true,
                     std::memory_order_relaxed)) {
@@ -4554,12 +4575,13 @@ namespace community_shaders::render
         }
         activeDFPrePassTechniques.descriptors[
             activeDFPrePassTechniques.depth++] = descriptor;
-        pendingDFPrePassDescriptor = { descriptor, true };
+        pendingDFPrePassDescriptor = { descriptor, nullptr, true };
     }
 
     void endDFPrePassTechnique(std::uint32_t descriptor) noexcept
     {
         pendingDFPrePassDescriptor = {};
+        activeAuthoredPbrBaseTexture = nullptr;
         if (activeDFPrePassTechniques.depth == 0) {
             return;
         }
@@ -4582,14 +4604,21 @@ namespace community_shaders::render
             pendingDFPrePassDescriptor = {
                 activeDFPrePassTechniques.descriptors[
                     activeDFPrePassTechniques.depth - 1],
+                nullptr,
                 true,
             };
         }
     }
 
-    void publishDFPrePassDescriptor(std::uint32_t descriptor) noexcept
+    void publishDFPrePassGeometry(
+        std::uint32_t descriptor,
+        RE::NiTexture* baseTexture) noexcept
     {
-        pendingDFPrePassDescriptor = { descriptor, true };
+        pendingDFPrePassDescriptor = {
+            descriptor,
+            baseTexture,
+            true,
+        };
     }
 
     bool installEarlyD3D11Hooks() noexcept

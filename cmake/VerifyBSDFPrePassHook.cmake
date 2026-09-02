@@ -14,6 +14,11 @@ foreach(required_token IN ITEMS
     "kGeometrySetupFunctionRva = 0x0287CF60"
     "kGeometryDescriptorLoadRva = 0x0287D1AB"
     "kGeometryStateDescriptorOffset = 0x40"
+    "kPassGeometryOwnerOffset = 0x18"
+    "kGeometryShaderPropertyOffset = 0x178"
+    "kShaderPropertyMaterialOffset = 0x58"
+    "kLightingMaterialBaseTextureOffset = 0x38"
+    "plausibleEnginePointer("
     "std::array<std::byte, 26> kTechniqueSetupSignature"
     "std::byte{ 0x40 }, std::byte{ 0x53 }"
     "std::array<std::byte, 16> kTechniqueRestoreSignature"
@@ -25,12 +30,13 @@ foreach(required_token IN ITEMS
     "#include \"render/D3D11Hooks.h\""
     "beginDFPrePassTechnique(descriptor)"
     "endDFPrePassTechnique(descriptor)"
-    "publishDFPrePassDescriptor(descriptor)"
+    "publishDFPrePassGeometry(descriptor, baseTexture)"
     "std::atomic_uint32_t descriptorConsumerMask"
     "setDFPrePassLinearLightingEnabled(bool enabled) noexcept"
     "setDFPrePassComplexEnvironmentEnabled(bool enabled) noexcept"
     "setDFPrePassIblEnabled(bool enabled) noexcept"
     "setDFPrePassSurfaceClassificationEnabled(bool enabled) noexcept"
+    "setDFPrePassAuthoredPbrEnabled(bool enabled) noexcept"
     "descriptorConsumerMask.load(std::memory_order_acquire) == 0"
     "static_cast<const std::byte*>(geometryState) +"
     "kGeometryStateDescriptorOffset"
@@ -68,7 +74,6 @@ if(gate_offset EQUAL -1 OR read_offset EQUAL -1 OR
 endif()
 
 foreach(forbidden_read IN ITEMS
-    "static_cast<const std::byte*>(pass) +"
     "kDescriptorOffset = 0x48")
   string(FIND "${hook_source}" "${forbidden_read}" forbidden_read_offset)
   if(NOT forbidden_read_offset EQUAL -1)
@@ -92,7 +97,7 @@ if(technique_begin EQUAL -1 OR technique_original EQUAL -1 OR
 endif()
 
 string(FIND "${hook_body}"
-  "publishDFPrePassDescriptor(descriptor);\n            original(receiver, pass, geometryState)"
+  "publishDFPrePassGeometry(descriptor, baseTexture);\n            original(receiver, pass, geometryState)"
   ordered_handoff)
 if(ordered_handoff EQUAL -1)
   message(FATAL_ERROR
@@ -102,7 +107,8 @@ endif()
 foreach(forbidden IN ITEMS
     "DescriptorScope"
     "activeDFPrePassDescriptorScope"
-    "compiledProgram")
+    "compiledProgram"
+    "publishDFPrePassDescriptor")
   string(FIND "${hook_source}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR

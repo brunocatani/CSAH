@@ -9,6 +9,11 @@
 #include <cstdint>
 #include <memory>
 
+namespace RE
+{
+    class NiTexture;
+}
+
 namespace community_shaders::linear_lighting
 {
     struct ReplacementShaderBinding;
@@ -121,7 +126,8 @@ namespace community_shaders::pbr
             scopeAuthoredMaterialDraw(
                 ID3D11DeviceContext* context,
                 const linear_lighting::ReplacementShaderBinding& binding,
-                std::uint32_t surfaceClassCode) noexcept;
+                std::uint32_t surfaceClassCode,
+                RE::NiTexture* baseTexture) noexcept;
         void recordDrawFallback() noexcept;
         [[nodiscard]] RuntimeSnapshot snapshot() const noexcept;
 
@@ -134,6 +140,8 @@ namespace community_shaders::pbr
             ID3D11DeviceContext* context,
             bool active) noexcept;
         void publishEffectiveState(const Settings& settings) noexcept;
+        void requestMaterialLoadPump() noexcept;
+        void processMaterialLoadsOnMainThread() noexcept;
 
         Microsoft::WRL::ComPtr<ID3D11Device> device_;
         Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
@@ -165,6 +173,8 @@ namespace community_shaders::pbr
         std::unique_ptr<MaterialRegistry> materialRegistryOwner_;
         std::atomic<MaterialRegistry*> materialRegistry_{};
         std::atomic_bool materialRegistryLoaded_{};
+        std::atomic_bool materialLoadTaskFailureLogged_{};
+        std::atomic_bool authoredTransportEnabled_{};
         std::atomic_uint64_t manifestFailures_{};
         std::atomic_uint64_t failures_{};
     };

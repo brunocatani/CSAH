@@ -29,6 +29,7 @@ namespace community_shaders::render
     void setDFPrePassComplexEnvironmentEnabled(bool enabled) noexcept;
     void setDFPrePassIblEnabled(bool enabled) noexcept;
     void setDFPrePassSurfaceClassificationEnabled(bool enabled) noexcept;
+    void setDFPrePassAuthoredPbrEnabled(bool enabled) noexcept;
 
     [[nodiscard]] DFPrePassHookSnapshot
         dFPrePassHookSnapshot() noexcept;

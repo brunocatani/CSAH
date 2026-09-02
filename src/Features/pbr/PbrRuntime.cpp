@@ -3,6 +3,7 @@
 #include "Features/ibl/IblRuntime.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
+#include "render/BSDFPrePassShaderHook.h"
 #include "support/Logger.h"
 
 #ifdef MEM_RELEASE
@@ -17,10 +18,14 @@
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace community_shaders::pbr
@@ -31,37 +36,47 @@ namespace community_shaders::pbr
         constexpr UINT kPbrMaterialSlot = 45;
         constexpr UINT kSurfaceClassSlot = 47;
         constexpr UINT kAuthoredRmaosSlot = 48;
-        constexpr std::size_t kMaximumAuthoredMaterials = 1024;
-        constexpr std::size_t kMaterialLookupCapacity = 4096;
-        static_assert(
-            (kMaterialLookupCapacity & (kMaterialLookupCapacity - 1)) == 0);
+        constexpr std::size_t kMaximumAuthoredMaterials = 65536;
+        constexpr std::size_t kMinimumMaterialLookupCapacity = 64;
+        constexpr std::size_t kMaterialLoadQueueCapacity = 4096;
+        constexpr std::size_t kMaterialLoadsPerMainThreadTask = 4;
+
+        [[nodiscard]] bool normalizeTexturePath(
+            std::string_view path,
+            std::array<char, 513>& storage,
+            std::string_view& normalized) noexcept
+        {
+            if (path.empty() || path.size() > storage.size() - 1 ||
+                path.find(':') != std::string_view::npos) {
+                return false;
+            }
+            while (path.starts_with(".\\") || path.starts_with("./")) {
+                path.remove_prefix(2);
+            }
+            auto size = std::size_t{};
+            for (const auto value : path) {
+                const auto character = static_cast<unsigned char>(value);
+                storage[size++] = value == '/' ? '\\' :
+                    static_cast<char>(std::tolower(character));
+            }
+            storage[size] = '\0';
+            normalized = { storage.data(), size };
+            return normalized.starts_with("textures\\") &&
+                normalized.ends_with(".dds") &&
+                normalized.find("..") == std::string_view::npos &&
+                !normalized.starts_with('\\');
+        }
 
         [[nodiscard]] std::optional<std::string> normalizeTexturePath(
             std::string path) noexcept
         {
             try {
-                if (path.empty() || path.size() > 512 ||
-                    path.find(':') != std::string::npos) {
+                std::array<char, 513> storage{};
+                std::string_view normalized;
+                if (!normalizeTexturePath(path, storage, normalized)) {
                     return std::nullopt;
                 }
-                std::replace(path.begin(), path.end(), '/', '\\');
-                std::transform(
-                    path.begin(),
-                    path.end(),
-                    path.begin(),
-                    [](unsigned char value) {
-                        return static_cast<char>(std::tolower(value));
-                    });
-                while (path.starts_with(".\\")) {
-                    path.erase(0, 2);
-                }
-                if (!path.starts_with("textures\\") ||
-                    !path.ends_with(".dds") ||
-                    path.find("..") != std::string::npos ||
-                    path.starts_with('\\')) {
-                    return std::nullopt;
-                }
-                return path;
+                return std::string(normalized);
             } catch (...) {
                 return std::nullopt;
             }
@@ -129,140 +144,247 @@ namespace community_shaders::pbr
 
     struct Runtime::MaterialRegistry final
     {
+        enum class LoadState : std::uint8_t
+        {
+            unloaded,
+            queued,
+            loaded,
+            failed,
+        };
+
         struct Record final
         {
             std::string basePath;
             std::string rmaosPath;
-            RE::NiPointer<RE::NiTexture> baseTexture;
+        };
+
+        struct RuntimeRecord final
+        {
+            std::atomic<LoadState> loadState{ LoadState::unloaded };
             RE::NiPointer<RE::NiTexture> rmaosTexture;
-            ID3D11ShaderResourceView* baseView{};
             ID3D11ShaderResourceView* rmaosView{};
+            bool resolutionCounted{};
         };
 
         struct LookupSlot final
         {
-            ID3D11ShaderResourceView* baseView{};
-            std::uint16_t recordPlusOne{};
+            RE::NiTexture* baseTexture{};
+            const char* nameData{};
+            std::uint16_t nameSize{};
+            std::uint32_t recordPlusOne{};
         };
 
         std::vector<Record> records;
-        std::vector<std::uint16_t> pendingRecords;
-        std::array<LookupSlot, kMaterialLookupCapacity> lookup{};
-        std::size_t pendingCursor{};
-        std::size_t consecutivePendingFailures{};
-        std::uint16_t retryDrawCountdown{};
+        std::unique_ptr<RuntimeRecord[]> runtimeRecords;
+        std::vector<LookupSlot> lookup;
+        std::array<std::uint32_t, kMaterialLoadQueueCapacity> loadQueue{};
+        std::atomic_uint64_t loadQueueRead{};
+        std::atomic_uint64_t loadQueueWrite{};
+        std::atomic_bool loadTaskQueued{};
         std::atomic_uint32_t resolvedCount{};
         bool firstResolutionLogged{};
 
-        [[nodiscard]] static std::size_t hash(
-            ID3D11ShaderResourceView* view) noexcept
+        void initialize()
         {
-            auto value = reinterpret_cast<std::uintptr_t>(view) >> 4;
+            std::sort(
+                records.begin(),
+                records.end(),
+                [](const Record& left, const Record& right) {
+                    return left.basePath < right.basePath;
+                });
+            if (records.empty()) {
+                return;
+            }
+            runtimeRecords = std::make_unique<RuntimeRecord[]>(
+                records.size());
+            auto capacity = kMinimumMaterialLookupCapacity;
+            const auto required = records.size() * 2;
+            while (capacity < required) {
+                capacity <<= 1;
+            }
+            lookup.resize(capacity);
+        }
+
+        [[nodiscard]] std::size_t hash(RE::NiTexture* texture) const noexcept
+        {
+            auto value = reinterpret_cast<std::uintptr_t>(texture) >> 4;
             value ^= value >> 17;
             value *= static_cast<std::uintptr_t>(0x9E3779B185EBCA87ull);
-            return value & (kMaterialLookupCapacity - 1);
+            return value & (lookup.size() - 1);
         }
 
-        [[nodiscard]] bool insert(
-            ID3D11ShaderResourceView* baseView,
-            std::size_t recordIndex) noexcept
+        void cache(
+            RE::NiTexture* baseTexture,
+            std::string_view name,
+            std::uint32_t recordIndex) noexcept
         {
-            auto slot = hash(baseView);
+            if (!baseTexture || lookup.empty()) {
+                return;
+            }
+            auto slot = hash(baseTexture);
             for (std::size_t probe = 0;
-                 probe < kMaterialLookupCapacity;
+                 probe < lookup.size();
                  ++probe) {
                 auto& candidate = lookup[slot];
-                if (!candidate.baseView) {
-                    candidate.baseView = baseView;
-                    candidate.recordPlusOne = static_cast<std::uint16_t>(
-                        recordIndex + 1);
-                    return true;
+                if (!candidate.baseTexture ||
+                    candidate.baseTexture == baseTexture) {
+                    candidate.baseTexture = baseTexture;
+                    candidate.nameData = name.data();
+                    candidate.nameSize = static_cast<std::uint16_t>(
+                        name.size());
+                    candidate.recordPlusOne = recordIndex + 1;
+                    return;
                 }
-                if (candidate.baseView == baseView) {
-                    return candidate.recordPlusOne == recordIndex + 1;
-                }
-                slot = (slot + 1) & (kMaterialLookupCapacity - 1);
+                slot = (slot + 1) & (lookup.size() - 1);
             }
-            return false;
         }
 
-        [[nodiscard]] Record* find(
-            ID3D11ShaderResourceView* baseView) noexcept
+        [[nodiscard]] std::optional<std::uint32_t> find(
+            RE::NiTexture* baseTexture) noexcept
         {
-            if (!baseView) {
-                return nullptr;
+            if (!baseTexture || records.empty() || lookup.empty()) {
+                return std::nullopt;
             }
-            auto slot = hash(baseView);
+            const auto name = baseTexture->GetName();
+            auto slot = hash(baseTexture);
             for (std::size_t probe = 0;
-                 probe < kMaterialLookupCapacity;
+                 probe < lookup.size();
                  ++probe) {
                 const auto& candidate = lookup[slot];
-                if (!candidate.baseView) {
-                    return nullptr;
+                if (!candidate.baseTexture) {
+                    break;
                 }
-                if (candidate.baseView == baseView) {
-                    const auto index = static_cast<std::size_t>(
+                if (candidate.baseTexture == baseTexture) {
+                    const auto index = static_cast<std::uint32_t>(
                         candidate.recordPlusOne - 1);
-                    return index < records.size() ? &records[index] : nullptr;
+                    if (index < records.size() &&
+                        candidate.nameData == name.data() &&
+                        candidate.nameSize == name.size()) {
+                        return index;
+                    }
+                    break;
                 }
-                slot = (slot + 1) & (kMaterialLookupCapacity - 1);
+                slot = (slot + 1) & (lookup.size() - 1);
             }
-            return nullptr;
+
+            std::array<char, 513> storage{};
+            std::string_view normalized;
+            if (!normalizeTexturePath(name, storage, normalized)) {
+                return std::nullopt;
+            }
+
+            const auto found = std::lower_bound(
+                records.begin(),
+                records.end(),
+                normalized,
+                [](const Record& record, std::string_view path) {
+                    return record.basePath < path;
+                });
+            if (found == records.end() || found->basePath != normalized) {
+                return std::nullopt;
+            }
+            const auto index = static_cast<std::uint32_t>(
+                std::distance(records.begin(), found));
+            cache(baseTexture, name, index);
+            return index;
         }
 
-        void resolveOne(ID3D11Device* device) noexcept
+        [[nodiscard]] bool queueLoad(std::uint32_t recordIndex) noexcept
         {
-            if (!device || pendingRecords.empty()) {
-                return;
+            if (recordIndex >= records.size() || !runtimeRecords) {
+                return false;
             }
-            if (retryDrawCountdown != 0) {
-                --retryDrawCountdown;
-                return;
+            auto& runtime = runtimeRecords[recordIndex];
+            auto state = runtime.loadState.load(std::memory_order_acquire);
+            if (state == LoadState::loaded || state == LoadState::failed) {
+                return false;
             }
-            if (pendingCursor >= pendingRecords.size()) {
-                pendingCursor = 0;
+            if (state == LoadState::queued) {
+                return true;
             }
-            const auto pendingIndex = pendingCursor;
-            const auto recordIndex = static_cast<std::size_t>(
-                pendingRecords[pendingIndex]);
-            auto& record = records[recordIndex];
-            auto* baseView = shaderResource(record.baseTexture);
-            auto* rmaosView = shaderResource(record.rmaosTexture);
-            if (!baseView || !rmaosView ||
-                !belongsToDevice(baseView, device) ||
-                !belongsToDevice(rmaosView, device)) {
-                pendingCursor = (pendingCursor + 1) % pendingRecords.size();
-                ++consecutivePendingFailures;
-                if (consecutivePendingFailures >= pendingRecords.size()) {
-                    consecutivePendingFailures = 0;
-                    retryDrawCountdown = 255;
-                }
-                return;
+            auto expected = LoadState::unloaded;
+            if (!runtime.loadState.compare_exchange_strong(
+                    expected,
+                    LoadState::queued,
+                    std::memory_order_acq_rel)) {
+                return expected == LoadState::queued;
             }
 
-            if (!insert(baseView, recordIndex)) {
-                logging::error(
-                    "Authored PBR material lookup rejected duplicate GPU base texture '{}'.",
-                    record.basePath);
-            } else {
-                record.baseView = baseView;
-                record.rmaosView = rmaosView;
+            const auto write = loadQueueWrite.load(std::memory_order_relaxed);
+            const auto read = loadQueueRead.load(std::memory_order_acquire);
+            if (write - read >= loadQueue.size()) {
+                runtime.loadState.store(
+                    LoadState::unloaded,
+                    std::memory_order_release);
+                return false;
+            }
+            loadQueue[write % loadQueue.size()] = recordIndex;
+            loadQueueWrite.store(write + 1, std::memory_order_release);
+            return true;
+        }
+
+        [[nodiscard]] bool popLoad(std::uint32_t& recordIndex) noexcept
+        {
+            const auto read = loadQueueRead.load(std::memory_order_relaxed);
+            const auto write = loadQueueWrite.load(std::memory_order_acquire);
+            if (read == write) {
+                return false;
+            }
+            recordIndex = loadQueue[read % loadQueue.size()];
+            loadQueueRead.store(read + 1, std::memory_order_release);
+            return true;
+        }
+
+        [[nodiscard]] bool hasQueuedLoads() const noexcept
+        {
+            return loadQueueRead.load(std::memory_order_acquire) !=
+                loadQueueWrite.load(std::memory_order_acquire);
+        }
+
+        void cancelQueuedLoads() noexcept
+        {
+            std::uint32_t recordIndex{};
+            while (popLoad(recordIndex)) {
+                if (recordIndex >= records.size() || !runtimeRecords) {
+                    continue;
+                }
+                auto expected = LoadState::queued;
+                runtimeRecords[recordIndex].loadState.compare_exchange_strong(
+                    expected,
+                    LoadState::unloaded,
+                    std::memory_order_acq_rel);
+            }
+        }
+
+        [[nodiscard]] ID3D11ShaderResourceView* readyView(
+            std::uint32_t recordIndex,
+            ID3D11Device* device) noexcept
+        {
+            if (recordIndex >= records.size() || !runtimeRecords || !device) {
+                return nullptr;
+            }
+            auto& runtime = runtimeRecords[recordIndex];
+            if (runtime.loadState.load(std::memory_order_acquire) !=
+                LoadState::loaded) {
+                return nullptr;
+            }
+            auto* view = shaderResource(runtime.rmaosTexture);
+            if (!view || !belongsToDevice(view, device)) {
+                return nullptr;
+            }
+            runtime.rmaosView = view;
+            if (!runtime.resolutionCounted) {
+                runtime.resolutionCounted = true;
                 resolvedCount.fetch_add(1, std::memory_order_relaxed);
                 if (!firstResolutionLogged) {
                     firstResolutionLogged = true;
                     logging::info(
-                        "Authored PBR resolved its first base/RMAOS texture pair ('{}' -> '{}').",
-                        record.basePath,
-                        record.rmaosPath);
+                        "Authored PBR resolved its first lazy RMAOS texture ('{}' -> '{}').",
+                        records[recordIndex].basePath,
+                        records[recordIndex].rmaosPath);
                 }
             }
-            pendingRecords.erase(
-                pendingRecords.begin() +
-                static_cast<std::ptrdiff_t>(pendingIndex));
-            if (pendingCursor >= pendingRecords.size()) {
-                pendingCursor = 0;
-            }
-            consecutivePendingFailures = 0;
+            return runtime.rmaosView;
         }
     };
 
@@ -533,7 +655,7 @@ namespace community_shaders::pbr
                         manifestFailures_.fetch_add(
                             1, std::memory_order_relaxed);
                         logging::error(
-                            "Authored PBR exceeded the fixed {} material limit; remaining records are ignored.",
+                            "Authored PBR exceeded the validated {} material limit; remaining records are ignored.",
                             kMaximumAuthoredMaterials);
                         break;
                     }
@@ -568,44 +690,31 @@ namespace community_shaders::pbr
                             *base);
                         continue;
                     }
-                    auto baseTexture = loadTexture(*base, true);
-                    auto rmaosTexture = loadTexture(*rmaos, false);
-                    if (!baseTexture || !rmaosTexture) {
-                        manifestFailures_.fetch_add(
-                            1, std::memory_order_relaxed);
-                        logging::error(
-                            "Authored PBR failed to queue texture pair '{}' -> '{}'.",
-                            *base,
-                            *rmaos);
-                        continue;
-                    }
                     next->records.push_back({
                         .basePath = *base,
                         .rmaosPath = *rmaos,
-                        .baseTexture = std::move(baseTexture),
-                        .rmaosTexture = std::move(rmaosTexture),
                     });
                 }
             }
+            next->initialize();
         } catch (const std::exception& exception) {
             manifestFailures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Authored PBR manifest loading failed closed: {}.",
                 exception.what());
             next->records.clear();
+            next->runtimeRecords.reset();
+            next->lookup.clear();
         } catch (...) {
             manifestFailures_.fetch_add(1, std::memory_order_relaxed);
             logging::error(
                 "Authored PBR manifest loading failed closed with an unknown error.");
             next->records.clear();
+            next->runtimeRecords.reset();
+            next->lookup.clear();
         }
 
         const auto count = next->records.size();
-        next->pendingRecords.reserve(count);
-        for (std::size_t index = 0; index < count; ++index) {
-            next->pendingRecords.push_back(
-                static_cast<std::uint16_t>(index));
-        }
         materialRegistryOwner_ = std::move(next);
         materialRegistry_.store(
             materialRegistryOwner_.get(),
@@ -613,7 +722,7 @@ namespace community_shaders::pbr
         publishEffectiveState(settings());
         if (count != 0) {
             logging::info(
-                "Authored PBR queued {} material records from Data\\F4SE\\Plugins\\FO4VRCommunityShaders\\PBRMaterials; RMAOS transport will activate as engine textures publish.",
+                "Authored PBR indexed {} material records from Data\\F4SE\\Plugins\\FO4VRCommunityShaders\\PBRMaterials without preloading texture assets; RMAOS textures will stream on first observed use.",
                 count);
         }
     }
@@ -635,9 +744,15 @@ namespace community_shaders::pbr
         surface_classification::Runtime::get().setConsumerEnabled(
             surface_classification::Consumer::pbr,
             effective);
+        const auto authoredTransport =
+            effective && registry && !registry->records.empty();
+        authoredTransportEnabled_.store(
+            authoredTransport,
+            std::memory_order_release);
         surface_classification::Runtime::get()
             .setPbrMaterialTransportEnabled(
-                effective && registry && !registry->records.empty());
+                authoredTransport);
+        render::setDFPrePassAuthoredPbrEnabled(authoredTransport);
         linear_lighting::Runtime::get().setPbrMaterialsEnabled(effective);
         auto effectiveSettings = settings;
         effectiveSettings.enabled = effective;
@@ -729,21 +844,26 @@ namespace community_shaders::pbr
     ScopedAuthoredMaterialBindings Runtime::scopeAuthoredMaterialDraw(
         ID3D11DeviceContext* context,
         const linear_lighting::ReplacementShaderBinding& binding,
-        std::uint32_t surfaceClassCode) noexcept
+        std::uint32_t surfaceClassCode,
+        RE::NiTexture* baseTexture) noexcept
     {
         auto* registry = materialRegistry_.load(std::memory_order_acquire);
         if (!registry || registry->records.empty() || !requested() ||
-            !context || context != context_.Get() || !device_) {
+            !context || context != context_.Get() || !device_ ||
+            !baseTexture) {
             return {};
         }
-        registry->resolveOne(device_.Get());
-
-        ID3D11ShaderResourceView* baseRaw{};
-        context->PSGetShaderResources(0, 1, &baseRaw);
-        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> base;
-        base.Attach(baseRaw);
-        auto* record = registry->find(base.Get());
-        if (!record || !record->rmaosView) {
+        const auto recordIndex = registry->find(baseTexture);
+        if (!recordIndex) {
+            return {};
+        }
+        auto* rmaosView = registry->readyView(
+            *recordIndex,
+            device_.Get());
+        if (!rmaosView) {
+            if (registry->queueLoad(*recordIndex)) {
+                requestMaterialLoadPump();
+            }
             return {};
         }
 
@@ -761,13 +881,123 @@ namespace community_shaders::pbr
         }
         ScopedAuthoredMaterialBindings scope(
             context,
-            record->rmaosView,
+            rmaosView,
             current.Get(),
             authored);
         if (!scope.active()) {
             failures_.fetch_add(1, std::memory_order_relaxed);
         }
         return scope;
+    }
+
+    void Runtime::requestMaterialLoadPump() noexcept
+    {
+        auto* registry = materialRegistry_.load(std::memory_order_acquire);
+        if (!registry ||
+            !authoredTransportEnabled_.load(std::memory_order_acquire) ||
+            !registry->hasQueuedLoads()) {
+            return;
+        }
+        auto expected = false;
+        if (!registry->loadTaskQueued.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel)) {
+            return;
+        }
+        const auto* tasks = F4SE::GetTaskInterface();
+        if (!tasks) {
+            registry->loadTaskQueued.store(false, std::memory_order_release);
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            if (!materialLoadTaskFailureLogged_.exchange(
+                    true,
+                    std::memory_order_acq_rel)) {
+                logging::error(
+                    "Authored PBR lazy texture loading is pending because the F4SE main-thread task interface is unavailable.");
+            }
+            return;
+        }
+        try {
+            tasks->AddTask([]() noexcept {
+                Runtime::get().processMaterialLoadsOnMainThread();
+            });
+        } catch (const std::exception& exception) {
+            registry->loadTaskQueued.store(false, std::memory_order_release);
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::error(
+                "Authored PBR lazy texture task could not be queued: {}.",
+                exception.what());
+        } catch (...) {
+            registry->loadTaskQueued.store(false, std::memory_order_release);
+            failures_.fetch_add(1, std::memory_order_relaxed);
+            logging::error(
+                "Authored PBR lazy texture task could not be queued.");
+        }
+    }
+
+    void Runtime::processMaterialLoadsOnMainThread() noexcept
+    {
+        auto* registry = materialRegistry_.load(std::memory_order_acquire);
+        if (!registry) {
+            return;
+        }
+        if (!authoredTransportEnabled_.load(std::memory_order_acquire)) {
+            registry->cancelQueuedLoads();
+            registry->loadTaskQueued.store(false, std::memory_order_release);
+            return;
+        }
+        for (std::size_t load = 0;
+             load < kMaterialLoadsPerMainThreadTask;
+             ++load) {
+            if (!authoredTransportEnabled_.load(
+                    std::memory_order_acquire)) {
+                break;
+            }
+            std::uint32_t recordIndex{};
+            if (!registry->popLoad(recordIndex)) {
+                break;
+            }
+            if (recordIndex >= registry->records.size() ||
+                !registry->runtimeRecords) {
+                failures_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            auto& runtime = registry->runtimeRecords[recordIndex];
+            if (runtime.loadState.load(std::memory_order_acquire) !=
+                MaterialRegistry::LoadState::queued) {
+                continue;
+            }
+            auto texture = loadTexture(
+                registry->records[recordIndex].rmaosPath,
+                false);
+            if (!texture) {
+                runtime.loadState.store(
+                    MaterialRegistry::LoadState::failed,
+                    std::memory_order_release);
+                const auto failure = failures_.fetch_add(
+                                         1,
+                                         std::memory_order_relaxed) +
+                    1;
+                if ((failure & (failure - 1)) == 0) {
+                    logging::error(
+                        "Authored PBR could not load lazy RMAOS texture '{}' (failures={}).",
+                        registry->records[recordIndex].rmaosPath,
+                        failure);
+                }
+                continue;
+            }
+            runtime.rmaosTexture = std::move(texture);
+            runtime.loadState.store(
+                MaterialRegistry::LoadState::loaded,
+                std::memory_order_release);
+        }
+
+        registry->loadTaskQueued.store(false, std::memory_order_release);
+        if (!authoredTransportEnabled_.load(std::memory_order_acquire)) {
+            registry->cancelQueuedLoads();
+        } else if (registry->hasQueuedLoads()) {
+            requestMaterialLoadPump();
+        }
     }
 
     void Runtime::recordDrawFallback() noexcept
