@@ -74,9 +74,9 @@ foreach(tabIndex RANGE 0 ${lastTab})
   endforeach()
 endforeach()
 
-if(NOT controlCount EQUAL 142)
+if(NOT controlCount EQUAL 141)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 142 controls, found ${controlCount}")
+    "Community Shaders DevMenu coverage changed: expected 141 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -98,7 +98,7 @@ foreach(required IN ITEMS
     filmic-strength white-point-scale diffuse-ibl-level grass-wrap
     volumetric-lighting volumetric-quality volumetric-intensity
     volumetric-base volumetric-shafts volumetric-density-mix
-    volumetric-density-scale volumetric-phase volumetric-distance
+    volumetric-density-scale volumetric-distance
     volumetric-temporal volumetric-wind
     hair-highlight skin-strength wetness-amount cloud-opacity strength
     quality precipitation native-shadows-enabled shadow-distance mode
@@ -229,4 +229,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 142 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified DevMenu-only ownership: 141 shared-INI controls, direct runtime publication, no wrist provider or assets")

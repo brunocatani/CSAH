@@ -1,4 +1,4 @@
-Texture2D<float2> InputVolume : register(t0);
+Texture2D<float> InputVolume : register(t0);
 Texture2D<float> ReceiverDepth : register(t1);
 
 struct PixelInput
@@ -18,7 +18,7 @@ int2 ClampCoordinate(int2 coordinate, int2 dimensions, uint eye)
     return coordinate;
 }
 
-float2 main(PixelInput input) : SV_Target0
+float main(PixelInput input) : SV_Target0
 {
     uint width;
     uint height;
@@ -27,28 +27,35 @@ float2 main(PixelInput input) : SV_Target0
     const int2 center = min(int2(input.position.xy), dimensions - 1);
     const uint eye = center.x < (dimensions.x >> 1) ? 0u : 1u;
 #if BLUR_HORIZONTAL
-    const int2 axis = int2(1, 0);
+    const int2 offset6 = int2(6, 0);
+    const int2 offset12 = int2(12, 0);
 #else
-    const int2 axis = int2(0, 1);
+    const int2 offset6 = int2(0, 6);
+    const int2 offset12 = int2(0, 12);
 #endif
-    const int offsets[5] = { -5, -2, 0, 2, 5 };
-    const float weights[5] = {
-        0.120078f, 0.233881f, 0.292082f, 0.233881f, 0.120078f
-    };
+    const int2 minus12 = ClampCoordinate(
+        center - offset12, dimensions, eye);
+    const int2 minus6 = ClampCoordinate(
+        center - offset6, dimensions, eye);
+    const int2 plus6 = ClampCoordinate(
+        center + offset6, dimensions, eye);
+    const int2 plus12 = ClampCoordinate(
+        center + offset12, dimensions, eye);
     const float centerDepth = ReceiverDepth.Load(int3(center, 0));
-    const float depthScale = max(abs(1.0f - centerDepth), 1.0e-4f);
-    float2 sum = 0.0f.xx;
-    float weightSum = 0.0f;
-    [unroll]
-    for (uint tap = 0u; tap < 5u; ++tap) {
-        const int2 coordinate = ClampCoordinate(
-            center + axis * offsets[tap], dimensions, eye);
-        const float tapDepth = ReceiverDepth.Load(int3(coordinate, 0));
-        const float relativeDepth = abs(tapDepth - centerDepth) / depthScale;
-        const float bilateral = exp2(-64.0f * relativeDepth);
-        const float weight = weights[tap] * bilateral;
-        sum += max(InputVolume.Load(int3(coordinate, 0)), 0.0f.xx) * weight;
-        weightSum += weight;
+    const float depthDifference = abs(
+        centerDepth * 4.0f -
+        ReceiverDepth.Load(int3(minus12, 0)) -
+        ReceiverDepth.Load(int3(minus6, 0)) -
+        ReceiverDepth.Load(int3(plus6, 0)) -
+        ReceiverDepth.Load(int3(plus12, 0)));
+    const float centerVolume = InputVolume.Load(int3(center, 0));
+    if (depthDifference > 0.002f) {
+        return centerVolume;
     }
-    return sum / max(weightSum, 1.0e-5f);
+    return
+        InputVolume.Load(int3(minus12, 0)) * 0.178400f +
+        InputVolume.Load(int3(minus6, 0)) * 0.210431f +
+        centerVolume * 0.222338f +
+        InputVolume.Load(int3(plus6, 0)) * 0.210431f +
+        InputVolume.Load(int3(plus12, 0)) * 0.178400f;
 }

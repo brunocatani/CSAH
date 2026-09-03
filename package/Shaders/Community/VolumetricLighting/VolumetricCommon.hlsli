@@ -18,13 +18,10 @@ cbuffer VolumetricFrame : register(b3)
     float4 EyeOrigin[2];
     // x=max distance, y=extinction distance, z=density scale, w=density mix
     float4 VolumeParams;
-    // x=global intensity, y=base gain, z=shaft gain, w=phase mix
+    // x=global intensity, y=base gain, z=shaft gain, w=reserved
     float4 ApplyParams;
-    // rgb=normalized scattering colour, w=weather intensity
-    float4 MediumColor;
-    // x=forward g, y=backward g, z=forward weight, w=backward weight
-    float4 PhaseParams;
-    // x=jitter phase, y=frame phase, z=linear-lighting active, w=reserved
+    // x=jitter phase, y=frame phase, z=reserved,
+    // w=detailed integration weight
     float4 FrameParams;
     // xyz=world-space density wind offset, w=cloud sampling active
     float4 WindParams;
@@ -210,40 +207,4 @@ float SampleDensity(uint eye, float3 relativePosition)
     const float altitude = 1.0f - 0.75f * smoothstep(
         0.0f, 1.0f, saturate(worldPosition.z * (2.0f / 300.0f)));
     return lerp(1.0f, noise * altitude, saturate(VolumeParams.w));
-}
-
-float RelativePhase(float viewTowardLight)
-{
-    const float forwardG = clamp(PhaseParams.x, -0.92f, 0.92f);
-    const float backwardG = clamp(PhaseParams.y, -0.92f, 0.92f);
-    const float forwardDenominator = max(
-        1.0f + forwardG * forwardG - 2.0f * forwardG * viewTowardLight,
-        0.02f);
-    const float backwardDenominator = max(
-        1.0f + backwardG * backwardG + 2.0f * backwardG * viewTowardLight,
-        0.02f);
-    const float forward = (1.0f - forwardG * forwardG) /
-        pow(forwardDenominator, 1.5f);
-    const float backward = (1.0f - backwardG * backwardG) /
-        pow(backwardDenominator, 1.5f);
-    const float directional =
-        (forward * PhaseParams.z + backward * PhaseParams.w) /
-        max(PhaseParams.z + PhaseParams.w, 1.0e-4f);
-    // Bethesda's authored phase values are retained, but a bounded relative
-    // lobe prevents the view-aligned "face sun" produced by an unbounded HG
-    // term in a headset.
-    return lerp(
-        1.0f,
-        clamp(directional, 0.5f, 2.0f),
-        saturate(ApplyParams.w));
-}
-
-float DistanceFraction(float distance)
-{
-    const float maximumDistance = max(VolumeParams.x, 1.0f);
-    const float extinctionDistance = max(VolumeParams.y, 1.0f);
-    const float terminal = exp(-maximumDistance / extinctionDistance);
-    const float current = exp(-clamp(distance, 0.0f, maximumDistance) /
-        extinctionDistance);
-    return saturate((1.0f - current) / max(1.0f - terminal, 1.0e-5f));
 }

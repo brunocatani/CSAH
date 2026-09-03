@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "id": "fo4vr.community-shaders",
   "name": "FO4VR Community Shaders",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack.",
   "accent": "#F0A04B",
   "tabs": [
@@ -179,18 +179,17 @@
             {
               "id": "volumetric-lighting-response",
               "label": "World-space shafts and volume",
-              "description": "The base volume and mixed-shadow shaft response are independent. Raising Shaft Intensity strengthens beams through openings without filling uniformly lit air with fog.",
+              "description": "World-space DFLight integration extracts shafts from local shadow contrast. Native fog remains authoritative, and unsafe output stays pass-through.",
               "controls": [
                 { "id": "volumetric-quality", "type": "choice", "label": "Quality", "default": 2, "choices": [ { "label": "Low", "value": 0 }, { "label": "Medium", "value": 1 }, { "label": "High", "value": 2 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "iQuality" } },
                 { "id": "volumetric-intensity", "type": "slider", "label": "Global Intensity", "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fIntensity" } },
-                { "id": "volumetric-base", "type": "slider", "label": "Base Volume", "default": 0.06, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fBaseScattering" } },
+                { "id": "volumetric-base", "type": "slider", "label": "Base Volume", "help": "Adds broad volumetric haze. Zero preserves Fallout's native fog and is the safe default.", "default": 0.0, "min": 0.0, "max": 0.35, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fBaseScattering" } },
                 { "id": "volumetric-shafts", "type": "slider", "label": "Godray Shaft Intensity", "default": 1.35, "min": 0.0, "max": 4.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fShaftIntensity" } },
-                { "id": "volumetric-density-mix", "type": "slider", "label": "Density Variation", "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fDensityContribution" } },
+                { "id": "volumetric-density-mix", "type": "slider", "label": "Density Variation", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fDensityContribution" } },
                 { "id": "volumetric-density-scale", "type": "slider", "label": "Density Scale", "default": 1.0, "min": 0.125, "max": 8.0, "step": 0.125, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fDensityScale" } },
-                { "id": "volumetric-phase", "type": "slider", "label": "Sun Phase Response", "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fPhaseContribution" } },
-                { "id": "volumetric-distance", "type": "slider", "label": "Maximum Distance", "default": 6000.0, "min": 256.0, "max": 20000.0, "step": 128.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fMaxDistance" } },
+                { "id": "volumetric-distance", "type": "slider", "label": "Maximum Distance", "default": 3000.0, "min": 256.0, "max": 20000.0, "step": 128.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fMaxDistance" } },
                 { "id": "volumetric-temporal", "type": "slider", "label": "Temporal Stability", "default": 0.9, "min": 0.0, "max": 0.98, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fTemporalWeight" } },
-                { "id": "volumetric-wind", "type": "slider", "label": "Density Wind Speed", "default": 6.0, "min": 0.0, "max": 100.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fWindSpeed" } }
+                { "id": "volumetric-wind", "type": "slider", "label": "Density Wind Speed", "default": 0.0, "min": 0.0, "max": 100.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fWindSpeed" } }
               ]
             }
           ]

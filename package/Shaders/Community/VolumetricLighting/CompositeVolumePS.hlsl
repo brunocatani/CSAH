@@ -1,15 +1,38 @@
-#include "VolumetricCommon.hlsli"
+cbuffer ImageSpaceConstants : register(b0)
+{
+    float4 Reserved0;
+    float4 TexelSize;
+    float4 CameraParams;
+    float4 SunParams;
+    float4 GlareColor;
+};
 
-Texture2D<float2> FilteredVolume : register(t0);
+cbuffer VolumetricFrame : register(b1)
+{
+    float4 EyeOrigin[2];
+    float4 VolumeParams;
+    float4 ApplyParams;
+    float4 FrameParams;
+    float4 WindParams;
+    float4 CloudParams;
+};
+
+Texture2D<float> FilteredVolume : register(t0);
 Texture2D<float> ReceiverDepth : register(t1);
 Texture2D<float> FullDepth : register(t2);
 Texture2D<float3> SceneColor : register(t3);
+Texture2D<float> StructuredVolume : register(t4);
 
 struct PixelInput
 {
     float4 position : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
+
+bool Finite3(float3 value)
+{
+    return all((asuint(value) & 0x7F800000u) != 0x7F800000u);
+}
 
 int2 ClampHalfCoordinate(int2 coordinate, int2 dimensions, uint eye)
 {
@@ -52,7 +75,8 @@ float4 main(PixelInput input) : SV_Target0
     };
     const float fullReceiverDepth = FullDepth.Load(int3(fullCoordinate, 0));
     const float depthScale = max(abs(1.0f - fullReceiverDepth), 1.0e-4f);
-    float2 volume = 0.0f.xx;
+    float filtered = 0.0f;
+    float structured = 0.0f;
     float weightSum = 0.0f;
     [unroll]
     for (uint tap = 0u; tap < 4u; ++tap) {
@@ -60,24 +84,34 @@ float4 main(PixelInput input) : SV_Target0
         const float relativeDepth = abs(fullReceiverDepth - tapDepth) /
             depthScale;
         const float weight = weights[tap] / (0.01f + relativeDepth);
-        volume += max(
-            FilteredVolume.Load(int3(coordinates[tap], 0)),
-            0.0f.xx) * weight;
+        filtered += max(
+            FilteredVolume.Load(int3(coordinates[tap], 0)), 0.0f) * weight;
+        structured += max(
+            StructuredVolume.Load(int3(coordinates[tap], 0)), 0.0f) * weight;
         weightSum += weight;
     }
-    volume /= max(weightSum, 1.0e-5f);
-    const float scattering =
-        volume.x * max(ApplyParams.y, 0.0f) +
-        volume.y * max(ApplyParams.z, 0.0f);
-    float3 lightColor = max(DFLight[3].rgb, 0.0f.xxx);
-    if (FrameParams.z > 0.5f) {
-        lightColor = pow(lightColor, 2.2f.xxx);
-    }
-    const float3 radiance = min(
-        scattering * max(ApplyParams.x, 0.0f) *
-            max(MediumColor.w, 0.0f) *
-            max(MediumColor.rgb, 0.0f.xxx) * lightColor,
-        8.0f.xxx);
+    filtered /= max(weightSum, 1.0e-5f);
+    structured /= max(weightSum, 1.0e-5f);
+
+    const float threshold = 1.0f / 128.0f;
+    const float basePower = pow(
+        max(filtered - threshold, 0.0f),
+        1.8f) * max(ApplyParams.y, 0.0f);
+    const float positiveContrast = max(
+        structured - filtered - 0.01f,
+        0.0f);
+    const float contrastReference = max(filtered * 0.25f, 0.025f);
+    const float shaftMask = saturate(
+        positiveContrast / contrastReference);
+    const float shaftPower = pow(
+        max(structured - threshold, 0.0f),
+        1.2f) * shaftMask * max(ApplyParams.z, 0.0f);
+    const float3 lightColor = min(max(GlareColor.rgb, 0.0f.xxx), 4.0f.xxx);
+    const float lightIntensity = min(max(SunParams.z, 0.0f), 4.0f);
+    float3 radiance = (basePower + shaftPower) *
+        lightColor * lightIntensity * max(ApplyParams.x, 0.0f);
+    radiance = Finite3(radiance) ?
+        min(max(radiance, 0.0f.xxx), 2.0f.xxx) : 0.0f.xxx;
     const float3 scene = max(
         SceneColor.Load(int3(fullCoordinate, 0)),
         0.0f.xxx);

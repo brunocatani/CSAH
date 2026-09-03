@@ -4,13 +4,12 @@ cbuffer VolumetricTemporal : register(b4)
 {
     float4 PreviousEyeOrigin[2];
     row_major float4x4 PreviousViewProjection[2];
-    // x=history valid, y=history weight, z/w=depth rejection range
     float4 TemporalParams;
 };
 
-Texture2D<float2> CurrentVolume : register(t0);
+Texture2D<float> CurrentVolume : register(t0);
 Texture2D<float> CurrentDepth : register(t1);
-Texture2D<float2> PreviousVolume : register(t2);
+Texture2D<float> PreviousVolume : register(t2);
 Texture2D<float> PreviousDepth : register(t3);
 SamplerState HistorySampler : register(s0);
 
@@ -22,7 +21,7 @@ struct PixelInput
 
 struct PixelOutput
 {
-    float2 volume : SV_Target0;
+    float volume : SV_Target0;
     float depth : SV_Target1;
 };
 
@@ -36,7 +35,7 @@ PixelOutput main(PixelInput input)
         int2(width - 1u, height - 1u));
     const uint eye = coordinate.x < int(width >> 1u) ? 0u : 1u;
     PixelOutput output;
-    output.volume = max(CurrentVolume.Load(int3(coordinate, 0)), 0.0f.xx);
+    output.volume = max(CurrentVolume.Load(int3(coordinate, 0)), 0.0f);
     output.depth = CurrentDepth.Load(int3(coordinate, 0));
     if (TemporalParams.x < 0.5f || output.depth >= 0.999999f) {
         return output;
@@ -90,9 +89,10 @@ PixelOutput main(PixelInput input)
         TemporalParams.w,
         abs(expectedDepth - observedDepth));
     const float historyWeight = saturate(TemporalParams.y * confidence);
-    const float2 history = max(
-        PreviousVolume.SampleLevel(HistorySampler, previousPackedUv, 0.0f),
-        0.0f.xx);
+    const float history = max(
+        PreviousVolume.SampleLevel(
+            HistorySampler, previousPackedUv, 0.0f),
+        0.0f);
     output.volume = lerp(output.volume, history, historyWeight);
     return output;
 }

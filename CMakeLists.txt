@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 4.2)
 
 set(NAME "fo4vr-community-shaders")
 set(FRIENDLY_NAME "FO4VR Community Shaders")
-set(VERSION 0.3.0)
+set(VERSION 0.3.1)
 
 set(ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(SOURCE_DIR "${ROOT_DIR}/src")
@@ -615,6 +615,8 @@ set(VOLUMETRIC_LIGHTING_STATE_SCOPE_SOURCE
   "${VOLUMETRIC_LIGHTING_SOURCE_DIR}/VolumetricStateScope.cpp")
 set(VOLUMETRIC_LIGHTING_STATE_SCOPE_HEADER
   "${VOLUMETRIC_LIGHTING_SOURCE_DIR}/VolumetricStateScope.h")
+set(VOLUMETRIC_LIGHTING_OUTPUT_QUALIFICATION_HEADER
+  "${VOLUMETRIC_LIGHTING_SOURCE_DIR}/VolumetricOutputQualification.h")
 set(VOLUMETRIC_SHADER_DIR
   "${ROOT_DIR}/package/Shaders/Community/VolumetricLighting")
 set(VOLUMETRIC_COMMON_SHADER_SOURCE
@@ -627,6 +629,8 @@ set(VOLUMETRIC_GENERATE_SHADER_SOURCE
   "${VOLUMETRIC_SHADER_DIR}/GenerateVolumeCS.hlsl")
 set(VOLUMETRIC_INTEGRATE_SHADER_SOURCE
   "${VOLUMETRIC_SHADER_DIR}/IntegrateVolumeCS.hlsl")
+set(VOLUMETRIC_QUALIFY_SHADER_SOURCE
+  "${VOLUMETRIC_SHADER_DIR}/QualifyVolumeCS.hlsl")
 set(VOLUMETRIC_RESOLVE_SHADER_SOURCE
   "${VOLUMETRIC_SHADER_DIR}/ResolveVolumePS.hlsl")
 set(VOLUMETRIC_TEMPORAL_SHADER_SOURCE
@@ -641,6 +645,7 @@ set_source_files_properties(
   "${VOLUMETRIC_FULLSCREEN_SHADER_SOURCE}"
   "${VOLUMETRIC_GENERATE_SHADER_SOURCE}"
   "${VOLUMETRIC_INTEGRATE_SHADER_SOURCE}"
+  "${VOLUMETRIC_QUALIFY_SHADER_SOURCE}"
   "${VOLUMETRIC_RESOLVE_SHADER_SOURCE}"
   "${VOLUMETRIC_TEMPORAL_SHADER_SOURCE}"
   "${VOLUMETRIC_BLUR_SHADER_SOURCE}"
@@ -1674,6 +1679,10 @@ set(VOLUMETRIC_INTEGRATE_SHADER_BINARY
   "${VOLUMETRIC_GENERATED_DIR}/VolumetricIntegrateCS.dxbc")
 set(VOLUMETRIC_INTEGRATE_SHADER_HEADER
   "${VOLUMETRIC_GENERATED_DIR}/VolumetricIntegrateCS.h")
+set(VOLUMETRIC_QUALIFY_SHADER_BINARY
+  "${VOLUMETRIC_GENERATED_DIR}/VolumetricQualifyCS.dxbc")
+set(VOLUMETRIC_QUALIFY_SHADER_HEADER
+  "${VOLUMETRIC_GENERATED_DIR}/VolumetricQualifyCS.h")
 set(VOLUMETRIC_RESOLVE_SHADER_BINARY
   "${VOLUMETRIC_GENERATED_DIR}/VolumetricResolvePS.dxbc")
 set(VOLUMETRIC_RESOLVE_SHADER_HEADER
@@ -1704,6 +1713,8 @@ add_custom_command(
     "${VOLUMETRIC_GENERATE_SHADER_HEADER}"
     "${VOLUMETRIC_INTEGRATE_SHADER_BINARY}"
     "${VOLUMETRIC_INTEGRATE_SHADER_HEADER}"
+    "${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
+    "${VOLUMETRIC_QUALIFY_SHADER_HEADER}"
     "${VOLUMETRIC_RESOLVE_SHADER_BINARY}"
     "${VOLUMETRIC_RESOLVE_SHADER_HEADER}"
     "${VOLUMETRIC_TEMPORAL_SHADER_BINARY}"
@@ -1741,6 +1752,12 @@ add_custom_command(
     "/Fh${VOLUMETRIC_INTEGRATE_SHADER_HEADER}"
     /Vnfo4vr_cs_volumetric_integrate_cs
     "${VOLUMETRIC_INTEGRATE_SHADER_SOURCE}"
+  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+    /nologo /T cs_5_0 /E main /O3 /Ges /WX
+    "/Fo${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
+    "/Fh${VOLUMETRIC_QUALIFY_SHADER_HEADER}"
+    /Vnfo4vr_cs_volumetric_qualify_cs
+    "${VOLUMETRIC_QUALIFY_SHADER_SOURCE}"
   COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/I${VOLUMETRIC_SHADER_DIR}"
@@ -1780,6 +1797,7 @@ add_custom_command(
     "${VOLUMETRIC_FULLSCREEN_SHADER_SOURCE}"
     "${VOLUMETRIC_GENERATE_SHADER_SOURCE}"
     "${VOLUMETRIC_INTEGRATE_SHADER_SOURCE}"
+    "${VOLUMETRIC_QUALIFY_SHADER_SOURCE}"
     "${VOLUMETRIC_RESOLVE_SHADER_SOURCE}"
     "${VOLUMETRIC_TEMPORAL_SHADER_SOURCE}"
     "${VOLUMETRIC_BLUR_SHADER_SOURCE}"
@@ -1796,6 +1814,8 @@ add_custom_target(VolumetricLightingShaders
     "${VOLUMETRIC_GENERATE_SHADER_HEADER}"
     "${VOLUMETRIC_INTEGRATE_SHADER_BINARY}"
     "${VOLUMETRIC_INTEGRATE_SHADER_HEADER}"
+    "${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
+    "${VOLUMETRIC_QUALIFY_SHADER_HEADER}"
     "${VOLUMETRIC_RESOLVE_SHADER_BINARY}"
     "${VOLUMETRIC_RESOLVE_SHADER_HEADER}"
     "${VOLUMETRIC_TEMPORAL_SHADER_BINARY}"
@@ -2312,11 +2332,13 @@ add_library(${PROJECT_NAME} SHARED
   "${VOLUMETRIC_LIGHTING_ENGINE_DATA_HEADER}"
   "${VOLUMETRIC_LIGHTING_STATE_SCOPE_SOURCE}"
   "${VOLUMETRIC_LIGHTING_STATE_SCOPE_HEADER}"
+  "${VOLUMETRIC_LIGHTING_OUTPUT_QUALIFICATION_HEADER}"
   "${VOLUMETRIC_COMMON_SHADER_SOURCE}"
   "${VOLUMETRIC_HOST_SHADER_SOURCE}"
   "${VOLUMETRIC_FULLSCREEN_SHADER_SOURCE}"
   "${VOLUMETRIC_GENERATE_SHADER_SOURCE}"
   "${VOLUMETRIC_INTEGRATE_SHADER_SOURCE}"
+  "${VOLUMETRIC_QUALIFY_SHADER_SOURCE}"
   "${VOLUMETRIC_RESOLVE_SHADER_SOURCE}"
   "${VOLUMETRIC_TEMPORAL_SHADER_SOURCE}"
   "${VOLUMETRIC_BLUR_SHADER_SOURCE}"
@@ -2325,6 +2347,7 @@ add_library(${PROJECT_NAME} SHARED
   "${VOLUMETRIC_FULLSCREEN_SHADER_HEADER}"
   "${VOLUMETRIC_GENERATE_SHADER_HEADER}"
   "${VOLUMETRIC_INTEGRATE_SHADER_HEADER}"
+  "${VOLUMETRIC_QUALIFY_SHADER_HEADER}"
   "${VOLUMETRIC_RESOLVE_SHADER_HEADER}"
   "${VOLUMETRIC_TEMPORAL_SHADER_HEADER}"
   "${VOLUMETRIC_BLUR_H_SHADER_HEADER}"
@@ -2862,6 +2885,45 @@ if(BUILD_FO4VR_CS_TESTS)
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.VolumetricLightingSettings
     COMMAND FO4VRCommunityShadersVolumetricLightingSettingsTests)
+
+  add_executable(FO4VRCommunityShadersVolumetricOutputQualificationTests
+    "${ROOT_DIR}/tests/VolumetricOutputQualificationTests.cpp"
+    "${VOLUMETRIC_LIGHTING_OUTPUT_QUALIFICATION_HEADER}")
+  target_compile_features(
+    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_include_directories(
+    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    "${SOURCE_DIR}")
+  target_compile_options(
+    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  add_test(NAME FO4VRCommunityShaders.VolumetricOutputQualification
+    COMMAND FO4VRCommunityShadersVolumetricOutputQualificationTests)
+
+  add_executable(FO4VRCommunityShadersVolumetricShaderBytecodeTests
+    "${ROOT_DIR}/tests/VolumetricShaderBytecodeTests.cpp")
+  target_compile_features(
+    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE cxx_std_23)
+  target_compile_definitions(
+    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_options(
+    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_link_libraries(
+    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    d3d11 d3dcompiler)
+  add_dependencies(
+    FO4VRCommunityShadersVolumetricShaderBytecodeTests
+    VolumetricLightingShaders)
+  add_test(NAME FO4VRCommunityShaders.VolumetricShaderBytecode
+    COMMAND FO4VRCommunityShadersVolumetricShaderBytecodeTests
+      "${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
+      "${VOLUMETRIC_RESOLVE_SHADER_BINARY}"
+      "${VOLUMETRIC_COMPOSITE_SHADER_BINARY}")
 
   add_executable(FO4VRCommunityShadersVanillaFixesSettingsTests
     "${ROOT_DIR}/tests/VanillaFixesSettingsTests.cpp"

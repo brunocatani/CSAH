@@ -52,7 +52,7 @@
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
     version.PluginName("FO4VR Community Shaders");
-    version.PluginVersion(REL::Version(0, 3, 0));
+    version.PluginVersion(REL::Version(0, 3, 1));
     version.AuthorName("FO4VR Community Shaders Port");
     return version;
 }();
@@ -238,16 +238,19 @@ namespace
             const auto volumetric = community_shaders::volumetric_lighting::
                 Runtime::get().snapshot();
             community_shaders::logging::info(
-                "F4SE GameDataReady: Volumetric Lighting enabled={}, nativeContract={}, engineData={}, gpuReady={}, diagnosticSuppressed={}, hostObserved={}, directionalCaptures={}, renderedFrames={}, rejectedFrames={}.",
+                "F4SE GameDataReady: Volumetric Lighting enabled={}, nativeContract={}, engineData={}, gpuReady={}, diagnosticSuppressed={}, hostObserved={}, outputQualified={}, directionalCaptures={}, renderedFrames={}, rejectedFrames={}, qualification=[passes={},failures={}].",
                 volumetric.settings.enabled,
                 volumetric.nativeContractValid,
                 volumetric.engineDataValid,
                 volumetric.gpuReady,
                 volumetric.diagnosticSuppressed,
                 volumetric.hostShaderObserved,
+                volumetric.outputQualified,
                 volumetric.directionalCaptures,
                 volumetric.renderedFrames,
-                volumetric.rejectedFrames);
+                volumetric.rejectedFrames,
+                volumetric.qualificationPasses,
+                volumetric.qualificationFailures);
             break;
         }
         case F4SE::MessagingInterface::kPreLoadGame:
@@ -306,7 +309,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
 
         a_info->infoVersion = F4SE::PluginInfo::kVersion;
         a_info->name = "FO4VR Community Shaders";
-        a_info->version = 200;
+        a_info->version = 301;
 
         if (a_f4se->IsEditor()) {
             community_shaders::logging::critical(

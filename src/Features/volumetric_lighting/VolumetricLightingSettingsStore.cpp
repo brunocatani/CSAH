@@ -118,8 +118,6 @@ namespace community_shaders::volumetric_lighting
             .densityScale = readFloat(
                 path, L"fDensityScale", defaults.densityScale),
             .windSpeed = readFloat(path, L"fWindSpeed", defaults.windSpeed),
-            .phaseContribution = readFloat(
-                path, L"fPhaseContribution", defaults.phaseContribution),
             .maxDistance = readFloat(
                 path, L"fMaxDistance", defaults.maxDistance),
             .temporalWeight = readFloat(
@@ -132,7 +130,7 @@ namespace community_shaders::volumetric_lighting
         const auto path = settings_path::resolveIniPath();
         const auto result = loadSettings(path);
         logging::info(
-            "Volumetric Lighting settings loaded from '{}'; enabled={}, quality={}, intensity={}, base={}, shafts={}, densityContribution={}, densityScale={}, windSpeed={}, phaseContribution={}, maxDistance={}, temporalWeight={}.",
+            "Volumetric Lighting settings loaded from '{}'; enabled={}, quality={}, intensity={}, base={}, shafts={}, densityContribution={}, densityScale={}, windSpeed={}, maxDistance={}, temporalWeight={}.",
             path.string(),
             result.enabled,
             result.quality,
@@ -142,7 +140,6 @@ namespace community_shaders::volumetric_lighting
             result.densityContribution,
             result.densityScale,
             result.windSpeed,
-            result.phaseContribution,
             result.maxDistance,
             result.temporalWeight);
         return result;
@@ -181,11 +178,6 @@ namespace community_shaders::volumetric_lighting
         success = writeFloat(path, L"fDensityScale", safe.densityScale) &&
             success;
         success = writeFloat(path, L"fWindSpeed", safe.windSpeed) && success;
-        success = writeFloat(
-                      path,
-                      L"fPhaseContribution",
-                      safe.phaseContribution) &&
-            success;
         success = writeFloat(path, L"fMaxDistance", safe.maxDistance) &&
             success;
         success = writeFloat(

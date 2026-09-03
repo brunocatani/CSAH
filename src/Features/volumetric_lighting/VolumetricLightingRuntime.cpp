@@ -3,6 +3,7 @@
 #include "Features/cloud_shadows/CloudShadowRuntime.h"
 #include "Features/linear_lighting/LinearLightingRuntime.h"
 #include "Features/volumetric_lighting/VolumetricEngineData.h"
+#include "Features/volumetric_lighting/VolumetricOutputQualification.h"
 #include "Features/volumetric_lighting/VolumetricStateScope.h"
 #include "support/Logger.h"
 
@@ -13,6 +14,7 @@
 #include "VolumetricGenerateCS.h"
 #include "VolumetricHostPassThroughPS.h"
 #include "VolumetricIntegrateCS.h"
+#include "VolumetricQualifyCS.h"
 #include "VolumetricResolvePS.h"
 #include "VolumetricTemporalPS.h"
 
@@ -57,6 +59,8 @@ namespace community_shaders::volumetric_lighting
         constexpr UINT kNativeLightConstantSlot = 2;
         constexpr UINT kNativeStereoConstantSlot = 8;
         constexpr UINT kNativeCameraConstantSlot = 12;
+        constexpr UINT kHostImageSpaceConstantSlot = 2;
+        constexpr UINT kHostImageSpaceConstantSize = 5u * 16u;
         constexpr float kWeatherUnitScale = 0.0001f;
         constexpr float kCloudHeight = 140056.0f;
         constexpr float kPlanetRadius = 446148448.0f;
@@ -64,19 +68,23 @@ namespace community_shaders::volumetric_lighting
         constexpr float kTeleportDistance = 256.0f;
         constexpr float kDepthRejectStart = 0.001f;
         constexpr float kDepthRejectEnd = 0.01f;
+        constexpr std::size_t kQualificationProbeCount = 128;
+        constexpr std::size_t kQualificationRecordCount = 129;
+        constexpr std::uint64_t kQualificationRetryFrames = 30;
+        constexpr std::uint64_t kQualificationMonitorFrames = 300;
+
+        static_assert(sizeof(OutputProbe) == 16);
 
         struct alignas(16) FrameConstants final
         {
             float eyeOrigin[2][4]{};
             float volumeParams[4]{};
             float applyParams[4]{};
-            float mediumColor[4]{};
-            float phaseParams[4]{};
             float frameParams[4]{};
             float windParams[4]{};
             float cloudParams[4]{};
         };
-        static_assert(sizeof(FrameConstants) == 144);
+        static_assert(sizeof(FrameConstants) == 112);
 
         struct alignas(16) TemporalConstants final
         {
@@ -125,6 +133,7 @@ namespace community_shaders::volumetric_lighting
             ComPtr<ID3D11VertexShader> fullscreenVertex;
             ComPtr<ID3D11ComputeShader> generateCompute;
             ComPtr<ID3D11ComputeShader> integrateCompute;
+            ComPtr<ID3D11ComputeShader> qualifyCompute;
             ComPtr<ID3D11PixelShader> resolvePixel;
             ComPtr<ID3D11PixelShader> temporalPixel;
             ComPtr<ID3D11PixelShader> blurHorizontalPixel;
@@ -132,6 +141,9 @@ namespace community_shaders::volumetric_lighting
             ComPtr<ID3D11PixelShader> compositePixel;
             ComPtr<ID3D11Buffer> frameConstants;
             ComPtr<ID3D11Buffer> temporalConstants;
+            ComPtr<ID3D11Buffer> qualificationOutput;
+            ComPtr<ID3D11UnorderedAccessView> qualificationOutputView;
+            ComPtr<ID3D11Buffer> qualificationStaging;
             ComPtr<ID3D11SamplerState> linearSampler;
             ComPtr<ID3D11DepthStencilState> depthState;
             ComPtr<ID3D11RasterizerState> rasterState;
@@ -157,9 +169,13 @@ namespace community_shaders::volumetric_lighting
             std::uint32_t historyWriteIndex{};
             std::uint64_t frameIndex{};
             std::uint64_t appliedSettingsRevision{};
+            std::uint64_t nextQualificationFrame{};
+            std::uint64_t qualificationAttempts{};
             bool staticReady{};
             bool sizeReady{};
             bool historyValid{};
+            bool qualificationPending{};
+            bool outputQualified{};
         };
 
         struct State final
@@ -167,13 +183,12 @@ namespace community_shaders::volumetric_lighting
             std::atomic_bool enabled{ true };
             std::atomic_uint32_t quality{ 2 };
             std::atomic<float> intensity{ 1.0f };
-            std::atomic<float> baseScattering{ 0.06f };
+            std::atomic<float> baseScattering{};
             std::atomic<float> shaftIntensity{ 1.35f };
-            std::atomic<float> densityContribution{ 0.55f };
+            std::atomic<float> densityContribution{ 0.50f };
             std::atomic<float> densityScale{ 1.0f };
-            std::atomic<float> windSpeed{ 6.0f };
-            std::atomic<float> phaseContribution{ 0.30f };
-            std::atomic<float> maxDistance{ 6000.0f };
+            std::atomic<float> windSpeed{};
+            std::atomic<float> maxDistance{ 3000.0f };
             std::atomic<float> temporalWeight{ 0.90f };
             std::atomic_bool diagnosticSuppressed{};
             std::atomic_bool started{};
@@ -191,10 +206,15 @@ namespace community_shaders::volumetric_lighting
             std::atomic_uint64_t directionalCaptures{};
             std::atomic_uint64_t renderedFrames{};
             std::atomic_uint64_t rejectedFrames{};
+            std::atomic_uint64_t qualificationPasses{};
+            std::atomic_uint64_t qualificationFailures{};
             std::atomic_bool firstHostLogged{};
             std::atomic_bool firstCaptureLogged{};
             std::atomic_bool firstRenderLogged{};
             std::atomic_bool firstRejectLogged{};
+            std::atomic_bool firstQualificationFailureLogged{};
+            std::atomic_bool firstHostSurfaceRejectLogged{};
+            std::atomic_bool firstImageSpaceRejectLogged{};
         };
 
         State& state() noexcept
@@ -235,8 +255,6 @@ namespace community_shaders::volumetric_lighting
                 .densityScale = value.densityScale.load(
                     std::memory_order_relaxed),
                 .windSpeed = value.windSpeed.load(std::memory_order_relaxed),
-                .phaseContribution = value.phaseContribution.load(
-                    std::memory_order_relaxed),
                 .maxDistance = value.maxDistance.load(
                     std::memory_order_relaxed),
                 .temporalWeight = value.temporalWeight.load(
@@ -330,6 +348,19 @@ namespace community_shaders::volumetric_lighting
                 (description.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0;
         }
 
+        [[nodiscard]] bool bufferExactly(
+            ID3D11Buffer* buffer,
+            UINT size) noexcept
+        {
+            if (!buffer) {
+                return false;
+            }
+            D3D11_BUFFER_DESC description{};
+            buffer->GetDesc(&description);
+            return description.ByteWidth == size &&
+                (description.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0;
+        }
+
         [[nodiscard]] bool validDepth(
             ID3D11ShaderResourceView* view,
             ID3D11Device* device,
@@ -419,6 +450,9 @@ namespace community_shaders::volumetric_lighting
             gpu.historyWriteIndex = 0;
             gpu.historyValid = false;
             gpu.previousCamera = {};
+            gpu.qualificationPending = false;
+            gpu.outputQualified = false;
+            gpu.nextQualificationFrame = 0;
             gpu.sizeReady = false;
         }
 
@@ -468,7 +502,7 @@ namespace community_shaders::volumetric_lighting
             description.Height = height;
             description.Depth = depth;
             description.MipLevels = 1;
-            description.Format = DXGI_FORMAT_R16G16_FLOAT;
+            description.Format = DXGI_FORMAT_R16_FLOAT;
             description.Usage = D3D11_USAGE_DEFAULT;
             description.BindFlags =
                 D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
@@ -513,6 +547,13 @@ namespace community_shaders::volumetric_lighting
                     sizeof(fo4vr_cs_volumetric_integrate_cs),
                     nullptr,
                     gpu.integrateCompute.ReleaseAndGetAddressOf());
+            }
+            if (SUCCEEDED(result)) {
+                result = gpu.device->CreateComputeShader(
+                    fo4vr_cs_volumetric_qualify_cs,
+                    sizeof(fo4vr_cs_volumetric_qualify_cs),
+                    nullptr,
+                    gpu.qualifyCompute.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
@@ -567,6 +608,42 @@ namespace community_shaders::volumetric_lighting
                     gpu.temporalConstants.ReleaseAndGetAddressOf());
             }
 
+            D3D11_BUFFER_DESC qualification{};
+            qualification.ByteWidth = static_cast<UINT>(
+                kQualificationRecordCount * sizeof(OutputProbe));
+            qualification.Usage = D3D11_USAGE_DEFAULT;
+            qualification.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+            qualification.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+            qualification.StructureByteStride = sizeof(OutputProbe);
+            if (SUCCEEDED(result)) {
+                result = gpu.device->CreateBuffer(
+                    &qualification,
+                    nullptr,
+                    gpu.qualificationOutput.ReleaseAndGetAddressOf());
+            }
+            D3D11_UNORDERED_ACCESS_VIEW_DESC qualificationView{};
+            qualificationView.Format = DXGI_FORMAT_UNKNOWN;
+            qualificationView.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+            qualificationView.Buffer.NumElements = static_cast<UINT>(
+                kQualificationRecordCount);
+            if (SUCCEEDED(result)) {
+                result = gpu.device->CreateUnorderedAccessView(
+                    gpu.qualificationOutput.Get(),
+                    &qualificationView,
+                    gpu.qualificationOutputView.ReleaseAndGetAddressOf());
+            }
+            qualification.Usage = D3D11_USAGE_STAGING;
+            qualification.BindFlags = 0;
+            qualification.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            qualification.MiscFlags = 0;
+            qualification.StructureByteStride = 0;
+            if (SUCCEEDED(result)) {
+                result = gpu.device->CreateBuffer(
+                    &qualification,
+                    nullptr,
+                    gpu.qualificationStaging.ReleaseAndGetAddressOf());
+            }
+
             D3D11_SAMPLER_DESC sampler{};
             sampler.Filter = D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
             sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -599,10 +676,13 @@ namespace community_shaders::volumetric_lighting
             }
             gpu.staticReady = SUCCEEDED(result) && gpu.fullscreenVertex &&
                 gpu.generateCompute && gpu.integrateCompute &&
+                gpu.qualifyCompute &&
                 gpu.resolvePixel && gpu.temporalPixel &&
                 gpu.blurHorizontalPixel && gpu.blurVerticalPixel &&
                 gpu.compositePixel && gpu.frameConstants &&
-                gpu.temporalConstants && gpu.linearSampler &&
+                gpu.temporalConstants && gpu.qualificationOutput &&
+                gpu.qualificationOutputView && gpu.qualificationStaging &&
+                gpu.linearSampler &&
                 gpu.depthState && gpu.rasterState;
             if (!gpu.staticReady) {
                 logging::critical(
@@ -625,9 +705,9 @@ namespace community_shaders::volumetric_lighting
                 UINT depth;
             };
             constexpr std::array<Dimensions, 3> dimensions{
-                Dimensions{ 160, 96, 64 },
-                Dimensions{ 240, 144, 80 },
-                Dimensions{ 320, 192, 96 }
+                Dimensions{ 320, 96, 64 },
+                Dimensions{ 480, 144, 80 },
+                Dimensions{ 640, 192, 96 }
             };
             const auto selected = dimensions[std::min<std::uint32_t>(quality, 2)];
             const auto eyeWidth = fullWidth / 2u;
@@ -663,7 +743,7 @@ namespace community_shaders::volumetric_lighting
                     gpu.device.Get(),
                     halfWidth,
                     halfHeight,
-                    DXGI_FORMAT_R16G16_FLOAT,
+                    DXGI_FORMAT_R16_FLOAT,
                     gpu.currentVolume);
             }
             if (SUCCEEDED(result)) {
@@ -671,7 +751,7 @@ namespace community_shaders::volumetric_lighting
                     gpu.device.Get(),
                     halfWidth,
                     halfHeight,
-                    DXGI_FORMAT_R16G16_FLOAT,
+                    DXGI_FORMAT_R16_FLOAT,
                     gpu.blurVolume);
             }
             if (SUCCEEDED(result)) {
@@ -689,7 +769,7 @@ namespace community_shaders::volumetric_lighting
                     gpu.device.Get(),
                     halfWidth,
                     halfHeight,
-                    DXGI_FORMAT_R16G16_FLOAT,
+                    DXGI_FORMAT_R16_FLOAT,
                     gpu.historyVolume[index]);
                 if (SUCCEEDED(result)) {
                     result = createTarget(
@@ -804,7 +884,6 @@ namespace community_shaders::volumetric_lighting
             std::array<float, 3> forward{};
             std::array<float, 3> backward{};
             std::array<float, 3> extinction{};
-            std::array<float, 3> color{};
             for (std::size_t component = 0; component < 3; ++component) {
                 air[component] = std::max(
                     weather.medium[component] * kWeatherUnitScale, 0.0f);
@@ -814,21 +893,12 @@ namespace community_shaders::volumetric_lighting
                     weather.medium[6 + component] * kWeatherUnitScale, 0.0f);
                 extinction[component] =
                     air[component] + forward[component] + backward[component];
-                color[component] = air[component] + forward[component] * 0.35f;
             }
-            const auto colorLuminance = std::max(luminance(color), 1.0e-7f);
-            for (std::size_t component = 0; component < 3; ++component) {
-                output.mediumColor[component] = std::clamp(
-                    color[component] / colorLuminance, 0.25f, 4.0f);
-            }
-            output.mediumColor[3] = std::clamp(weather.intensity, 0.0f, 4.0f);
             const auto referenceExtinction = std::max(
                 luminance(extinction), 1.0e-7f);
             const auto authoredExtinctionDistance = 1.0f / referenceExtinction;
             const auto distributionDistance = std::clamp(
-                std::max(
-                    authoredExtinctionDistance,
-                    settings.maxDistance * 0.35f),
+                authoredExtinctionDistance,
                 512.0f,
                 settings.maxDistance * 2.0f);
             output.volumeParams[0] = settings.maxDistance;
@@ -838,19 +908,18 @@ namespace community_shaders::volumetric_lighting
             output.applyParams[0] = settings.intensity;
             output.applyParams[1] = settings.baseScattering;
             output.applyParams[2] = settings.shaftIntensity;
-            output.applyParams[3] = settings.phaseContribution;
-            output.phaseParams[0] = std::clamp(weather.medium[9], -0.92f, 0.92f);
-            output.phaseParams[1] = std::clamp(weather.medium[10], -0.92f, 0.92f);
-            output.phaseParams[2] = std::max(luminance(forward), 1.0e-6f);
-            output.phaseParams[3] = std::max(luminance(backward), 1.0e-6f);
+            output.applyParams[3] = 0.0f;
             constexpr std::array<float, 8> phases{
                 0.0f, 0.5f, 0.25f, 0.75f,
                 0.125f, 0.625f, 0.375f, 0.875f
             };
             output.frameParams[0] = phases[frameIndex & 7u];
             output.frameParams[1] = static_cast<float>(frameIndex & 7u);
-            output.frameParams[2] = linear_lighting::Runtime::get()
-                .linearLightingEnabled() ? 1.0f : 0.0f;
+            constexpr std::array<float, 3> detailWeights{
+                0.50f, 0.75f, 0.875f
+            };
+            output.frameParams[3] = detailWeights[
+                std::min<std::uint32_t>(settings.quality, 2u)];
             const auto seconds = static_cast<float>(
                 static_cast<double>(GetTickCount64()) * 0.001);
             const auto wind = std::fmod(
@@ -879,6 +948,7 @@ namespace community_shaders::volumetric_lighting
             context->DSSetShader(nullptr, nullptr, 0);
             context->RSSetState(gpu.rasterState.Get());
             context->OMSetDepthStencilState(gpu.depthState.Get(), 0);
+            context->SetPredication(nullptr, FALSE);
             constexpr float blendFactor[4]{};
             context->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFFu);
             const D3D11_VIEWPORT viewport{
@@ -894,18 +964,136 @@ namespace community_shaders::volumetric_lighting
 
         void clearPixelResources(ID3D11DeviceContext* context) noexcept
         {
-            constexpr std::array<ID3D11ShaderResourceView*, 4> nullViews{};
+            constexpr std::array<ID3D11ShaderResourceView*, 5> nullViews{};
             context->PSSetShaderResources(
                 0, static_cast<UINT>(nullViews.size()), nullViews.data());
         }
 
         void clearComputeResources(ID3D11DeviceContext* context) noexcept
         {
-            constexpr std::array<ID3D11ShaderResourceView*, 2> nullViews{};
+            constexpr std::array<ID3D11ShaderResourceView*, 3> nullViews{};
             ID3D11UnorderedAccessView* nullOutput{};
             context->CSSetUnorderedAccessViews(0, 1, &nullOutput, nullptr);
             context->CSSetShaderResources(
                 0, static_cast<UINT>(nullViews.size()), nullViews.data());
+        }
+
+        void recordQualificationFailure(
+            State& value,
+            GpuState& gpu,
+            std::uint32_t reason,
+            HRESULT result) noexcept
+        {
+            gpu.outputQualified = false;
+            gpu.nextQualificationFrame =
+                gpu.frameIndex + kQualificationRetryFrames;
+            const auto failures = value.qualificationFailures.fetch_add(
+                                      1, std::memory_order_relaxed) +
+                1;
+            if (!value.firstQualificationFailureLogged.exchange(
+                    true, std::memory_order_relaxed) ||
+                failures % 60u == 0u) {
+                logging::warn(
+                    "Volumetric Lighting output qualification rejected a frame (reason=0x{:X}, HRESULT=0x{:08X}, attempt={}); composition remains pass-through.",
+                    reason,
+                    static_cast<std::uint32_t>(result),
+                    gpu.qualificationAttempts);
+            }
+        }
+
+        void pollOutputQualification(
+            State& value,
+            GpuState& gpu,
+            ID3D11DeviceContext* context) noexcept
+        {
+            if (!gpu.qualificationPending || !gpu.qualificationStaging ||
+                !context) {
+                return;
+            }
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            const auto result = context->Map(
+                gpu.qualificationStaging.Get(),
+                0,
+                D3D11_MAP_READ,
+                D3D11_MAP_FLAG_DO_NOT_WAIT,
+                &mapped);
+            if (result == DXGI_ERROR_WAS_STILL_DRAWING) {
+                return;
+            }
+            gpu.qualificationPending = false;
+            if (FAILED(result) || !mapped.pData) {
+                if (SUCCEEDED(result)) {
+                    context->Unmap(gpu.qualificationStaging.Get(), 0);
+                }
+                recordQualificationFailure(value, gpu, 0, result);
+                return;
+            }
+            const auto* records = static_cast<const OutputProbe*>(mapped.pData);
+            const auto& light = records[kQualificationProbeCount];
+            const auto qualification = qualifyOutput(
+                std::span<const OutputProbe>(
+                    records, kQualificationProbeCount),
+                light.structured,
+                light.filtered,
+                light.depth,
+                light.positiveContrast);
+            context->Unmap(gpu.qualificationStaging.Get(), 0);
+            if (!qualification.passed) {
+                recordQualificationFailure(
+                    value, gpu, qualification.failureMask, S_OK);
+                return;
+            }
+            gpu.outputQualified = true;
+            gpu.nextQualificationFrame =
+                gpu.frameIndex + kQualificationMonitorFrames;
+            const auto passes = value.qualificationPasses.fetch_add(
+                                    1, std::memory_order_relaxed) +
+                1;
+            if (passes == 1) {
+                logging::info(
+                    "Volumetric Lighting output qualified before composition: structured=[mean={},max={}], filteredMean={}, positiveContrastMax={}, sunIntensity={}, glareMax={}, probes={}. Broad fog is disabled by default and final local radiance is bounded.",
+                    qualification.structuredMean,
+                    qualification.structuredMaximum,
+                    qualification.filteredMean,
+                    qualification.positiveContrastMaximum,
+                    qualification.sunIntensity,
+                    qualification.glareMaximum,
+                    kQualificationProbeCount);
+            }
+        }
+
+        void issueOutputQualification(
+            GpuState& gpu,
+            ID3D11DeviceContext* context,
+            ID3D11ShaderResourceView* structured,
+            ID3D11ShaderResourceView* filtered,
+            ID3D11ShaderResourceView* depth,
+            ID3D11Buffer* imageSpaceConstants) noexcept
+        {
+            if (!context || gpu.qualificationPending ||
+                gpu.frameIndex < gpu.nextQualificationFrame ||
+                !structured || !filtered || !depth ||
+                !imageSpaceConstants || !gpu.qualifyCompute ||
+                !gpu.qualificationOutputView ||
+                !gpu.qualificationOutput || !gpu.qualificationStaging) {
+                return;
+            }
+            context->CSSetShader(gpu.qualifyCompute.Get(), nullptr, 0);
+            const std::array<ID3D11ShaderResourceView*, 3> resources{
+                structured, filtered, depth
+            };
+            context->CSSetShaderResources(
+                0, static_cast<UINT>(resources.size()), resources.data());
+            context->CSSetConstantBuffers(0, 1, &imageSpaceConstants);
+            auto* output = gpu.qualificationOutputView.Get();
+            context->CSSetUnorderedAccessViews(0, 1, &output, nullptr);
+            context->Dispatch(2, 1, 1);
+            clearComputeResources(context);
+            context->CopyResource(
+                gpu.qualificationStaging.Get(),
+                gpu.qualificationOutput.Get());
+            gpu.qualificationPending = true;
+            ++gpu.qualificationAttempts;
         }
 
         [[nodiscard]] bool acquireHostSurfaces(
@@ -951,10 +1139,14 @@ namespace community_shaders::volumetric_lighting
                 sceneView.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2D &&
                 outputDescription.Width == sceneDescription.Width &&
                 outputDescription.Height == sceneDescription.Height &&
+                outputDescription.MipLevels == 1 &&
+                sceneDescription.MipLevels == 1 &&
                 outputDescription.ArraySize == 1 &&
                 sceneDescription.ArraySize == 1 &&
                 outputDescription.SampleDesc.Count == 1 &&
                 sceneDescription.SampleDesc.Count == 1 &&
+                outputDescription.Format == DXGI_FORMAT_R11G11B10_FLOAT &&
+                sceneDescription.Format == outputDescription.Format &&
                 outputDescription.Width >= 2 &&
                 (outputDescription.Width & 1u) == 0 &&
                 outputDescription.Height != 0;
@@ -1085,8 +1277,6 @@ namespace community_shaders::volumetric_lighting
         value.densityScale.store(
             safe.densityScale, std::memory_order_relaxed);
         value.windSpeed.store(safe.windSpeed, std::memory_order_relaxed);
-        value.phaseContribution.store(
-            safe.phaseContribution, std::memory_order_relaxed);
         value.maxDistance.store(safe.maxDistance, std::memory_order_relaxed);
         value.temporalWeight.store(
             safe.temporalWeight, std::memory_order_relaxed);
@@ -1204,7 +1394,7 @@ namespace community_shaders::volumetric_lighting
         applyNativeGate();
         if (ready) {
             logging::info(
-                "Volumetric Lighting GPU suite is ready: two-channel froxels, world density, weather phase, cloud modulation, temporal rejection, bilateral filtering, and linear HDR composition.");
+                "Volumetric Lighting GPU suite is ready: scalar world-space visibility, detailed DFLight integration, stereo temporal rejection, local shaft contrast, bounded HDR composition, and fail-closed GPU output qualification.");
         }
     }
 
@@ -1282,6 +1472,7 @@ namespace community_shaders::volumetric_lighting
             }
             return;
         }
+        pollOutputQualification(value, gpu, context);
 
         DirectionalFrame frame = std::move(gpu.directionalFrame);
         gpu.directionalFrame = {};
@@ -1295,6 +1486,35 @@ namespace community_shaders::volumetric_lighting
                 sceneSource,
                 outputDescription)) {
             value.rejectedFrames.fetch_add(1, std::memory_order_relaxed);
+            if (!value.firstHostSurfaceRejectLogged.exchange(
+                    true, std::memory_order_relaxed)) {
+                logging::warn(
+                    "Volumetric Lighting rejected the exact host surface contract; R11G11B10 scene input and distinct matching output were not both available.");
+            }
+            return;
+        }
+        ID3D11Buffer* rawImageSpaceConstants{};
+        context->PSGetConstantBuffers(
+            kHostImageSpaceConstantSlot,
+            1,
+            &rawImageSpaceConstants);
+        ComPtr<ID3D11Buffer> imageSpaceConstants;
+        imageSpaceConstants.Attach(rawImageSpaceConstants);
+        if (!bufferExactly(
+                imageSpaceConstants.Get(), kHostImageSpaceConstantSize)) {
+            value.rejectedFrames.fetch_add(1, std::memory_order_relaxed);
+            if (!value.firstImageSpaceRejectLogged.exchange(
+                    true, std::memory_order_relaxed)) {
+                D3D11_BUFFER_DESC description{};
+                if (imageSpaceConstants) {
+                    imageSpaceConstants->GetDesc(&description);
+                }
+                logging::warn(
+                    "Volumetric Lighting rejected host ImageSpace b2 (present={}, bytes={}, bind=0x{:X}); the required contract is an 80-byte constant buffer.",
+                    imageSpaceConstants.Get() != nullptr,
+                    description.ByteWidth,
+                    description.BindFlags);
+            }
             return;
         }
         UINT depthWidth{};
@@ -1347,6 +1567,9 @@ namespace community_shaders::volumetric_lighting
             gpu.historyValid = false;
             gpu.previousCamera = {};
             gpu.historyWriteIndex = 0;
+            gpu.outputQualified = false;
+            gpu.qualificationPending = false;
+            gpu.nextQualificationFrame = gpu.frameIndex;
         }
 
         ID3D11ShaderResourceView* cloudCube{};
@@ -1388,6 +1611,7 @@ namespace community_shaders::volumetric_lighting
 
         InternalRenderScope internal;
         StateScope restore(context);
+        context->SetPredication(nullptr, FALSE);
         const std::array<ID3D11Buffer*, 4> nativeConstants{
             frame.lightConstants.Get(),
             frame.stereoConstants.Get(),
@@ -1442,15 +1666,23 @@ namespace community_shaders::volumetric_lighting
             resolveTargets.data(),
             nullptr);
         context->PSSetShader(gpu.resolvePixel.Get(), nullptr, 0);
-        const std::array<ID3D11ShaderResourceView*, 2> resolveSources{
-            frame.depth.Get(), gpu.integratedVolume.source.Get()
+        const std::array<ID3D11ShaderResourceView*, 3> resolveSources{
+            frame.depth.Get(),
+            frame.shadow.Get(),
+            gpu.integratedVolume.source.Get()
         };
         context->PSSetShaderResources(
             0,
             static_cast<UINT>(resolveSources.size()),
             resolveSources.data());
         auto* linearSampler = gpu.linearSampler.Get();
-        context->PSSetSamplers(0, 1, &linearSampler);
+        const std::array<ID3D11SamplerState*, 2> resolveSamplers{
+            frame.comparisonSampler.Get(), linearSampler
+        };
+        context->PSSetSamplers(
+            0,
+            static_cast<UINT>(resolveSamplers.size()),
+            resolveSamplers.data());
         context->PSSetConstantBuffers(
             0,
             static_cast<UINT>(nativeConstants.size()),
@@ -1523,38 +1755,58 @@ namespace community_shaders::volumetric_lighting
             gpu, context, outputDescription.Width, outputDescription.Height);
         auto* output = outputTarget.Get();
         context->OMSetRenderTargets(1, &output, nullptr);
-        context->PSSetShader(gpu.compositePixel.Get(), nullptr, 0);
-        const std::array<ID3D11ShaderResourceView*, 4> compositeSources{
+        auto* structuredVolume =
+            gpu.historyVolume[writeIndex].source.Get();
+        issueOutputQualification(
+            gpu,
+            context,
+            structuredVolume,
             gpu.currentVolume.source.Get(),
             gpu.receiverDepth.source.Get(),
-            frame.depth.Get(),
-            sceneSource.Get()
-        };
-        context->PSSetShaderResources(
-            0,
-            static_cast<UINT>(compositeSources.size()),
-            compositeSources.data());
-        context->PSSetConstantBuffers(
-            0,
-            static_cast<UINT>(nativeConstants.size()),
-            nativeConstants.data());
-        context->Draw(3, 0);
-        clearPixelResources(context);
+            imageSpaceConstants.Get());
+        const auto presented = gpu.outputQualified;
+        if (presented) {
+            context->PSSetShader(gpu.compositePixel.Get(), nullptr, 0);
+            const std::array<ID3D11ShaderResourceView*, 5> compositeSources{
+                gpu.currentVolume.source.Get(),
+                gpu.receiverDepth.source.Get(),
+                frame.depth.Get(),
+                sceneSource.Get(),
+                structuredVolume
+            };
+            context->PSSetShaderResources(
+                0,
+                static_cast<UINT>(compositeSources.size()),
+                compositeSources.data());
+            const std::array<ID3D11Buffer*, 2> compositeConstants{
+                imageSpaceConstants.Get(), gpu.frameConstants.Get()
+            };
+            context->PSSetConstantBuffers(
+                0,
+                static_cast<UINT>(compositeConstants.size()),
+                compositeConstants.data());
+            context->Draw(3, 0);
+            clearPixelResources(context);
+        }
 
         gpu.previousCamera = camera;
         gpu.historyValid = true;
         gpu.historyWriteIndex = readIndex;
         ++gpu.frameIndex;
+        if (!presented) {
+            return;
+        }
         const auto rendered = value.renderedFrames.fetch_add(
-                                  1, std::memory_order_relaxed) +
-            1;
+                                  1, std::memory_order_relaxed) + 1;
         if (!value.firstRenderLogged.exchange(
                 true, std::memory_order_relaxed)) {
             logging::info(
-                "Volumetric Lighting rendered its first complete frame: froxel={}x{}x{}, two-channel lit/total integration, temporal={}, cloud={}, linearHDR={}, frame={}.",
+                "Volumetric Lighting rendered its first qualified frame: froxel={}x{}x{}, scalar visibility integration, detailedSamples=64, localShaftContrast=true, baseGain={}, shaftGain={}, temporal={}, cloud={}, linearHDR={}, frame={}.",
                 gpu.volumeWidth,
                 gpu.volumeHeight,
                 gpu.volumeDepth,
+                settings.baseScattering,
+                settings.shaftIntensity,
                 historyUsable,
                 cloudActive,
                 linear_lighting::Runtime::get().linearLightingEnabled(),
@@ -1578,11 +1830,16 @@ namespace community_shaders::volumetric_lighting
             .hostShaderObserved = value.hostCreations.load(
                 std::memory_order_relaxed) != 0,
             .temporalHistoryValid = value.gpu.historyValid,
+            .outputQualified = value.gpu.outputQualified,
             .directionalCaptures = value.directionalCaptures.load(
                 std::memory_order_relaxed),
             .renderedFrames = value.renderedFrames.load(
                 std::memory_order_relaxed),
             .rejectedFrames = value.rejectedFrames.load(
+                std::memory_order_relaxed),
+            .qualificationPasses = value.qualificationPasses.load(
+                std::memory_order_relaxed),
+            .qualificationFailures = value.qualificationFailures.load(
                 std::memory_order_relaxed),
         };
     }

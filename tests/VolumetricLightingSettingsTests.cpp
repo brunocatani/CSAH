@@ -58,7 +58,12 @@ int main()
     using community_shaders::volumetric_lighting::saveSettings;
 
     TemporaryIni ini;
-    require(loadSettings(ini.path()) == Settings{}, "missing-file defaults");
+    const auto defaults = loadSettings(ini.path());
+    require(defaults == Settings{}, "missing-file defaults");
+    require(defaults.baseScattering == 0.0f, "safe base default");
+    require(defaults.densityContribution == 0.5f, "qualified density default");
+    require(defaults.windSpeed == 0.0f, "stable wind default");
+    require(defaults.maxDistance == 3000.0f, "qualified distance default");
 
     ini.write(
         "[CommunityShaders]\n"
@@ -81,7 +86,6 @@ int main()
         "fDensityContribution=0.7\n"
         "fDensityScale=2\n"
         "fWindSpeed=14\n"
-        "fPhaseContribution=0.4\n"
         "fMaxDistance=8192\n"
         "fTemporalWeight=0.8\n");
     const auto loaded = loadSettings(ini.path());
@@ -93,7 +97,6 @@ int main()
     require(loaded.densityContribution == 0.7f, "density contribution");
     require(loaded.densityScale == 2.0f, "density scale");
     require(loaded.windSpeed == 14.0f, "wind speed");
-    require(loaded.phaseContribution == 0.4f, "phase contribution");
     require(loaded.maxDistance == 8192.0f, "maximum distance");
     require(loaded.temporalWeight == 0.8f, "temporal weight");
 
@@ -106,7 +109,6 @@ int main()
         .densityContribution = 99.0f,
         .densityScale = 0.0f,
         .windSpeed = -1.0f,
-        .phaseContribution = -1.0f,
         .maxDistance = 1.0f,
         .temporalWeight = 2.0f,
     };
@@ -119,7 +121,6 @@ int main()
     require(sanitized.densityContribution == 1.0f, "density mix clamp");
     require(sanitized.densityScale == 0.125f, "density scale clamp");
     require(sanitized.windSpeed == 0.0f, "wind clamp");
-    require(sanitized.phaseContribution == 0.0f, "phase clamp");
     require(sanitized.maxDistance == 256.0f, "distance clamp");
     require(sanitized.temporalWeight == 0.98f, "temporal clamp");
 
@@ -132,7 +133,6 @@ int main()
         .densityContribution = 0.35f,
         .densityScale = 1.5f,
         .windSpeed = 3.0f,
-        .phaseContribution = 0.2f,
         .maxDistance = 4096.0f,
         .temporalWeight = 0.75f,
     };

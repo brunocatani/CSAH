@@ -11,13 +11,12 @@ namespace community_shaders::volumetric_lighting
         bool enabled{ true };
         std::uint32_t quality{ 2 };
         float intensity{ 1.0f };
-        float baseScattering{ 0.06f };
+        float baseScattering{};
         float shaftIntensity{ 1.35f };
-        float densityContribution{ 0.55f };
+        float densityContribution{ 0.50f };
         float densityScale{ 1.0f };
-        float windSpeed{ 6.0f };
-        float phaseContribution{ 0.30f };
-        float maxDistance{ 6000.0f };
+        float windSpeed{};
+        float maxDistance{ 3000.0f };
         float temporalWeight{ 0.90f };
 
         [[nodiscard]] bool operator==(const Settings&) const noexcept = default;
@@ -48,11 +47,6 @@ namespace community_shaders::volumetric_lighting
             result.densityScale, defaults.densityScale, 0.125f, 8.0f);
         result.windSpeed = finiteClamp(
             result.windSpeed, defaults.windSpeed, 0.0f, 100.0f);
-        result.phaseContribution = finiteClamp(
-            result.phaseContribution,
-            defaults.phaseContribution,
-            0.0f,
-            1.0f);
         result.maxDistance = finiteClamp(
             result.maxDistance, defaults.maxDistance, 256.0f, 20000.0f);
         result.temporalWeight = finiteClamp(

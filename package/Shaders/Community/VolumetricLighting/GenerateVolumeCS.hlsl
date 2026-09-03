@@ -4,7 +4,7 @@ Texture2DArray<float> DirectionalShadow : register(t0);
 TextureCube<float> CloudOcclusion : register(t1);
 SamplerComparisonState ShadowComparison : register(s0);
 SamplerState CloudSampler : register(s1);
-RWTexture3D<float2> RawVolume : register(u0);
+RWTexture3D<float> RawVolume : register(u0);
 
 float CloudVisibility(float3 relativePosition, float3 towardLight)
 {
@@ -49,9 +49,21 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     const uint eyeWidth = width >> 1u;
     const uint eye = min(dispatchId.x / max(eyeWidth, 1u), 1u);
     const uint eyeX = dispatchId.x - eye * eyeWidth;
+    const float3 spatialStep[8] = {
+        float3(0.0f, 0.0f, 0.0f),
+        float3(0.0f, 0.0f, 0.001f),
+        float3(0.0f, 0.001f, 0.0f),
+        float3(0.0f, 0.001f, 0.001f),
+        float3(0.001f, 0.0f, 0.0f),
+        float3(0.001f, 0.0f, 0.001f),
+        float3(0.001f, 0.001f, 0.0f),
+        float3(0.001f, 0.001f, 0.001f)
+    };
+    const float3 step = spatialStep[(uint)FrameParams.y & 7u];
     const float2 eyeTexel = 0.5f / float2(eyeWidth, height);
     const float2 eyeUv = clamp(
-        (float2(eyeX, dispatchId.y) + 0.5f) / float2(eyeWidth, height),
+        (float2(eyeX, dispatchId.y) + 0.5f) /
+            float2(eyeWidth, height) + step.xy,
         eyeTexel,
         1.0f - eyeTexel);
     const float2 packedUv = float2(((float)eye + eyeUv.x) * 0.5f, eyeUv.y);
@@ -60,7 +72,7 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
         fullPixelPosition, eye, 0.999f);
     const float rayLength = length(rayEnd);
     if (!Finite3(rayEnd) || !Finite(rayLength) || rayLength <= 1.0e-4f) {
-        RawVolume[dispatchId] = 0.0f.xx;
+        RawVolume[dispatchId] = 0.0f;
         return;
     }
     const float3 viewDirection = rayEnd / rayLength;
@@ -74,28 +86,22 @@ void main(uint3 dispatchId : SV_DispatchThreadID)
     const float endTransmittance = lerp(1.0f, terminal, endFraction);
     const float jitter = frac(
         DirectionNoise(viewDirection) + FrameParams.x +
-        (float)dispatchId.z * 0.61803398875f);
+        (float)dispatchId.z * 0.61803398875f + step.z);
     const float sampledTransmittance = lerp(
         startTransmittance, endTransmittance, jitter);
     const float sampleDistance = -extinctionDistance * log(
         max(sampledTransmittance, 1.0e-7f));
     const float3 relativePosition = viewDirection * sampleDistance;
     const float3 towardLight = normalize(DFLight[eye + 1u].xyz);
-    const float directionalVisibility = SampleDirectionalShadow(
+    const float visibility = saturate(SampleDirectionalShadow(
         DirectionalShadow,
         ShadowComparison,
         eye,
-        relativePosition);
-    const float visibility = saturate(directionalVisibility) *
-        CloudVisibility(relativePosition, towardLight);
+        relativePosition)) * CloudVisibility(relativePosition, towardLight);
     const float density = max(SampleDensity(eye, relativePosition), 0.0f);
-    const float phase = RelativePhase(dot(viewDirection, towardLight));
     const float opticalWeight = max(
         startTransmittance - endTransmittance,
         0.0f);
-    const float total = density * phase * opticalWeight;
-    const float lit = visibility * total;
-    RawVolume[dispatchId] =
-        Finite(lit) && Finite(total) ? max(float2(lit, total), 0.0f.xx) :
-        0.0f.xx;
+    const float lighting = visibility * density * opticalWeight;
+    RawVolume[dispatchId] = Finite(lighting) ? max(lighting, 0.0f) : 0.0f;
 }

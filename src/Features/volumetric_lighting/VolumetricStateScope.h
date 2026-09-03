@@ -21,10 +21,10 @@ namespace community_shaders::volumetric_lighting
 
     private:
         static constexpr std::size_t kMaximumClassInstances = 256;
-        static constexpr UINT kPixelResources = 4;
+        static constexpr UINT kPixelResources = 5;
         static constexpr UINT kPixelSamplers = 2;
         static constexpr UINT kPixelConstants = 5;
-        static constexpr UINT kComputeResources = 2;
+        static constexpr UINT kComputeResources = 3;
         static constexpr UINT kComputeSamplers = 2;
         static constexpr UINT kComputeConstants = 4;
         static constexpr UINT kComputeOutputs = 1;

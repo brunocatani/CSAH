@@ -30,9 +30,12 @@ namespace community_shaders::volumetric_lighting
         bool diagnosticSuppressed{};
         bool hostShaderObserved{};
         bool temporalHistoryValid{};
+        bool outputQualified{};
         std::uint64_t directionalCaptures{};
         std::uint64_t renderedFrames{};
         std::uint64_t rejectedFrames{};
+        std::uint64_t qualificationPasses{};
+        std::uint64_t qualificationFailures{};
     };
 
     class Runtime final
