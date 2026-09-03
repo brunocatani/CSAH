@@ -147,10 +147,6 @@ namespace community_shaders::vanilla_fixes
                 path,
                 L"bVrAllowFocusShadows",
                 defaults.focusShadows),
-            .sunbeams = readBoolean(
-                path,
-                L"bUseSunbeams",
-                defaults.sunbeams),
             .stereoSunOcclusion = readBoolean(
                 path,
                 L"bVrSunOcclusion",
@@ -166,7 +162,7 @@ namespace community_shaders::vanilla_fixes
         const auto path = settings_path::resolveIniPath();
         const auto settings = loadSettings(path);
         logging::info(
-            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, sunbeams={}, stereoSunOcclusion={}, exclusiveDirectionalDiagnostic={}.",
+            "Vanilla Fixes settings loaded from '{}'; enabled={}, precipitation={}, imageModifiers={}, SAO={}, SSR={}, nativeScreenSpaceMaterialPipeline={}, lensFlare={}, focusShadows={}, stereoSunOcclusion={}, exclusiveDirectionalDiagnostic={}.",
             path.string(),
             settings.enabled,
             settings.precipitationOcclusion,
@@ -176,7 +172,6 @@ namespace community_shaders::vanilla_fixes
             settings.nativeScreenSpaceMaterialPipeline,
             settings.lensFlare,
             settings.focusShadows,
-            settings.sunbeams,
             settings.stereoSunOcclusion,
             static_cast<unsigned>(settings.directionalLightDiagnosticMode));
         return settings;
@@ -220,8 +215,6 @@ namespace community_shaders::vanilla_fixes
                       path,
                       L"bVrAllowFocusShadows",
                       settings.focusShadows) &&
-            success;
-        success = writeBoolean(path, L"bUseSunbeams", settings.sunbeams) &&
             success;
         success = writeBoolean(
                       path,

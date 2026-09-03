@@ -41,7 +41,6 @@ namespace community_shaders::vanilla_fixes
         bool nativeScreenSpaceMaterialPipeline{ true };
         bool lensFlare{ true };
         bool focusShadows{ true };
-        bool sunbeams{ true };
         bool stereoSunOcclusion{ true };
         DirectionalLightDiagnosticMode directionalLightDiagnosticMode{
             DirectionalLightDiagnosticMode::off

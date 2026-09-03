@@ -31,7 +31,6 @@ namespace community_shaders::vanilla_fixes
         constexpr std::uintptr_t kRendererConfigRva = 0x068787F0;
         constexpr std::uintptr_t kImageSpaceManagerPointerRva = 0x068789E8;
         constexpr std::uintptr_t kSceneRootRegistryPointerRva = 0x06879520;
-        constexpr std::uintptr_t kSunbeamsAvailabilityRva = 0x0689AC94;
         constexpr std::uintptr_t kSaoEffectVtableRva = 0x030B8FD8;
         constexpr std::uintptr_t kShaderPropertyRefreshRva = 0x027F5BC0;
         constexpr std::uintptr_t kRefreshSceneRootRva = 0x02804860;
@@ -49,8 +48,7 @@ namespace community_shaders::vanilla_fixes
             kScreenSpaceReflections,
             kNativeScreenSpaceMaterialPipeline,
             kLensFlare,
-            kFocusShadows,
-            kSunbeams
+            kFocusShadows
         };
 
         struct SettingDescriptor final
@@ -81,12 +79,6 @@ namespace community_shaders::vanilla_fixes
                 0x02D78D68,
                 kIniSettingVtableRva,
                 PolicyField::kImageSpaceModifiers },
-            SettingDescriptor{
-                "bUseSunbeams:Display",
-                0x037C76E8,
-                0x02D7A3C0,
-                kIniSettingVtableRva,
-                PolicyField::kSunbeams },
             SettingDescriptor{
                 "bVrAllowSAO:VRDisplay",
                 0x03924D50,
@@ -147,8 +139,6 @@ namespace community_shaders::vanilla_fixes
                 return policy.lensFlare;
             case PolicyField::kFocusShadows:
                 return policy.focusShadows;
-            case PolicyField::kSunbeams:
-                return policy.sunbeams;
             }
             return false;
         }
@@ -177,7 +167,6 @@ namespace community_shaders::vanilla_fixes
                 lightingOwnershipDiagnostic;
             policy.lensFlare = false;
             policy.focusShadows = false;
-            policy.sunbeams = false;
             return policy;
         }
 
@@ -296,7 +285,7 @@ namespace community_shaders::vanilla_fixes
                         "Vanilla Fixes policy maintenance could not start.");
                 }
                 logging::info(
-                    "Vanilla Fixes owns 8 verified engine gates, the coordinated stable-reflection suite, and the isolated directional-light ownership diagnostic; shared settings exclusively own INI reloads and native policy maintenance active={}.",
+                    "Vanilla Fixes owns 7 verified engine gates, the coordinated stable-reflection suite, and the isolated directional-light ownership diagnostic; shared settings exclusively own INI reloads and native policy maintenance active={}.",
                     policyMaintenanceActive_.load(std::memory_order_acquire));
                 return true;
             }
@@ -501,12 +490,6 @@ namespace community_shaders::vanilla_fixes
                         7,
                         kImageSpaceManagerPointerRva) ||
                     !validateRipTarget(
-                        0x0288D156,
-                        compareRip,
-                        2,
-                        7,
-                        kSunbeamsAvailabilityRva) ||
-                    !validateRipTarget(
                         kShaderPropertyRefreshRva + 4,
                         loadPointerRip,
                         3,
@@ -557,11 +540,7 @@ namespace community_shaders::vanilla_fixes
                     !readableRange(
                         reinterpret_cast<const void*>(
                             moduleBase_ + kSceneRootRegistryPointerRva),
-                        sizeof(std::uintptr_t)) ||
-                    !writableRange(
-                        reinterpret_cast<void*>(
-                            moduleBase_ + kSunbeamsAvailabilityRva),
-                        1)) {
+                        sizeof(std::uintptr_t))) {
                     logging::critical(
                         "Visual gate contract rejected: effective runtime targets failed validation.");
                     return false;
@@ -569,7 +548,7 @@ namespace community_shaders::vanilla_fixes
 
                 contractValid_ = true;
                 logging::info(
-                    "Visual gate memory contract passed: 10 setting records, renderer snapshot, coordinated SAO/SSR/SSS policy path, native shader-property refresh, and sunbeams availability are verified.");
+                    "Visual gate memory contract passed: 9 setting records, renderer snapshot, coordinated SAO/SSR/SSS policy path, and native shader-property refresh are verified.");
                 return true;
             }
 
@@ -584,8 +563,7 @@ namespace community_shaders::vanilla_fixes
                         setting.field == PolicyField::kScreenSpaceReflections ||
                         setting.field ==
                             PolicyField::kNativeScreenSpaceMaterialPipeline ||
-                        setting.field == PolicyField::kLensFlare ||
-                        setting.field == PolicyField::kSunbeams;
+                        setting.field == PolicyField::kLensFlare;
                     writeBoolean(
                         reinterpret_cast<std::uint8_t*>(
                             moduleBase_ + setting.recordRva + 8),
@@ -597,13 +575,7 @@ namespace community_shaders::vanilla_fixes
                     moduleBase_ + kRendererConfigRva);
                 const auto lensFlare =
                     requestedValue(policy, PolicyField::kLensFlare);
-                const auto sunbeams =
-                    requestedValue(policy, PolicyField::kSunbeams);
                 writeBoolean(renderer + 0xEC, lensFlare);
-                writeBoolean(
-                    reinterpret_cast<std::uint8_t*>(
-                        moduleBase_ + kSunbeamsAvailabilityRva),
-                    sunbeams);
 
                 const auto requestedScreenSpacePolicy =
                     screenSpacePolicyBits(policy);

@@ -16,6 +16,7 @@
 #include "Features/sky_sync/SkySyncSettings.h"
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettings.h"
 #include "Features/vanilla_fixes/VanillaFixesSettings.h"
+#include "Features/volumetric_lighting/VolumetricLightingSettings.h"
 #include "Features/wrapped_grass/WrappedGrassSettings.h"
 #include "settings/DiagnosticsSettings.h"
 
@@ -39,6 +40,7 @@ namespace community_shaders::shared_settings
         subsurface_scattering::Settings subsurfaceScattering{};
         basic_wetness::Settings basicWetness{};
         cloud_shadows::Settings cloudShadows{};
+        volumetric_lighting::Settings volumetricLighting{};
         vanilla_fixes::Settings vanillaFixes{};
         native_shadows::Settings nativeShadows{};
         pbr::Settings pbr{};
@@ -64,6 +66,7 @@ namespace community_shaders::shared_settings
         bool subsurfaceScattering{};
         bool basicWetness{};
         bool cloudShadows{};
+        bool volumetricLighting{};
         bool vanillaFixesGate{};
         bool vanillaFixes{};
         bool nativeShadows{};
@@ -92,6 +95,7 @@ namespace community_shaders::shared_settings
                 static_cast<std::size_t>(subsurfaceScattering) +
                 static_cast<std::size_t>(basicWetness) +
                 static_cast<std::size_t>(cloudShadows) +
+                static_cast<std::size_t>(volumetricLighting) +
                 static_cast<std::size_t>(vanillaFixes) +
                 static_cast<std::size_t>(pbr) +
                 static_cast<std::size_t>(skylighting) +
@@ -123,6 +127,8 @@ namespace community_shaders::shared_settings
                 next.subsurfaceScattering,
             .basicWetness = previous.basicWetness != next.basicWetness,
             .cloudShadows = previous.cloudShadows != next.cloudShadows,
+            .volumetricLighting = previous.volumetricLighting !=
+                next.volumetricLighting,
             .vanillaFixesGate = previous.vanillaFixes.enabled !=
                 next.vanillaFixes.enabled,
             // Vanilla Fixes is an independent startup-owned suite. Its

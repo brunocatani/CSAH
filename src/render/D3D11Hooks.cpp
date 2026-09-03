@@ -23,6 +23,7 @@
 #include "Features/vanilla_fixes/SslrEnvironmentBinding.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaShaderFixes.h"
+#include "Features/volumetric_lighting/VolumetricLightingRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "diagnostics/HdrOutputProbe.h"
 #include "support/Logger.h"
@@ -2080,6 +2081,17 @@ namespace community_shaders::render
                 qualificationSessionActive.load(std::memory_order_acquire);
         }
 
+        [[nodiscard]] bool prepareVolumetricDraw(
+            ID3D11DeviceContext* context) noexcept
+        {
+            auto& runtime = volumetric_lighting::Runtime::get();
+            auto* const engineShader = activeEnginePixelShader;
+            runtime.captureDirectionalFrame(
+                context,
+                contact_shadows::Runtime::get().tracksOriginal(engineShader));
+            return runtime.isHostPixelShader(engineShader);
+        }
+
         template <class DrawCall>
         void issueDrawWithDirectionalDiagnostic(
             ID3D11DeviceContext* context,
@@ -2569,6 +2581,14 @@ namespace community_shaders::render
             if (!original) {
                 return E_UNEXPECTED;
             }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                return original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
             const auto selection = vanilla_fixes::selectVertexShader(
                 bytecode,
                 bytecodeLength);
@@ -2613,6 +2633,14 @@ namespace community_shaders::render
             if (!original) {
                 return E_UNEXPECTED;
             }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                return original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
             const auto identity = vanilla_fixes::identifyShader(
                 bytecode,
                 bytecodeLength);
@@ -2621,17 +2649,28 @@ namespace community_shaders::render
             std::vector<std::byte> patchStorage;
             std::vector<std::byte> rawSslrStorage;
             std::vector<std::byte> rawStockCubemapStorage;
+            const auto volumetricSelection =
+                volumetric_lighting::Runtime::get().selectHostPixelShader(
+                    bytecode,
+                    bytecodeLength);
             const auto selection = vanilla_fixes::selectPixelShader(
                 bytecode,
                 bytecodeLength,
                 patchStorage);
             auto result = original(
                 device,
-                selection.data,
-                selection.size,
+                volumetricSelection.replaced() ?
+                    volumetricSelection.bytecode : selection.data,
+                volumetricSelection.replaced() ?
+                    volumetricSelection.bytecodeLength : selection.size,
                 classLinkage,
                 shader);
-            auto replacementAccepted = selection.replaced() &&
+            const auto volumetricResult = result;
+            const auto volumetricAccepted =
+                volumetricSelection.replaced() && SUCCEEDED(result) &&
+                shader && *shader;
+            auto replacementAccepted = !volumetricSelection.replaced() &&
+                selection.replaced() &&
                 SUCCEEDED(result) && shader && *shader;
             ID3D11PixelShader* pairedStockShader{};
             ID3D11PixelShader* pairedRawSslrShader{};
@@ -2723,7 +2762,18 @@ namespace community_shaders::render
                     }
                 }
             }
-            if (selection.replaced() && !replacementAccepted &&
+            if (volumetricSelection.replaced() && !volumetricAccepted) {
+                if (shader && *shader) {
+                    (*shader)->Release();
+                    *shader = nullptr;
+                }
+                result = original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            } else if (selection.replaced() && !replacementAccepted &&
                 (FAILED(result) || !shader || !*shader)) {
                 result = original(
                     device,
@@ -2735,6 +2785,11 @@ namespace community_shaders::render
             vanilla_fixes::reportShaderCreationResult(
                 selection,
                 replacementAccepted);
+            volumetric_lighting::Runtime::get()
+                .recordHostPixelShaderCreation(
+                    volumetricSelection,
+                    volumetricResult,
+                    volumetricAccepted && shader ? *shader : nullptr);
             if (SUCCEEDED(result) && shader && *shader) {
                 diagnostics::hdr_output_probe::onPixelShaderCreated(
                     bytecode,
@@ -2800,6 +2855,14 @@ namespace community_shaders::render
             if (!original) {
                 return E_UNEXPECTED;
             }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                return original(
+                    device,
+                    bytecode,
+                    bytecodeLength,
+                    classLinkage,
+                    shader);
+            }
             const auto selection = vanilla_fixes::selectComputeShader(
                 bytecode,
                 bytecodeLength);
@@ -2836,6 +2899,10 @@ namespace community_shaders::render
             if (!original) {
                 return;
             }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                original(context, shader, classInstances, classInstanceCount);
+                return;
+            }
             activeGrassVertexShader =
                 shaderInterceptionActive.load(std::memory_order_acquire) &&
                 classInstanceCount == 0 &&
@@ -2852,6 +2919,14 @@ namespace community_shaders::render
             renderTargetBindCalls.fetch_add(1, std::memory_order_relaxed);
             const auto original = originalOMSetRenderTargets;
             if (!original) {
+                return;
+            }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                original(
+                    context,
+                    renderTargetCount,
+                    renderTargets,
+                    depthStencil);
                 return;
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
@@ -2896,6 +2971,18 @@ namespace community_shaders::render
             const auto original =
                 originalOMSetRenderTargetsAndUnorderedAccessViews;
             if (!original) {
+                return;
+            }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                original(
+                    context,
+                    renderTargetCount,
+                    renderTargets,
+                    depthStencil,
+                    unorderedAccessStartSlot,
+                    unorderedAccessViewCount,
+                    unorderedAccessViews,
+                    initialCounts);
                 return;
             }
             vanilla_fixes::observeFocusShadowRenderTargets(depthStencil);
@@ -2949,6 +3036,10 @@ namespace community_shaders::render
             pixelShaderBindCalls.fetch_add(1, std::memory_order_relaxed);
             const auto original = originalPSSetShader;
             if (!original) {
+                return;
+            }
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                original(context, shader, classInstances, classInstanceCount);
                 return;
             }
             activeEnginePixelShader = shader;
@@ -3465,6 +3556,16 @@ namespace community_shaders::render
             UINT startIndexLocation,
             INT baseVertexLocation) noexcept
         {
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                if (originalDrawIndexed) {
+                    originalDrawIndexed(
+                        context,
+                        indexCount,
+                        startIndexLocation,
+                        baseVertexLocation);
+                }
+                return;
+            }
             skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
@@ -3476,6 +3577,7 @@ namespace community_shaders::render
             retireDisabledFeatureBindings(context);
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexed");
+            const auto volumetricHost = prepareVolumetricDraw(context);
             if (!activeDrawInterceptionRequired()) {
                 activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawIndexed) {
@@ -3484,6 +3586,8 @@ namespace community_shaders::render
                         indexCount,
                         startIndexLocation,
                         baseVertexLocation);
+                    volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                        context, volumetricHost);
                 }
                 return;
             }
@@ -3538,6 +3642,8 @@ namespace community_shaders::render
                                 });
                         });
                     });
+                volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                    context, volumetricHost);
             }
         }
 
@@ -3546,6 +3652,12 @@ namespace community_shaders::render
             UINT vertexCount,
             UINT startVertexLocation) noexcept
         {
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                if (originalDraw) {
+                    originalDraw(context, vertexCount, startVertexLocation);
+                }
+                return;
+            }
             skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
@@ -3557,10 +3669,13 @@ namespace community_shaders::render
             retireDisabledFeatureBindings(context);
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "Draw");
+            const auto volumetricHost = prepareVolumetricDraw(context);
             if (!activeDrawInterceptionRequired()) {
                 activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDraw) {
                     originalDraw(context, vertexCount, startVertexLocation);
+                    volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                        context, volumetricHost);
                 }
                 return;
             }
@@ -3612,6 +3727,8 @@ namespace community_shaders::render
                                 });
                         });
                     });
+                volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                    context, volumetricHost);
             }
         }
 
@@ -3623,6 +3740,18 @@ namespace community_shaders::render
             INT baseVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                if (originalDrawIndexedInstanced) {
+                    originalDrawIndexedInstanced(
+                        context,
+                        indexCountPerInstance,
+                        instanceCount,
+                        startIndexLocation,
+                        baseVertexLocation,
+                        startInstanceLocation);
+                }
+                return;
+            }
             skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
@@ -3634,6 +3763,7 @@ namespace community_shaders::render
             retireDisabledFeatureBindings(context);
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawIndexedInstanced");
+            const auto volumetricHost = prepareVolumetricDraw(context);
             if (!activeDrawInterceptionRequired()) {
                 activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawIndexedInstanced) {
@@ -3644,6 +3774,8 @@ namespace community_shaders::render
                         startIndexLocation,
                         baseVertexLocation,
                         startInstanceLocation);
+                    volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                        context, volumetricHost);
                 }
                 return;
             }
@@ -3700,6 +3832,8 @@ namespace community_shaders::render
                                 });
                         });
                     });
+                volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                    context, volumetricHost);
             }
         }
 
@@ -3710,6 +3844,17 @@ namespace community_shaders::render
             UINT startVertexLocation,
             UINT startInstanceLocation) noexcept
         {
+            if (volumetric_lighting::Runtime::internalRenderActive()) {
+                if (originalDrawInstanced) {
+                    originalDrawInstanced(
+                        context,
+                        vertexCountPerInstance,
+                        instanceCount,
+                        startVertexLocation,
+                        startInstanceLocation);
+                }
+                return;
+            }
             skylighting::Runtime::get().observePrivateCaptureDraw(context);
             const vanilla_fixes::ScopedFocusShadowBinding focusShadowBinding(
                 context,
@@ -3721,6 +3866,7 @@ namespace community_shaders::render
             retireDisabledFeatureBindings(context);
             reconcileDirectionalDiagnosticModeAtDraw(context);
             recordFirstTerrainDrawCaller(caller, "DrawInstanced");
+            const auto volumetricHost = prepareVolumetricDraw(context);
             if (!activeDrawInterceptionRequired()) {
                 activeAuthoredPbrBaseTexture = nullptr;
                 if (originalDrawInstanced) {
@@ -3730,6 +3876,8 @@ namespace community_shaders::render
                         instanceCount,
                         startVertexLocation,
                         startInstanceLocation);
+                    volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                        context, volumetricHost);
                 }
                 return;
             }
@@ -3785,6 +3933,8 @@ namespace community_shaders::render
                                 });
                         });
                     });
+                volumetric_lighting::Runtime::get().renderAfterHostDraw(
+                    context, volumetricHost);
             }
         }
 
@@ -4489,6 +4639,9 @@ namespace community_shaders::render
                 *device,
                 *immediateContext);
             cloud_shadows::Runtime::get().onDeviceCreated(
+                *device,
+                *immediateContext);
+            volumetric_lighting::Runtime::get().onDeviceCreated(
                 *device,
                 *immediateContext);
             subsurface_scattering::Runtime::get().onDeviceCreated(

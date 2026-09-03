@@ -81,7 +81,6 @@ int main()
         "bNativeScreenSpaceMaterialPipeline=OFF\n"
         "bLensFlareVr=No\n"
         "bVrAllowFocusShadows=False\n"
-        "bUseSunbeams=0\n"
         "bVrSunOcclusion=0\n");
     const auto disabled = loadSettings(ini.path());
     require(!disabled.enabled, "master key");
@@ -94,7 +93,6 @@ int main()
         "native screen-space material pipeline key");
     require(!disabled.lensFlare, "lens-flare key");
     require(!disabled.focusShadows, "focus-shadow key");
-    require(!disabled.sunbeams, "sunbeams key");
     require(!disabled.stereoSunOcclusion, "stereo Sun-occlusion key");
 
     ini.write(
@@ -134,7 +132,6 @@ int main()
         .nativeScreenSpaceMaterialPipeline = false,
         .lensFlare = true,
         .focusShadows = false,
-        .sunbeams = true,
         .stereoSunOcclusion = false,
         .directionalLightDiagnosticMode =
             DirectionalLightDiagnosticMode::directSpecularOnly,

@@ -35,6 +35,8 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
+#include "Features/volumetric_lighting/VolumetricLightingRuntime.h"
+#include "Features/volumetric_lighting/VolumetricLightingSettingsStore.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "diagnostics/HdrOutputProbe.h"
@@ -50,7 +52,7 @@
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
     version.PluginName("FO4VR Community Shaders");
-    version.PluginVersion(REL::Version(0, 2, 0));
+    version.PluginVersion(REL::Version(0, 3, 0));
     version.AuthorName("FO4VR Community Shaders Port");
     return version;
 }();
@@ -118,6 +120,8 @@ namespace
         {
             community_shaders::native_shadows::onGameDataReady();
             community_shaders::vanilla_fixes::onGameDataReady();
+            community_shaders::volumetric_lighting::Runtime::get()
+                .onGameDataReady();
             community_shaders::pbr::Runtime::get().onGameDataReady();
             (void)community_shaders::render::
                 validateD3D11ShaderHooks("GameDataReady");
@@ -231,6 +235,19 @@ namespace
                 skylighting.probeDispatches,
                 skylighting.rejectedCaptures,
                 skylighting.ambientBinds);
+            const auto volumetric = community_shaders::volumetric_lighting::
+                Runtime::get().snapshot();
+            community_shaders::logging::info(
+                "F4SE GameDataReady: Volumetric Lighting enabled={}, nativeContract={}, engineData={}, gpuReady={}, diagnosticSuppressed={}, hostObserved={}, directionalCaptures={}, renderedFrames={}, rejectedFrames={}.",
+                volumetric.settings.enabled,
+                volumetric.nativeContractValid,
+                volumetric.engineDataValid,
+                volumetric.gpuReady,
+                volumetric.diagnosticSuppressed,
+                volumetric.hostShaderObserved,
+                volumetric.directionalCaptures,
+                volumetric.renderedFrames,
+                volumetric.rejectedFrames);
             break;
         }
         case F4SE::MessagingInterface::kPreLoadGame:
@@ -378,6 +395,8 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             community_shaders::basic_wetness::loadSettings();
         const auto cloudShadowSettings =
             community_shaders::cloud_shadows::loadSettings();
+        const auto volumetricLightingSettings =
+            community_shaders::volumetric_lighting::loadSettings();
         const auto vanillaFixesSettings =
             community_shaders::vanilla_fixes::loadSettings();
         const auto nativeShadowSettings =
@@ -403,6 +422,15 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             contactShadowSettings);
         community_shaders::cloud_shadows::Runtime::get().applySettings(
             cloudShadowSettings);
+        if (!community_shaders::volumetric_lighting::Runtime::get().start(
+                volumetricLightingSettings,
+                vanillaFixesSettings.enabled &&
+                    vanillaFixesSettings.directionalLightDiagnosticMode !=
+                        community_shaders::vanilla_fixes::
+                            DirectionalLightDiagnosticMode::off)) {
+            community_shaders::logging::warn(
+                "Volumetric Lighting rejected an exact FO4VR host, camera, or weather contract; the feature remains fail-closed.");
+        }
         community_shaders::wrapped_grass::Runtime::get().applySettings(
             wrappedGrassSettings);
         community_shaders::hair_specular::Runtime::get().applySettings(
@@ -461,7 +489,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, Volumetric Lighting enabled={}, quality={}, base={}, shafts={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             community_shaders::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
@@ -490,6 +518,10 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             basicWetnessSettings.wetness,
             cloudShadowSettings.enabled,
             cloudShadowSettings.opacity,
+            volumetricLightingSettings.enabled,
+            volumetricLightingSettings.quality,
+            volumetricLightingSettings.baseScattering,
+            volumetricLightingSettings.shaftIntensity,
             complexMaterialSettings.parallaxEnabled,
             complexMaterialSettings.parallaxQuality,
             nativeShadowSettings.enabled,

@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "id": "fo4vr.community-shaders",
   "name": "FO4VR Community Shaders",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack.",
   "accent": "#F0A04B",
   "tabs": [
@@ -31,7 +31,8 @@
                 { "id": "filmic-tonemapping", "type": "toggle", "label": "Filmic Tonemapping", "help": "Replaces the exact native HDR blend with hue-preserving highlight compression while retaining bloom, cinematic state, fade, and engine adaptation.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "FilmicTonemapping", "key": "bEnabled" } },
                 { "id": "bloom", "type": "toggle", "label": "Enhanced Bloom", "help": "Adds a stereo-isolated HDR mip-chain bloom while preserving Fallout's native bloom.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Bloom", "key": "bEnabled" } },
                 { "id": "physical-glare", "type": "toggle", "label": "Physical Glare", "help": "Convolves bright HDR light with a wavelength-dependent optical point-spread function independently for each eye.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "PhysicalGlare", "key": "bEnabled" } },
-                { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CloudShadows", "key": "bEnabled" } }
+                { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "CloudShadows", "key": "bEnabled" } },
+                { "id": "volumetric-lighting", "type": "toggle", "label": "Volumetric Lighting / Godrays", "help": "Hot-reloads the complete stereo world-space volumetric pipeline. This is the only user-facing Godrays switch.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "bEnabled" } }
               ]
             }
           ]
@@ -171,6 +172,29 @@
       "id": "optics",
       "label": "Optics",
       "pages": [
+        {
+          "id": "volumetric-lighting-tuning",
+          "label": "Volumetrics",
+          "groups": [
+            {
+              "id": "volumetric-lighting-response",
+              "label": "World-space shafts and volume",
+              "description": "The base volume and mixed-shadow shaft response are independent. Raising Shaft Intensity strengthens beams through openings without filling uniformly lit air with fog.",
+              "controls": [
+                { "id": "volumetric-quality", "type": "choice", "label": "Quality", "default": 2, "choices": [ { "label": "Low", "value": 0 }, { "label": "Medium", "value": 1 }, { "label": "High", "value": 2 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "iQuality" } },
+                { "id": "volumetric-intensity", "type": "slider", "label": "Global Intensity", "default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fIntensity" } },
+                { "id": "volumetric-base", "type": "slider", "label": "Base Volume", "default": 0.06, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fBaseScattering" } },
+                { "id": "volumetric-shafts", "type": "slider", "label": "Godray Shaft Intensity", "default": 1.35, "min": 0.0, "max": 4.0, "step": 0.05, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fShaftIntensity" } },
+                { "id": "volumetric-density-mix", "type": "slider", "label": "Density Variation", "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fDensityContribution" } },
+                { "id": "volumetric-density-scale", "type": "slider", "label": "Density Scale", "default": 1.0, "min": 0.125, "max": 8.0, "step": 0.125, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fDensityScale" } },
+                { "id": "volumetric-phase", "type": "slider", "label": "Sun Phase Response", "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fPhaseContribution" } },
+                { "id": "volumetric-distance", "type": "slider", "label": "Maximum Distance", "default": 6000.0, "min": 256.0, "max": 20000.0, "step": 128.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fMaxDistance" } },
+                { "id": "volumetric-temporal", "type": "slider", "label": "Temporal Stability", "default": 0.9, "min": 0.0, "max": 0.98, "step": 0.01, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fTemporalWeight" } },
+                { "id": "volumetric-wind", "type": "slider", "label": "Density Wind Speed", "default": 6.0, "min": 0.0, "max": 100.0, "step": 1.0, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VolumetricLighting", "key": "fWindSpeed" } }
+              ]
+            }
+          ]
+        },
         {
           "id": "bloom-tuning",
           "label": "Bloom",
@@ -378,7 +402,6 @@
                 { "id": "native-screen-space-material-pipeline", "type": "toggle", "label": "Native Screen-Space Material Pipeline", "help": "Controls Bethesda's shared native SSS and reflection image-space pipeline. It can change SSR and Dynamic Cubemap capture; use the separate Subsurface Scattering feature for isolated skin diffusion.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bNativeScreenSpaceMaterialPipeline" } },
                 { "id": "lens-flare", "type": "toggle", "label": "VR Lens Flare", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bLensFlareVr" } },
                 { "id": "focus-shadows", "type": "toggle", "label": "Focus Shadows", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bVrAllowFocusShadows" } },
-                { "id": "sunbeams", "type": "toggle", "label": "Sunbeams", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bUseSunbeams" } },
                 { "id": "stereo-sun-occlusion", "type": "toggle", "label": "Stable Stereo Sun Occlusion", "help": "Prevents a peripheral Sun query from forcing the shared glare visibility to fully occluded while another completed query still has valid coverage.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "VanillaFixes", "key": "bVrSunOcclusion" } },
                 { "id": "gpu-profiling-mode", "type": "choice", "label": "GPU Performance Profiling", "help": "Writes continuous image-neutral GPU and CPU submission timings for the selected expensive feature group. Off stops a live request; mode zero at process startup retains the existing bounded startup capture.", "default": 0, "choices": [ { "label": "Off", "value": 0 }, { "label": "Contact Shadows", "value": 1 }, { "label": "Skylighting", "value": 2 }, { "label": "Contact + Skylighting", "value": 3 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Diagnostics", "key": "iGpuProfilingMode" } },
                 { "id": "directional-diagnostic", "type": "choice", "label": "Exclusive Lighting Diagnostic", "help": "Exclusive test view. Modes 1-11 retain the directional-light ownership tests. Modes 12 and 13 expose the packed DFComposite direct-diffuse or direct-specular buffer. Modes 14 and 15 use the exact four live reflection-composite permutations to publish their already-computed native SSR or uncorrected stock-cubemap value, without fallback or material modulation. Fallout's required shared material producer graph remains active, unrelated DFComposite contracts render black, and Community Shaders presentation features are suppressed. Saved feature settings are preserved. This choice is also available before launch under [Diagnostics] in the INI.", "default": 0, "choices": [ { "label": "Off", "value": 0 }, { "label": "Native N dot L (Red)", "value": 1 }, { "label": "N dot V (Green)", "value": 2 }, { "label": "Shadow Visibility (Blue)", "value": 3 }, { "label": "Supplied Light Vector (RGB)", "value": 4 }, { "label": "View Light Vector (RGB)", "value": 5 }, { "label": "Corrected N dot L (Red)", "value": 6 }, { "label": "Coverage Without Depth (RGB)", "value": 7 }, { "label": "Coverage Full Raster (RGB)", "value": 8 }, { "label": "Synthetic DFLight Coverage (RGB)", "value": 9 }, { "label": "Synthetic Composite Coverage (RGB)", "value": 10 }, { "label": "Final HDR Output (RGB)", "value": 11 }, { "label": "Direct Diffuse Only", "value": 12 }, { "label": "Direct Specular Only", "value": 13 }, { "label": "Native SSR Only", "value": 14 }, { "label": "Vanilla Cubemap Only", "value": 15 } ], "binding": { "type": "ini", "root": "documents", "path": "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini", "section": "Diagnostics", "key": "iDirectionalLightingMode" } }

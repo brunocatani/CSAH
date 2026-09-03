@@ -104,6 +104,9 @@ int main()
     verifyLive(
         [](Snapshot& value) { value.cloudShadows.enabled = false; },
         "Cloud Shadows diff");
+    verifyLive(
+        [](Snapshot& value) { value.volumetricLighting.enabled = false; },
+        "Volumetric Lighting diff");
     auto vanillaFixesOff = baseline;
     vanillaFixesOff.vanillaFixes.enabled = false;
     const auto vanillaFixesGateChanges = diff(baseline, vanillaFixesOff);

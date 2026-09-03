@@ -30,6 +30,8 @@
 #include "Features/subsurface_scattering/SubsurfaceScatteringSettingsStore.h"
 #include "Features/vanilla_fixes/VanillaFixesRuntime.h"
 #include "Features/vanilla_fixes/VanillaFixesSettingsStore.h"
+#include "Features/volumetric_lighting/VolumetricLightingRuntime.h"
+#include "Features/volumetric_lighting/VolumetricLightingSettingsStore.h"
 #include "Features/wrapped_grass/WrappedGrassRuntime.h"
 #include "Features/wrapped_grass/WrappedGrassSettingsStore.h"
 #include "render/GpuTimingProfiler.h"
@@ -109,6 +111,8 @@ namespace community_shaders::shared_settings
                     subsurface_scattering::loadSettings(path),
                 .basicWetness = basic_wetness::loadSettings(path),
                 .cloudShadows = cloud_shadows::loadSettings(path),
+                .volumetricLighting =
+                    volumetric_lighting::loadSettings(path),
                 .vanillaFixes = vanilla_fixes::loadSettings(path),
                 .nativeShadows = native_shadows::loadSettings(path),
                 .pbr = pbr::loadSettings(path),
@@ -172,8 +176,16 @@ namespace community_shaders::shared_settings
                 cloud_shadows::Runtime::get().applySettings(
                     next.cloudShadows);
             }
+            if (changes.volumetricLighting) {
+                volumetric_lighting::Runtime::get().applySettings(
+                    next.volumetricLighting);
+            }
             if (changes.vanillaFixes) {
                 vanilla_fixes::applySettings(next.vanillaFixes);
+                volumetric_lighting::Runtime::get().setDiagnosticSuppressed(
+                    next.vanillaFixes.enabled &&
+                    next.vanillaFixes.directionalLightDiagnosticMode !=
+                        vanilla_fixes::DirectionalLightDiagnosticMode::off);
             }
             if (changes.pbr) {
                 pbr::Runtime::get().applySettings(next.pbr);

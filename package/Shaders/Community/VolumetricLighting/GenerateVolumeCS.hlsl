@@ -1,0 +1,101 @@
+#include "VolumetricCommon.hlsli"
+
+Texture2DArray<float> DirectionalShadow : register(t0);
+TextureCube<float> CloudOcclusion : register(t1);
+SamplerComparisonState ShadowComparison : register(s0);
+SamplerState CloudSampler : register(s1);
+RWTexture3D<float2> RawVolume : register(u0);
+
+float CloudVisibility(float3 relativePosition, float3 towardLight)
+{
+    if (WindParams.w <= 0.5f) {
+        return 1.0f;
+    }
+    const float cloudHeight = max(CloudParams.y, 1.0f);
+    const float planetRadius = max(CloudParams.z, cloudHeight);
+    const float shellRadius = planetRadius + cloudHeight;
+    const float3 p =
+        (relativePosition + float3(0.0f, 0.0f, planetRadius)) / shellRadius;
+    const float projected = dot(p, towardLight);
+    const float discriminant = max(
+        projected * projected - dot(p, p) + 1.0f,
+        0.0f);
+    const float travel = -projected + sqrt(discriminant);
+    const float3 sampleDirection =
+        (p + towardLight * travel) * shellRadius -
+        float3(0.0f, 0.0f, planetRadius);
+    const float cloud = CloudOcclusion.SampleLevel(
+        CloudSampler, sampleDirection, 0.0f);
+    return saturate(1.0f - cloud * saturate(CloudParams.x));
+}
+
+float DirectionNoise(float3 direction)
+{
+    return frac(52.9829189f * frac(dot(
+        direction * 4096.0f,
+        float3(0.06711056f, 0.00583715f, 0.07121243f))));
+}
+
+[numthreads(8, 8, 4)]
+void main(uint3 dispatchId : SV_DispatchThreadID)
+{
+    uint width;
+    uint height;
+    uint depth;
+    RawVolume.GetDimensions(width, height, depth);
+    if (any(dispatchId >= uint3(width, height, depth)) || width < 2u) {
+        return;
+    }
+    const uint eyeWidth = width >> 1u;
+    const uint eye = min(dispatchId.x / max(eyeWidth, 1u), 1u);
+    const uint eyeX = dispatchId.x - eye * eyeWidth;
+    const float2 eyeTexel = 0.5f / float2(eyeWidth, height);
+    const float2 eyeUv = clamp(
+        (float2(eyeX, dispatchId.y) + 0.5f) / float2(eyeWidth, height),
+        eyeTexel,
+        1.0f - eyeTexel);
+    const float2 packedUv = float2(((float)eye + eyeUv.x) * 0.5f, eyeUv.y);
+    const float2 fullPixelPosition = packedUv / max(DFLight[0].xy, 1.0e-7f);
+    const float3 rayEnd = ReconstructRelativePosition(
+        fullPixelPosition, eye, 0.999f);
+    const float rayLength = length(rayEnd);
+    if (!Finite3(rayEnd) || !Finite(rayLength) || rayLength <= 1.0e-4f) {
+        RawVolume[dispatchId] = 0.0f.xx;
+        return;
+    }
+    const float3 viewDirection = rayEnd / rayLength;
+    const float maximumDistance = max(VolumeParams.x, 1.0f);
+    const float extinctionDistance = max(VolumeParams.y, 1.0f);
+    const float terminal = exp(-maximumDistance / extinctionDistance);
+    const float inverseSlices = rcp((float)depth);
+    const float startFraction = (float)dispatchId.z * inverseSlices;
+    const float endFraction = (float)(dispatchId.z + 1u) * inverseSlices;
+    const float startTransmittance = lerp(1.0f, terminal, startFraction);
+    const float endTransmittance = lerp(1.0f, terminal, endFraction);
+    const float jitter = frac(
+        DirectionNoise(viewDirection) + FrameParams.x +
+        (float)dispatchId.z * 0.61803398875f);
+    const float sampledTransmittance = lerp(
+        startTransmittance, endTransmittance, jitter);
+    const float sampleDistance = -extinctionDistance * log(
+        max(sampledTransmittance, 1.0e-7f));
+    const float3 relativePosition = viewDirection * sampleDistance;
+    const float3 towardLight = normalize(DFLight[eye + 1u].xyz);
+    const float directionalVisibility = SampleDirectionalShadow(
+        DirectionalShadow,
+        ShadowComparison,
+        eye,
+        relativePosition);
+    const float visibility = saturate(directionalVisibility) *
+        CloudVisibility(relativePosition, towardLight);
+    const float density = max(SampleDensity(eye, relativePosition), 0.0f);
+    const float phase = RelativePhase(dot(viewDirection, towardLight));
+    const float opticalWeight = max(
+        startTransmittance - endTransmittance,
+        0.0f);
+    const float total = density * phase * opticalWeight;
+    const float lit = visibility * total;
+    RawVolume[dispatchId] =
+        Finite(lit) && Finite(total) ? max(float2(lit, total), 0.0f.xx) :
+        0.0f.xx;
+}
