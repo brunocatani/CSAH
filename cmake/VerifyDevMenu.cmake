@@ -64,7 +64,7 @@ foreach(tabIndex RANGE 0 ${lastTab})
         if(NOT bindingType STREQUAL "ini" OR
            NOT bindingRoot STREQUAL "documents" OR
            NOT bindingPath STREQUAL
-             "FO4VRCommunityShaders_Config/FO4VRCommunityShaders.ini" OR
+             "Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini" OR
            bindingSection STREQUAL "" OR bindingKey STREQUAL "")
           message(FATAL_ERROR
             "DevMenu control '${controlId}' lost its shared-INI ownership contract")

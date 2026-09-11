@@ -28,11 +28,11 @@ int main()
     const auto expected = documents /
         L"My Games" /
         L"Fallout4VR" /
-        L"FO4VRCommunityShaders_Config" /
+        L"Mods_Config" / L"FO4VRCommunityShaders" /
         L"FO4VRCommunityShaders.ini";
     require(actual == expected, "ROCK-style My Games path contract");
     require(
-        actual.parent_path().filename() == L"FO4VRCommunityShaders_Config",
+        actual.parent_path().filename() == L"FO4VRCommunityShaders",
         "plugin must own a dedicated configuration folder");
     require(
         actual.filename() == L"FO4VRCommunityShaders.ini",
@@ -42,7 +42,7 @@ int main()
     require(!resolved.empty(), "Windows Documents folder must resolve");
     require(
         resolved.parent_path().filename() ==
-            L"FO4VRCommunityShaders_Config",
+            L"FO4VRCommunityShaders",
         "resolved path must use the dedicated configuration folder");
     require(
         resolved.filename() == L"FO4VRCommunityShaders.ini",

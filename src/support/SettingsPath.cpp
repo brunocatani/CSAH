@@ -18,7 +18,7 @@ namespace community_shaders::settings_path
             return documents /
                 L"My Games" /
                 L"Fallout4VR" /
-                L"FO4VRCommunityShaders_Config" /
+                L"Mods_Config" / L"FO4VRCommunityShaders" /
                 L"FO4VRCommunityShaders.ini";
         } catch (...) {
             return {};
