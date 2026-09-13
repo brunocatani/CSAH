@@ -10,7 +10,7 @@ This is a Fallout 4 VR implementation with stereo rendering support. Feature cov
 
 ## Features
 
-The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.json). These are included systems, not a claim that every effect is visually complete. Incomplete or unconfirmed effects are identified below.
+The included features are listed individually below. Incomplete or unconfirmed effects are identified alongside their descriptions.
 
 ### Lighting
 
@@ -21,7 +21,7 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 - **Diffuse IBL** — Adds environment-derived diffuse bounce lighting. Can be expensive in dense scenes.
 - **Skylighting** — Uses a shared world-space probe field to occlude sky light beneath roofs, trees, and overhangs. Probe quality requires a restart; visibility and zenith controls apply live.
 - **Sky Sync / Moon Lighting** — Aligns directional lighting and shadows with the Sun by day and Fallout's climate-enabled Moon by night.
-- **Cloud Shadows — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
+- **Cloud Shadows — Not working.** Disabled by default in the plugin and automatically created INI.
 
 ### Materials
 
@@ -29,9 +29,9 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 - **Authored PBR Materials** — Supports content-mod manifests pairing base-colour textures with roughness, metalness, ambient-occlusion, and specular data. Textures stream when encountered; authored content still requires visual testing. See the material format below.
 - **Complex Metal Response** — Enables complex-material environment response when suitable assets and IBL data are available. A visible result remains unconfirmed with ordinary texture replacements.
 - **Complex Parallax** — Adds surface depth to assets authored for the complex-material texture contract, with quality, depth, grazing-angle, and distance-fade controls.
-- **Wrapped Grass Lighting — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
-- **Hair Specular — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
-- **Subsurface Scattering — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
+- **Wrapped Grass Lighting — Not working.** Disabled by default in the plugin and automatically created INI.
+- **Hair Specular — Not working.** Disabled by default in the plugin and automatically created INI.
+- **Subsurface Scattering — Not working.** Disabled by default in the plugin and automatically created INI.
 - **Basic Wetness** — Applies a manually selected wet appearance through diffuse darkening, specular response, and roughness. Material coverage is experimental; this is not a complete weather-driven wetness system.
 
 ### PBR model controls
@@ -84,8 +84,7 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 
 ### Configuration and diagnostics
 
-- **DevMenu Integration** — Provides the in-game interface for feature switches, fixed quality choices, and tuning controls.
-- **Live INI Reload** — Shares one settings file between the plugin and DevMenu. Most changes apply during play; restart-only settings are identified in the menu.
+- **Live INI Reload** — Applies supported INI edits during play. Settings that require a restart are identified in the configuration section below.
 - **CSAH Visual Suite** — Switches the visual suite independently of DLAA/DLSS, Vanilla Fixes, and Native Shadow Fixes.
 - **GPU Performance Profiling** — Records GPU timing and CPU submission measurements for selected feature groups.
 - **Exclusive Lighting Diagnostic** — Isolates lighting and reflection components for investigation while preserving saved feature settings.
@@ -96,7 +95,6 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 
 - Fallout 4 VR **1.2.72.0** on Windows, launched through **F4SEVR 0.6.21**.
 - A supported NVIDIA RTX GPU for the DLAA/DLSS subsystem. Its availability is checked through NVIDIA Streamline at runtime.
-- **DevMenu**, if you want the in-game settings interface. You can also edit the INI directly.
 - Compatible authored textures for complex parallax or authored PBR materials. Ordinary texture replacements do not automatically provide those material channels.
 
 ## Installation
@@ -111,12 +109,11 @@ Install the mod ZIP through MO2 and launch the game. CSAH VR creates its setting
    Data/
      F4SE/Plugins/CSAH.dll
      F4SE/Plugins/Streamline/
-     DevMenu/Mods/CSAH/menu.json
      Shaders/
    ```
 
    Keep the bundled Streamline DLLs together and preserve the archive's folder structure.
-4. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home (CSAH) VR** to configure the mod.
+4. Launch Fallout 4 VR through F4SEVR. The mod creates `CSAH.ini` automatically; edit that file to configure its features as described below.
 
 ## Configuration
 
@@ -126,7 +123,7 @@ The active settings file is in your Windows Documents folder:
 Documents/My Games/Fallout4VR/Mods_Config/CSAH/CSAH.ini
 ```
 
-The plugin creates this file automatically on first launch when neither a current nor a legacy INI exists. Existing settings are preserved. DevMenu and the plugin use this same file. Missing keys in an existing file use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
+The plugin creates this file automatically on first launch when neither a current nor a legacy INI exists. Existing settings are preserved. To configure a feature, edit its settings in this INI; boolean settings use `0` for off and `1` for on. Missing keys in an existing file use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
 
 The **CSAH Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
 
@@ -134,7 +131,7 @@ The first-run gameplay preset enables **Linear Lighting**, which the PBR pipelin
 
 On first launch, CSAH moves an existing `Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini` to the new location if `CSAH.ini` does not already exist. The migration preserves the file byte for byte, including values, comments, and encoding. An existing CSAH file takes precedence. If migration fails, the plugin reports the error and stops loading instead of silently replacing your settings with defaults. The existing `[CommunityShaders]` section name remains part of the INI format so saved feature switches remain compatible.
 
-When upgrading from 0.0.3 Alpha, replace the old mod installation rather than enabling both DLLs. Remove the old `fo4vr-community-shaders.dll` and old `DevMenu/Mods/fo4vr-community-shaders` entry before installing CSAH.
+When upgrading from 0.0.3 Alpha, replace the entire old mod installation before installing CSAH. Do not enable both versions together; the old DLL was named `fo4vr-community-shaders.dll`.
 
 ## Authored PBR materials
 
@@ -194,7 +191,7 @@ cmake --preset fast -DCOMMON_LIB_F4VR_PATH="$PWD/extern/CommonLibF4VR" -DSTREAML
 cmake --build build-fast --config Release -- /m:1 /p:CL_MPCount=2
 ```
 
-The build stages the plugin, Streamline runtime and notices, and DevMenu manifest under `package/`. The `fast` preset does not deploy to an installed game. Local deployment can be configured in the ignored `CMakeUserPresets.json` using `POST_BUILD_COPY_PLUGIN` and `COPY_PLUGIN_BASE_PATH`.
+The build stages its runtime files under `package/`. The `fast` preset does not deploy to an installed game. Local deployment can be configured in the ignored `CMakeUserPresets.json` using `POST_BUILD_COPY_PLUGIN` and `COPY_PLUGIN_BASE_PATH`.
 
 To build and run the existing tests:
 
