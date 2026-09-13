@@ -50,7 +50,7 @@
 #include <optional>
 #include <thread>
 
-namespace community_shaders::shared_settings
+namespace csah::shared_settings
 {
     namespace
     {
@@ -246,7 +246,7 @@ namespace community_shaders::shared_settings
                 }
 
                 logging::info(
-                    "Shared Community Shaders INI monitor started for '{}'; the visual suite, DLAA/DLSS, Vanilla Fixes, and Native Shadows retain independent master gates, with Native Shadows/Vanilla Fixes master changes restart-only.",
+                    "Shared CSAH INI monitor started for '{}'; the visual suite, DLAA/DLSS, Vanilla Fixes, and Native Shadows retain independent master gates, with Native Shadows/Vanilla Fixes master changes restart-only.",
                     configPath_.string());
                 return true;
             }
@@ -328,7 +328,7 @@ namespace community_shaders::shared_settings
                             std::memory_order_relaxed) +
                         1;
                     logging::info(
-                        "Shared Community Shaders INI reload #{} accepted: live feature groups={}, startup-native restart pending={}.",
+                        "Shared CSAH INI reload #{} accepted: live feature groups={}, startup-native restart pending={}.",
                         reloadNumber,
                         changes.liveFeatureCount(),
                         changes.nativeShadows || changes.vanillaFixesGate);

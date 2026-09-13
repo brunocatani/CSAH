@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::filmic_tonemapping
+namespace csah::filmic_tonemapping
 {
     struct Settings final
     {

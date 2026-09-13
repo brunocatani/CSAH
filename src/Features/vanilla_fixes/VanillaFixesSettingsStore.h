@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

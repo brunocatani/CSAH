@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::hair_specular
+namespace csah::hair_specular
 {
     namespace
     {

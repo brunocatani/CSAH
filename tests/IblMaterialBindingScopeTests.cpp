@@ -12,8 +12,8 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::MaterialBindingRejection;
-    using community_shaders::ibl::ScopedMaterialBindings;
+    using csah::ibl::MaterialBindingRejection;
+    using csah::ibl::ScopedMaterialBindings;
 
     void require(bool condition, const std::string& message)
     {

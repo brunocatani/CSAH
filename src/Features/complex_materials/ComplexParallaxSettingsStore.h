@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

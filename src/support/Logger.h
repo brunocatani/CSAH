@@ -8,7 +8,7 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 
-namespace community_shaders::logging
+namespace csah::logging
 {
     inline std::shared_ptr<spdlog::logger> instance;
     inline std::filesystem::path runtimeLogDirectory;
@@ -21,7 +21,7 @@ namespace community_shaders::logging
         if (!directory.value().generic_string().ends_with(expectedGamePath)) {
             directory = directory.value().parent_path().append(expectedGamePath);
         }
-        *directory /= "FO4VRCommunityShaders.log";
+        *directory /= "CSAH.log";
         runtimeLogDirectory = directory->parent_path();
         auto sink =
             std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
@@ -30,7 +30,7 @@ namespace community_shaders::logging
                 3,
                 true);
         instance = std::make_shared<spdlog::logger>(
-            "FO4VRCommunityShaders",
+            "CSAH",
             std::move(sink));
         instance->set_pattern("%Y-%m-%d %H:%M:%S.%e [%l] %v");
         instance->set_level(spdlog::level::info);

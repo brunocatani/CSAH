@@ -22,7 +22,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-VanillaFixes-" +
+                ("CSAH-VanillaFixes-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -54,10 +54,10 @@ namespace
 
 int main()
 {
-    using community_shaders::vanilla_fixes::Settings;
-    using community_shaders::vanilla_fixes::DirectionalLightDiagnosticMode;
-    using community_shaders::vanilla_fixes::loadSettings;
-    using community_shaders::vanilla_fixes::saveSettings;
+    using csah::vanilla_fixes::Settings;
+    using csah::vanilla_fixes::DirectionalLightDiagnosticMode;
+    using csah::vanilla_fixes::loadSettings;
+    using csah::vanilla_fixes::saveSettings;
 
     TemporaryIni ini;
     require(loadSettings(ini.path()) == Settings{}, "missing-file defaults");

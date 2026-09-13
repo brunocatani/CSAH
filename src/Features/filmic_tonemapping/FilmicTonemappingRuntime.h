@@ -10,7 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::filmic_tonemapping
+namespace csah::filmic_tonemapping
 {
     using CreatePixelShaderFunction = HRESULT(STDMETHODCALLTYPE*)(
         ID3D11Device*,

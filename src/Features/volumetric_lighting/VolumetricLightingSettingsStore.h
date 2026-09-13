@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

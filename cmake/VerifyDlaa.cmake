@@ -370,11 +370,11 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-    "community_shaders::dlaa::loadSettings()"
-    "community_shaders::dlaa::Runtime::get().applySettings"
-    "community_shaders::dlaa::installEngineHooks()"
-    "community_shaders::dlaa::validateEngineHooks("
-    "community_shaders::dlaa::validateD3D11Hooks("
+    "csah::dlaa::loadSettings()"
+    "csah::dlaa::Runtime::get().applySettings"
+    "csah::dlaa::installEngineHooks()"
+    "csah::dlaa::validateEngineHooks("
+    "csah::dlaa::validateD3D11Hooks("
     "beginQualificationSession(")
   string(FIND "${plugin}" "${required}" found)
   if(found EQUAL -1)

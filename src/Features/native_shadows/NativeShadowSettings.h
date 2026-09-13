@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace community_shaders::native_shadows
+namespace csah::native_shadows
 {
     struct Settings
     {

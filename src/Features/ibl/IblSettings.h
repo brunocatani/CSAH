@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     struct Settings
     {

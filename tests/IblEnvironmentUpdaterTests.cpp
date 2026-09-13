@@ -25,10 +25,10 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::EnvironmentUpdateConsumeResult;
-    using community_shaders::ibl::EnvironmentProvider;
-    using community_shaders::ibl::EnvironmentProviderState;
-    using community_shaders::ibl::EnvironmentUpdater;
+    using csah::ibl::EnvironmentUpdateConsumeResult;
+    using csah::ibl::EnvironmentProvider;
+    using csah::ibl::EnvironmentProviderState;
+    using csah::ibl::EnvironmentUpdater;
 
     struct Float4
     {
@@ -229,7 +229,7 @@ namespace
         return buffer;
     }
 
-    [[nodiscard]] community_shaders::ibl::Float3 readPublishedFaceCenter(
+    [[nodiscard]] csah::ibl::Float3 readPublishedFaceCenter(
         ID3D11Device& device,
         ID3D11DeviceContext& context,
         ID3D11ShaderResourceView* environment,
@@ -297,7 +297,7 @@ namespace
         std::memcpy(&packed, mapped.pData, sizeof(packed));
         context.Unmap(staging.Get(), 0);
         const auto decoded =
-            community_shaders::ibl::decodeR11G11B10Float(packed);
+            csah::ibl::decodeR11G11B10Float(packed);
         return { decoded.red, decoded.green, decoded.blue };
     }
 
@@ -394,7 +394,7 @@ namespace
             "projected cube contained no stereo radiance");
         require(
             summary.diffuseSHCoverage > 0.0f &&
-                community_shaders::ibl::validDiffuseSH(summary.diffuseSH),
+                csah::ibl::validDiffuseSH(summary.diffuseSH),
             "validated environment did not produce a bounded diffuse SH fit");
         const auto meanFaceValidity = std::accumulate(
             summary.faceAverageValidity.begin(),
@@ -472,7 +472,7 @@ namespace
             "temporal history did not retain both opposite cube faces");
         require(
             accumulated.diffuseSHState ==
-                    community_shaders::ibl::DiffuseSHState::usable &&
+                    csah::ibl::DiffuseSHState::usable &&
                 accumulated.diffuseSHCoverage > summary.diffuseSHCoverage,
             "temporal coverage did not produce a usable diffuse SH fit");
         require(

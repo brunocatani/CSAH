@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     constexpr std::uint32_t kEnvironmentCubeFaceCount = 6;
     constexpr std::uint32_t kEnvironmentMaximumMipCount = 10;

@@ -9,14 +9,14 @@
 
 namespace
 {
-    using community_shaders::ibl::advanceCaptureProbePass;
-    using community_shaders::ibl::CaptureProbePassState;
-    using community_shaders::ibl::CaptureProbeShaderBinding;
-    using community_shaders::ibl::classifyCaptureProbeShader;
-    using community_shaders::ibl::kCaptureProbeContracts;
-    using community_shaders::ibl::kDFCompositeBoundaryContracts;
-    using community_shaders::ibl::matchCaptureProbeContract;
-    using community_shaders::ibl::shouldCaptureCompletedProbePass;
+    using csah::ibl::advanceCaptureProbePass;
+    using csah::ibl::CaptureProbePassState;
+    using csah::ibl::CaptureProbeShaderBinding;
+    using csah::ibl::classifyCaptureProbeShader;
+    using csah::ibl::kCaptureProbeContracts;
+    using csah::ibl::kDFCompositeBoundaryContracts;
+    using csah::ibl::matchCaptureProbeContract;
+    using csah::ibl::shouldCaptureCompletedProbePass;
 
     [[noreturn]] void fail(const std::string& message)
     {

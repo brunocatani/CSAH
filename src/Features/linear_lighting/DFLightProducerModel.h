@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     constexpr float kVanillaDFLightGamma = kNativeLightingResponseGamma;
     constexpr std::uint32_t kDFLightDirectionalDescriptorMask = 0x00000003u;

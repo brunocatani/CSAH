@@ -3,7 +3,7 @@
 #include <array>
 #include <string_view>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     struct StreamlinePayloadContract
     {

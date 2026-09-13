@@ -93,7 +93,7 @@ def write_header(path: Path, base_data: bytes, fade_data: bytes) -> None:
         "#pragma once\n\n"
         "#include <array>\n"
         "#include <cstdint>\n\n"
-        "namespace community_shaders::filmic_tonemapping::generated\n"
+        "namespace csah::filmic_tonemapping::generated\n"
         "{\n"
         + format_array("kBasePixelShader", base_data)
         + format_array("kFadePixelShader", fade_data)

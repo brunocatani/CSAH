@@ -10,7 +10,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace community_shaders::bloom_glare
+namespace csah::bloom_glare
 {
     namespace
     {

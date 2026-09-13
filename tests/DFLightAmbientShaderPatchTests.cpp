@@ -29,7 +29,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
 
     bool passed = true;
     std::array<std::byte, 128> bytecode{};

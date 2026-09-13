@@ -23,7 +23,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
     bool passed = true;
 
     Settings disabled{};

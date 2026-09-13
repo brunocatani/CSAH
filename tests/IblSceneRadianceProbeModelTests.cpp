@@ -24,7 +24,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::ibl;
+    using namespace csah::ibl;
 
     constexpr auto coordinates = sceneProbeCoordinates(5376, 2880);
     static_assert(kSceneProbeSampleCount == 64);

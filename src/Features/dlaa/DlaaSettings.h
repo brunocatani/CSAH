@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     enum class Mode : std::uint32_t
     {

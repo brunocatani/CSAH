@@ -10,7 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::bloom_glare
+namespace csah::bloom_glare
 {
     struct RuntimeSnapshot final
     {

@@ -8,7 +8,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace community_shaders::basic_wetness
+namespace csah::basic_wetness
 {
     struct RuntimeSnapshot
     {

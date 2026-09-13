@@ -101,8 +101,8 @@ void Menu::Draw() {
     ImGui::SetNextWindowSize(ImVec2(480.0f, 600.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(50.0f, 50.0f), ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin("FO4VR Community Shaders", &isVisible, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::Text("Community Shaders v0.1.0");
+    if (ImGui::Begin("Community Shaders at Home", &isVisible, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::Text("Community Shaders at Home v0.0.4");
         ImGui::Separator();
 
         if (ImGui::CollapsingHeader("Features", ImGuiTreeNodeFlags_DefaultOpen)) {

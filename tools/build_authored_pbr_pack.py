@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a deterministic FO4VR Community Shaders authored-RMAOS companion mod.
+"""Build a deterministic Community Shaders at Home authored-RMAOS companion mod.
 
 BA2/BSA extraction is deliberately outside this tool. Feed it loose staging
 directories produced through the workspace's authoritative archive extractor,
@@ -402,7 +402,7 @@ def build_pack(
             build_root
             / "F4SE"
             / "Plugins"
-            / "FO4VRCommunityShaders"
+            / "CSAH"
             / "PBRMaterials"
             / "vanilla-vivid-textures.json"
         )
@@ -448,7 +448,7 @@ def build_pack(
             "outputs": sorted(outputs, key=lambda item: str(item["path"])),
             "runtimeManifest": str(manifest_path.relative_to(build_root)),
         }
-        report_path = build_root / "FO4VRCommunityShaders_AuthoredPBR_build.json"
+        report_path = build_root / "CSAH_AuthoredPBR_build.json"
         report_path.write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

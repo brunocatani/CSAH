@@ -23,7 +23,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-ContactShadows-" +
+                ("CSAH-ContactShadows-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -55,8 +55,8 @@ namespace
 
 int main()
 {
-    using community_shaders::contact_shadows::loadSettings;
-    using community_shaders::contact_shadows::parseBoolean;
+    using csah::contact_shadows::loadSettings;
+    using csah::contact_shadows::parseBoolean;
 
     require(parseBoolean(L" TRUE ") == true, "true syntax");
     require(parseBoolean(L"off") == false, "off syntax");

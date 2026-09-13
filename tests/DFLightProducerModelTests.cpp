@@ -6,7 +6,7 @@
 
 namespace
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
 
     [[nodiscard]] bool expect(bool condition, const char* message) noexcept
     {
@@ -24,7 +24,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
     bool passed = true;
 
     passed &= expect(

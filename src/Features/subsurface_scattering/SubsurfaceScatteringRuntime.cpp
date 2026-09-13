@@ -9,7 +9,7 @@
 #include <array>
 #include <utility>
 
-namespace community_shaders::subsurface_scattering
+namespace csah::subsurface_scattering
 {
     namespace
     {
@@ -74,8 +74,8 @@ namespace community_shaders::subsurface_scattering
             return;
         }
         const auto shaderResult = device->CreateComputeShader(
-            fo4vr_cs_subsurface_scattering,
-            sizeof(fo4vr_cs_subsurface_scattering),
+            csah_subsurface_scattering,
+            sizeof(csah_subsurface_scattering),
             nullptr,
             shader_.ReleaseAndGetAddressOf());
         D3D11_BUFFER_DESC description{};

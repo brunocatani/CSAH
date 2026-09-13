@@ -24,7 +24,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-Upscaling-" +
+                ("CSAH-Upscaling-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -56,7 +56,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::dlaa;
+    using namespace csah::dlaa;
     bool valid = true;
 
     Settings invalid{};

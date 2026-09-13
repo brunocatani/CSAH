@@ -1360,7 +1360,7 @@ def main() -> int:
         originals = exact_originals(root, contracts)
         fxc = census.find_fxc(None)
         with tempfile.TemporaryDirectory(
-            prefix="fo4vr_cs_ibl_material_"
+            prefix="csah_ibl_material_"
         ) as directory:
             temporary = Path(directory)
             templates = {

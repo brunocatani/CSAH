@@ -45,15 +45,16 @@
 #include "render/BSLightingGeometryHook.h"
 #include "render/D3D11Hooks.h"
 #include "support/Logger.h"
+#include "support/SettingsPath.h"
 #include "settings/SharedSettingsRuntime.h"
 
 #include <MinHook.h>
 
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
-    version.PluginName("FO4VR Community Shaders");
-    version.PluginVersion(REL::Version(0, 3, 1));
-    version.AuthorName("FO4VR Community Shaders Port");
+    version.PluginName("Community Shaders at Home");
+    version.PluginVersion(REL::Version(0, 0, 4));
+    version.AuthorName("CSAH contributors");
     return version;
 }();
 
@@ -62,13 +63,13 @@ namespace
     [[nodiscard]] bool ensureSkylightingNativeHooks(
         const char* trigger) noexcept
     {
-        if (community_shaders::skylighting::validateNativeHooks(trigger)) {
+        if (csah::skylighting::validateNativeHooks(trigger)) {
             return true;
         }
-        if (!community_shaders::skylighting::installNativeHooks()) {
+        if (!csah::skylighting::installNativeHooks()) {
             return false;
         }
-        return community_shaders::skylighting::validateNativeHooks(trigger);
+        return csah::skylighting::validateNativeHooks(trigger);
     }
 
     void reportPluginBoundaryFailure(
@@ -80,18 +81,18 @@ namespace
             std::snprintf(
                 message,
                 sizeof(message),
-                "FO4VR Community Shaders: %s failed: %s\n",
+                "Community Shaders at Home: %s failed: %s\n",
                 boundary,
                 detail);
         } else {
             std::snprintf(
                 message,
                 sizeof(message),
-                "FO4VR Community Shaders: %s failed with an unknown exception.\n",
+                "Community Shaders at Home: %s failed with an unknown exception.\n",
                 boundary);
         }
         OutputDebugStringA(message);
-        community_shaders::logging::critical("{}", message);
+        csah::logging::critical("{}", message);
     }
 
     void F4SEAPI onF4SEMessage(
@@ -104,9 +105,9 @@ namespace
         switch (message->type) {
         case F4SE::MessagingInterface::kPostPostLoad:
         {
-            const auto d3d = community_shaders::render::d3d11HookSnapshot();
-            const auto dlaa = community_shaders::dlaa::Runtime::get().snapshot();
-            community_shaders::logging::info(
+            const auto d3d = csah::render::d3d11HookSnapshot();
+            const auto dlaa = csah::dlaa::Runtime::get().snapshot();
+            csah::logging::info(
                 "F4SE PostPostLoad: D3D importHook={}, deviceCaptured={}, deviceHooks={}, createCalls={}; DLAA requested={}, Streamline initialized={}.",
                 d3d.deviceCreationImportInstalled,
                 d3d.deviceCaptured,
@@ -118,42 +119,42 @@ namespace
         }
         case F4SE::MessagingInterface::kGameDataReady:
         {
-            community_shaders::native_shadows::onGameDataReady();
-            community_shaders::vanilla_fixes::onGameDataReady();
-            community_shaders::volumetric_lighting::Runtime::get()
+            csah::native_shadows::onGameDataReady();
+            csah::vanilla_fixes::onGameDataReady();
+            csah::volumetric_lighting::Runtime::get()
                 .onGameDataReady();
-            community_shaders::pbr::Runtime::get().onGameDataReady();
-            (void)community_shaders::render::
+            csah::pbr::Runtime::get().onGameDataReady();
+            (void)csah::render::
                 validateD3D11ShaderHooks("GameDataReady");
-            (void)community_shaders::render::
+            (void)csah::render::
                 validateBSLightingGeometryHook("GameDataReady");
-            (void)community_shaders::render::
+            (void)csah::render::
                 validateBSDFPrePassShaderHook("GameDataReady");
-            (void)community_shaders::linear_lighting::
+            (void)csah::linear_lighting::
                 validateDFTiledPointLightHook("GameDataReady");
             (void)ensureSkylightingNativeHooks(
                 "GameDataReady");
-            (void)community_shaders::dlaa::validateEngineHooks(
+            (void)csah::dlaa::validateEngineHooks(
                 "GameDataReady");
-            (void)community_shaders::dlaa::validateD3D11Hooks(
+            (void)csah::dlaa::validateD3D11Hooks(
                 "GameDataReady");
             const auto linearLighting =
-                community_shaders::linear_lighting::Runtime::get().snapshot();
+                csah::linear_lighting::Runtime::get().snapshot();
             const auto geometry =
-                community_shaders::render::geometryHookSnapshot();
+                csah::render::geometryHookSnapshot();
             const auto d3d =
-                community_shaders::render::d3d11HookSnapshot();
-            const auto pointLight = community_shaders::linear_lighting::
+                csah::render::d3d11HookSnapshot();
+            const auto pointLight = csah::linear_lighting::
                 dFTiledPointLightHookSnapshot();
             const auto dlaa =
-                community_shaders::dlaa::Runtime::get().snapshot();
+                csah::dlaa::Runtime::get().snapshot();
             const auto dlaaEngine =
-                community_shaders::dlaa::engineHookSnapshot();
+                csah::dlaa::engineHookSnapshot();
             const auto dlaaD3d =
-                community_shaders::dlaa::d3d11HookSnapshot();
+                csah::dlaa::d3d11HookSnapshot();
             const auto skylighting =
-                community_shaders::skylighting::Runtime::get().snapshot();
-            community_shaders::logging::info(
+                csah::skylighting::Runtime::get().snapshot();
+            csah::logging::info(
                 "F4SE GameDataReady: Linear Lighting enabled={}, gpuReady={}, geometryReady={}, matchingShaders={}, trackedShaders={}, grassVsMask=0x{:02X}, grassVsCreated={}, grassVsTracked={}, grassClassSelections={}, ambientContractMask=0x{:010X}, ambientReadyMask=0x{:010X}, ambientShaders={}, ambientTracked={}, ambientBuilds={}, ambientBuildFailures={}, psBindCalls={}, shaderSelections={}, replacementBinds={}, ambientReplacementBinds={}, d3dBindDetourEnabled={}, techniqueCellOwned={}, geometryCellOwned={}, dFLightProducerOwned={}, techniqueCalls={}, geometryCalls={}, geometryUpdates={}, geometrySourceRejects={}, deepestGeometrySourceStage={}, ambientDescriptors={}, directionalDescriptors={}, ambientTransformPrepared={}, directionalPowModified={}, pointDetourOwned={}, pointGammaLoadsOwned={}, pointCalls={}, pointModified={}, pointGamma={}, pointMultiplier={}.",
                 linearLighting.enabled,
                 linearLighting.gpuResourcesReady,
@@ -193,7 +194,7 @@ namespace
                 pointLight.modifiedCalls,
                 pointLight.activeGamma,
                 pointLight.activeColorMultiplier);
-            community_shaders::logging::info(
+            csah::logging::info(
                 "F4SE GameDataReady: DLAA requested={}, operational={}, engineHooksOwned={}, mapUnmapOwned={}, cameraQualified={}, cameraBinding={}, renderResourcesQualified={}, Streamline initialized={}, deviceBound={}, swapchainUpgraded={}, DLSS loaded={}, supported={}, functionsBound={}, cameraFrames={}, containingMaps={}, identityMatches={}, validationFailures={}, preCalls={}, postCalls={}, stereoEvaluations={}, evaluationFailures={}, committedFrames={}.",
                 dlaa.settings.enabled,
                 dlaa.operational,
@@ -217,7 +218,7 @@ namespace
                 dlaa.stereoEvaluations,
                 dlaa.stereoEvaluationFailures,
                 dlaa.committedFrames);
-            community_shaders::logging::info(
+            csah::logging::info(
                 "F4SE GameDataReady: Skylighting requested={}, gpuReady={}, nativeHookOwned={}, exteriorActive={}, privateDepthReady={}, probeValid={}, quality={} ({}x{}x{}), captures={}, depthBinds={}, dispatches={}, rejectedCaptures={}, ambientBinds={}.",
                 skylighting.requested,
                 skylighting.gpuResourcesReady,
@@ -225,7 +226,7 @@ namespace
                 skylighting.exteriorActive,
                 skylighting.privateDepthReady,
                 skylighting.probeDataValid,
-                community_shaders::skylighting::qualityName(
+                csah::skylighting::qualityName(
                     skylighting.activeQuality),
                 skylighting.probeWidth,
                 skylighting.probeHeight,
@@ -235,9 +236,9 @@ namespace
                 skylighting.probeDispatches,
                 skylighting.rejectedCaptures,
                 skylighting.ambientBinds);
-            const auto volumetric = community_shaders::volumetric_lighting::
+            const auto volumetric = csah::volumetric_lighting::
                 Runtime::get().snapshot();
-            community_shaders::logging::info(
+            csah::logging::info(
                 "F4SE GameDataReady: Volumetric Lighting enabled={}, nativeContract={}, engineData={}, gpuReady={}, diagnosticSuppressed={}, hostObserved={}, outputQualified={}, directionalCaptures={}, renderedFrames={}, rejectedFrames={}, qualification=[passes={},failures={}].",
                 volumetric.settings.enabled,
                 volumetric.nativeContractValid,
@@ -254,38 +255,38 @@ namespace
             break;
         }
         case F4SE::MessagingInterface::kPreLoadGame:
-            community_shaders::sky_sync::Runtime::get().onWorldEnding();
+            csah::sky_sync::Runtime::get().onWorldEnding();
             break;
         case F4SE::MessagingInterface::kPostLoadGame:
-            community_shaders::native_shadows::onWorldReady("PostLoadGame");
-            community_shaders::sky_sync::Runtime::get().onWorldReady(
+            csah::native_shadows::onWorldReady("PostLoadGame");
+            csah::sky_sync::Runtime::get().onWorldReady(
                 "PostLoadGame");
             (void)ensureSkylightingNativeHooks("PostLoadGame");
-            (void)community_shaders::render::
+            (void)csah::render::
                 validateD3D11ShaderHooks("GameSessionReady");
-            community_shaders::ibl::Runtime::get()
+            csah::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
-            community_shaders::skylighting::Runtime::get()
+            csah::skylighting::Runtime::get()
                 .beginWorldSession();
-            community_shaders::diagnostics::
+            csah::diagnostics::
                 beginLinearLightingQualificationSession("PostLoadGame");
-            community_shaders::dlaa::Runtime::get().beginQualificationSession(
+            csah::dlaa::Runtime::get().beginQualificationSession(
                 "PostLoadGame");
             break;
         case F4SE::MessagingInterface::kNewGame:
-            community_shaders::native_shadows::onWorldReady("NewGame");
-            community_shaders::sky_sync::Runtime::get().onWorldReady(
+            csah::native_shadows::onWorldReady("NewGame");
+            csah::sky_sync::Runtime::get().onWorldReady(
                 "NewGame");
             (void)ensureSkylightingNativeHooks("NewGame");
-            (void)community_shaders::render::
+            (void)csah::render::
                 validateD3D11ShaderHooks("GameSessionReady");
-            community_shaders::ibl::Runtime::get()
+            csah::ibl::Runtime::get()
                 .beginWorldCaptureProbeSession();
-            community_shaders::skylighting::Runtime::get()
+            csah::skylighting::Runtime::get()
                 .beginWorldSession();
-            community_shaders::diagnostics::
+            csah::diagnostics::
                 beginLinearLightingQualificationSession("NewGame");
-            community_shaders::dlaa::Runtime::get().beginQualificationSession(
+            csah::dlaa::Runtime::get().beginQualificationSession(
                 "NewGame");
             break;
         default:
@@ -303,21 +304,21 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
             return false;
         }
 
-        community_shaders::logging::init();
-        community_shaders::logging::info(
-            "=== FO4VR Community Shaders v0.2.0 query ===");
+        csah::logging::init();
+        csah::logging::info(
+            "=== Community Shaders at Home v0.0.4 query ===");
 
         a_info->infoVersion = F4SE::PluginInfo::kVersion;
-        a_info->name = "FO4VR Community Shaders";
-        a_info->version = 301;
+        a_info->name = "Community Shaders at Home";
+        a_info->version = 4;
 
         if (a_f4se->IsEditor()) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "Editor runtime is unsupported.");
             return false;
         }
         if (!REL::Module::IsVR()) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "Fallout 4 VR runtime is required.");
             return false;
         }
@@ -326,7 +327,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
         // a different version domain from Fallout4VR.exe itself.
         const auto requiredRuntime = F4SE::RUNTIME_1_10_138;
         if (a_f4se->RuntimeVersion() < requiredRuntime) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "Unsupported F4SE compatibility runtime {} (need >= {}).",
                 a_f4se->RuntimeVersion().string(),
                 requiredRuntime.string());
@@ -335,14 +336,14 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
 
         const auto executableVersion = REL::Module::get().version();
         if (executableVersion != F4SE::RUNTIME_VR_1_2_72) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "Only Fallout4VR.exe 1.2.72 is supported; executable={}, F4SE compatibility runtime={}.",
                 executableVersion.string(),
                 a_f4se->RuntimeVersion().string());
             return false;
         }
 
-        community_shaders::logging::info(
+        csah::logging::info(
             "Runtime gate passed: Fallout4VR.exe {}, F4SE compatibility runtime {}.",
             executableVersion.string(),
             a_f4se->RuntimeVersion().string());
@@ -365,136 +366,152 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
         F4SE::Init(a_f4se, false);
 
+        const auto iniPath = csah::settings_path::resolveIniPath();
+        std::error_code migrationError;
+        const auto migration = csah::settings_path::migrateLegacyIni(
+            iniPath, migrationError);
+        if (migration == csah::settings_path::MigrationResult::failed) {
+            csah::logging::critical(
+                "CSAH settings migration failed for '{}': {}. Existing settings were not replaced; plugin remains unloaded.",
+                iniPath.string(), migrationError.message());
+            return false;
+        }
+        if (migration == csah::settings_path::MigrationResult::migrated) {
+            csah::logging::info(
+                "Migrated existing settings to '{}'; values and formatting preserved.",
+                iniPath.string());
+        }
+
         const auto minHookStatus = MH_Initialize();
         if (minHookStatus != MH_OK &&
             minHookStatus != MH_ERROR_ALREADY_INITIALIZED) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "Shared native-hook runtime initialization failed (MinHook={}); plugin remains unloaded.",
                 static_cast<int>(minHookStatus));
             return false;
         }
-        community_shaders::logging::info(
+        csah::logging::info(
             "Shared native-hook runtime initialized before feature ownership begins.");
 
         const auto settings =
-            community_shaders::linear_lighting::loadSettings();
-        const auto dlaaSettings = community_shaders::dlaa::loadSettings();
+            csah::linear_lighting::loadSettings();
+        const auto dlaaSettings = csah::dlaa::loadSettings();
         const auto filmicTonemappingSettings =
-            community_shaders::filmic_tonemapping::loadSettings();
+            csah::filmic_tonemapping::loadSettings();
         const auto bloomGlareSettings =
-            community_shaders::bloom_glare::loadSettings();
-        const auto iblSettings = community_shaders::ibl::loadSettings();
+            csah::bloom_glare::loadSettings();
+        const auto iblSettings = csah::ibl::loadSettings();
         const auto contactShadowSettings =
-            community_shaders::contact_shadows::loadSettings();
+            csah::contact_shadows::loadSettings();
         const auto complexMaterialSettings =
-            community_shaders::complex_materials::loadSettings();
+            csah::complex_materials::loadSettings();
         const auto wrappedGrassSettings =
-            community_shaders::wrapped_grass::loadSettings();
+            csah::wrapped_grass::loadSettings();
         const auto hairSpecularSettings =
-            community_shaders::hair_specular::loadSettings();
+            csah::hair_specular::loadSettings();
         const auto subsurfaceScatteringSettings =
-            community_shaders::subsurface_scattering::loadSettings();
+            csah::subsurface_scattering::loadSettings();
         const auto basicWetnessSettings =
-            community_shaders::basic_wetness::loadSettings();
+            csah::basic_wetness::loadSettings();
         const auto cloudShadowSettings =
-            community_shaders::cloud_shadows::loadSettings();
+            csah::cloud_shadows::loadSettings();
         const auto volumetricLightingSettings =
-            community_shaders::volumetric_lighting::loadSettings();
+            csah::volumetric_lighting::loadSettings();
         const auto vanillaFixesSettings =
-            community_shaders::vanilla_fixes::loadSettings();
+            csah::vanilla_fixes::loadSettings();
         const auto nativeShadowSettings =
-            community_shaders::native_shadows::loadSettings();
-        const auto pbrSettings = community_shaders::pbr::loadSettings();
+            csah::native_shadows::loadSettings();
+        const auto pbrSettings = csah::pbr::loadSettings();
         const auto skylightingSettings =
-            community_shaders::skylighting::loadSettings();
+            csah::skylighting::loadSettings();
         const auto skySyncSettings =
-            community_shaders::sky_sync::loadSettings();
-        community_shaders::linear_lighting::Runtime::get().applySettings(
+            csah::sky_sync::loadSettings();
+        csah::linear_lighting::Runtime::get().applySettings(
             settings);
-        community_shaders::pbr::Runtime::get().setLinearLightingEnabled(
+        csah::pbr::Runtime::get().setLinearLightingEnabled(
             settings.enabled);
-        community_shaders::dlaa::Runtime::get().applySettings(dlaaSettings);
-        community_shaders::filmic_tonemapping::Runtime::get().applySettings(
+        csah::dlaa::Runtime::get().applySettings(dlaaSettings);
+        csah::filmic_tonemapping::Runtime::get().applySettings(
             filmicTonemappingSettings);
-        community_shaders::bloom_glare::Runtime::get().applySettings(
+        csah::bloom_glare::Runtime::get().applySettings(
             bloomGlareSettings);
-        community_shaders::linear_lighting::Runtime::get().
+        csah::linear_lighting::Runtime::get().
             applyComplexParallaxSettings(complexMaterialSettings);
-        community_shaders::ibl::Runtime::get().applySettings(iblSettings);
-        community_shaders::contact_shadows::Runtime::get().applySettings(
+        csah::ibl::Runtime::get().applySettings(iblSettings);
+        csah::contact_shadows::Runtime::get().applySettings(
             contactShadowSettings);
-        community_shaders::cloud_shadows::Runtime::get().applySettings(
+        csah::cloud_shadows::Runtime::get().applySettings(
             cloudShadowSettings);
-        if (!community_shaders::volumetric_lighting::Runtime::get().start(
+        if (!csah::volumetric_lighting::Runtime::get().start(
                 volumetricLightingSettings,
                 vanillaFixesSettings.enabled &&
                     vanillaFixesSettings.directionalLightDiagnosticMode !=
-                        community_shaders::vanilla_fixes::
+                        csah::vanilla_fixes::
                             DirectionalLightDiagnosticMode::off)) {
-            community_shaders::logging::warn(
+            csah::logging::warn(
                 "Volumetric Lighting rejected an exact FO4VR host, camera, or weather contract; the feature remains fail-closed.");
         }
-        community_shaders::wrapped_grass::Runtime::get().applySettings(
+        csah::wrapped_grass::Runtime::get().applySettings(
             wrappedGrassSettings);
-        community_shaders::hair_specular::Runtime::get().applySettings(
+        csah::hair_specular::Runtime::get().applySettings(
             hairSpecularSettings);
-        community_shaders::subsurface_scattering::Runtime::get().applySettings(
+        csah::subsurface_scattering::Runtime::get().applySettings(
             subsurfaceScatteringSettings);
-        community_shaders::basic_wetness::Runtime::get().applySettings(
+        csah::basic_wetness::Runtime::get().applySettings(
             basicWetnessSettings);
-        community_shaders::pbr::Runtime::get().applySettings(pbrSettings);
-        community_shaders::skylighting::Runtime::get().applySettings(
+        csah::pbr::Runtime::get().applySettings(pbrSettings);
+        csah::skylighting::Runtime::get().applySettings(
             skylightingSettings);
-        community_shaders::sky_sync::Runtime::get().applySettings(
+        csah::sky_sync::Runtime::get().applySettings(
             skySyncSettings);
-        if (!community_shaders::native_shadows::startRuntime(
+        if (!csah::native_shadows::startRuntime(
                 nativeShadowSettings)) {
-            community_shaders::logging::warn(
+            csah::logging::warn(
                 "Native Shadows rejected one or more FO4VR engine contracts; unknown boundaries remain vanilla and extended-cascade masks remain fail-closed.");
         }
-        if (!community_shaders::vanilla_fixes::startRuntime(
+        if (!csah::vanilla_fixes::startRuntime(
                 vanillaFixesSettings)) {
-            community_shaders::logging::warn(
+            csah::logging::warn(
                 "Vanilla Fixes engine-gate contract was rejected; shader fixes remain available, but engine-gate ownership stays fail-closed.");
         }
-        if (!community_shaders::render::installEarlyD3D11Hooks()) {
-            community_shaders::logging::warn(
+        if (!csah::render::installEarlyD3D11Hooks()) {
+            csah::logging::warn(
                 "Verified D3D11 bootstrap was not installed; plugin remains loaded but all rendering stays vanilla.");
         }
-        if (!community_shaders::diagnostics::hdr_output_probe::install()) {
-            community_shaders::logging::warn(
+        if (!csah::diagnostics::hdr_output_probe::install()) {
+            csah::logging::warn(
                 "Verified FO4VR HDR output ownership probe was not installed; Filmic/Bloom/Glare diagnosis remains fail-closed.");
         }
-        if (!community_shaders::dlaa::installEngineHooks()) {
-            community_shaders::logging::warn(
+        if (!csah::dlaa::installEngineHooks()) {
+            csah::logging::warn(
                 "Verified FO4VR DLAA engine boundaries were not installed; vanilla TAA remains active.");
         }
-        if (!community_shaders::render::installBSLightingGeometryHook()) {
-            community_shaders::logging::warn(
+        if (!csah::render::installBSLightingGeometryHook()) {
+            csah::logging::warn(
                 "Verified BSDF lighting geometry hook was not installed; Linear Lighting replacement remains fail-closed.");
         }
-        if (!community_shaders::render::installBSDFPrePassShaderHook()) {
-            community_shaders::logging::warn(
+        if (!csah::render::installBSDFPrePassShaderHook()) {
+            csah::logging::warn(
                 "Verified BSDFPrePass descriptor hook was not installed; complex environment materials remain fail-closed.");
         }
 
         const auto* messaging = F4SE::GetMessagingInterface();
         if (!messaging || !messaging->RegisterListener(onF4SEMessage)) {
-            community_shaders::logging::critical(
+            csah::logging::critical(
                 "F4SE messaging registration failed.");
             return false;
         }
-        community_shaders::diagnostics::
+        csah::diagnostics::
             startLinearLightingQualificationReporter();
-        if (!community_shaders::shared_settings::startMonitor()) {
-            community_shaders::logging::warn(
-                "Shared Community Shaders INI monitor did not start; startup settings remain active, but DevMenu changes require the next launch.");
+        if (!csah::shared_settings::startMonitor()) {
+            csah::logging::warn(
+                "Shared CSAH INI monitor did not start; startup settings remain active, but DevMenu changes require the next launch.");
         }
 
-        community_shaders::logging::info(
-            "FO4VR Community Shaders loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, Volumetric Lighting enabled={}, quality={}, base={}, shafts={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+        csah::logging::info(
+            "Community Shaders at Home loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, Volumetric Lighting enabled={}, quality={}, base={}, shafts={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
-            community_shaders::dlaa::modeName(dlaaSettings.mode),
+            csah::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),
             dlaaSettings.sharpening,
             dlaaSettings.sharpness,
@@ -507,7 +524,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             pbrSettings.directGgx,
             pbrSettings.environmentFresnel,
             skylightingSettings.enabled,
-            community_shaders::skylighting::qualityName(
+            csah::skylighting::qualityName(
                 skylightingSettings.quality),
             contactShadowSettings.enabled,
             contactShadowSettings.sampleCount,

@@ -8,7 +8,7 @@
 
 namespace
 {
-    using namespace community_shaders::complex_materials;
+    using namespace csah::complex_materials;
 
     int failures{};
 

@@ -12,7 +12,7 @@
 #include <cstring>
 #include <utility>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     namespace
     {

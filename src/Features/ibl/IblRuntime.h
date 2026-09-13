@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <mutex>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     struct DiffuseAmbientSample
     {

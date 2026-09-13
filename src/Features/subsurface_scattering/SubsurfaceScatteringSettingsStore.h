@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::subsurface_scattering
+namespace csah::subsurface_scattering
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

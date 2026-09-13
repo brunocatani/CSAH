@@ -20,7 +20,7 @@
 #include <limits>
 #include <span>
 
-namespace community_shaders::render
+namespace csah::render
 {
     namespace
     {

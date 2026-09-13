@@ -3,7 +3,7 @@
 #include "Features/surface_classification/SurfaceClassificationRuntime.h"
 #include "support/Logger.h"
 
-namespace community_shaders::basic_wetness
+namespace csah::basic_wetness
 {
     namespace
     {

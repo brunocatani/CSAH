@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     constexpr std::size_t kSceneProbeColumnCount = 16;
     constexpr std::size_t kSceneProbeRowCount = 4;

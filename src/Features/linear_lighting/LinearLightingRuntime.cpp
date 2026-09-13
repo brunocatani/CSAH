@@ -28,7 +28,7 @@
 #include "SurfaceClassComplexParallaxLandscapeLod.h"
 #include "SkylightingAmbient.h"
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     namespace
     {
@@ -158,7 +158,7 @@ namespace community_shaders::linear_lighting
         #include "Features/surface_classification/GeneratedSurfaceClassContracts.inl"
 
         static_assert(
-            fo4vr_cs_skylighting_ambient_contracts.size() ==
+            csah_skylighting_ambient_contracts.size() ==
             kDFLightAmbientContracts.size());
 
         [[nodiscard]] const SurfaceClassDescriptorContract*
@@ -252,35 +252,35 @@ namespace community_shaders::linear_lighting
 
         constexpr std::array<EmbeddedShader, 3> kComplexParallaxShaders{
             EmbeddedShader{
-                fo4vr_cs_complex_parallax_landscape_base,
-                sizeof(fo4vr_cs_complex_parallax_landscape_base),
+                csah_complex_parallax_landscape_base,
+                sizeof(csah_complex_parallax_landscape_base),
             },
             EmbeddedShader{
-                fo4vr_cs_complex_parallax_landscape_lod,
-                sizeof(fo4vr_cs_complex_parallax_landscape_lod),
+                csah_complex_parallax_landscape_lod,
+                sizeof(csah_complex_parallax_landscape_lod),
             },
             EmbeddedShader{
-                fo4vr_cs_complex_parallax_landscape_instanced_lod,
-                sizeof(fo4vr_cs_complex_parallax_landscape_instanced_lod),
+                csah_complex_parallax_landscape_instanced_lod,
+                sizeof(csah_complex_parallax_landscape_instanced_lod),
             },
         };
 
         constexpr std::array<EmbeddedShader, 3>
             kSurfaceClassComplexParallaxShaders{
                 EmbeddedShader{
-                    fo4vr_cs_surface_class_complex_parallax_landscape_base,
+                    csah_surface_class_complex_parallax_landscape_base,
                     sizeof(
-                        fo4vr_cs_surface_class_complex_parallax_landscape_base),
+                        csah_surface_class_complex_parallax_landscape_base),
                 },
                 EmbeddedShader{
-                    fo4vr_cs_surface_class_complex_parallax_landscape_lod,
+                    csah_surface_class_complex_parallax_landscape_lod,
                     sizeof(
-                        fo4vr_cs_surface_class_complex_parallax_landscape_lod),
+                        csah_surface_class_complex_parallax_landscape_lod),
                 },
                 EmbeddedShader{
-                    fo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod,
+                    csah_surface_class_complex_parallax_landscape_instanced_lod,
                     sizeof(
-                        fo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod),
+                        csah_surface_class_complex_parallax_landscape_instanced_lod),
                 },
             };
 
@@ -1103,7 +1103,7 @@ namespace community_shaders::linear_lighting
 
         try {
             const auto& skylightingContract =
-                fo4vr_cs_skylighting_ambient_contracts[contractIndex];
+                csah_skylighting_ambient_contracts[contractIndex];
             const auto* replacementBegin = reinterpret_cast<const std::byte*>(
                 skylightingContract.replacementBytecode);
             std::vector<std::byte> patched(

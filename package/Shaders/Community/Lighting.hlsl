@@ -1,4 +1,4 @@
-// FO4VR Community Shaders — BSLightingShader Pixel Shader
+// Community Shaders at Home (CSAH) — BSLightingShader Pixel Shader
 //
 // Reconstructed from DXBC disassembly of vanilla VR shaders:
 //   shader_2544_PS (DEFAULT technique, Layout #3, 6 MRTs)

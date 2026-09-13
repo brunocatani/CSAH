@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

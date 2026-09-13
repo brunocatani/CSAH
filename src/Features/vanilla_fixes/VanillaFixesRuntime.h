@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     struct RuntimeSnapshot final
     {

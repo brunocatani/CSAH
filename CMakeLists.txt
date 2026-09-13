@@ -1,20 +1,20 @@
 cmake_minimum_required(VERSION 4.2)
 
-set(NAME "fo4vr-community-shaders")
-set(FRIENDLY_NAME "FO4VR Community Shaders")
-set(VERSION 0.3.1)
+set(NAME "CSAH")
+set(FRIENDLY_NAME "Community Shaders at Home")
+set(VERSION 0.0.4)
 
 set(ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(SOURCE_DIR "${ROOT_DIR}/src")
 set(BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(WORKSPACE_ROOT "${ROOT_DIR}/../.." ABSOLUTE)
 
-set(DEVMENU_PACKAGE_ID "fo4vr-community-shaders")
+set(DEVMENU_PACKAGE_ID "CSAH")
 set(DEVMENU_MANIFEST_SOURCE
   "${ROOT_DIR}/devmenu/${DEVMENU_PACKAGE_ID}/menu.json")
 if(NOT EXISTS "${DEVMENU_MANIFEST_SOURCE}")
   message(FATAL_ERROR
-    "Community Shaders owns its DevMenu manifest, but it is missing: "
+    "CSAH owns its DevMenu manifest, but it is missing: "
     "'${DEVMENU_MANIFEST_SOURCE}'")
 endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -107,7 +107,7 @@ configure_file(
   @ONLY)
 
 include("${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake")
-fo4vr_cs_verify_fo4vr_loader("${SOURCE_DIR}/XSEPlugin.cpp")
+csah_verify_fo4vr_loader("${SOURCE_DIR}/XSEPlugin.cpp")
 set(RENDERER_HOOK_SOURCE
   "${SOURCE_DIR}/render/BSLightingGeometryHook.cpp")
 set(DFPREPASS_HOOK_SOURCE
@@ -1326,7 +1326,7 @@ add_subdirectory(
   "CommonLibF4"
   EXCLUDE_FROM_ALL)
 
-find_program(FO4VR_CS_FXC_EXECUTABLE
+find_program(CSAH_FXC_EXECUTABLE
   NAMES fxc.exe fxc
   HINTS
     "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
@@ -1392,68 +1392,68 @@ add_custom_command(
     "${VANILLA_LIGHTING_OWNERSHIP_BLACK_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${VANILLA_FIXES_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges
     "/Fo${VANILLA_SAO_BLUR_BINARY}"
     "/Fh${VANILLA_SAO_BLUR_HEADER}"
-    /Vnfo4vr_cs_vanilla_sao_blur_h_cs
+    /Vncsah_vanilla_sao_blur_h_cs
     "${VANILLA_SAO_BLUR_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges
     "/Fo${VANILLA_SAO_RAW_BINARY}"
     "/Fh${VANILLA_SAO_RAW_HEADER}"
-    /Vnfo4vr_cs_vanilla_sao_raw_ao_cs
+    /Vncsah_vanilla_sao_raw_ao_cs
     "${VANILLA_SAO_RAW_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T vs_5_0 /E main /O3 /Ges
     "/Fo${VANILLA_SSLR_BLUR_BINARY}"
     "/Fh${VANILLA_SSLR_BLUR_HEADER}"
-    /Vnfo4vr_cs_vanilla_sslr_blur_h_vs
+    /Vncsah_vanilla_sslr_blur_h_vs
     "${VANILLA_SSLR_BLUR_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges
     "/Fo${VANILLA_SSLR_PREPASS_BINARY}"
     "/Fh${VANILLA_SSLR_PREPASS_HEADER}"
-    /Vnfo4vr_cs_vanilla_sslr_prepass_ps
+    /Vncsah_vanilla_sslr_prepass_ps
     "${VANILLA_SSLR_PREPASS_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/Fo${VANILLA_SSLR_RAYTRACE_BINARY}"
     "/Fh${VANILLA_SSLR_RAYTRACE_HEADER}"
-    /Vnfo4vr_cs_vanilla_sslr_raytrace_ps
+    /Vncsah_vanilla_sslr_raytrace_ps
     "${VANILLA_SSLR_RAYTRACE_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/Fo${VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_BINARY}"
     "/Fh${VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_HEADER}"
-    /Vnfo4vr_cs_vanilla_directional_diagnostic_composite_ps
+    /Vncsah_vanilla_directional_diagnostic_composite_ps
     "${VANILLA_DIRECTIONAL_DIAGNOSTIC_COMPOSITE_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T vs_5_0 /E main /O3 /Ges /WX
     "/Fo${VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_BINARY}"
     "/Fh${VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_HEADER}"
-    /Vnfo4vr_cs_vanilla_directional_diagnostic_coverage_vs
+    /Vncsah_vanilla_directional_diagnostic_coverage_vs
     "${VANILLA_DIRECTIONAL_DIAGNOSTIC_COVERAGE_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     /DLIGHTING_OWNERSHIP_MODE=1
     "/Fo${VANILLA_LIGHTING_OWNERSHIP_DIFFUSE_BINARY}"
     "/Fh${VANILLA_LIGHTING_OWNERSHIP_DIFFUSE_HEADER}"
-    /Vnfo4vr_cs_vanilla_lighting_ownership_diffuse_ps
+    /Vncsah_vanilla_lighting_ownership_diffuse_ps
     "${VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     /DLIGHTING_OWNERSHIP_MODE=2
     "/Fo${VANILLA_LIGHTING_OWNERSHIP_SPECULAR_BINARY}"
     "/Fh${VANILLA_LIGHTING_OWNERSHIP_SPECULAR_HEADER}"
-    /Vnfo4vr_cs_vanilla_lighting_ownership_specular_ps
+    /Vncsah_vanilla_lighting_ownership_specular_ps
     "${VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     /DLIGHTING_OWNERSHIP_MODE=5
     "/Fo${VANILLA_LIGHTING_OWNERSHIP_BLACK_BINARY}"
     "/Fh${VANILLA_LIGHTING_OWNERSHIP_BLACK_HEADER}"
-    /Vnfo4vr_cs_vanilla_lighting_ownership_black_ps
+    /Vncsah_vanilla_lighting_ownership_black_ps
     "${VANILLA_LIGHTING_OWNERSHIP_DIAGNOSTIC_SOURCE}"
   DEPENDS
     "${VANILLA_SAO_BLUR_SOURCE}"
@@ -1488,11 +1488,11 @@ add_custom_command(
     "${UPSCALING_COMPOSE_SHADER_BINARY}"
     "${UPSCALING_COMPOSE_SHADER_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges
     "/Fo${UPSCALING_COMPOSE_SHADER_BINARY}"
     "/Fh${UPSCALING_COMPOSE_SHADER_HEADER}"
-    /Vnfo4vr_cs_upscaling_compose_cs
+    /Vncsah_upscaling_compose_cs
     "${UPSCALING_COMPOSE_SHADER_SOURCE}"
   DEPENDS "${UPSCALING_COMPOSE_SHADER_SOURCE}"
   COMMENT "Compiling stereo upscaling compositor"
@@ -1502,11 +1502,11 @@ add_custom_command(
     "${UPSCALING_MOTION_SHADER_BINARY}"
     "${UPSCALING_MOTION_SHADER_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges /WX
     "/Fo${UPSCALING_MOTION_SHADER_BINARY}"
     "/Fh${UPSCALING_MOTION_SHADER_HEADER}"
-    /Vnfo4vr_cs_upscaling_motion_repair_cs
+    /Vncsah_upscaling_motion_repair_cs
     "${UPSCALING_MOTION_SHADER_SOURCE}"
   DEPENDS "${UPSCALING_MOTION_SHADER_SOURCE}"
   COMMENT "Compiling per-eye FO4VR motion-vector repair"
@@ -1516,11 +1516,11 @@ add_custom_command(
     "${UPSCALING_REACTIVE_SHADER_BINARY}"
     "${UPSCALING_REACTIVE_SHADER_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLAA_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges /WX
     "/Fo${UPSCALING_REACTIVE_SHADER_BINARY}"
     "/Fh${UPSCALING_REACTIVE_SHADER_HEADER}"
-    /Vnfo4vr_cs_upscaling_reactive_mask_cs
+    /Vncsah_upscaling_reactive_mask_cs
     "${UPSCALING_REACTIVE_SHADER_SOURCE}"
   DEPENDS "${UPSCALING_REACTIVE_SHADER_SOURCE}"
   COMMENT "Compiling FO4VR TAA-derived DLSS reactive mask"
@@ -1560,7 +1560,7 @@ add_custom_target(VerifyVanillaFixes ALL
     "-DVANILLA_SSLR_BLUR_SOURCE=${VANILLA_SSLR_BLUR_SOURCE}"
     "-DVANILLA_SSLR_PREPASS_SOURCE=${VANILLA_SSLR_PREPASS_SOURCE}"
     "-DVANILLA_SSLR_RAYTRACE_SOURCE=${VANILLA_SSLR_RAYTRACE_SOURCE}"
-    "-DVANILLA_FXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+    "-DVANILLA_FXC_EXECUTABLE=${CSAH_FXC_EXECUTABLE}"
     "-DVANILLA_SAO_BLUR_BINARY=${VANILLA_SAO_BLUR_BINARY}"
     "-DVANILLA_SAO_RAW_BINARY=${VANILLA_SAO_RAW_BINARY}"
     "-DVANILLA_SSLR_BLUR_BINARY=${VANILLA_SSLR_BLUR_BINARY}"
@@ -1585,7 +1585,7 @@ add_custom_target(VerifySurfaceClassification ALL
   COMMAND "${Python3_EXECUTABLE}"
     "${SURFACE_CLASSIFICATION_GENERATOR}"
     --root "${ROOT_DIR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --check
   COMMAND "${CMAKE_COMMAND}"
     -DSURFACE_CLASSIFICATION_RUNTIME_SOURCE=${SURFACE_CLASSIFICATION_RUNTIME_SOURCE}
@@ -1625,7 +1625,7 @@ add_custom_command(
   COMMAND "${Python3_EXECUTABLE}"
     "${CONTACT_SHADOW_SHADER_GENERATOR}"
     --root "${ROOT_DIR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --binary "${CONTACT_SHADOW_SHADER_BINARY}"
     --header "${CONTACT_SHADOW_SHADER_HEADER}"
     --compute-binary "${CONTACT_SHADOW_MASK_BINARY}"
@@ -1727,69 +1727,69 @@ add_custom_command(
     "${VOLUMETRIC_COMPOSITE_SHADER_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${VOLUMETRIC_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/Fo${VOLUMETRIC_HOST_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_HOST_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_host_ps
+    /Vncsah_volumetric_host_ps
     "${VOLUMETRIC_HOST_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T vs_5_0 /E main /O3 /Ges /WX
     "/Fo${VOLUMETRIC_FULLSCREEN_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_FULLSCREEN_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_fullscreen_vs
+    /Vncsah_volumetric_fullscreen_vs
     "${VOLUMETRIC_FULLSCREEN_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges /WX
     "/I${VOLUMETRIC_SHADER_DIR}"
     "/Fo${VOLUMETRIC_GENERATE_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_GENERATE_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_generate_cs
+    /Vncsah_volumetric_generate_cs
     "${VOLUMETRIC_GENERATE_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges /WX
     "/Fo${VOLUMETRIC_INTEGRATE_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_INTEGRATE_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_integrate_cs
+    /Vncsah_volumetric_integrate_cs
     "${VOLUMETRIC_INTEGRATE_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T cs_5_0 /E main /O3 /Ges /WX
     "/Fo${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_QUALIFY_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_qualify_cs
+    /Vncsah_volumetric_qualify_cs
     "${VOLUMETRIC_QUALIFY_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/I${VOLUMETRIC_SHADER_DIR}"
     "/Fo${VOLUMETRIC_RESOLVE_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_RESOLVE_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_resolve_ps
+    /Vncsah_volumetric_resolve_ps
     "${VOLUMETRIC_RESOLVE_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/I${VOLUMETRIC_SHADER_DIR}"
     "/Fo${VOLUMETRIC_TEMPORAL_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_TEMPORAL_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_temporal_ps
+    /Vncsah_volumetric_temporal_ps
     "${VOLUMETRIC_TEMPORAL_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX /DBLUR_HORIZONTAL=1
     "/Fo${VOLUMETRIC_BLUR_H_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_BLUR_H_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_blur_h_ps
+    /Vncsah_volumetric_blur_h_ps
     "${VOLUMETRIC_BLUR_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX /DBLUR_HORIZONTAL=0
     "/Fo${VOLUMETRIC_BLUR_V_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_BLUR_V_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_blur_v_ps
+    /Vncsah_volumetric_blur_v_ps
     "${VOLUMETRIC_BLUR_SHADER_SOURCE}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E main /O3 /Ges /WX
     "/I${VOLUMETRIC_SHADER_DIR}"
     "/Fo${VOLUMETRIC_COMPOSITE_SHADER_BINARY}"
     "/Fh${VOLUMETRIC_COMPOSITE_SHADER_HEADER}"
-    /Vnfo4vr_cs_volumetric_composite_ps
+    /Vncsah_volumetric_composite_ps
     "${VOLUMETRIC_COMPOSITE_SHADER_SOURCE}"
   DEPENDS
     "${VOLUMETRIC_COMMON_SHADER_SOURCE}"
@@ -1842,7 +1842,7 @@ add_custom_command(
   COMMAND "${Python3_EXECUTABLE}"
     "${SKYLIGHTING_SHADER_GENERATOR}"
     --root "${ROOT_DIR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --ambient-header "${SKYLIGHTING_AMBIENT_HEADER}"
     --compute-binary "${SKYLIGHTING_COMPUTE_BINARY}"
     --compute-header "${SKYLIGHTING_COMPUTE_HEADER}"
@@ -1897,7 +1897,7 @@ add_custom_command(
   COMMAND "${Python3_EXECUTABLE}"
     "${FILMIC_TONEMAPPING_SHADER_GENERATOR}"
     --root "${ROOT_DIR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --base-binary "${FILMIC_TONEMAPPING_BASE_SHADER_BINARY}"
     --fade-binary "${FILMIC_TONEMAPPING_FADE_SHADER_BINARY}"
     --header "${FILMIC_TONEMAPPING_SHADER_HEADER}"
@@ -1937,7 +1937,7 @@ add_custom_command(
   OUTPUT "${BLOOM_GLARE_SHADER_HEADER}"
   COMMAND "${Python3_EXECUTABLE}"
     "${BLOOM_GLARE_SHADER_GENERATOR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --source-dir "${BLOOM_GLARE_SHADER_DIR}"
     --header "${BLOOM_GLARE_SHADER_HEADER}"
   DEPENDS
@@ -1979,7 +1979,7 @@ add_custom_command(
   COMMAND "${Python3_EXECUTABLE}"
     "${SUBSURFACE_SCATTERING_SHADER_GENERATOR}"
     --root "${ROOT_DIR}"
-    --fxc "${FO4VR_CS_FXC_EXECUTABLE}"
+    --fxc "${CSAH_FXC_EXECUTABLE}"
     --binary "${SUBSURFACE_SCATTERING_SHADER_BINARY}"
     --header "${SUBSURFACE_SCATTERING_SHADER_HEADER}"
   DEPENDS
@@ -2041,12 +2041,12 @@ add_custom_command(
   OUTPUT "${COMPLEX_PARALLAX_BASE_BINARY}" "${COMPLEX_PARALLAX_BASE_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     "/Fo${COMPLEX_PARALLAX_BASE_BINARY}"
     "/Fh${COMPLEX_PARALLAX_BASE_HEADER}"
-    /Vnfo4vr_cs_complex_parallax_landscape_base
+    /Vncsah_complex_parallax_landscape_base
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2058,13 +2058,13 @@ add_custom_command(
   OUTPUT "${COMPLEX_PARALLAX_LOD_BINARY}" "${COMPLEX_PARALLAX_LOD_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
     "/Fo${COMPLEX_PARALLAX_LOD_BINARY}"
     "/Fh${COMPLEX_PARALLAX_LOD_HEADER}"
-    /Vnfo4vr_cs_complex_parallax_landscape_lod
+    /Vncsah_complex_parallax_landscape_lod
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2078,14 +2078,14 @@ add_custom_command(
     "${COMPLEX_PARALLAX_INSTANCED_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
     /DLINEAR_LIGHTING_INSTANCED_LANDSCAPE=1
     "/Fo${COMPLEX_PARALLAX_INSTANCED_BINARY}"
     "/Fh${COMPLEX_PARALLAX_INSTANCED_HEADER}"
-    /Vnfo4vr_cs_complex_parallax_landscape_instanced_lod
+    /Vncsah_complex_parallax_landscape_instanced_lod
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2099,13 +2099,13 @@ add_custom_command(
     "${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
     "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_BINARY}"
     "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_BASE_HEADER}"
-    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_base
+    /Vncsah_surface_class_complex_parallax_landscape_base
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2119,14 +2119,14 @@ add_custom_command(
     "${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
     /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
     "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_BINARY}"
     "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_LOD_HEADER}"
-    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_lod
+    /Vncsah_surface_class_complex_parallax_landscape_lod
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2140,7 +2140,7 @@ add_custom_command(
     "${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${COMPLEX_PARALLAX_GENERATED_DIR}"
-  COMMAND "${FO4VR_CS_FXC_EXECUTABLE}"
+  COMMAND "${CSAH_FXC_EXECUTABLE}"
     /nologo /T ps_5_0 /E PSMain /O3 /Ges /WX
     /DLINEAR_LIGHTING_COMPLEX_PARALLAX=1
     /DLINEAR_LIGHTING_LAND_LOD_BLEND=1
@@ -2148,7 +2148,7 @@ add_custom_command(
     /DLINEAR_LIGHTING_SURFACE_CLASSIFICATION=1
     "/Fo${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_BINARY}"
     "/Fh${SURFACE_CLASS_COMPLEX_PARALLAX_INSTANCED_HEADER}"
-    /Vnfo4vr_cs_surface_class_complex_parallax_landscape_instanced_lod
+    /Vncsah_surface_class_complex_parallax_landscape_instanced_lod
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
   DEPENDS
     "${COMPLEX_PARALLAX_HLSL_SOURCE}"
@@ -2173,7 +2173,7 @@ add_custom_target(ComplexParallaxShaders
 
 add_custom_target(VerifyComplexParallax ALL
   COMMAND "${CMAKE_COMMAND}"
-    "-DFXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+    "-DFXC_EXECUTABLE=${CSAH_FXC_EXECUTABLE}"
     "-DHLSL_SOURCE=${COMPLEX_PARALLAX_HLSL_SOURCE}"
     "-DLINEAR_LIGHTING_INCLUDE=${ROOT_DIR}/package/Shaders/Community/LinearLighting/LinearLighting.hlsli"
     "-DRUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}"
@@ -2186,15 +2186,15 @@ add_custom_target(VerifyComplexParallax ALL
   COMMENT "Verifying combined stereo landscape complex parallax"
   VERBATIM)
 
-add_library(FO4VRCommunityShadersCore STATIC
+add_library(CSAHCore STATIC
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettings.cpp"
   "${SOURCE_DIR}/Features/linear_lighting/LinearLightingSettings.h"
   "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
   "${COMPLEX_PARALLAX_MODEL_HEADER}"
 )
-target_compile_features(FO4VRCommunityShadersCore PUBLIC cxx_std_23)
-target_include_directories(FO4VRCommunityShadersCore PUBLIC "${SOURCE_DIR}")
-target_compile_options(FO4VRCommunityShadersCore PRIVATE
+target_compile_features(CSAHCore PUBLIC cxx_std_23)
+target_include_directories(CSAHCore PUBLIC "${SOURCE_DIR}")
+target_compile_options(CSAHCore PRIVATE
   /sdl
   /utf-8
   /permissive-
@@ -2536,7 +2536,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(minhook CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE
-  FO4VRCommunityShadersCore
+  CSAHCore
   CommonLibF4::CommonLibF4
   minhook::minhook
   nlohmann_json::nlohmann_json
@@ -2567,6 +2567,11 @@ string(REPLACE "/Ob2" "/Ob3" CMAKE_CXX_FLAGS_RELEASE
   "${CMAKE_CXX_FLAGS_RELEASE}")
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E rm -f
+    "${ROOT_DIR}/package/F4SE/Plugins/fo4vr-community-shaders.dll"
+    "${ROOT_DIR}/package/F4SE/Plugins/fo4vr-community-shaders.pdb"
+  COMMAND "${CMAKE_COMMAND}" -E remove_directory
+    "${ROOT_DIR}/package/DevMenu/Mods/fo4vr-community-shaders"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
     "${ROOT_DIR}/package/F4SE/Plugins"
   COMMAND "${CMAKE_COMMAND}" -E make_directory
@@ -2596,9 +2601,9 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 )
 
 option(POST_BUILD_COPY_PLUGIN
-  "Copy Community Shaders to a mod root." OFF)
+  "Copy CSAH to a mod root." OFF)
 set(COPY_PLUGIN_BASE_PATH "" CACHE STRING
-  "Semicolon-separated Community Shaders mod roots.")
+  "Semicolon-separated CSAH mod roots.")
 if(POST_BUILD_COPY_PLUGIN)
   if(COPY_PLUGIN_BASE_PATH STREQUAL "")
     message(FATAL_ERROR
@@ -2606,6 +2611,11 @@ if(POST_BUILD_COPY_PLUGIN)
   endif()
   foreach(copy_path IN LISTS COPY_PLUGIN_BASE_PATH)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E rm -f
+        "${copy_path}/F4SE/Plugins/fo4vr-community-shaders.dll"
+        "${copy_path}/F4SE/Plugins/fo4vr-community-shaders.pdb"
+      COMMAND "${CMAKE_COMMAND}" -E remove_directory
+        "${copy_path}/DevMenu/Mods/fo4vr-community-shaders"
       COMMAND "${CMAKE_COMMAND}" -E make_directory
         "${copy_path}/F4SE/Plugins"
       COMMAND "${CMAKE_COMMAND}" -E make_directory
@@ -2636,13 +2646,13 @@ if(POST_BUILD_COPY_PLUGIN)
   endforeach()
 endif()
 
-option(BUILD_FO4VR_CS_TESTS
-  "Build focused FO4VR Community Shaders tests." OFF)
-if(BUILD_FO4VR_CS_TESTS)
+option(BUILD_CSAH_TESTS
+  "Build focused Community Shaders at Home tests." OFF)
+if(BUILD_CSAH_TESTS)
   enable_testing()
   find_program(PWSH_EXECUTABLE NAMES pwsh REQUIRED)
 
-  add_executable(FO4VRCommunityShadersUpscalingSettingsTests
+  add_executable(CSAHUpscalingSettingsTests
     "${ROOT_DIR}/tests/UpscalingSettingsTests.cpp"
     "${DLAA_SETTINGS_STORE_SOURCE}"
     "${DLAA_SOURCE_DIR}/DlaaSettingsStore.h"
@@ -2650,29 +2660,29 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE cxx_std_23)
+    CSAHUpscalingSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    CSAHUpscalingSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHUpscalingSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    CSAHUpscalingSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHUpscalingSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersUpscalingSettingsTests PRIVATE
+    CSAHUpscalingSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.UpscalingSettings
-    COMMAND FO4VRCommunityShadersUpscalingSettingsTests)
+  add_test(NAME CSAH.UpscalingSettings
+    COMMAND CSAHUpscalingSettingsTests)
 
-  add_executable(FO4VRCommunityShadersLinearLightingSettingsTests
+  add_executable(CSAHLinearLightingSettingsTests
     "${ROOT_DIR}/tests/LinearLightingSettingsTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersLinearLightingSettingsTests PRIVATE cxx_std_23)
+    CSAHLinearLightingSettingsTests PRIVATE cxx_std_23)
   target_compile_options(
-    FO4VRCommunityShadersLinearLightingSettingsTests PRIVATE
+    CSAHLinearLightingSettingsTests PRIVATE
     /sdl
     /utf-8
     /permissive-
@@ -2681,104 +2691,104 @@ if(BUILD_FO4VR_CS_TESTS)
     /W4
   )
   target_link_libraries(
-    FO4VRCommunityShadersLinearLightingSettingsTests PRIVATE
-    FO4VRCommunityShadersCore)
-  add_test(NAME FO4VRCommunityShaders.LinearLightingSettings
-    COMMAND FO4VRCommunityShadersLinearLightingSettingsTests)
+    CSAHLinearLightingSettingsTests PRIVATE
+    CSAHCore)
+  add_test(NAME CSAH.LinearLightingSettings
+    COMMAND CSAHLinearLightingSettingsTests)
 
-  add_executable(FO4VRCommunityShadersSettingsPathTests
+  add_executable(CSAHSettingsPathTests
     "${ROOT_DIR}/tests/SettingsPathTests.cpp"
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersSettingsPathTests PRIVATE cxx_std_23)
+    CSAHSettingsPathTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersSettingsPathTests PRIVATE
+    CSAHSettingsPathTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersSettingsPathTests PRIVATE "${SOURCE_DIR}")
+    CSAHSettingsPathTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersSettingsPathTests PRIVATE
+    CSAHSettingsPathTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersSettingsPathTests PRIVATE shell32)
-  add_test(NAME FO4VRCommunityShaders.SettingsPath
-    COMMAND FO4VRCommunityShadersSettingsPathTests)
+    CSAHSettingsPathTests PRIVATE shell32)
+  add_test(NAME CSAH.SettingsPath
+    COMMAND CSAHSettingsPathTests)
 
-  add_executable(FO4VRCommunityShadersSharedSettingsRuntimeTests
+  add_executable(CSAHSharedSettingsRuntimeTests
     "${ROOT_DIR}/tests/SharedSettingsRuntimeTests.cpp"
     "${SHARED_SETTINGS_RUNTIME_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE cxx_std_23)
+    CSAHSharedSettingsRuntimeTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE "${SOURCE_DIR}")
+    CSAHSharedSettingsRuntimeTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersSharedSettingsRuntimeTests PRIVATE
+    CSAHSharedSettingsRuntimeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.SharedSettingsRuntime
-    COMMAND FO4VRCommunityShadersSharedSettingsRuntimeTests)
+  add_test(NAME CSAH.SharedSettingsRuntime
+    COMMAND CSAHSharedSettingsRuntimeTests)
 
-  add_executable(FO4VRCommunityShadersFixedShaderBindingLookupTests
+  add_executable(CSAHFixedShaderBindingLookupTests
     "${ROOT_DIR}/tests/FixedShaderBindingLookupTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE cxx_std_23)
+    CSAHFixedShaderBindingLookupTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE
+    CSAHFixedShaderBindingLookupTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersFixedShaderBindingLookupTests PRIVATE
+    CSAHFixedShaderBindingLookupTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.FixedShaderBindingLookup
-    COMMAND FO4VRCommunityShadersFixedShaderBindingLookupTests)
+  add_test(NAME CSAH.FixedShaderBindingLookup
+    COMMAND CSAHFixedShaderBindingLookupTests)
 
-  add_executable(FO4VRCommunityShadersComplexMaterialProducerModelTests
+  add_executable(CSAHComplexMaterialProducerModelTests
     "${ROOT_DIR}/tests/ComplexMaterialProducerModelTests.cpp"
     "${COMPLEX_MATERIAL_PRODUCER_MODEL}"
     "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
     "${COMPLEX_ENVIRONMENT_MODEL}"
     "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}")
   target_compile_features(
-    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE cxx_std_23)
+    CSAHComplexMaterialProducerModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE
+    CSAHComplexMaterialProducerModelTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersComplexMaterialProducerModelTests PRIVATE
+    CSAHComplexMaterialProducerModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerModel
-    COMMAND FO4VRCommunityShadersComplexMaterialProducerModelTests)
+  add_test(NAME CSAH.ComplexMaterialProducerModel
+    COMMAND CSAHComplexMaterialProducerModelTests)
 
-  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerGenerator
+  add_test(NAME CSAH.ComplexMaterialProducerGenerator
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_generate_complex_material_producer_contracts.py")
 
-  add_executable(FO4VRCommunityShadersComplexParallaxModelTests
+  add_executable(CSAHComplexParallaxModelTests
     "${COMPLEX_PARALLAX_TEST_SOURCE}"
     "${COMPLEX_PARALLAX_SETTINGS_HEADER}"
     "${COMPLEX_PARALLAX_MODEL_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE cxx_std_23)
+    CSAHComplexParallaxModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE "${SOURCE_DIR}")
+    CSAHComplexParallaxModelTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersComplexParallaxModelTests PRIVATE
+    CSAHComplexParallaxModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.ComplexParallaxModel
-    COMMAND FO4VRCommunityShadersComplexParallaxModelTests)
+  add_test(NAME CSAH.ComplexParallaxModel
+    COMMAND CSAHComplexParallaxModelTests)
 
-  add_test(NAME FO4VRCommunityShaders.LoaderSource
+  add_test(NAME CSAH.LoaderSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLOADER_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrLoader.cmake'")
-  add_test(NAME FO4VRCommunityShaders.RendererHookSource
+  add_test(NAME CSAH.RendererHookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake'")
-  add_test(NAME FO4VRCommunityShaders.RendererHookValidatorNegative
+  add_test(NAME CSAH.RendererHookValidatorNegative
     COMMAND "${CMAKE_COMMAND}"
       "-DRENDERER_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}"
       "-DRENDERER_VALIDATOR=${ROOT_DIR}/cmake/VerifyFo4VrRendererHook.cmake"
       "-DTEST_OUTPUT_DIR=${BUILD_DIR}/renderer-validator-negative"
       -P "${ROOT_DIR}/cmake/TestVerifyFo4VrRendererHookNegative.cmake")
-  add_test(NAME FO4VRCommunityShaders.DevMenuSource
+  add_test(NAME CSAH.DevMenuSource
     COMMAND "${CMAKE_COMMAND}"
       "-DDEVMENU_MANIFEST_SOURCE=${DEVMENU_MANIFEST_SOURCE}"
       "-DPROJECT_CMAKE_SOURCE=${ROOT_DIR}/CMakeLists.txt"
@@ -2788,11 +2798,11 @@ if(BUILD_FO4VR_CS_TESTS)
       "-DSOURCE_ROOT=${ROOT_DIR}"
       -P "${DEVMENU_VERIFY_SCRIPT}")
 
-  add_test(NAME FO4VRCommunityShaders.D3D11HookSource
+  add_test(NAME CSAH.D3D11HookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyD3D11Hooks.cmake'")
 
-  add_test(NAME FO4VRCommunityShaders.VanillaFixesSource
+  add_test(NAME CSAH.VanillaFixesSource
     COMMAND "${CMAKE_COMMAND}"
       "-DVANILLA_SHADER_RUNTIME_SOURCE=${VANILLA_SHADER_RUNTIME_SOURCE}"
       "-DVANILLA_FOCUS_RUNTIME_SOURCE=${VANILLA_FOCUS_RUNTIME_SOURCE}"
@@ -2819,7 +2829,7 @@ if(BUILD_FO4VR_CS_TESTS)
       "-DVANILLA_SSLR_BLUR_SOURCE=${VANILLA_SSLR_BLUR_SOURCE}"
       "-DVANILLA_SSLR_PREPASS_SOURCE=${VANILLA_SSLR_PREPASS_SOURCE}"
       "-DVANILLA_SSLR_RAYTRACE_SOURCE=${VANILLA_SSLR_RAYTRACE_SOURCE}"
-      "-DVANILLA_FXC_EXECUTABLE=${FO4VR_CS_FXC_EXECUTABLE}"
+      "-DVANILLA_FXC_EXECUTABLE=${CSAH_FXC_EXECUTABLE}"
       "-DVANILLA_SAO_BLUR_BINARY=${VANILLA_SAO_BLUR_BINARY}"
       "-DVANILLA_SAO_RAW_BINARY=${VANILLA_SAO_RAW_BINARY}"
       "-DVANILLA_SSLR_BLUR_BINARY=${VANILLA_SSLR_BLUR_BINARY}"
@@ -2827,11 +2837,11 @@ if(BUILD_FO4VR_CS_TESTS)
       "-DVANILLA_SSLR_RAYTRACE_BINARY=${VANILLA_SSLR_RAYTRACE_BINARY}"
       -P "${VANILLA_VERIFY_SCRIPT}")
 
-  add_test(NAME FO4VRCommunityShaders.ContactShadowsSource
+  add_test(NAME CSAH.ContactShadowsSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DCONTACT_SHADOW_RUNTIME_SOURCE=${CONTACT_SHADOW_RUNTIME_SOURCE}' '-DCONTACT_SHADOW_RUNTIME_HEADER=${CONTACT_SHADOW_RUNTIME_HEADER}' '-DCONTACT_SHADOW_SETTINGS_HEADER=${CONTACT_SHADOW_SETTINGS_HEADER}' '-DCONTACT_SHADOW_SETTINGS_STORE_SOURCE=${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}' '-DCONTACT_SHADOW_SETTINGS_STORE_HEADER=${CONTACT_SHADOW_SETTINGS_STORE_HEADER}' '-DCONTACT_SHADOW_SHADER_SOURCE=${CONTACT_SHADOW_SHADER_SOURCE}' '-DCONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE=${CONTACT_SHADOW_DIAGNOSTIC_SHADER_SOURCE}' '-DCONTACT_SHADOW_MASK_SHADER_SOURCE=${CONTACT_SHADOW_MASK_SHADER_SOURCE}' '-DCONTACT_SHADOW_DISPATCH_SHADER_SOURCE=${CONTACT_SHADOW_DISPATCH_SHADER_SOURCE}' '-DCONTACT_SHADOW_RESOLVE_SHADER_SOURCE=${CONTACT_SHADOW_RESOLVE_SHADER_SOURCE}' '-DCONTACT_SHADOW_SHADER_GENERATOR=${CONTACT_SHADOW_SHADER_GENERATOR}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DDEVMENU_MANIFEST_SOURCE=${DEVMENU_MANIFEST_SOURCE}' '-DPLUGIN_SOURCE=${PLUGIN_SOURCE}' '-P' '${CONTACT_SHADOW_VERIFY_SCRIPT}'")
 
-  add_executable(FO4VRCommunityShadersContactShadowSettingsTests
+  add_executable(CSAHContactShadowSettingsTests
     "${ROOT_DIR}/tests/ContactShadowSettingsTests.cpp"
     "${CONTACT_SHADOW_SETTINGS_STORE_SOURCE}"
     "${CONTACT_SHADOW_SETTINGS_STORE_HEADER}"
@@ -2839,24 +2849,24 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE cxx_std_23)
+    CSAHContactShadowSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    CSAHContactShadowSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHContactShadowSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    CSAHContactShadowSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHContactShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersContactShadowSettingsTests PRIVATE
+    CSAHContactShadowSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.ContactShadowSettings
-    COMMAND FO4VRCommunityShadersContactShadowSettingsTests)
+  add_test(NAME CSAH.ContactShadowSettings
+    COMMAND CSAHContactShadowSettingsTests)
 
-  add_executable(FO4VRCommunityShadersVolumetricLightingSettingsTests
+  add_executable(CSAHVolumetricLightingSettingsTests
     "${ROOT_DIR}/tests/VolumetricLightingSettingsTests.cpp"
     "${VOLUMETRIC_LIGHTING_SETTINGS_STORE_SOURCE}"
     "${VOLUMETRIC_LIGHTING_SETTINGS_STORE_HEADER}"
@@ -2867,65 +2877,65 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE cxx_std_23)
+    CSAHVolumetricLightingSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE
+    CSAHVolumetricLightingSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE
+    CSAHVolumetricLightingSettingsTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE
+    CSAHVolumetricLightingSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE
+    CSAHVolumetricLightingSettingsTests PRIVATE
     "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersVolumetricLightingSettingsTests PRIVATE
+    CSAHVolumetricLightingSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.VolumetricLightingSettings
-    COMMAND FO4VRCommunityShadersVolumetricLightingSettingsTests)
+  add_test(NAME CSAH.VolumetricLightingSettings
+    COMMAND CSAHVolumetricLightingSettingsTests)
 
-  add_executable(FO4VRCommunityShadersVolumetricOutputQualificationTests
+  add_executable(CSAHVolumetricOutputQualificationTests
     "${ROOT_DIR}/tests/VolumetricOutputQualificationTests.cpp"
     "${VOLUMETRIC_LIGHTING_OUTPUT_QUALIFICATION_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE cxx_std_23)
+    CSAHVolumetricOutputQualificationTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    CSAHVolumetricOutputQualificationTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    CSAHVolumetricOutputQualificationTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersVolumetricOutputQualificationTests PRIVATE
+    CSAHVolumetricOutputQualificationTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.VolumetricOutputQualification
-    COMMAND FO4VRCommunityShadersVolumetricOutputQualificationTests)
+  add_test(NAME CSAH.VolumetricOutputQualification
+    COMMAND CSAHVolumetricOutputQualificationTests)
 
-  add_executable(FO4VRCommunityShadersVolumetricShaderBytecodeTests
+  add_executable(CSAHVolumetricShaderBytecodeTests
     "${ROOT_DIR}/tests/VolumetricShaderBytecodeTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE cxx_std_23)
+    CSAHVolumetricShaderBytecodeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    CSAHVolumetricShaderBytecodeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    CSAHVolumetricShaderBytecodeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersVolumetricShaderBytecodeTests PRIVATE
+    CSAHVolumetricShaderBytecodeTests PRIVATE
     d3d11 d3dcompiler)
   add_dependencies(
-    FO4VRCommunityShadersVolumetricShaderBytecodeTests
+    CSAHVolumetricShaderBytecodeTests
     VolumetricLightingShaders)
-  add_test(NAME FO4VRCommunityShaders.VolumetricShaderBytecode
-    COMMAND FO4VRCommunityShadersVolumetricShaderBytecodeTests
+  add_test(NAME CSAH.VolumetricShaderBytecode
+    COMMAND CSAHVolumetricShaderBytecodeTests
       "${VOLUMETRIC_QUALIFY_SHADER_BINARY}"
       "${VOLUMETRIC_RESOLVE_SHADER_BINARY}"
       "${VOLUMETRIC_COMPOSITE_SHADER_BINARY}")
 
-  add_executable(FO4VRCommunityShadersVanillaFixesSettingsTests
+  add_executable(CSAHVanillaFixesSettingsTests
     "${ROOT_DIR}/tests/VanillaFixesSettingsTests.cpp"
     "${VANILLA_SETTINGS_STORE_SOURCE}"
     "${VANILLA_FIXES_SOURCE_DIR}/VanillaFixesSettingsStore.h"
@@ -2933,24 +2943,24 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE cxx_std_23)
+    CSAHVanillaFixesSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    CSAHVanillaFixesSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    CSAHVanillaFixesSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHVanillaFixesSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersVanillaFixesSettingsTests PRIVATE
+    CSAHVanillaFixesSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.VanillaFixesSettings
-    COMMAND FO4VRCommunityShadersVanillaFixesSettingsTests)
+  add_test(NAME CSAH.VanillaFixesSettings
+    COMMAND CSAHVanillaFixesSettingsTests)
 
-  add_executable(FO4VRCommunityShadersNativeShadowSettingsTests
+  add_executable(CSAHNativeShadowSettingsTests
     "${ROOT_DIR}/tests/NativeShadowSettingsTests.cpp"
     "${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
     "${NATIVE_SHADOW_SETTINGS_STORE_HEADER}"
@@ -2958,24 +2968,24 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE cxx_std_23)
+    CSAHNativeShadowSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    CSAHNativeShadowSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    CSAHNativeShadowSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHNativeShadowSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersNativeShadowSettingsTests PRIVATE
+    CSAHNativeShadowSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.NativeShadowSettings
-    COMMAND FO4VRCommunityShadersNativeShadowSettingsTests)
+  add_test(NAME CSAH.NativeShadowSettings
+    COMMAND CSAHNativeShadowSettingsTests)
 
-  add_test(NAME FO4VRCommunityShaders.NativeShadowsSource
+  add_test(NAME CSAH.NativeShadowsSource
     COMMAND "${CMAKE_COMMAND}"
       "-DNATIVE_SHADOW_RUNTIME_SOURCE=${NATIVE_SHADOW_RUNTIME_SOURCE}"
       "-DNATIVE_SHADOW_RUNTIME_HEADER=${NATIVE_SHADOW_RUNTIME_HEADER}"
@@ -2985,42 +2995,42 @@ if(BUILD_FO4VR_CS_TESTS)
       "-DPLUGIN_SOURCE=${PLUGIN_SOURCE}"
       -P "${NATIVE_SHADOW_VERIFY_SCRIPT}")
 
-  add_executable(FO4VRCommunityShadersContactShadowShaderBytecodeTests
+  add_executable(CSAHContactShadowShaderBytecodeTests
     "${ROOT_DIR}/tests/ContactShadowShaderBytecodeTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE cxx_std_23)
+    CSAHContactShadowShaderBytecodeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    CSAHContactShadowShaderBytecodeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    CSAHContactShadowShaderBytecodeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersContactShadowShaderBytecodeTests PRIVATE
+    CSAHContactShadowShaderBytecodeTests PRIVATE
     d3d11 d3dcompiler)
   add_dependencies(
-    FO4VRCommunityShadersContactShadowShaderBytecodeTests ContactShadowShader)
-  add_test(NAME FO4VRCommunityShaders.ContactShadowShaderBytecode
-    COMMAND FO4VRCommunityShadersContactShadowShaderBytecodeTests
+    CSAHContactShadowShaderBytecodeTests ContactShadowShader)
+  add_test(NAME CSAH.ContactShadowShaderBytecode
+    COMMAND CSAHContactShadowShaderBytecodeTests
       "${CONTACT_SHADOW_SHADER_BINARY}"
       "${CONTACT_SHADOW_MASK_BINARY}")
 
-  add_test(NAME FO4VRCommunityShaders.IblFoundationSource
+  add_test(NAME CSAH.IblFoundationSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DIBL_RUNTIME_SOURCE=${IBL_RUNTIME_SOURCE}' '-DIBL_RUNTIME_HEADER=${IBL_RUNTIME_HEADER}' '-DIBL_SETTINGS_HEADER=${IBL_SETTINGS_HEADER}' '-DIBL_SETTINGS_STORE_SOURCE=${IBL_SETTINGS_STORE_SOURCE}' '-DIBL_SETTINGS_STORE_HEADER=${IBL_SETTINGS_STORE_HEADER}' '-DIBL_PROVIDER_MODEL=${IBL_PROVIDER_MODEL}' '-DIBL_ENVIRONMENT_PROVIDER_SOURCE=${IBL_ENVIRONMENT_PROVIDER_SOURCE}' '-DIBL_ENVIRONMENT_PROVIDER_HEADER=${IBL_ENVIRONMENT_PROVIDER_HEADER}' '-DIBL_ENVIRONMENT_UPDATER_SOURCE=${IBL_ENVIRONMENT_UPDATER_SOURCE}' '-DIBL_ENVIRONMENT_UPDATER_HEADER=${IBL_ENVIRONMENT_UPDATER_HEADER}' '-DIBL_COMPUTE_STATE_SCOPE_SOURCE=${IBL_COMPUTE_STATE_SCOPE_SOURCE}' '-DIBL_COMPUTE_STATE_SCOPE_HEADER=${IBL_COMPUTE_STATE_SCOPE_HEADER}' '-DIBL_PROJECTION_MODEL=${IBL_PROJECTION_MODEL}' '-DIBL_CAPTURE_PROBE_MODEL=${IBL_CAPTURE_PROBE_MODEL}' '-DIBL_SCENE_RADIANCE_PROBE_MODEL=${IBL_SCENE_RADIANCE_PROBE_MODEL}' '-DIBL_REFLECTION_FREE_CAPTURE_SOURCE=${IBL_REFLECTION_FREE_CAPTURE_SOURCE}' '-DIBL_REFLECTION_FREE_CAPTURE_HEADER=${IBL_REFLECTION_FREE_CAPTURE_HEADER}' '-DIBL_MATERIAL_BINDING_SCOPE_SOURCE=${IBL_MATERIAL_BINDING_SCOPE_SOURCE}' '-DIBL_MATERIAL_BINDING_SCOPE_HEADER=${IBL_MATERIAL_BINDING_SCOPE_HEADER}' '-DIBL_MATERIAL_GENERATED_CONTRACTS=${IBL_MATERIAL_GENERATED_CONTRACTS}' '-DIBL_PROJECTION_SHADER_SOURCE=${IBL_PROJECTION_SHADER_SOURCE}' '-DIBL_PROJECTION_SHADER_ASSET=${IBL_PROJECTION_SHADER_ASSET}' '-DIBL_ENVIRONMENT_UPDATE_SHADER_SOURCE=${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}' '-DIBL_ENVIRONMENT_UPDATE_SHADER_ASSET=${IBL_ENVIRONMENT_UPDATE_SHADER_ASSET}' '-DIBL_ENVIRONMENT_FILTER_SHADER_SOURCE=${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}' '-DIBL_ENVIRONMENT_FILTER_SHADER_ASSET=${IBL_ENVIRONMENT_FILTER_SHADER_ASSET}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DGEOMETRY_HOOK_SOURCE=${RENDERER_HOOK_SOURCE}' '-DDEVMENU_MANIFEST_SOURCE=${DEVMENU_MANIFEST_SOURCE}' '-DPLUGIN_SOURCE=${PLUGIN_SOURCE}' '-DRESOURCE_SOURCE=${RESOURCE_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyIblFoundation.cmake'")
 
-  add_test(NAME FO4VRCommunityShaders.IblProjectionShaderAsset
+  add_test(NAME CSAH.IblProjectionShaderAsset
     COMMAND "${Python3_EXECUTABLE}"
       "${IBL_PROJECTION_SHADER_VERIFIER}"
       --root "${ROOT_DIR}"
       --check)
 
-  add_test(NAME FO4VRCommunityShaders.IblCaptureProbeContracts
+  add_test(NAME CSAH.IblCaptureProbeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${IBL_CAPTURE_PROBE_VERIFIER}"
       --root "${ROOT_DIR}")
 
-  add_test(NAME FO4VRCommunityShaders.IblMaterialContracts
+  add_test(NAME CSAH.IblMaterialContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${IBL_MATERIAL_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
@@ -3028,169 +3038,169 @@ if(BUILD_FO4VR_CS_TESTS)
       --surface-anchor-tool "$<TARGET_FILE:VanillaReflectionPatchTool>"
       --check)
 
-  add_test(NAME FO4VRCommunityShaders.ComplexMaterialProducerContracts
+  add_test(NAME CSAH.ComplexMaterialProducerContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${COMPLEX_MATERIAL_PRODUCER_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${COMPLEX_MATERIAL_PRODUCER_GENERATED_CONTRACTS}"
       --check)
 
-  add_test(NAME FO4VRCommunityShaders.ComplexEnvironmentContracts
+  add_test(NAME CSAH.ComplexEnvironmentContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${COMPLEX_ENVIRONMENT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${COMPLEX_ENVIRONMENT_GENERATED_CONTRACTS}"
       --check)
 
-  add_test(NAME FO4VRCommunityShaders.LinearLightingConstantScopeSource
+  add_test(NAME CSAH.LinearLightingConstantScopeSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DLINEAR_LIGHTING_RUNTIME_SOURCE=${LINEAR_LIGHTING_RUNTIME_SOURCE}' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingConstantScope.cmake'")
 
-  add_test(NAME FO4VRCommunityShaders.DFTiledPointLightHookSource
+  add_test(NAME CSAH.DFTiledPointLightHookSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DPOINT_LIGHT_HOOK_SOURCE=${POINT_LIGHT_HOOK_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyDFTiledPointLightHook.cmake'")
 
-  add_test(NAME FO4VRCommunityShaders.LinearLightingQualificationSource
+  add_test(NAME CSAH.LinearLightingQualificationSource
     COMMAND "${PWSH_EXECUTABLE}" -NoProfile -Command
       "& '${CMAKE_COMMAND}' '-DPLUGIN_SOURCE=${SOURCE_DIR}/XSEPlugin.cpp' '-DD3D11_HOOK_SOURCE=${D3D11_HOOK_SOURCE}' '-DQUALIFICATION_SOURCE=${QUALIFICATION_SOURCE}' '-P' '${ROOT_DIR}/cmake/VerifyLinearLightingQualification.cmake'")
 
-  add_executable(FO4VRCommunityShadersD3D11MethodDetourSmokeTests
+  add_executable(CSAHD3D11MethodDetourSmokeTests
     "${ROOT_DIR}/tests/D3D11MethodDetourSmokeTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE cxx_std_23)
+    CSAHD3D11MethodDetourSmokeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    CSAHD3D11MethodDetourSmokeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    CSAHD3D11MethodDetourSmokeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersD3D11MethodDetourSmokeTests PRIVATE
+    CSAHD3D11MethodDetourSmokeTests PRIVATE
     minhook::minhook d3d11)
-  add_test(NAME FO4VRCommunityShaders.D3D11MethodDetourSmoke
-    COMMAND FO4VRCommunityShadersD3D11MethodDetourSmokeTests)
+  add_test(NAME CSAH.D3D11MethodDetourSmoke
+    COMMAND CSAHD3D11MethodDetourSmokeTests)
 
-  add_executable(FO4VRCommunityShadersLinearLightingShaderParityTests
+  add_executable(CSAHLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/LinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE cxx_std_23)
+    CSAHLinearLightingShaderParityTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    CSAHLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    CSAHLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersLinearLightingShaderParityTests PRIVATE
+    CSAHLinearLightingShaderParityTests PRIVATE
     d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.LinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersLinearLightingShaderParityTests
+  add_test(NAME CSAH.LinearLightingShaderParity
+    COMMAND CSAHLinearLightingShaderParityTests
       "${ROOT_DIR}")
 
-  add_executable(FO4VRCommunityShadersIblProjectionTests
+  add_executable(CSAHIblProjectionTests
     "${ROOT_DIR}/tests/IblProjectionTests.cpp"
     "${IBL_PROJECTION_MODEL}")
   target_compile_features(
-    FO4VRCommunityShadersIblProjectionTests PRIVATE cxx_std_23)
+    CSAHIblProjectionTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblProjectionTests PRIVATE
+    CSAHIblProjectionTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblProjectionTests PRIVATE "${SOURCE_DIR}")
+    CSAHIblProjectionTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblProjectionTests PRIVATE
+    CSAHIblProjectionTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblProjectionTests PRIVATE d3d11)
-  add_test(NAME FO4VRCommunityShaders.IblProjection
-    COMMAND FO4VRCommunityShadersIblProjectionTests "${ROOT_DIR}")
+    CSAHIblProjectionTests PRIVATE d3d11)
+  add_test(NAME CSAH.IblProjection
+    COMMAND CSAHIblProjectionTests "${ROOT_DIR}")
 
-  add_executable(FO4VRCommunityShadersIblCaptureProbeModelTests
+  add_executable(CSAHIblCaptureProbeModelTests
     "${ROOT_DIR}/tests/IblCaptureProbeModelTests.cpp"
     "${IBL_CAPTURE_PROBE_MODEL}")
   target_compile_features(
-    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE cxx_std_23)
+    CSAHIblCaptureProbeModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE "${SOURCE_DIR}")
+    CSAHIblCaptureProbeModelTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblCaptureProbeModelTests PRIVATE
+    CSAHIblCaptureProbeModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.IblCaptureProbeModel
-    COMMAND FO4VRCommunityShadersIblCaptureProbeModelTests)
+  add_test(NAME CSAH.IblCaptureProbeModel
+    COMMAND CSAHIblCaptureProbeModelTests)
 
-  add_executable(FO4VRCommunityShadersIblSceneRadianceProbeModelTests
+  add_executable(CSAHIblSceneRadianceProbeModelTests
     "${ROOT_DIR}/tests/IblSceneRadianceProbeModelTests.cpp"
     "${IBL_SCENE_RADIANCE_PROBE_MODEL}")
   target_compile_features(
-    FO4VRCommunityShadersIblSceneRadianceProbeModelTests PRIVATE cxx_std_23)
+    CSAHIblSceneRadianceProbeModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersIblSceneRadianceProbeModelTests PRIVATE
+    CSAHIblSceneRadianceProbeModelTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblSceneRadianceProbeModelTests PRIVATE
+    CSAHIblSceneRadianceProbeModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.IblSceneRadianceProbeModel
-    COMMAND FO4VRCommunityShadersIblSceneRadianceProbeModelTests)
+  add_test(NAME CSAH.IblSceneRadianceProbeModel
+    COMMAND CSAHIblSceneRadianceProbeModelTests)
 
-  add_executable(FO4VRCommunityShadersIblReflectionFreeCaptureTests
+  add_executable(CSAHIblReflectionFreeCaptureTests
     "${ROOT_DIR}/tests/IblReflectionFreeCaptureTests.cpp"
     "${IBL_REFLECTION_FREE_CAPTURE_SOURCE}"
     "${IBL_REFLECTION_FREE_CAPTURE_HEADER}"
     "${GPU_TIMING_PROFILER_SOURCE}"
     "${GPU_TIMING_PROFILER_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE cxx_std_23)
+    CSAHIblReflectionFreeCaptureTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE
+    CSAHIblReflectionFreeCaptureTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE
+    CSAHIblReflectionFreeCaptureTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE
+    CSAHIblReflectionFreeCaptureTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblReflectionFreeCaptureTests PRIVATE
+    CSAHIblReflectionFreeCaptureTests PRIVATE
     d3d11 d3dcompiler spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.IblReflectionFreeCapture
-    COMMAND FO4VRCommunityShadersIblReflectionFreeCaptureTests)
+  add_test(NAME CSAH.IblReflectionFreeCapture
+    COMMAND CSAHIblReflectionFreeCaptureTests)
 
-  add_executable(FO4VRCommunityShadersIblMaterialBindingScopeTests
+  add_executable(CSAHIblMaterialBindingScopeTests
     "${ROOT_DIR}/tests/IblMaterialBindingScopeTests.cpp"
     "${IBL_MATERIAL_BINDING_SCOPE_SOURCE}"
     "${IBL_MATERIAL_BINDING_SCOPE_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersIblMaterialBindingScopeTests PRIVATE cxx_std_23)
+    CSAHIblMaterialBindingScopeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblMaterialBindingScopeTests PRIVATE
+    CSAHIblMaterialBindingScopeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblMaterialBindingScopeTests PRIVATE
+    CSAHIblMaterialBindingScopeTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblMaterialBindingScopeTests PRIVATE
+    CSAHIblMaterialBindingScopeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblMaterialBindingScopeTests PRIVATE d3d11)
-  add_test(NAME FO4VRCommunityShaders.IblMaterialBindingScope
-    COMMAND FO4VRCommunityShadersIblMaterialBindingScopeTests)
+    CSAHIblMaterialBindingScopeTests PRIVATE d3d11)
+  add_test(NAME CSAH.IblMaterialBindingScope
+    COMMAND CSAHIblMaterialBindingScopeTests)
 
-  add_executable(FO4VRCommunityShadersIblMaterialShaderBytecodeTests
+  add_executable(CSAHIblMaterialShaderBytecodeTests
     "${ROOT_DIR}/tests/IblMaterialShaderBytecodeTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersIblMaterialShaderBytecodeTests PRIVATE cxx_std_23)
+    CSAHIblMaterialShaderBytecodeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblMaterialShaderBytecodeTests PRIVATE
+    CSAHIblMaterialShaderBytecodeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersIblMaterialShaderBytecodeTests PRIVATE
+    CSAHIblMaterialShaderBytecodeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblMaterialShaderBytecodeTests PRIVATE d3d11)
-  add_test(NAME FO4VRCommunityShaders.IblMaterialShaderBytecode
-    COMMAND FO4VRCommunityShadersIblMaterialShaderBytecodeTests "${ROOT_DIR}")
+    CSAHIblMaterialShaderBytecodeTests PRIVATE d3d11)
+  add_test(NAME CSAH.IblMaterialShaderBytecode
+    COMMAND CSAHIblMaterialShaderBytecodeTests "${ROOT_DIR}")
 
-  add_executable(FO4VRCommunityShadersIblProviderTests
+  add_executable(CSAHIblProviderTests
     "${ROOT_DIR}/tests/IblProviderTests.cpp"
     "${IBL_PROVIDER_MODEL}"
     "${IBL_ENVIRONMENT_PROVIDER_SOURCE}"
@@ -3198,21 +3208,21 @@ if(BUILD_FO4VR_CS_TESTS)
     "${IBL_COMPUTE_STATE_SCOPE_SOURCE}"
     "${IBL_COMPUTE_STATE_SCOPE_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersIblProviderTests PRIVATE cxx_std_23)
+    CSAHIblProviderTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblProviderTests PRIVATE
+    CSAHIblProviderTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblProviderTests PRIVATE "${SOURCE_DIR}")
+    CSAHIblProviderTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblProviderTests PRIVATE
+    CSAHIblProviderTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersIblProviderTests PRIVATE d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.IblProvider
-    COMMAND FO4VRCommunityShadersIblProviderTests)
+    CSAHIblProviderTests PRIVATE d3d11 d3dcompiler)
+  add_test(NAME CSAH.IblProvider
+    COMMAND CSAHIblProviderTests)
 
-  add_executable(FO4VRCommunityShadersIblEnvironmentUpdaterTests
+  add_executable(CSAHIblEnvironmentUpdaterTests
     "${ROOT_DIR}/tests/IblEnvironmentUpdaterTests.cpp"
     "${IBL_PROVIDER_MODEL}"
     "${IBL_SCENE_RADIANCE_PROBE_MODEL}"
@@ -3225,24 +3235,24 @@ if(BUILD_FO4VR_CS_TESTS)
     "${GPU_TIMING_PROFILER_SOURCE}"
     "${GPU_TIMING_PROFILER_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE cxx_std_23)
+    CSAHIblEnvironmentUpdaterTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
+    CSAHIblEnvironmentUpdaterTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE "${SOURCE_DIR}")
+    CSAHIblEnvironmentUpdaterTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
+    CSAHIblEnvironmentUpdaterTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHIblEnvironmentUpdaterTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
+    CSAHIblEnvironmentUpdaterTests PRIVATE
     CommonLibF4::CommonLibF4 d3d11 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.IblEnvironmentUpdater
-    COMMAND FO4VRCommunityShadersIblEnvironmentUpdaterTests "${ROOT_DIR}")
+  add_test(NAME CSAH.IblEnvironmentUpdater
+    COMMAND CSAHIblEnvironmentUpdaterTests "${ROOT_DIR}")
 
-  add_executable(FO4VRCommunityShadersIblSettingsTests
+  add_executable(CSAHIblSettingsTests
     "${ROOT_DIR}/tests/IblSettingsTests.cpp"
     "${IBL_SETTINGS_STORE_SOURCE}"
     "${IBL_SETTINGS_STORE_HEADER}"
@@ -3250,38 +3260,38 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE cxx_std_23)
+    CSAHIblSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE
+    CSAHIblSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHIblSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE
+    CSAHIblSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHIblSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersIblSettingsTests PRIVATE
+    CSAHIblSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.IblSettings
-    COMMAND FO4VRCommunityShadersIblSettingsTests)
+  add_test(NAME CSAH.IblSettings
+    COMMAND CSAHIblSettingsTests)
 
-  add_executable(FO4VRCommunityShadersPbrMaterialModelTests
+  add_executable(CSAHPbrMaterialModelTests
     "${ROOT_DIR}/tests/PbrMaterialModelTests.cpp"
     "${PBR_MATERIAL_MODEL_HEADER}"
     "${PBR_SETTINGS_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE cxx_std_23)
+    CSAHPbrMaterialModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE "${SOURCE_DIR}")
+    CSAHPbrMaterialModelTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersPbrMaterialModelTests PRIVATE
+    CSAHPbrMaterialModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.PbrMaterialModel
-    COMMAND FO4VRCommunityShadersPbrMaterialModelTests)
+  add_test(NAME CSAH.PbrMaterialModel
+    COMMAND CSAHPbrMaterialModelTests)
 
-  add_executable(FO4VRCommunityShadersPbrSettingsTests
+  add_executable(CSAHPbrSettingsTests
     "${ROOT_DIR}/tests/PbrSettingsTests.cpp"
     "${PBR_SETTINGS_STORE_SOURCE}"
     "${PBR_SETTINGS_STORE_HEADER}"
@@ -3292,276 +3302,276 @@ if(BUILD_FO4VR_CS_TESTS)
     "${SETTINGS_PATH_SOURCE}"
     "${SETTINGS_PATH_HEADER}")
   target_compile_features(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE cxx_std_23)
+    CSAHPbrSettingsTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    CSAHPbrSettingsTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE "${SOURCE_DIR}")
+    CSAHPbrSettingsTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    CSAHPbrSettingsTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_precompile_headers(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
+    CSAHPbrSettingsTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
-    FO4VRCommunityShadersPbrSettingsTests PRIVATE
+    CSAHPbrSettingsTests PRIVATE
     CommonLibF4::CommonLibF4 shell32 spdlog::spdlog)
-  add_test(NAME FO4VRCommunityShaders.PbrSettings
-    COMMAND FO4VRCommunityShadersPbrSettingsTests)
+  add_test(NAME CSAH.PbrSettings
+    COMMAND CSAHPbrSettingsTests)
 
-  add_test(NAME FO4VRCommunityShaders.AuthoredPbrPackBuilder
+  add_test(NAME CSAH.AuthoredPbrPackBuilder
     COMMAND "${Python3_EXECUTABLE}" "${AUTHORED_PBR_PACK_TEST}")
 
-  add_executable(FO4VRCommunityShadersLinearLightingQualificationTests
+  add_executable(CSAHLinearLightingQualificationTests
     "${ROOT_DIR}/tests/LinearLightingQualificationTests.cpp"
     "${SOURCE_DIR}/diagnostics/LinearLightingQualificationModel.h")
   target_compile_features(
-    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE cxx_std_23)
+    CSAHLinearLightingQualificationTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE
+    CSAHLinearLightingQualificationTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersLinearLightingQualificationTests PRIVATE
+    CSAHLinearLightingQualificationTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.LinearLightingQualification
-    COMMAND FO4VRCommunityShadersLinearLightingQualificationTests)
+  add_test(NAME CSAH.LinearLightingQualification
+    COMMAND CSAHLinearLightingQualificationTests)
 
-  add_executable(FO4VRCommunityShadersDFLightAmbientShaderPatchTests
+  add_executable(CSAHDFLightAmbientShaderPatchTests
     "${ROOT_DIR}/tests/DFLightAmbientShaderPatchTests.cpp"
     "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
   target_compile_features(
-    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE cxx_std_23)
+    CSAHDFLightAmbientShaderPatchTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE "${SOURCE_DIR}")
+    CSAHDFLightAmbientShaderPatchTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersDFLightAmbientShaderPatchTests PRIVATE
+    CSAHDFLightAmbientShaderPatchTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
-  add_test(NAME FO4VRCommunityShaders.DFLightAmbientShaderPatch
-    COMMAND FO4VRCommunityShadersDFLightAmbientShaderPatchTests)
+  add_test(NAME CSAH.DFLightAmbientShaderPatch
+    COMMAND CSAHDFLightAmbientShaderPatchTests)
 
-  add_executable(FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests
+  add_executable(CSAHDFLightAmbientShaderBytecodeTests
     "${ROOT_DIR}/tests/DFLightAmbientShaderBytecodeTests.cpp"
     "${SOURCE_DIR}/Features/linear_lighting/DFLightAmbientShaderPatch.h")
   target_compile_features(
-    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE cxx_std_23)
+    CSAHDFLightAmbientShaderBytecodeTests PRIVATE cxx_std_23)
   target_compile_definitions(
-    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    CSAHDFLightAmbientShaderBytecodeTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_include_directories(
-    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    CSAHDFLightAmbientShaderBytecodeTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE
+    CSAHDFLightAmbientShaderBytecodeTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests PRIVATE d3d11)
-  add_test(NAME FO4VRCommunityShaders.DFLightAmbientShaderBytecode
-    COMMAND FO4VRCommunityShadersDFLightAmbientShaderBytecodeTests
+    CSAHDFLightAmbientShaderBytecodeTests PRIVATE d3d11)
+  add_test(NAME CSAH.DFLightAmbientShaderBytecode
+    COMMAND CSAHDFLightAmbientShaderBytecodeTests
       "${ROOT_DIR}")
 
-  add_executable(FO4VRCommunityShadersDFTiledPointLightModelTests
+  add_executable(CSAHDFTiledPointLightModelTests
     "${ROOT_DIR}/tests/DFTiledPointLightModelTests.cpp"
     "${SOURCE_DIR}/Features/linear_lighting/DFTiledPointLightModel.h")
   target_compile_features(
-    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE cxx_std_23)
+    CSAHDFTiledPointLightModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE "${SOURCE_DIR}")
+    CSAHDFTiledPointLightModelTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE
+    CSAHDFTiledPointLightModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersDFTiledPointLightModelTests PRIVATE
-    FO4VRCommunityShadersCore)
-  add_test(NAME FO4VRCommunityShaders.DFTiledPointLightModel
-    COMMAND FO4VRCommunityShadersDFTiledPointLightModelTests)
+    CSAHDFTiledPointLightModelTests PRIVATE
+    CSAHCore)
+  add_test(NAME CSAH.DFTiledPointLightModel
+    COMMAND CSAHDFTiledPointLightModelTests)
 
-  add_executable(FO4VRCommunityShadersDFLightProducerModelTests
+  add_executable(CSAHDFLightProducerModelTests
     "${ROOT_DIR}/tests/DFLightProducerModelTests.cpp"
     "${SOURCE_DIR}/Features/linear_lighting/DFLightProducerModel.h")
   target_compile_features(
-    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE cxx_std_23)
+    CSAHDFLightProducerModelTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE "${SOURCE_DIR}")
+    CSAHDFLightProducerModelTests PRIVATE "${SOURCE_DIR}")
   target_compile_options(
-    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE
+    CSAHDFLightProducerModelTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersDFLightProducerModelTests PRIVATE
-    FO4VRCommunityShadersCore)
-  add_test(NAME FO4VRCommunityShaders.DFLightProducerModel
-    COMMAND FO4VRCommunityShadersDFLightProducerModelTests)
+    CSAHDFLightProducerModelTests PRIVATE
+    CSAHCore)
+  add_test(NAME CSAH.DFLightProducerModel
+    COMMAND CSAHDFLightProducerModelTests)
 
-  add_test(NAME FO4VRCommunityShaders.LinearLightingShader
+  add_test(NAME CSAH.LinearLightingShader
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/verify_linear_lighting_shader.py"
       --root "${ROOT_DIR}")
-  add_test(NAME FO4VRCommunityShaders.LinearLightingRuntimeContracts
+  add_test(NAME CSAH.LinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.DFLightAmbientRuntimeContracts
+  add_test(NAME CSAH.DFLightAmbientRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${DFLIGHT_AMBIENT_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${DFLIGHT_AMBIENT_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.SkyLinearLightingRuntimeContracts
+  add_test(NAME CSAH.SkyLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${SKY_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${SKY_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.DistantTreeLinearLightingRuntimeContracts
+  add_test(NAME CSAH.DistantTreeLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${DISTANT_TREE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${DISTANT_TREE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.ParticleLinearLightingRuntimeContracts
+  add_test(NAME CSAH.ParticleLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${PARTICLE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${PARTICLE_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.WaterLinearLightingRuntimeContracts
+  add_test(NAME CSAH.WaterLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${WATER_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${WATER_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.EffectLinearLightingRuntimeContracts
+  add_test(NAME CSAH.EffectLinearLightingRuntimeContracts
     COMMAND "${Python3_EXECUTABLE}"
       "${EFFECT_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${EFFECT_LINEAR_LIGHTING_GENERATED_CONTRACTS}"
       --check)
-  add_test(NAME FO4VRCommunityShaders.VLSCompositeLinearLightingRuntimeContract
+  add_test(NAME CSAH.VLSCompositeLinearLightingRuntimeContract
     COMMAND "${Python3_EXECUTABLE}"
       "${VLS_COMPOSITE_LINEAR_LIGHTING_CONTRACT_GENERATOR}"
       --root "${ROOT_DIR}"
       --output "${VLS_COMPOSITE_LINEAR_LIGHTING_GENERATED_CONTRACT}"
       --check)
-  add_executable(FO4VRCommunityShadersSkyLinearLightingShaderParityTests
+  add_executable(CSAHSkyLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/SkyLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE cxx_std_23)
+    CSAHSkyLinearLightingShaderParityTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    CSAHSkyLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    CSAHSkyLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
+    CSAHSkyLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersSkyLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.SkyLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersSkyLinearLightingShaderParityTests
+    CSAHSkyLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.SkyLinearLightingShaderParity
+    COMMAND CSAHSkyLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_executable(FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests
+  add_executable(CSAHDistantTreeLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/DistantTreeLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    CSAHDistantTreeLinearLightingShaderParityTests PRIVATE
     cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    CSAHDistantTreeLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    CSAHDistantTreeLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
+    CSAHDistantTreeLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.DistantTreeLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersDistantTreeLinearLightingShaderParityTests
+    CSAHDistantTreeLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.DistantTreeLinearLightingShaderParity
+    COMMAND CSAHDistantTreeLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_executable(FO4VRCommunityShadersParticleLinearLightingShaderParityTests
+  add_executable(CSAHParticleLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/ParticleLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersParticleLinearLightingShaderParityTests PRIVATE
+    CSAHParticleLinearLightingShaderParityTests PRIVATE
     cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersParticleLinearLightingShaderParityTests PRIVATE
+    CSAHParticleLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersParticleLinearLightingShaderParityTests PRIVATE
+    CSAHParticleLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersParticleLinearLightingShaderParityTests PRIVATE
+    CSAHParticleLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersParticleLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.ParticleLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersParticleLinearLightingShaderParityTests
+    CSAHParticleLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.ParticleLinearLightingShaderParity
+    COMMAND CSAHParticleLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_executable(FO4VRCommunityShadersWaterLinearLightingShaderParityTests
+  add_executable(CSAHWaterLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/WaterLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE cxx_std_23)
+    CSAHWaterLinearLightingShaderParityTests PRIVATE cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    CSAHWaterLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    CSAHWaterLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
+    CSAHWaterLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersWaterLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.WaterLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersWaterLinearLightingShaderParityTests
+    CSAHWaterLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.WaterLinearLightingShaderParity
+    COMMAND CSAHWaterLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_executable(FO4VRCommunityShadersEffectLinearLightingShaderParityTests
+  add_executable(CSAHEffectLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/EffectLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    CSAHEffectLinearLightingShaderParityTests PRIVATE
     cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    CSAHEffectLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    CSAHEffectLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
+    CSAHEffectLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersEffectLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.EffectLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersEffectLinearLightingShaderParityTests
+    CSAHEffectLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.EffectLinearLightingShaderParity
+    COMMAND CSAHEffectLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_executable(FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests
+  add_executable(CSAHVLSCompositeLinearLightingShaderParityTests
     "${ROOT_DIR}/tests/VLSCompositeLinearLightingShaderParityTests.cpp")
   target_compile_features(
-    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    CSAHVLSCompositeLinearLightingShaderParityTests PRIVATE
     cxx_std_23)
   target_include_directories(
-    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    CSAHVLSCompositeLinearLightingShaderParityTests PRIVATE
     "${SOURCE_DIR}")
   target_compile_definitions(
-    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    CSAHVLSCompositeLinearLightingShaderParityTests PRIVATE
     WIN32_LEAN_AND_MEAN NOMINMAX)
   target_compile_options(
-    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
+    CSAHVLSCompositeLinearLightingShaderParityTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
   target_link_libraries(
-    FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests PRIVATE
-    FO4VRCommunityShadersCore d3d11 d3dcompiler)
-  add_test(NAME FO4VRCommunityShaders.VLSCompositeLinearLightingShaderParity
-    COMMAND FO4VRCommunityShadersVLSCompositeLinearLightingShaderParityTests
+    CSAHVLSCompositeLinearLightingShaderParityTests PRIVATE
+    CSAHCore d3d11 d3dcompiler)
+  add_test(NAME CSAH.VLSCompositeLinearLightingShaderParity
+    COMMAND CSAHVLSCompositeLinearLightingShaderParityTests
       "${ROOT_DIR}")
-  add_test(NAME FO4VRCommunityShaders.LinearLightingShaderCensus
+  add_test(NAME CSAH.LinearLightingShaderCensus
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tools/census_linear_lighting_fxp.py"
       --input "${ROOT_DIR}/package/Shaders/Community/VerifiedLinearLighting"
@@ -3570,7 +3580,7 @@ if(BUILD_FO4VR_CS_TESTS)
       --expect-unique 288
       --expect-target-shape 288
       --expect-known 288)
-  add_test(NAME FO4VRCommunityShaders.LinearLightingFxpParser
+  add_test(NAME CSAH.LinearLightingFxpParser
     COMMAND "${Python3_EXECUTABLE}"
       "${ROOT_DIR}/tests/test_census_linear_lighting_fxp.py")
 endif()

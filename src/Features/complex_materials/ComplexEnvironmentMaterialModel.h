@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     #include "Features/complex_materials/GeneratedComplexEnvironmentContracts.inl"
 

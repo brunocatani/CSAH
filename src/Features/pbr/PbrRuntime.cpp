@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-namespace community_shaders::pbr
+namespace csah::pbr
 {
     namespace
     {
@@ -95,7 +95,7 @@ namespace community_shaders::pbr
             auto root = std::filesystem::path(
                 std::wstring_view(executable.data(), length));
             return root.parent_path() / "Data" / "F4SE" / "Plugins" /
-                "FO4VRCommunityShaders" / "PBRMaterials";
+                "CSAH" / "PBRMaterials";
         }
 
         [[nodiscard]] RE::NiPointer<RE::NiTexture> loadTexture(
@@ -722,7 +722,7 @@ namespace community_shaders::pbr
         publishEffectiveState(settings());
         if (count != 0) {
             logging::info(
-                "Authored PBR indexed {} material records from Data\\F4SE\\Plugins\\FO4VRCommunityShaders\\PBRMaterials without preloading texture assets; RMAOS textures will stream on first observed use.",
+                "Authored PBR indexed {} material records from Data\\F4SE\\Plugins\\CSAH\\PBRMaterials without preloading texture assets; RMAOS textures will stream on first observed use.",
                 count);
         }
     }

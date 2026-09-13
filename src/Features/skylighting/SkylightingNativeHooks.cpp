@@ -36,7 +36,7 @@
 
 #pragma intrinsic(_ReturnAddress)
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     namespace
     {

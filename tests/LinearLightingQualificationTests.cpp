@@ -5,8 +5,8 @@
 
 namespace
 {
-    using namespace community_shaders::diagnostics::qualification_model;
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::diagnostics::qualification_model;
+    using namespace csah::linear_lighting;
 
     [[nodiscard]] Sample completeSample() noexcept
     {
@@ -53,8 +53,8 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::diagnostics::qualification_model;
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::diagnostics::qualification_model;
+    using namespace csah::linear_lighting;
     bool passed = true;
 
     const auto complete = evaluate(completeSample(), false);

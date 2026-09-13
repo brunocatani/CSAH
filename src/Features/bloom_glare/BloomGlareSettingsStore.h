@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::bloom_glare
+namespace csah::bloom_glare
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

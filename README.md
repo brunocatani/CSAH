@@ -1,14 +1,14 @@
-# FO4VR Community Shaders
+# Community Shaders at Home (CSAH)
 
 An experimental rendering mod for **Fallout 4 VR**, bringing Community Shaders lighting, materials, shadows, and image-quality features to the game's native Direct3D 11 renderer.
 
 This is a Fallout 4 VR implementation with stereo rendering support. Feature coverage and visual results vary; it does not include every feature from Skyrim Community Shaders or Open Shaders.
 
-[Downloads](https://github.com/brunocatani/fo4vr-community-shaders/releases) · [Report an issue](https://github.com/brunocatani/fo4vr-community-shaders/issues) · [GPL-3.0 license](LICENSE)
+[Downloads](https://github.com/brunocatani/CSAH/releases) · [Report an issue](https://github.com/brunocatani/CSAH/issues) · [GPL-3.0 license](LICENSE)
 
 ## Features
 
-The list below follows the names and controls in [DevMenu](devmenu/fo4vr-community-shaders/menu.json). These are included systems, not a claim that every effect is visually complete. Incomplete or unconfirmed effects are identified below.
+The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.json). These are included systems, not a claim that every effect is visually complete. Incomplete or unconfirmed effects are identified below.
 
 ### Lighting
 
@@ -84,7 +84,7 @@ The list below follows the names and controls in [DevMenu](devmenu/fo4vr-communi
 
 - **DevMenu Integration** — Provides the in-game interface for feature switches, fixed quality choices, and tuning controls.
 - **Live INI Reload** — Shares one settings file between the plugin and DevMenu. Most changes apply during play; restart-only settings are identified in the menu.
-- **Community Shaders Visual Suite** — Switches the visual suite independently of DLAA/DLSS, Vanilla Fixes, and Native Shadow Fixes.
+- **CSAH Visual Suite** — Switches the visual suite independently of DLAA/DLSS, Vanilla Fixes, and Native Shadow Fixes.
 - **GPU Performance Profiling** — Records GPU timing and CPU submission measurements for selected feature groups.
 - **Exclusive Lighting Diagnostic** — Isolates lighting and reflection components for investigation while preserving saved feature settings.
 - **Visualize Center Region** — Displays the center-DLAA region for adjustment.
@@ -99,43 +99,47 @@ The list below follows the names and controls in [DevMenu](devmenu/fo4vr-communi
 
 ## Installation
 
-1. Download a mod archive from [Releases](https://github.com/brunocatani/fo4vr-community-shaders/releases). GitHub's automatically generated **Source code** archives do not contain a built plugin.
+1. Download a mod archive from [Releases](https://github.com/brunocatani/CSAH/releases). GitHub's automatically generated **Source code** archives do not contain a built plugin.
 2. Install the mod archive through Mod Organizer 2, keeping its directory structure. For a manual installation, place the archive's runtime folders under the game's `Data` directory.
 3. Confirm that the installed payload includes:
 
    ```text
    Data/
-     F4SE/Plugins/fo4vr-community-shaders.dll
+     F4SE/Plugins/CSAH.dll
      F4SE/Plugins/Streamline/
-     DevMenu/Mods/fo4vr-community-shaders/menu.json
+     DevMenu/Mods/CSAH/menu.json
    ```
 
    Keep the bundled Streamline DLLs and their `Licenses` directory together. Install any other runtime folders included in the mod archive as well.
-4. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **FO4VR Community Shaders** to configure the mod.
+4. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home** to configure the mod.
 
 ## Configuration
 
 The active settings file is in your Windows Documents folder:
 
 ```text
-Documents/My Games/Fallout4VR/Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini
+Documents/My Games/Fallout4VR/Mods_Config/CSAH/CSAH.ini
 ```
 
 DevMenu and the plugin use this same file. Missing settings use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
 
-The **Community Shaders Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
+The **CSAH Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
 
 Linear Lighting defaults to **off**. Enable it explicitly to use the PBR pipeline, which depends on Linear Lighting. Quality settings are fixed choices: the mod does not automatically lower visual quality to meet an FPS target.
 
-If upgrading from a build that used a different INI location, move your existing settings file to the path above before launching. The plugin resolves only the current location.
+On first launch, CSAH moves an existing `Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini` to the new location if `CSAH.ini` does not already exist. The migration preserves the file byte for byte, including values, comments, and encoding. An existing CSAH file takes precedence. If migration fails, the plugin reports the error and stops loading instead of silently replacing your settings with defaults. The existing `[CommunityShaders]` section name remains part of the INI format so saved feature switches remain compatible.
+
+When upgrading from 0.0.3 Alpha, replace the old mod installation rather than enabling both DLLs. Remove the old `fo4vr-community-shaders.dll` and old `DevMenu/Mods/fo4vr-community-shaders` entry before installing CSAH.
 
 ## Authored PBR materials
 
 Texture mods can register base-colour and RMAOS texture pairs through their own manifest:
 
 ```text
-Data/F4SE/Plugins/FO4VRCommunityShaders/PBRMaterials/<mod-name>.json
+Data/F4SE/Plugins/CSAH/PBRMaterials/<mod-name>.json
 ```
+
+Existing content packs must move their manifest folder from `F4SE/Plugins/FO4VRCommunityShaders/PBRMaterials` to `F4SE/Plugins/CSAH/PBRMaterials`. Texture paths and manifest contents stay the same.
 
 ```json
 {
@@ -157,7 +161,7 @@ This mod is experimental. Lighting and reflection coverage, stereo artifacts, an
 When reporting a problem, include the mod version, GPU, headset, render resolution, enabled features, relevant settings, reproduction steps, and a screenshot or short video where useful. Attach the log from the affected run:
 
 ```text
-Documents/My Games/Fallout4VR/F4SE/FO4VRCommunityShaders.log
+Documents/My Games/Fallout4VR/F4SE/CSAH.log
 ```
 
 For an F4SE loading problem, also include `f4sevr.log` from the same directory and game session.
@@ -169,8 +173,8 @@ The build requires **Visual Studio 2022 with the v143 C++ toolset**, a Windows S
 Clone this repository with its CommonLibF4VR submodule:
 
 ```powershell
-git clone --recurse-submodules https://github.com/brunocatani/fo4vr-community-shaders.git
-cd fo4vr-community-shaders
+git clone --recurse-submodules https://github.com/brunocatani/CSAH.git
+cd CSAH
 ```
 
 The checked-in presets expect vcpkg at `C:/vcpkg`. Adjust the toolchain and `VCPKG_ROOT` through a local preset if your installation differs. Point CMake at the initialized CommonLibF4VR checkout and your Streamline SDK:

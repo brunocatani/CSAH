@@ -13,7 +13,7 @@
 #include <cstring>
 #include <limits>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     namespace
     {

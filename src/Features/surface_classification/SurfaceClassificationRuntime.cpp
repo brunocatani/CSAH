@@ -7,7 +7,7 @@
 #include <array>
 #include <utility>
 
-namespace community_shaders::surface_classification
+namespace csah::surface_classification
 {
     namespace
     {

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     struct CaptureProbeContract
     {

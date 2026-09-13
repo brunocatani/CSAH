@@ -22,7 +22,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-NativeShadows-" +
+                ("CSAH-NativeShadows-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -54,9 +54,9 @@ namespace
 
 int main()
 {
-    using community_shaders::native_shadows::Settings;
-    using community_shaders::native_shadows::loadSettings;
-    using community_shaders::native_shadows::saveSettings;
+    using csah::native_shadows::Settings;
+    using csah::native_shadows::loadSettings;
+    using csah::native_shadows::saveSettings;
 
     TemporaryIni ini;
     require(loadSettings(ini.path()) == Settings{}, "missing-file defaults");

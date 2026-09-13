@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::native_shadows::patch_model
+namespace csah::native_shadows::patch_model
 {
     struct BytePatch
     {

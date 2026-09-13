@@ -70,7 +70,7 @@ endforeach()
 foreach(required IN ITEMS
     "std::jthread"
     "kQualificationTimeoutMilliseconds = 20'000"
-    "FO4VRCommunityShaders.LinearLightingQualification.json"
+    "CSAH.LinearLightingQualification.json"
     "waiting_for_world"
     "GetCurrentProcessId()"
     "MoveFileExW"

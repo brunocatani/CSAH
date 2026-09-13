@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::basic_wetness
+namespace csah::basic_wetness
 {
     struct Settings
     {

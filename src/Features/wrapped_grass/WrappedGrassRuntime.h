@@ -8,7 +8,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace community_shaders::wrapped_grass
+namespace csah::wrapped_grass
 {
     struct RuntimeSnapshot
     {

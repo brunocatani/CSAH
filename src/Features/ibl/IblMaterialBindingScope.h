@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdint>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     enum class MaterialBindingRejection : std::uint8_t
     {

@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::basic_wetness
+namespace csah::basic_wetness
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

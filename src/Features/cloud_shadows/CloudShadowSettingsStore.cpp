@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::cloud_shadows
+namespace csah::cloud_shadows
 {
     namespace
     {

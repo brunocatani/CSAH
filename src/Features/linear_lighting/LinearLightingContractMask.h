@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     inline constexpr std::size_t kContractMaskWordBits = 64;
     inline constexpr std::size_t kContractMaskWordCount = 5;

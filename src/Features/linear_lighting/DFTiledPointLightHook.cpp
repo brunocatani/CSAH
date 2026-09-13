@@ -18,7 +18,7 @@
 #include <limits>
 #include <memory>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     namespace
     {

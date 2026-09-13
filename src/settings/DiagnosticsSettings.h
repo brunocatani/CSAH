@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 
-namespace community_shaders::diagnostics_settings
+namespace csah::diagnostics_settings
 {
     inline constexpr auto kSection = L"Diagnostics";
     inline constexpr auto kGpuProfilingModeKey = L"iGpuProfilingMode";

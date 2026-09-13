@@ -11,7 +11,7 @@
 
 namespace
 {
-    using namespace community_shaders::complex_materials;
+    using namespace csah::complex_materials;
 
     void require(bool condition, const std::string& message)
     {

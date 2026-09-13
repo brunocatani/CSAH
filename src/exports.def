@@ -1,4 +1,4 @@
-LIBRARY fo4vr-community-shaders
+LIBRARY CSAH
 EXPORTS
     F4SEPlugin_Version DATA
     F4SEPlugin_Query

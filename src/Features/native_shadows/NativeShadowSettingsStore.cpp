@@ -15,7 +15,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::native_shadows
+namespace csah::native_shadows
 {
     namespace
     {
@@ -211,7 +211,7 @@ namespace community_shaders::native_shadows
     {
         if (path.empty() || !settings_path::ensureParentDirectory(path)) {
             logging::error(
-                "Community Shaders settings directory is unavailable for '{}'.",
+                "CSAH settings directory is unavailable for '{}'.",
                 path.string());
             return false;
         }

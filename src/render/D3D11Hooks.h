@@ -9,7 +9,7 @@ namespace RE
     class NiTexture;
 }
 
-namespace community_shaders::render
+namespace csah::render
 {
     struct HookSnapshot
     {

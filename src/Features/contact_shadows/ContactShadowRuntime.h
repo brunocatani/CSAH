@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::contact_shadows
+namespace csah::contact_shadows
 {
     struct RuntimeSnapshot
     {

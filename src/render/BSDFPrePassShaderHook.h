@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::render
+namespace csah::render
 {
     struct DFPrePassHookSnapshot
     {

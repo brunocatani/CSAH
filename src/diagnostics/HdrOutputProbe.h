@@ -4,7 +4,7 @@
 
 #include <cstddef>
 
-namespace community_shaders::diagnostics::hdr_output_probe
+namespace csah::diagnostics::hdr_output_probe
 {
     [[nodiscard]] bool install() noexcept;
 

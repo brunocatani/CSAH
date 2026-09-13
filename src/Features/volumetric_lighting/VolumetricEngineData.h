@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     struct StereoFrame final
     {

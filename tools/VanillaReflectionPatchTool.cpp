@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     const auto mode = argc == 4 ? std::string_view{ argv[3] } :
                                   std::string_view{ "surface-anchor" };
     const auto patchedReady = [&]() noexcept {
-        using namespace community_shaders::vanilla_fixes;
+        using namespace csah::vanilla_fixes;
         if (mode == "surface-anchor") {
             return patchStockReflectionCompositeSurfaceAnchoredCubemap(
                 bytes,

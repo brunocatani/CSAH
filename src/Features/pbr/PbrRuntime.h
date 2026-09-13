@@ -14,12 +14,12 @@ namespace RE
     class NiTexture;
 }
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     struct ReplacementShaderBinding;
 }
 
-namespace community_shaders::pbr
+namespace csah::pbr
 {
     struct RuntimeSnapshot final
     {

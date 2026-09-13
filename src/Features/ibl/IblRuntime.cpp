@@ -16,7 +16,7 @@
 #include <cstring>
 #include <ranges>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     namespace
     {

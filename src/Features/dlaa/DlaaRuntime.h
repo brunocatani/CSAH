@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <mutex>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     struct RuntimeSnapshot
     {

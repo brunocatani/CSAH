@@ -13,7 +13,7 @@
 #include <string>
 #include <string_view>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     namespace
     {
@@ -159,7 +159,7 @@ namespace community_shaders::complex_materials
         const auto path = settings_path::resolveIniPath();
         if (!settings_path::ensureParentDirectory(path)) {
             logging::error(
-                "Community Shaders settings directory is unavailable for '{}'.",
+                "CSAH settings directory is unavailable for '{}'.",
                 path.string());
             return false;
         }

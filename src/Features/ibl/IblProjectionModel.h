@@ -10,7 +10,7 @@
 #include <limits>
 #include <ranges>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     enum class DiffuseSHState
     {

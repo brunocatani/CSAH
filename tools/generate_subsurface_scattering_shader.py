@@ -39,7 +39,7 @@ def write_header(path: Path, data: bytes) -> None:
     rows = [
         "#pragma once",
         "",
-        "inline constexpr unsigned char fo4vr_cs_subsurface_scattering[] = {",
+        "inline constexpr unsigned char csah_subsurface_scattering[] = {",
     ]
     for offset in range(0, len(data), 16):
         values = ", ".join(f"0x{value:02x}" for value in data[offset:offset + 16])

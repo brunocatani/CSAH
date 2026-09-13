@@ -45,7 +45,7 @@
 #include <utility>
 #include <vector>
 
-namespace community_shaders::render
+namespace csah::render
 {
     namespace
     {
@@ -2795,7 +2795,7 @@ namespace community_shaders::render
                     bytecode,
                     bytecodeLength,
                     *shader);
-                community_shaders::dlaa::Runtime::get().onPixelShaderCreated(
+                csah::dlaa::Runtime::get().onPixelShaderCreated(
                     *shader,
                     identity.bytecodeSize,
                     identity.hash,

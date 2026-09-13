@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::filmic_tonemapping
+namespace csah::filmic_tonemapping
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

@@ -19,7 +19,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::volumetric_lighting;
+    using namespace csah::volumetric_lighting;
     std::array<OutputProbe, 128> probes{};
     for (std::size_t index = 0; index < probes.size(); ++index) {
         const auto value = static_cast<float>(index) / 256.0f;

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::wrapped_grass
+namespace csah::wrapped_grass
 {
     struct Settings
     {

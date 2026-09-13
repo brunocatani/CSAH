@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::diagnostics
+namespace csah::diagnostics
 {
     enum class LinearLightingQualificationState : std::uint8_t
     {

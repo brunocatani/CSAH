@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::wrapped_grass
+namespace csah::wrapped_grass
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

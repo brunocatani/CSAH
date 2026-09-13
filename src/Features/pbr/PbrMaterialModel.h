@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::pbr
+namespace csah::pbr
 {
     constexpr float kMinimumPerceptualRoughness = 0.04f;
 

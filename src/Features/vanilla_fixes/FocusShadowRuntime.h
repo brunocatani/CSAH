@@ -7,7 +7,7 @@ struct ID3D11DeviceContext;
 struct ID3D11PixelShader;
 struct ID3D11ShaderResourceView;
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     struct FocusShadowSnapshot final
     {

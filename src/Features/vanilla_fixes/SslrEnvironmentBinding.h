@@ -6,7 +6,7 @@
 #include <array>
 #include <cstdint>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     struct SslrEnvironmentSnapshot final
     {
@@ -20,7 +20,7 @@ namespace community_shaders::vanilla_fixes
     };
 
     // Creates the small private b11/s4 binding resources used by the exact
-    // SSLR raytrace draw. Community Shaders' IBL runtime retains ownership of
+    // SSLR raytrace draw. CSAH' IBL runtime retains ownership of
     // all environment textures.
     [[nodiscard]] bool initializeSslrEnvironmentBinding(
         ID3D11Device* device,

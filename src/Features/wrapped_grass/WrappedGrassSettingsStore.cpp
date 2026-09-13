@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::wrapped_grass
+namespace csah::wrapped_grass
 {
     namespace
     {

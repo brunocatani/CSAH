@@ -11,7 +11,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::sky_sync
+namespace csah::sky_sync
 {
     namespace
     {

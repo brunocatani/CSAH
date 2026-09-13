@@ -24,7 +24,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::pbr;
+    using namespace csah::pbr;
 
     require(effectiveEnabled(Settings{}, true),
         "enabled PBR did not accept Linear Lighting");

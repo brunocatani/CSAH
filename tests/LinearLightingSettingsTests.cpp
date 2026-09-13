@@ -38,7 +38,7 @@ namespace
 
 int main()
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
 
     static_assert(!HasBloodEffectMultiplier<Settings>);
     static_assert(!HasProjectedEffectMultiplier<Settings>);

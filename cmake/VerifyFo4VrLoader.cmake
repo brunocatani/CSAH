@@ -1,4 +1,4 @@
-function(fo4vr_cs_verify_fo4vr_loader source_path)
+function(csah_verify_fo4vr_loader source_path)
   if(NOT EXISTS "${source_path}")
     message(FATAL_ERROR "FO4VR loader source is missing: ${source_path}")
   endif()
@@ -34,5 +34,5 @@ function(fo4vr_cs_verify_fo4vr_loader source_path)
 endfunction()
 
 if(DEFINED LOADER_SOURCE)
-  fo4vr_cs_verify_fo4vr_loader("${LOADER_SOURCE}")
+  csah_verify_fo4vr_loader("${LOADER_SOURCE}")
 endif()

@@ -20,7 +20,7 @@
 #include <string>
 #include <thread>
 
-namespace community_shaders::diagnostics
+namespace csah::diagnostics
 {
     namespace
     {
@@ -33,7 +33,7 @@ namespace community_shaders::diagnostics
             std::chrono::milliseconds(100);
         constexpr std::uint64_t kQualificationTimeoutMilliseconds = 20'000;
         constexpr const wchar_t* kQualificationReportFileName =
-            L"FO4VRCommunityShaders.LinearLightingQualification.json";
+            L"CSAH.LinearLightingQualification.json";
 
         std::atomic<LinearLightingQualificationState> publicState{
             LinearLightingQualificationState::waitingForWorld };

@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     enum class ReflectionFreeCaptureRejection : std::uint8_t
     {

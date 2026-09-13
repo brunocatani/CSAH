@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::master_settings
+namespace csah::master_settings
 {
     inline constexpr auto kSection = L"CommunityShaders";
     inline constexpr auto kEnabledKey = L"bEnabled";
@@ -22,7 +22,7 @@ namespace community_shaders::master_settings
                    path.c_str()) != 0;
     }
 
-    // Applies only to Community Shaders visual features. DLAA/DLSS,
+    // Applies only to CSAH visual features. DLAA/DLSS,
     // Vanilla Fixes, and Native Shadows own independent master gates and
     // deliberately do not call this helper.
     template <class Settings>

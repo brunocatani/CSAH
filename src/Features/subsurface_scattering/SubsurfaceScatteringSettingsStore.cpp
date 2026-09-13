@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::subsurface_scattering
+namespace csah::subsurface_scattering
 {
     namespace
     {

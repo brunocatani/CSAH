@@ -8,7 +8,7 @@
 #include <limits>
 #include <span>
 
-namespace community_shaders::support::near_allocation
+namespace csah::support::near_allocation
 {
     [[nodiscard]] inline std::uintptr_t alignUp(
         std::uintptr_t value,

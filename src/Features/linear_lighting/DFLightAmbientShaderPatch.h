@@ -10,7 +10,7 @@
 #include <cstring>
 #include <span>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     constexpr float kVanillaDFLightAmbientShaderGamma = 2.2f;
     constexpr std::size_t kDFLightAmbientGammaFloatCount = 6;

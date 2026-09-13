@@ -21,10 +21,10 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::DiffusePublicationAction;
-    using community_shaders::ibl::DiffuseSH;
-    using community_shaders::ibl::DiffuseSHState;
-    using community_shaders::ibl::Float3;
+    using csah::ibl::DiffusePublicationAction;
+    using csah::ibl::DiffuseSH;
+    using csah::ibl::DiffuseSHState;
+    using csah::ibl::Float3;
 
     struct Float4
     {
@@ -263,7 +263,7 @@ namespace
         const Float3& direction)
     {
         const auto basis =
-            community_shaders::ibl::evaluateFirstOrderSHBasis(direction);
+            csah::ibl::evaluateFirstOrderSHBasis(direction);
         std::array<float, 3> result{};
         for (std::size_t channel = 0; channel < result.size(); ++channel) {
             for (std::size_t coefficient = 0; coefficient < basis.size();
@@ -285,10 +285,10 @@ namespace
                 std::array{ 2.25f, 0.04f, 0.03f, 0.08f },
             },
         };
-        community_shaders::ibl::DiffuseSHFit fit{};
+        csah::ibl::DiffuseSHFit fit{};
         constexpr std::uint32_t kExtent = 12;
         for (std::uint32_t face = 0;
-             face < community_shaders::ibl::kEnvironmentCubeFaceCount;
+             face < csah::ibl::kEnvironmentCubeFaceCount;
              ++face) {
             for (std::uint32_t y = 0; y < kExtent; ++y) {
                 for (std::uint32_t x = 0; x < kExtent; ++x) {
@@ -299,24 +299,24 @@ namespace
                         ((static_cast<float>(y) + 0.5f) / kExtent) * 2.0f -
                         1.0f;
                     const auto direction =
-                        community_shaders::ibl::environmentCubeDirection(
+                        csah::ibl::environmentCubeDirection(
                             static_cast<
-                                community_shaders::ibl::EnvironmentCubeFace>(
+                                csah::ibl::EnvironmentCubeFace>(
                                 face),
                             horizontal,
                             vertical);
                     const auto validity = face == static_cast<std::uint32_t>(
-                                                        community_shaders::ibl::
+                                                        csah::ibl::
                                                             EnvironmentCubeFace::
                                                                 positiveZ) ?
                         0.0f :
                         1.0f;
-                    community_shaders::ibl::accumulateDiffuseSHFit(
+                    csah::ibl::accumulateDiffuseSHFit(
                         fit,
                         direction,
                         evaluateRadiance(expected, direction),
                         validity,
-                        community_shaders::ibl::cubeTexelSolidAngleWeight(
+                        csah::ibl::cubeTexelSolidAngleWeight(
                             horizontal,
                             vertical));
                 }
@@ -324,13 +324,13 @@ namespace
         }
 
         const auto coverage =
-            community_shaders::ibl::diffuseSHFitCoverage(fit);
+            csah::ibl::diffuseSHFitCoverage(fit);
         require(
             coverage > 0.80f && coverage < 0.90f,
             "partial-cubemap SH fit reported incorrect coverage");
         DiffuseSH solved{};
         require(
-            community_shaders::ibl::solveDiffuseSHFit(fit, solved),
+            csah::ibl::solveDiffuseSHFit(fit, solved),
             "partial-cubemap SH fit was singular");
         for (std::size_t channel = 0; channel < 3; ++channel) {
             for (std::size_t coefficient = 0; coefficient < 4;
@@ -343,22 +343,22 @@ namespace
             }
         }
 
-        community_shaders::ibl::DiffuseSHFit singular{};
-        community_shaders::ibl::accumulateDiffuseSHFit(
+        csah::ibl::DiffuseSHFit singular{};
+        csah::ibl::accumulateDiffuseSHFit(
             singular,
             { 1.0f, 0.0f, 0.0f },
             { 1.0f, 1.0f, 1.0f },
             1.0f,
             1.0);
         require(
-            !community_shaders::ibl::solveDiffuseSHFit(singular, solved),
+            !csah::ibl::solveDiffuseSHFit(singular, solved),
             "directionally singular SH fit was accepted");
     }
 
     void verifyAmbientTransform(const DiffuseSH& constantProjection)
     {
         const auto irradiance =
-            community_shaders::ibl::evaluateDiffuseIrradiance(
+            csah::ibl::evaluateDiffuseIrradiance(
                 constantProjection,
                 { 0.0f, 1.0f, 0.0f });
         requireNear(irradiance.x, 0.25f, 2.0e-4f, "constant irradiance red");
@@ -379,11 +379,11 @@ namespace
         vanilla[14] = 0.5f;
         vanilla[15] = 1.0f;
         constexpr std::array<float,
-            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            csah::ibl::kEnvironmentCubeFaceCount>
             fullConfidence{ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
         std::array<float, 16> transform{};
         require(
-            community_shaders::ibl::buildDirectionalAmbientTransform(
+            csah::ibl::buildDirectionalAmbientTransform(
                 constantProjection,
                 fullConfidence,
                 vanilla,
@@ -407,7 +407,7 @@ namespace
         vanilla[4] = -0.1f;
         vanilla[8] = 0.15f;
         require(
-            community_shaders::ibl::buildDirectionalAmbientTransform(
+            csah::ibl::buildDirectionalAmbientTransform(
                 constantProjection,
                 fullConfidence,
                 vanilla,
@@ -454,7 +454,7 @@ namespace
         auto directional = constantProjection;
         directional.rgb[0][3] = 0.35f;
         require(
-            community_shaders::ibl::buildDirectionalAmbientTransform(
+            csah::ibl::buildDirectionalAmbientTransform(
                 directional,
                 fullConfidence,
                 vanilla,
@@ -466,7 +466,7 @@ namespace
             transform[0] < -1.0e-3f,
             "world X directional term was not preserved");
         require(
-            !community_shaders::ibl::buildDirectionalAmbientTransform(
+            !csah::ibl::buildDirectionalAmbientTransform(
                 directional,
                 fullConfidence,
                 vanilla,
@@ -476,10 +476,10 @@ namespace
             "zero shader gamma was accepted");
 
         constexpr std::array<float,
-            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            csah::ibl::kEnvironmentCubeFaceCount>
             noConfidence{};
         require(
-            !community_shaders::ibl::buildDirectionalAmbientTransform(
+            !csah::ibl::buildDirectionalAmbientTransform(
                 directional,
                 noConfidence,
                 vanilla,
@@ -489,10 +489,10 @@ namespace
             "zero directional confidence replaced vanilla ambient");
 
         constexpr std::array<float,
-            community_shaders::ibl::kEnvironmentCubeFaceCount>
+            csah::ibl::kEnvironmentCubeFaceCount>
             positiveXConfidence{ 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
         require(
-            community_shaders::ibl::buildDirectionalAmbientTransform(
+            csah::ibl::buildDirectionalAmbientTransform(
                 directional,
                 positiveXConfidence,
                 vanilla,
@@ -538,7 +538,7 @@ namespace
 
     void verifyDiffusePublicationPolicy()
     {
-        using community_shaders::ibl::chooseDiffusePublicationAction;
+        using csah::ibl::chooseDiffusePublicationAction;
 
         require(
             chooseDiffusePublicationAction(
@@ -603,11 +603,11 @@ namespace
             *shader.Get(),
             kColor);
         require(
-            community_shaders::ibl::validDiffuseSH(projected),
+            csah::ibl::validDiffuseSH(projected),
             "constant-cubemap projection produced invalid coefficients");
         require(
-            community_shaders::ibl::classifyDiffuseSH(projected) ==
-                community_shaders::ibl::DiffuseSHState::usable,
+            csah::ibl::classifyDiffuseSH(projected) ==
+                csah::ibl::DiffuseSHState::usable,
             "constant-cubemap projection was not classified as usable");
         constexpr float kIntegratedL0 = 3.544907701811032f;
         const std::array colors{ kColor.x, kColor.y, kColor.z };
@@ -633,33 +633,33 @@ namespace
         auto invalid = projected;
         invalid.rgb[1][2] = std::numeric_limits<float>::quiet_NaN();
         require(
-            !community_shaders::ibl::validDiffuseSH(invalid),
+            !csah::ibl::validDiffuseSH(invalid),
             "non-finite SH coefficients were accepted");
         require(
-            community_shaders::ibl::classifyDiffuseSH(invalid) ==
-                community_shaders::ibl::DiffuseSHState::invalid,
+            csah::ibl::classifyDiffuseSH(invalid) ==
+                csah::ibl::DiffuseSHState::invalid,
             "non-finite SH coefficients were not classified as invalid");
 
         const DiffuseSH black{};
         require(
-            community_shaders::ibl::classifyDiffuseSH(black) ==
-                community_shaders::ibl::DiffuseSHState::black,
+            csah::ibl::classifyDiffuseSH(black) ==
+                csah::ibl::DiffuseSHState::black,
             "zero-radiance SH coefficients were not classified as black");
 
         auto negativeL0 = projected;
         negativeL0.rgb[0][0] = -0.25f;
         require(
-            community_shaders::ibl::classifyDiffuseSH(negativeL0) ==
-                community_shaders::ibl::DiffuseSHState::invalid,
+            csah::ibl::classifyDiffuseSH(negativeL0) ==
+                csah::ibl::DiffuseSHState::invalid,
             "negative-radiance L0 was accepted");
 
         auto impossibleDirectional = projected;
         impossibleDirectional.rgb[0][1] =
             impossibleDirectional.rgb[0][0] * 2.0f;
         require(
-            community_shaders::ibl::classifyDiffuseSH(
+            csah::ibl::classifyDiffuseSH(
                 impossibleDirectional) ==
-                community_shaders::ibl::DiffuseSHState::invalid,
+                csah::ibl::DiffuseSHState::invalid,
             "physically impossible first-order SH was accepted");
     }
 }

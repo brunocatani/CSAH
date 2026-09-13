@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     struct D3D11HookSnapshot
     {

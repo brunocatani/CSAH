@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     constexpr float kNativeLightingResponseGamma = 2.2f;
 

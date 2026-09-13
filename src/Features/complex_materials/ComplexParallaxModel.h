@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cmath>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     inline constexpr std::array<std::size_t, 3>
         kLandscapeMaterialContractIndices{ 273u, 274u, 275u };

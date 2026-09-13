@@ -503,7 +503,7 @@ def write_byte_array(rows: list[str], symbol: str, data: bytes) -> None:
 
 def write_compute_header(path: Path, data: bytes) -> None:
     rows = ["#pragma once", ""]
-    write_byte_array(rows, "fo4vr_cs_skylighting_update_probes", data)
+    write_byte_array(rows, "csah_skylighting_update_probes", data)
     path.write_text("\n".join(rows), encoding="utf-8")
 
 
@@ -521,7 +521,7 @@ def write_ambient_header(
     ]
     symbols: list[str] = []
     for index, (candidate, _) in enumerate(candidates):
-        symbol = f"fo4vr_cs_skylighting_ambient_{index:03d}"
+        symbol = f"csah_skylighting_ambient_{index:03d}"
         symbols.append(symbol)
         write_byte_array(rows, symbol, candidate)
 
@@ -536,7 +536,7 @@ def write_ambient_header(
             "",
             "inline constexpr std::array<",
             "    Fo4vrCsSkylightingAmbientContract,",
-            f"    {len(candidates)}> fo4vr_cs_skylighting_ambient_contracts{{{{",
+            f"    {len(candidates)}> csah_skylighting_ambient_contracts{{{{",
         )
     )
     for symbol, (_, offsets) in zip(symbols, candidates, strict=True):

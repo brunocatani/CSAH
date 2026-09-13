@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace community_shaders::pbr
+namespace csah::pbr
 {
     struct Settings final
     {

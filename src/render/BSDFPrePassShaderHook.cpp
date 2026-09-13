@@ -13,7 +13,7 @@
 #include <cstring>
 #include <limits>
 
-namespace community_shaders::render
+namespace csah::render
 {
     namespace
     {

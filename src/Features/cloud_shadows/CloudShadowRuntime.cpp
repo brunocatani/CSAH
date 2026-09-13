@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <iterator>
 
-namespace community_shaders::cloud_shadows
+namespace csah::cloud_shadows
 {
     namespace
     {

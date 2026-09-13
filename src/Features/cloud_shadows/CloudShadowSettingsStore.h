@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::cloud_shadows
+namespace csah::cloud_shadows
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

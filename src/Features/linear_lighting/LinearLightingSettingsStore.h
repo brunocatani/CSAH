@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

@@ -22,7 +22,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-VolumetricLighting-" +
+                ("CSAH-VolumetricLighting-" +
                     std::to_string(std::chrono::steady_clock::now()
                                        .time_since_epoch()
                                        .count()) +
@@ -53,9 +53,9 @@ namespace
 
 int main()
 {
-    using community_shaders::volumetric_lighting::Settings;
-    using community_shaders::volumetric_lighting::loadSettings;
-    using community_shaders::volumetric_lighting::saveSettings;
+    using csah::volumetric_lighting::Settings;
+    using csah::volumetric_lighting::loadSettings;
+    using csah::volumetric_lighting::saveSettings;
 
     TemporaryIni ini;
     const auto defaults = loadSettings(ini.path());

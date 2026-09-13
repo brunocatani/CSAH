@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::pbr
+namespace csah::pbr
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

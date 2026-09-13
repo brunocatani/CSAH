@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace community_shaders::render
+namespace csah::render
 {
     struct ComputeStateFootprint
     {

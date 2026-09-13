@@ -43,7 +43,7 @@ namespace
 
 int main(int argc, char** argv)
 {
-    using namespace community_shaders::linear_lighting;
+    using namespace csah::linear_lighting;
     if (argc != 2) {
         std::cerr << "expected repository root\n";
         return 1;

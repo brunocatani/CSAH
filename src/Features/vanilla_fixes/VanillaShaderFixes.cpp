@@ -16,7 +16,7 @@
 #include <ranges>
 #include <span>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {
@@ -153,8 +153,8 @@ namespace community_shaders::vanilla_fixes
                 identifyShader(bytecode, bytecodeLength),
                 kSslrHorizontalBlur)) {
             return {
-                fo4vr_cs_vanilla_sslr_blur_h_vs,
-                sizeof(fo4vr_cs_vanilla_sslr_blur_h_vs),
+                csah_vanilla_sslr_blur_h_vs,
+                sizeof(csah_vanilla_sslr_blur_h_vs),
                 ShaderFix::sslrHorizontalBlur,
                 true,
             };
@@ -171,16 +171,16 @@ namespace community_shaders::vanilla_fixes
         const auto identity = identifyShader(bytecode, bytecodeLength);
         if (matches(identity, kSslrPrepass)) {
             return {
-                fo4vr_cs_vanilla_sslr_prepass_ps,
-                sizeof(fo4vr_cs_vanilla_sslr_prepass_ps),
+                csah_vanilla_sslr_prepass_ps,
+                sizeof(csah_vanilla_sslr_prepass_ps),
                 ShaderFix::sslrPrepass,
                 true,
             };
         }
         if (matches(identity, kSslrRaytrace)) {
             return {
-                fo4vr_cs_vanilla_sslr_raytrace_ps,
-                sizeof(fo4vr_cs_vanilla_sslr_raytrace_ps),
+                csah_vanilla_sslr_raytrace_ps,
+                sizeof(csah_vanilla_sslr_raytrace_ps),
                 ShaderFix::sslrRaytrace,
                 true,
             };
@@ -214,16 +214,16 @@ namespace community_shaders::vanilla_fixes
         const auto identity = identifyShader(bytecode, bytecodeLength);
         if (matches(identity, kSaoRawAo)) {
             return {
-                fo4vr_cs_vanilla_sao_raw_ao_cs,
-                sizeof(fo4vr_cs_vanilla_sao_raw_ao_cs),
+                csah_vanilla_sao_raw_ao_cs,
+                sizeof(csah_vanilla_sao_raw_ao_cs),
                 ShaderFix::saoRawAo,
                 true,
             };
         }
         if (matches(identity, kSaoHorizontalBlur)) {
             return {
-                fo4vr_cs_vanilla_sao_blur_h_cs,
-                sizeof(fo4vr_cs_vanilla_sao_blur_h_cs),
+                csah_vanilla_sao_blur_h_cs,
+                sizeof(csah_vanilla_sao_blur_h_cs),
                 ShaderFix::saoHorizontalBlur,
                 true,
             };

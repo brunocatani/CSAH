@@ -6,7 +6,7 @@
 #include <array>
 #include <cstddef>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     class StateScope final
     {

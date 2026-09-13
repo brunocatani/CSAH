@@ -9,7 +9,7 @@
 #include <cwchar>
 #include <string>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     namespace
     {
@@ -164,7 +164,7 @@ namespace community_shaders::dlaa
         const auto path = settings_path::resolveIniPath();
         if (!settings_path::ensureParentDirectory(path)) {
             logging::error(
-                "Community Shaders settings directory is unavailable for '{}'.",
+                "CSAH settings directory is unavailable for '{}'.",
                 path.string());
             return false;
         }

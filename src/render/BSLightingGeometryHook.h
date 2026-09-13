@@ -2,12 +2,12 @@
 
 #include <cstdint>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     struct Settings;
 }
 
-namespace community_shaders::render
+namespace csah::render
 {
     enum class GeometrySourceStage : std::uint32_t
     {

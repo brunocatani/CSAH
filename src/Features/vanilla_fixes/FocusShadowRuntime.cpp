@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {

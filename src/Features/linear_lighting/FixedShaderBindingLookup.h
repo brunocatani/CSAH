@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     // Fixed, append-only lookup for original shader pointers. Insertions are
     // serialized by Runtime::shaderRegistryMutex_; render-thread reads are

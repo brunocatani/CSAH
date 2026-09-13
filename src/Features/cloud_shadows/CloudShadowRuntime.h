@@ -10,7 +10,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace community_shaders::cloud_shadows
+namespace csah::cloud_shadows
 {
     struct RuntimeSnapshot
     {

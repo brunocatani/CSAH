@@ -21,7 +21,7 @@
 #include <span>
 #include <type_traits>
 
-namespace community_shaders::native_shadows
+namespace csah::native_shadows
 {
     namespace
     {

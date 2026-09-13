@@ -32,7 +32,7 @@
 #include <cstring>
 #include <limits>
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     namespace
     {
@@ -760,8 +760,8 @@ namespace community_shaders::skylighting
 
         ComPtr<ID3D11ComputeShader> updateShader;
         if (FAILED(device_->CreateComputeShader(
-                fo4vr_cs_skylighting_update_probes,
-                sizeof(fo4vr_cs_skylighting_update_probes),
+                csah_skylighting_update_probes,
+                sizeof(csah_skylighting_update_probes),
                 nullptr,
                 updateShader.GetAddressOf()))) {
             return false;

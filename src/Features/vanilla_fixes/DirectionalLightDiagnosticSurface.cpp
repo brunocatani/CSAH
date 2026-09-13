@@ -12,7 +12,7 @@
 #include <ranges>
 #include <utility>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {
@@ -75,8 +75,8 @@ namespace community_shaders::vanilla_fixes
         ID3D11PixelShader* shader{};
         const auto result = createPixelShader(
             device,
-            fo4vr_cs_vanilla_directional_diagnostic_composite_ps,
-            sizeof(fo4vr_cs_vanilla_directional_diagnostic_composite_ps),
+            csah_vanilla_directional_diagnostic_composite_ps,
+            sizeof(csah_vanilla_directional_diagnostic_composite_ps),
             nullptr,
             &shader);
         if (FAILED(result) || !shader) {
@@ -88,8 +88,8 @@ namespace community_shaders::vanilla_fixes
         ID3D11VertexShader* coverageVertexShader{};
         const auto coverageVertexResult = createVertexShader(
             device,
-            fo4vr_cs_vanilla_directional_diagnostic_coverage_vs,
-            sizeof(fo4vr_cs_vanilla_directional_diagnostic_coverage_vs),
+            csah_vanilla_directional_diagnostic_coverage_vs,
+            sizeof(csah_vanilla_directional_diagnostic_coverage_vs),
             nullptr,
             &coverageVertexShader);
         if (FAILED(coverageVertexResult) || !coverageVertexShader) {
@@ -103,14 +103,14 @@ namespace community_shaders::vanilla_fixes
         compositePixelShader_.Attach(shader);
         coverageVertexShader_.Attach(coverageVertexShader);
         const std::array<const unsigned char*, 3> ownershipBytecode{
-            fo4vr_cs_vanilla_lighting_ownership_diffuse_ps,
-            fo4vr_cs_vanilla_lighting_ownership_specular_ps,
-            fo4vr_cs_vanilla_lighting_ownership_black_ps,
+            csah_vanilla_lighting_ownership_diffuse_ps,
+            csah_vanilla_lighting_ownership_specular_ps,
+            csah_vanilla_lighting_ownership_black_ps,
         };
         const std::array<SIZE_T, 3> ownershipBytecodeLength{
-            sizeof(fo4vr_cs_vanilla_lighting_ownership_diffuse_ps),
-            sizeof(fo4vr_cs_vanilla_lighting_ownership_specular_ps),
-            sizeof(fo4vr_cs_vanilla_lighting_ownership_black_ps),
+            sizeof(csah_vanilla_lighting_ownership_diffuse_ps),
+            sizeof(csah_vanilla_lighting_ownership_specular_ps),
+            sizeof(csah_vanilla_lighting_ownership_black_ps),
         };
         auto ownershipShadersReady = true;
         for (std::size_t index = 0;

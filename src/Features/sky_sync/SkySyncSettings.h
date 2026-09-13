@@ -1,6 +1,6 @@
 #pragma once
 
-namespace community_shaders::sky_sync
+namespace csah::sky_sync
 {
     struct Settings final
     {

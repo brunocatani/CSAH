@@ -21,9 +21,9 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::linear_lighting::FrameData;
-    using community_shaders::linear_lighting::Settings;
-    using community_shaders::linear_lighting::makeFrameData;
+    using csah::linear_lighting::FrameData;
+    using csah::linear_lighting::Settings;
+    using csah::linear_lighting::makeFrameData;
 
     constexpr float kTolerance = 8.0e-5F;
     constexpr std::array<float, 4> kBaseColor{ 0.35F, 0.6F, 0.8F, 0.7F };

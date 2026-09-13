@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::sky_sync
+namespace csah::sky_sync
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

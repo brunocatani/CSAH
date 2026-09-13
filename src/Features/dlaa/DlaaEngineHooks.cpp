@@ -15,7 +15,7 @@
 #include <limits>
 #include <span>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     namespace
     {

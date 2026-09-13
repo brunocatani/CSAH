@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     enum class Quality : std::uint32_t
     {

@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     struct ShaderIdentity final
     {

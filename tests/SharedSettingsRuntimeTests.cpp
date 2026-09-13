@@ -17,8 +17,8 @@ namespace
 
 int main()
 {
-    using community_shaders::shared_settings::Snapshot;
-    using community_shaders::shared_settings::diff;
+    using csah::shared_settings::Snapshot;
+    using csah::shared_settings::diff;
 
     const Snapshot baseline{};
     require(!diff(baseline, baseline).any(), "equal snapshots changed");

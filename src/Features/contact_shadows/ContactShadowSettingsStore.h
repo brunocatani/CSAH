@@ -6,7 +6,7 @@
 #include <optional>
 #include <string_view>
 
-namespace community_shaders::contact_shadows
+namespace csah::contact_shadows
 {
     [[nodiscard]] std::optional<bool> parseBoolean(
         std::wstring_view text) noexcept;

@@ -21,9 +21,9 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::linear_lighting::FrameData;
-    using community_shaders::linear_lighting::Settings;
-    using community_shaders::linear_lighting::makeFrameData;
+    using csah::linear_lighting::FrameData;
+    using csah::linear_lighting::Settings;
+    using csah::linear_lighting::makeFrameData;
 
     using Pixel = std::array<float, 4>;
 

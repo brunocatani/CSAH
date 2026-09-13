@@ -17,7 +17,7 @@ namespace
 
 int main()
 {
-    using community_shaders::linear_lighting::FixedShaderBindingLookup;
+    using csah::linear_lighting::FixedShaderBindingLookup;
 
     FixedShaderBindingLookup<4> lookup;
     std::array<int, 5> shaders{};

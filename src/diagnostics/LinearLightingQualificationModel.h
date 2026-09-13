@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::diagnostics::qualification_model
+namespace csah::diagnostics::qualification_model
 {
     enum class Status : std::uint8_t
     {

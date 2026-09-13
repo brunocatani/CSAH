@@ -20,12 +20,12 @@ string(JSON schemaVersion ERROR_VARIABLE jsonError
   GET "${manifest}" schemaVersion)
 if(NOT jsonError STREQUAL "NOTFOUND" OR NOT schemaVersion EQUAL 1)
   message(FATAL_ERROR
-    "Community Shaders DevMenu manifest is invalid: ${jsonError}")
+    "CSAH DevMenu manifest is invalid: ${jsonError}")
 endif()
 string(JSON packageId GET "${manifest}" id)
-if(NOT packageId STREQUAL "fo4vr.community-shaders")
+if(NOT packageId STREQUAL "csah")
   message(FATAL_ERROR
-    "Community Shaders DevMenu package id changed: '${packageId}'")
+    "CSAH DevMenu package id changed: '${packageId}'")
 endif()
 
 set(controlIds)
@@ -51,7 +51,7 @@ foreach(tabIndex RANGE 0 ${lastTab})
         list(FIND controlIds "${controlId}" duplicateIndex)
         if(NOT duplicateIndex EQUAL -1)
           message(FATAL_ERROR
-            "Community Shaders DevMenu control id is duplicated: '${controlId}'")
+            "CSAH DevMenu control id is duplicated: '${controlId}'")
         endif()
         list(APPEND controlIds "${controlId}")
         math(EXPR controlCount "${controlCount} + 1")
@@ -64,7 +64,7 @@ foreach(tabIndex RANGE 0 ${lastTab})
         if(NOT bindingType STREQUAL "ini" OR
            NOT bindingRoot STREQUAL "documents" OR
            NOT bindingPath STREQUAL
-             "Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini" OR
+             "Mods_Config/CSAH/CSAH.ini" OR
            bindingSection STREQUAL "" OR bindingKey STREQUAL "")
           message(FATAL_ERROR
             "DevMenu control '${controlId}' lost its shared-INI ownership contract")
@@ -76,7 +76,7 @@ endforeach()
 
 if(NOT controlCount EQUAL 141)
   message(FATAL_ERROR
-    "Community Shaders DevMenu coverage changed: expected 141 controls, found ${controlCount}")
+    "CSAH DevMenu coverage changed: expected 141 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -107,7 +107,7 @@ foreach(required IN ITEMS
   list(FIND controlIds "${required}" controlIndex)
   if(controlIndex EQUAL -1)
     message(FATAL_ERROR
-      "Community Shaders DevMenu lost required control '${required}'")
+      "CSAH DevMenu lost required control '${required}'")
   endif()
 endforeach()
 
@@ -120,7 +120,7 @@ foreach(forbidden IN ITEMS
   string(FIND "${manifest}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
-      "Community Shaders DevMenu retains obsolete wrist token '${forbidden}'")
+      "CSAH DevMenu retains obsolete wrist token '${forbidden}'")
   endif()
 endforeach()
 
@@ -171,7 +171,7 @@ endforeach()
 
 foreach(forbidden IN ITEMS
     "ui/WristPanelRuntime.h"
-    "community_shaders::ui::")
+    "csah::ui::")
   string(FIND "${pluginSource}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
@@ -224,7 +224,7 @@ foreach(relativePath IN ITEMS
     "cmake/VerifyWristPanel.cmake")
   if(EXISTS "${SOURCE_ROOT}/${relativePath}")
     message(FATAL_ERROR
-      "Obsolete Community Shaders wrist artifact remains: ${relativePath}")
+      "Obsolete CSAH wrist artifact remains: ${relativePath}")
   endif()
 endforeach()
 

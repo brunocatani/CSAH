@@ -310,7 +310,7 @@ endif()
 
 foreach(required IN ITEMS
     "SkylightingAmbient.h"
-    "fo4vr_cs_skylighting_ambient_contracts"
+    "csah_skylighting_ambient_contracts"
     "skylightingContract.gammaOffsets"
     "selectDFLightAmbientPixelShader")
   string(FIND "${linearRuntime}" "${required}" found)

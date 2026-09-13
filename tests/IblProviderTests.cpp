@@ -17,13 +17,13 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::render::ComputeStateFootprint;
-    using community_shaders::ibl::EnvironmentCubeFace;
-    using community_shaders::ibl::EnvironmentProbeOrigin;
-    using community_shaders::ibl::EnvironmentProvider;
-    using community_shaders::ibl::EnvironmentProviderState;
-    using community_shaders::ibl::EnvironmentUpdateCoverage;
-    using community_shaders::render::ScopedComputeState;
+    using csah::render::ComputeStateFootprint;
+    using csah::ibl::EnvironmentCubeFace;
+    using csah::ibl::EnvironmentProbeOrigin;
+    using csah::ibl::EnvironmentProvider;
+    using csah::ibl::EnvironmentProviderState;
+    using csah::ibl::EnvironmentUpdateCoverage;
+    using csah::render::ScopedComputeState;
 
     [[noreturn]] void fail(const std::string& message)
     {
@@ -192,7 +192,7 @@ namespace
     void testOrientationAndCoverage()
     {
         const auto positiveX =
-            community_shaders::ibl::environmentCubeDirection(
+            csah::ibl::environmentCubeDirection(
                 EnvironmentCubeFace::positiveX,
                 0.0f,
                 0.0f);
@@ -200,13 +200,13 @@ namespace
         requireNear(positiveX.y, 0.0f, "+X centre y");
         requireNear(positiveX.z, 0.0f, "+X centre z");
         const auto negativeZ =
-            community_shaders::ibl::environmentCubeDirection(
+            csah::ibl::environmentCubeDirection(
                 EnvironmentCubeFace::negativeZ,
                 0.0f,
                 0.0f);
         requireNear(negativeZ.z, -1.0f, "-Z centre z");
         const auto positiveYCorner =
-            community_shaders::ibl::environmentCubeDirection(
+            csah::ibl::environmentCubeDirection(
                 EnvironmentCubeFace::positiveY,
                 1.0f,
                 1.0f);
@@ -215,7 +215,7 @@ namespace
                 positiveYCorner.z > 0.0f,
             "+Y face orientation changed");
         const auto positiveXBottomRight =
-            community_shaders::ibl::environmentCubeDirection(
+            csah::ibl::environmentCubeDirection(
                 EnvironmentCubeFace::positiveX,
                 1.0f,
                 1.0f);
@@ -225,7 +225,7 @@ namespace
                 positiveXBottomRight.z < 0.0f,
             "+X face vertical orientation changed");
         const auto positiveZBottomRight =
-            community_shaders::ibl::environmentCubeDirection(
+            csah::ibl::environmentCubeDirection(
                 EnvironmentCubeFace::positiveZ,
                 1.0f,
                 1.0f);
@@ -239,7 +239,7 @@ namespace
         constexpr std::uint32_t mipCount = 8;
         for (std::uint32_t mip = 0; mip < mipCount; ++mip) {
             for (std::uint32_t face = 0;
-                 face < community_shaders::ibl::kEnvironmentCubeFaceCount;
+                 face < csah::ibl::kEnvironmentCubeFaceCount;
                  ++face) {
                 if (mip == mipCount - 1 && face == 5) {
                     continue;
@@ -271,7 +271,7 @@ namespace
                 provider.writableValidityMip(mip) != nullptr,
                 "missing validity mip UAV");
             for (std::uint32_t face = 0;
-                 face < community_shaders::ibl::kEnvironmentCubeFaceCount;
+                 face < csah::ibl::kEnvironmentCubeFaceCount;
                  ++face) {
                 require(
                     provider.markSubresourceComplete(

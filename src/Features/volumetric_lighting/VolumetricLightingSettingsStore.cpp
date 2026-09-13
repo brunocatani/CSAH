@@ -13,7 +13,7 @@
 #include <iterator>
 #include <system_error>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     namespace
     {

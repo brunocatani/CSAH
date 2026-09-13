@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::render
+namespace csah::render
 {
     class GpuTimingProfiler final
     {

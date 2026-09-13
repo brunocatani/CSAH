@@ -3,7 +3,7 @@
 #include <bit>
 #include <utility>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     bool EnvironmentProvider::validExtent(std::uint32_t extent) noexcept
     {

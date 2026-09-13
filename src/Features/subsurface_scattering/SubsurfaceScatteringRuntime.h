@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace community_shaders::subsurface_scattering
+namespace csah::subsurface_scattering
 {
     struct RuntimeSnapshot
     {

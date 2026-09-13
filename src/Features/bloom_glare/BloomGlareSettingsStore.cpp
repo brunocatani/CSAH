@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::bloom_glare
+namespace csah::bloom_glare
 {
     namespace
     {

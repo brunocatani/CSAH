@@ -1,6 +1,6 @@
 #include "render/ComputeStateScope.h"
 
-namespace community_shaders::render
+namespace csah::render
 {
     namespace
     {

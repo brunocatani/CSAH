@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace community_shaders::filmic_tonemapping
+namespace csah::filmic_tonemapping
 {
     namespace
     {

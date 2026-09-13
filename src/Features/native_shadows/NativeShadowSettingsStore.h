@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::native_shadows
+namespace csah::native_shadows
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

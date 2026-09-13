@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

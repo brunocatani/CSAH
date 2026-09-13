@@ -6,7 +6,7 @@
 #include <limits>
 #include <span>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     struct OutputProbe final
     {

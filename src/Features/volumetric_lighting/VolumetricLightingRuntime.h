@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     struct HostShaderSelection final
     {

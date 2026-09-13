@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     // Production transformation for the four exact active FO4VR DFComposite
     // permutations.

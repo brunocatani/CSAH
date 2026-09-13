@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::subsurface_scattering
+namespace csah::subsurface_scattering
 {
     struct Settings
     {

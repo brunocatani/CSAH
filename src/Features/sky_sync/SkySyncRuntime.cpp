@@ -34,7 +34,7 @@
 #include <limits>
 #include <mutex>
 
-namespace community_shaders::sky_sync
+namespace csah::sky_sync
 {
     namespace
     {

@@ -25,7 +25,7 @@
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     namespace
     {

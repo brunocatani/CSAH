@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     enum class ComplexMaterialProducerFamily : std::uint8_t
     {

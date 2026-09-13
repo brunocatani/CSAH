@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace community_shaders::cloud_shadows
+namespace csah::cloud_shadows
 {
     struct Settings
     {

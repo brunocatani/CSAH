@@ -23,7 +23,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-PbrSettings-" +
+                ("CSAH-PbrSettings-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -55,7 +55,7 @@ namespace
 
 int main()
 {
-    using community_shaders::pbr::loadSettings;
+    using csah::pbr::loadSettings;
 
     TemporaryIni ini;
     require(loadSettings(ini.path()).enabled, "missing file default");

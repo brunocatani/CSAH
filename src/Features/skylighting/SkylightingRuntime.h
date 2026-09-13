@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     class Runtime;
 

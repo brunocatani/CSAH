@@ -1586,7 +1586,7 @@ def write_shader_family_header(
     symbols: list[str] = []
     diagnostic_symbols: list[tuple[str, ...]] = []
     for index, (_, data, diagnostics) in enumerate(candidates):
-        symbol = f"fo4vr_cs_contact_shadows_dflight_{index:03d}"
+        symbol = f"csah_contact_shadows_dflight_{index:03d}"
         symbols.append(symbol)
         rows.append(f"inline constexpr unsigned char {symbol}[] = {{")
         for offset in range(0, len(data), 16):
@@ -1598,7 +1598,7 @@ def write_shader_family_header(
         current_diagnostic_symbols: list[str] = []
         for mode_index, diagnostic in enumerate(diagnostics):
             diagnostic_symbol = (
-                f"fo4vr_cs_directional_diagnostic_dflight_"
+                f"csah_directional_diagnostic_dflight_"
                 f"{index:03d}_{mode_index}"
             )
             current_diagnostic_symbols.append(diagnostic_symbol)
@@ -1628,7 +1628,7 @@ def write_shader_family_header(
             "",
             "inline constexpr std::array<",
             "    Fo4vrCsContactShadowShaderContract,",
-            f"    {len(candidates)}> fo4vr_cs_contact_shadow_dflight_contracts{{{{",
+            f"    {len(candidates)}> csah_contact_shadow_dflight_contracts{{{{",
         )
     )
     for (item, _, _), symbol, diagnostics in zip(
@@ -1876,19 +1876,19 @@ def main() -> int:
         write_header(
             args.compute_header,
             compute,
-            "fo4vr_cs_contact_shadow_mask",
+            "csah_contact_shadow_mask",
         )
         args.dispatch_binary.write_bytes(dispatch)
         write_header(
             args.dispatch_header,
             dispatch,
-            "fo4vr_cs_contact_shadow_dispatch",
+            "csah_contact_shadow_dispatch",
         )
         args.resolve_binary.write_bytes(resolve)
         write_header(
             args.resolve_header,
             resolve,
-            "fo4vr_cs_contact_shadow_resolve",
+            "csah_contact_shadow_resolve",
         )
     return 0
 

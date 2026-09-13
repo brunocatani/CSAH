@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::skylighting
+namespace csah::skylighting
 {
     class ScopedOcclusionPassProduction final
     {

@@ -249,7 +249,7 @@ def write_header(path: Path, shaders: list[tuple[ShaderSpec, bytes]]) -> None:
         "#include <array>",
         "#include <cstdint>",
         "",
-        "namespace community_shaders::bloom_glare::generated",
+        "namespace csah::bloom_glare::generated",
         "{",
     ]
     for spec, data in shaders:

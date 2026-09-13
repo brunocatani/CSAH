@@ -7,7 +7,7 @@
 #include <cstring>
 #include <utility>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {
@@ -153,7 +153,7 @@ namespace community_shaders::vanilla_fixes
                     0);
                 ready_.store(true, std::memory_order_release);
                 logging::info(
-                    "Vanilla Fixes stable-reflection binding initialized; corrected SSLR consumes Community Shaders' shared environment through private t4..t9/s4/b11 state.");
+                    "Vanilla Fixes stable-reflection binding initialized; corrected SSLR consumes CSAH' shared environment through private t4..t9/s4/b11 state.");
                 return true;
             }
 
@@ -253,7 +253,7 @@ namespace community_shaders::vanilla_fixes
                             true,
                             std::memory_order_relaxed)) {
                         logging::info(
-                            "Vanilla Fixes corrected SSLR consumed its first atomically published Community Shaders radiance/validity/position environment; visible hits remain confidence-owned and misses now retain world radiance.");
+                            "Vanilla Fixes corrected SSLR consumed its first atomically published CSAH radiance/validity/position environment; visible hits remain confidence-owned and misses now retain world radiance.");
                     }
                 }
             }

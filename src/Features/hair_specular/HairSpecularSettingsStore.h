@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace community_shaders::hair_specular
+namespace csah::hair_specular
 {
     [[nodiscard]] Settings loadSettings(
         const std::filesystem::path& path) noexcept;

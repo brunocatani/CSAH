@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace community_shaders::complex_materials
+namespace csah::complex_materials
 {
     struct Settings
     {

@@ -201,7 +201,7 @@ def main() -> int:
         output = options.output.resolve()
         fxc = census.find_fxc(None)
         with tempfile.TemporaryDirectory(
-            prefix="fo4vr_cs_complex_environment_"
+            prefix="csah_complex_environment_"
         ) as directory:
             temporary = Path(directory)
             for contract in supported:

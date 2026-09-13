@@ -1,4 +1,4 @@
-// FO4VR Community Shaders — Modified Lighting Shader
+// Community Shaders at Home (CSAH) — Modified Lighting Shader
 // This is a stub. Full implementation requires FXP decompilation.
 
 #include "Common/Color.hlsli"

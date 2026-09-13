@@ -16,9 +16,9 @@
 namespace
 {
     using Microsoft::WRL::ComPtr;
-    using community_shaders::ibl::ReflectionFreeCaptureRejection;
-    using community_shaders::ibl::ReflectionFreeCaptureResources;
-    using community_shaders::ibl::ScopedReflectionFreeCapture;
+    using csah::ibl::ReflectionFreeCaptureRejection;
+    using csah::ibl::ReflectionFreeCaptureResources;
+    using csah::ibl::ScopedReflectionFreeCapture;
 
     struct Float4
     {

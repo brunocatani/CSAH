@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     enum class DirectionalLightDiagnosticMode : std::uint8_t
     {

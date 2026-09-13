@@ -6,7 +6,7 @@
 #include <optional>
 #include <string_view>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     [[nodiscard]] std::optional<bool> parseBoolean(
         std::wstring_view text) noexcept;

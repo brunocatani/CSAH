@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     struct StreamlineSnapshot
     {

@@ -7,7 +7,7 @@
 
 #include <array>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     struct DirectionalDiagnosticResources final
     {

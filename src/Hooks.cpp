@@ -264,7 +264,7 @@ namespace {
         EngineFixes::ApplyPostLoadFixes();
         EngineFixes::StartCascadeRuntime();
 
-        const auto configurationPath = community_shaders::settings_path::resolveIniPath();
+        const auto configurationPath = csah::settings_path::resolveIniPath();
         if (!configurationPath.empty()) {
             Feature::SaveAllSettings(configurationPath.parent_path() / "CommunityShaders.json");
         }

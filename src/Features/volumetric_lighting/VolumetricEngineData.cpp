@@ -15,7 +15,7 @@
 #include <cstring>
 #include <mutex>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     namespace
     {

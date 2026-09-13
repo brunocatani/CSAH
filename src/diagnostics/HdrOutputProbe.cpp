@@ -12,7 +12,7 @@
 #include <limits>
 #include <mutex>
 
-namespace community_shaders::diagnostics::hdr_output_probe
+namespace csah::diagnostics::hdr_output_probe
 {
     namespace
     {

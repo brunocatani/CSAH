@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     enum class EnvironmentUpdateConsumeResult : std::uint8_t
     {

@@ -5,7 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <utility>
 
-namespace community_shaders::render
+namespace csah::render
 {
     namespace
     {

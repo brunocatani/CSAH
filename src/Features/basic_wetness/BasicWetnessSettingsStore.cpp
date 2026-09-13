@@ -14,7 +14,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::basic_wetness
+namespace csah::basic_wetness
 {
     namespace
     {

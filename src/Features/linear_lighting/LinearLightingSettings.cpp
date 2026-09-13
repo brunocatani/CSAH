@@ -4,7 +4,7 @@
 #include <bit>
 #include <cmath>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     namespace
     {

@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace community_shaders::ibl
+namespace csah::ibl
 {
     namespace
     {

@@ -23,7 +23,7 @@ namespace
     public:
         TemporaryIni() :
             path_(std::filesystem::temp_directory_path() /
-                ("FO4VRCommunityShaders-IblSettings-" +
+                ("CSAH-IblSettings-" +
                     std::to_string(
                         std::chrono::steady_clock::now()
                             .time_since_epoch()
@@ -55,8 +55,8 @@ namespace
 
 int main()
 {
-    using community_shaders::ibl::loadSettings;
-    using community_shaders::ibl::parseBoolean;
+    using csah::ibl::loadSettings;
+    using csah::ibl::parseBoolean;
 
     require(parseBoolean(L" TRUE ") == true, "true syntax");
     require(parseBoolean(L"off") == false, "off syntax");

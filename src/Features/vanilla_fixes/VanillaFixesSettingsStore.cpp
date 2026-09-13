@@ -11,7 +11,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {
@@ -183,7 +183,7 @@ namespace community_shaders::vanilla_fixes
     {
         if (path.empty() || !settings_path::ensureParentDirectory(path)) {
             logging::error(
-                "Community Shaders settings directory is unavailable for '{}'.",
+                "CSAH settings directory is unavailable for '{}'.",
                 path.string());
             return false;
         }

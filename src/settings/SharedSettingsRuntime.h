@@ -22,7 +22,7 @@
 
 #include <cstddef>
 
-namespace community_shaders::shared_settings
+namespace csah::shared_settings
 {
     struct Snapshot final
     {
@@ -133,7 +133,7 @@ namespace community_shaders::shared_settings
                 next.vanillaFixes.enabled,
             // Vanilla Fixes is an independent startup-owned suite. Its
             // individual policy can change live while its own master remains
-            // active, regardless of the Community Shaders visual-suite gate.
+            // active, regardless of the CSAH visual-suite gate.
             // Never dismantle the active SAO/SSLR renderer graph mid-session.
             .vanillaFixes = previous.vanillaFixes.enabled &&
                 next.vanillaFixes.enabled &&
@@ -145,7 +145,7 @@ namespace community_shaders::shared_settings
         };
     }
 
-    // Starts one bounded monitor for the shared Community Shaders INI. The
+    // Starts one bounded monitor for the shared CSAH INI. The
     // controller is process-lifetime owned, performs no work on render hooks,
     // and coalesces multi-key writers before publishing settings.
     [[nodiscard]] bool startMonitor() noexcept;

@@ -2,7 +2,7 @@
 
 #include "Features/linear_lighting/LinearLightingSettings.h"
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     constexpr float kVanillaPointLightGamma = kNativeLightingResponseGamma;
 

@@ -11,7 +11,7 @@ namespace RE
     class Sky;
 }
 
-namespace community_shaders::sky_sync
+namespace csah::sky_sync
 {
     enum class CelestialSource : std::uint32_t
     {

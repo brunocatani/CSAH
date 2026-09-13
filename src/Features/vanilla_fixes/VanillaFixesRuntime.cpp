@@ -20,7 +20,7 @@
 #include <span>
 #include <thread>
 
-namespace community_shaders::vanilla_fixes
+namespace csah::vanilla_fixes
 {
     namespace
     {

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace community_shaders::bloom_glare
+namespace csah::bloom_glare
 {
     struct BloomSettings final
     {

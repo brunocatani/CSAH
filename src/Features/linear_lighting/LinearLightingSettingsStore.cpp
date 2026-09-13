@@ -13,7 +13,7 @@
 #include <system_error>
 #include <string_view>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     namespace
     {
@@ -186,7 +186,7 @@ namespace community_shaders::linear_lighting
         const auto path = settings_path::resolveIniPath();
         if (!settings_path::ensureParentDirectory(path)) {
             logging::error(
-                "Community Shaders settings directory is unavailable for '{}'.",
+                "CSAH settings directory is unavailable for '{}'.",
                 path.string());
             return false;
         }

@@ -16,7 +16,7 @@
 #include <span>
 #include <vector>
 
-namespace community_shaders::linear_lighting
+namespace csah::linear_lighting
 {
     class Runtime;
 

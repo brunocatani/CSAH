@@ -7,7 +7,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace community_shaders::surface_classification
+namespace csah::surface_classification
 {
     enum class SurfaceClassCode : std::uint32_t
     {

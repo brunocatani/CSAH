@@ -32,7 +32,7 @@
 #include <limits>
 #include <wrl/client.h>
 
-namespace community_shaders::volumetric_lighting
+namespace csah::volumetric_lighting
 {
     namespace
     {
@@ -530,63 +530,63 @@ namespace community_shaders::volumetric_lighting
             }
             InternalRenderScope internal;
             auto result = gpu.device->CreateVertexShader(
-                fo4vr_cs_volumetric_fullscreen_vs,
-                sizeof(fo4vr_cs_volumetric_fullscreen_vs),
+                csah_volumetric_fullscreen_vs,
+                sizeof(csah_volumetric_fullscreen_vs),
                 nullptr,
                 gpu.fullscreenVertex.ReleaseAndGetAddressOf());
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreateComputeShader(
-                    fo4vr_cs_volumetric_generate_cs,
-                    sizeof(fo4vr_cs_volumetric_generate_cs),
+                    csah_volumetric_generate_cs,
+                    sizeof(csah_volumetric_generate_cs),
                     nullptr,
                     gpu.generateCompute.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreateComputeShader(
-                    fo4vr_cs_volumetric_integrate_cs,
-                    sizeof(fo4vr_cs_volumetric_integrate_cs),
+                    csah_volumetric_integrate_cs,
+                    sizeof(csah_volumetric_integrate_cs),
                     nullptr,
                     gpu.integrateCompute.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreateComputeShader(
-                    fo4vr_cs_volumetric_qualify_cs,
-                    sizeof(fo4vr_cs_volumetric_qualify_cs),
+                    csah_volumetric_qualify_cs,
+                    sizeof(csah_volumetric_qualify_cs),
                     nullptr,
                     gpu.qualifyCompute.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
-                    fo4vr_cs_volumetric_resolve_ps,
-                    sizeof(fo4vr_cs_volumetric_resolve_ps),
+                    csah_volumetric_resolve_ps,
+                    sizeof(csah_volumetric_resolve_ps),
                     nullptr,
                     gpu.resolvePixel.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
-                    fo4vr_cs_volumetric_temporal_ps,
-                    sizeof(fo4vr_cs_volumetric_temporal_ps),
+                    csah_volumetric_temporal_ps,
+                    sizeof(csah_volumetric_temporal_ps),
                     nullptr,
                     gpu.temporalPixel.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
-                    fo4vr_cs_volumetric_blur_h_ps,
-                    sizeof(fo4vr_cs_volumetric_blur_h_ps),
+                    csah_volumetric_blur_h_ps,
+                    sizeof(csah_volumetric_blur_h_ps),
                     nullptr,
                     gpu.blurHorizontalPixel.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
-                    fo4vr_cs_volumetric_blur_v_ps,
-                    sizeof(fo4vr_cs_volumetric_blur_v_ps),
+                    csah_volumetric_blur_v_ps,
+                    sizeof(csah_volumetric_blur_v_ps),
                     nullptr,
                     gpu.blurVerticalPixel.ReleaseAndGetAddressOf());
             }
             if (SUCCEEDED(result)) {
                 result = gpu.device->CreatePixelShader(
-                    fo4vr_cs_volumetric_composite_ps,
-                    sizeof(fo4vr_cs_volumetric_composite_ps),
+                    csah_volumetric_composite_ps,
+                    sizeof(csah_volumetric_composite_ps),
                     nullptr,
                     gpu.compositePixel.ReleaseAndGetAddressOf());
             }
@@ -1317,8 +1317,8 @@ namespace community_shaders::volumetric_lighting
         }
         value.hostMatches.fetch_add(1, std::memory_order_relaxed);
         return {
-            fo4vr_cs_volumetric_host_ps,
-            sizeof(fo4vr_cs_volumetric_host_ps),
+            csah_volumetric_host_ps,
+            sizeof(csah_volumetric_host_ps),
             true
         };
     }

@@ -13,7 +13,7 @@
 #include <limits>
 #include <utility>
 
-namespace community_shaders::contact_shadows
+namespace csah::contact_shadows
 {
     namespace
     {
@@ -62,10 +62,10 @@ namespace community_shaders::contact_shadows
                 return kInvalidContractIndex;
             }
             for (std::size_t index = 0;
-                 index < fo4vr_cs_contact_shadow_dflight_contracts.size();
+                 index < csah_contact_shadow_dflight_contracts.size();
                  ++index) {
                 const auto& contract =
-                    fo4vr_cs_contact_shadow_dflight_contracts[index];
+                    csah_contact_shadow_dflight_contracts[index];
                 if (bytecodeLength == contract.originalSize &&
                     std::memcmp(
                         static_cast<const std::byte*>(bytecode) + 4,
@@ -184,15 +184,15 @@ namespace community_shaders::contact_shadows
         }
 
         static_assert(
-            fo4vr_cs_contact_shadow_dflight_contracts.size() <=
+            csah_contact_shadow_dflight_contracts.size() <=
             kMaximumShaderContracts);
         bool replacementCreationFailed{};
         bool diagnosticCreationFailed{};
         for (std::size_t index = 0;
-             index < fo4vr_cs_contact_shadow_dflight_contracts.size();
+             index < csah_contact_shadow_dflight_contracts.size();
              ++index) {
             const auto& contract =
-                fo4vr_cs_contact_shadow_dflight_contracts[index];
+                csah_contact_shadow_dflight_contracts[index];
             ID3D11PixelShader* replacement{};
             const auto pixelShaderResult = createPixelShader(
                 device,
@@ -257,12 +257,12 @@ namespace community_shaders::contact_shadows
         } else {
             logging::info(
                 "Directional diagnostics armed six color-coded modes across all {} verified DFLight contracts.",
-                fo4vr_cs_contact_shadow_dflight_contracts.size());
+                csah_contact_shadow_dflight_contracts.size());
         }
 
         const auto dispatchResult = device->CreateComputeShader(
-            fo4vr_cs_contact_shadow_dispatch,
-            sizeof(fo4vr_cs_contact_shadow_dispatch),
+            csah_contact_shadow_dispatch,
+            sizeof(csah_contact_shadow_dispatch),
             nullptr,
             dispatchCompute_.ReleaseAndGetAddressOf());
         if (FAILED(dispatchResult) || !dispatchCompute_) {
@@ -277,8 +277,8 @@ namespace community_shaders::contact_shadows
         }
 
         const auto computeResult = device->CreateComputeShader(
-            fo4vr_cs_contact_shadow_mask,
-            sizeof(fo4vr_cs_contact_shadow_mask),
+            csah_contact_shadow_mask,
+            sizeof(csah_contact_shadow_mask),
             nullptr,
             maskCompute_.ReleaseAndGetAddressOf());
         if (FAILED(computeResult) || !maskCompute_) {
@@ -293,8 +293,8 @@ namespace community_shaders::contact_shadows
             return;
         }
         const auto resolveResult = device->CreateComputeShader(
-            fo4vr_cs_contact_shadow_resolve,
-            sizeof(fo4vr_cs_contact_shadow_resolve),
+            csah_contact_shadow_resolve,
+            sizeof(csah_contact_shadow_resolve),
             nullptr,
             resolveCompute_.ReleaseAndGetAddressOf());
         if (FAILED(resolveResult) || !resolveCompute_) {
@@ -446,7 +446,7 @@ namespace community_shaders::contact_shadows
         resourcesReady_.store(true, std::memory_order_release);
         logging::info(
             "Contact Shadows Bend wavefront raymarch and GPU indirect-dispatch pipeline ready; {} structurally verified directional DFLight contracts are armed fail-closed.",
-            fo4vr_cs_contact_shadow_dflight_contracts.size());
+            csah_contact_shadow_dflight_contracts.size());
     }
 
     void Runtime::onPixelShaderCreated(

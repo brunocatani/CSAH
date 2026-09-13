@@ -18,7 +18,7 @@
 #include <limits>
 #include <utility>
 
-namespace community_shaders::dlaa
+namespace csah::dlaa
 {
     namespace
     {
@@ -1816,8 +1816,8 @@ namespace community_shaders::dlaa
         }
 
         if (!motionRepairShader_ && FAILED(device_->CreateComputeShader(
-                fo4vr_cs_upscaling_motion_repair_cs,
-                sizeof(fo4vr_cs_upscaling_motion_repair_cs),
+                csah_upscaling_motion_repair_cs,
+                sizeof(csah_upscaling_motion_repair_cs),
                 nullptr,
                 motionRepairShader_.GetAddressOf()))) {
             return false;
@@ -1836,8 +1836,8 @@ namespace community_shaders::dlaa
             }
         }
         if (!reactiveMaskShader_ && FAILED(device_->CreateComputeShader(
-                fo4vr_cs_upscaling_reactive_mask_cs,
-                sizeof(fo4vr_cs_upscaling_reactive_mask_cs),
+                csah_upscaling_reactive_mask_cs,
+                sizeof(csah_upscaling_reactive_mask_cs),
                 nullptr,
                 reactiveMaskShader_.GetAddressOf()))) {
             return false;
@@ -2244,8 +2244,8 @@ namespace community_shaders::dlaa
             return false;
         }
         if (!compositorShader_ && FAILED(device_->CreateComputeShader(
-                fo4vr_cs_upscaling_compose_cs,
-                sizeof(fo4vr_cs_upscaling_compose_cs),
+                csah_upscaling_compose_cs,
+                sizeof(csah_upscaling_compose_cs),
                 nullptr,
                 compositorShader_.GetAddressOf()))) {
             return false;
