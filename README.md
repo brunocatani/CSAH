@@ -4,7 +4,9 @@ An experimental rendering mod for **Fallout 4 VR**, bringing Community Shaders l
 
 This is a Fallout 4 VR implementation with stereo rendering support. Feature coverage and visual results vary; it does not include every feature from Skyrim Community Shaders or Open Shaders.
 
-[Downloads](https://github.com/brunocatani/CSAH/releases) · [Report an issue](https://github.com/brunocatani/CSAH/issues) · [GPL-3.0 license](LICENSE)
+**[Download CSAH 0.0.4 Alpha — installable mod ZIP](https://github.com/brunocatani/CSAH/releases/download/v0.0.4-alpha/CSAH-0.0.4-Alpha.zip)**
+
+[All releases](https://github.com/brunocatani/CSAH/releases) · [Report an issue](https://github.com/brunocatani/CSAH/issues) · [GPL-3.0 license](LICENSE)
 
 ## Features
 
@@ -99,6 +101,8 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 
 ## Installation
 
+The downloadable mod ZIP uses the maintainer's deployed MO2 payload: the plugin, matching Streamline libraries, DevMenu manifest, loose shaders, and a supplied settings preset. Debugging symbols are available separately.
+
 1. Download a mod archive from [Releases](https://github.com/brunocatani/CSAH/releases). GitHub's automatically generated **Source code** archives do not contain a built plugin.
 2. Install the mod archive through Mod Organizer 2, keeping its directory structure. For a manual installation, place the archive's runtime folders under the game's `Data` directory.
 3. Confirm that the installed payload includes:
@@ -108,10 +112,13 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
      F4SE/Plugins/CSAH.dll
      F4SE/Plugins/Streamline/
      DevMenu/Mods/CSAH/menu.json
+     Shaders/
+     CSAH_Config/CSAH.ini
    ```
 
    Keep the bundled Streamline DLLs and their `Licenses` directory together. Install any other runtime folders included in the mod archive as well.
-4. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home** to configure the mod.
+4. To use the supplied settings, copy `CSAH_Config/CSAH.ini` from the installed mod folder to `Documents/My Games/Fallout4VR/Mods_Config/CSAH/CSAH.ini` before launching. Keep a copy of any existing settings before replacing them. The preset is copied unchanged from the deployed configuration and enables Linear Lighting. Installing it through MO2 alone does not activate it: the plugin reads settings from Documents.
+5. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home** to configure the mod.
 
 ## Configuration
 
