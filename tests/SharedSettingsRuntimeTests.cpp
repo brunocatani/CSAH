@@ -21,6 +21,9 @@ int main()
     using csah::shared_settings::diff;
 
     const Snapshot baseline{};
+    require(!baseline.cloudShadows.enabled && !baseline.hairSpecular.enabled &&
+            !baseline.wrappedGrass.enabled && !baseline.subsurfaceScattering.enabled,
+        "unfinished effects must default to disabled");
     require(!diff(baseline, baseline).any(), "equal snapshots changed");
 
     auto profiling = baseline;
@@ -85,14 +88,14 @@ int main()
         [](Snapshot& value) { value.contactShadows.enabled = false; },
         "Contact Shadows diff");
     verifyLive(
-        [](Snapshot& value) { value.wrappedGrass.enabled = false; },
+        [](Snapshot& value) { value.wrappedGrass.enabled = true; },
         "Wrapped Grass diff");
     verifyLive(
-        [](Snapshot& value) { value.hairSpecular.enabled = false; },
+        [](Snapshot& value) { value.hairSpecular.enabled = true; },
         "Hair Specular diff");
     verifyLive(
         [](Snapshot& value) {
-            value.subsurfaceScattering.enabled = false;
+            value.subsurfaceScattering.enabled = true;
         },
         "Subsurface Scattering diff");
     verifyLive(
@@ -102,7 +105,7 @@ int main()
         [](Snapshot& value) { value.pbr.enabled = false; },
         "PBR diff");
     verifyLive(
-        [](Snapshot& value) { value.cloudShadows.enabled = false; },
+        [](Snapshot& value) { value.cloudShadows.enabled = true; },
         "Cloud Shadows diff");
     verifyLive(
         [](Snapshot& value) { value.volumetricLighting.enabled = false; },

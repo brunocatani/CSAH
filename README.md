@@ -1,12 +1,12 @@
-# Community Shaders at Home (CSAH)
+# Community Shaders at Home (CSAH) VR
 
 An experimental rendering mod for **Fallout 4 VR**, bringing Community Shaders lighting, materials, shadows, and image-quality features to the game's native Direct3D 11 renderer.
 
 This is a Fallout 4 VR implementation with stereo rendering support. Feature coverage and visual results vary; it does not include every feature from Skyrim Community Shaders or Open Shaders.
 
-**[Download CSAH 0.0.4 Alpha — installable mod ZIP](https://github.com/brunocatani/CSAH/releases/download/v0.0.4-alpha/CSAH-0.0.4-Alpha.zip)**
+**[Download CSAH VR 0.0.5 Alpha — installable mod ZIP](https://github.com/brunocatani/CSAH-VR/releases/download/v0.0.5-alpha/CSAH-VR-0.0.5-Alpha.zip)**
 
-[All releases](https://github.com/brunocatani/CSAH/releases) · [Report an issue](https://github.com/brunocatani/CSAH/issues) · [GPL-3.0 license](LICENSE)
+[All releases](https://github.com/brunocatani/CSAH-VR/releases) · [Report an issue](https://github.com/brunocatani/CSAH-VR/issues) · [GPL-3.0 license](LICENSE)
 
 ## Features
 
@@ -14,14 +14,14 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 
 ### Lighting
 
-- **Linear Lighting** — Evaluates supported lighting and material colour operations in linear space. Includes separate response and intensity controls for direct light, ambient light, emission, fog, sky, water, and effects. Disabled by default.
+- **Linear Lighting** — Evaluates supported lighting and material colour operations in linear space. Includes separate response and intensity controls for direct light, ambient light, emission, fog, sky, water, and effects. Enabled in the first-run gameplay preset.
 - **Preserve Native Darkness** — Preserves Fallout's darker response for native light, ambient, fog, and sky, keeping nights and unlit areas from becoming uniformly brighter.
 - **Image Based Lighting** — Supplies a shared stereo environment to the reflection and diffuse-lighting features.
 - **Dynamic Cubemaps** — Uses the captured scene environment for position-aware reflections, with each material's native cubemap retained when capture confidence is insufficient. Reflection placement and stereo behavior remain experimental.
 - **Diffuse IBL** — Adds environment-derived diffuse bounce lighting. Can be expensive in dense scenes.
 - **Skylighting** — Uses a shared world-space probe field to occlude sky light beneath roofs, trees, and overhangs. Probe quality requires a restart; visibility and zenith controls apply live.
 - **Sky Sync / Moon Lighting** — Aligns directional lighting and shadows with the Sun by day and Fallout's climate-enabled Moon by night.
-- **Cloud Shadows** — Includes the cloud-projection runtime and opacity control. The moving cloud-shadow effect is incomplete and has not been visually confirmed.
+- **Cloud Shadows — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
 
 ### Materials
 
@@ -29,9 +29,9 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 - **Authored PBR Materials** — Supports content-mod manifests pairing base-colour textures with roughness, metalness, ambient-occlusion, and specular data. Textures stream when encountered; authored content still requires visual testing. See the material format below.
 - **Complex Metal Response** — Enables complex-material environment response when suitable assets and IBL data are available. A visible result remains unconfirmed with ordinary texture replacements.
 - **Complex Parallax** — Adds surface depth to assets authored for the complex-material texture contract, with quality, depth, grazing-angle, and distance-fade controls.
-- **Wrapped Grass Lighting** — Wraps directional lighting around grass blades. The confirmed visual response is subtle.
-- **Hair Specular** — Includes anisotropic highlights for classified hair materials. Existing visual tests have not confirmed a clear effect.
-- **Subsurface Scattering** — Includes depth-aware diffusion for skin and face materials, with strength, radius, and depth-rejection controls. Existing visual tests have not confirmed a clear effect.
+- **Wrapped Grass Lighting — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
+- **Hair Specular — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
+- **Subsurface Scattering — Not working.** Disabled by default in the plugin, DevMenu, and automatically created INI.
 - **Basic Wetness** — Applies a manually selected wet appearance through diffuse darkening, specular response, and roughness. Material coverage is experimental; this is not a complete weather-driven wetness system.
 
 ### PBR model controls
@@ -101,9 +101,9 @@ The list below follows the names and controls in [DevMenu](devmenu/CSAH/menu.jso
 
 ## Installation
 
-The downloadable mod ZIP uses the maintainer's deployed MO2 payload: the plugin, matching Streamline libraries, DevMenu manifest, loose shaders, and a supplied settings preset. Debugging symbols are available separately.
+Install the mod ZIP through MO2 and launch the game. CSAH VR creates its settings automatically on first launch using the supplied gameplay preset. No manual config copying is needed.
 
-1. Download a mod archive from [Releases](https://github.com/brunocatani/CSAH/releases). GitHub's automatically generated **Source code** archives do not contain a built plugin.
+1. Download a mod archive from [Releases](https://github.com/brunocatani/CSAH-VR/releases). GitHub's automatically generated **Source code** archives do not contain a built plugin.
 2. Install the mod archive through Mod Organizer 2, keeping its directory structure. For a manual installation, place the archive's runtime folders under the game's `Data` directory.
 3. Confirm that the installed payload includes:
 
@@ -113,12 +113,10 @@ The downloadable mod ZIP uses the maintainer's deployed MO2 payload: the plugin,
      F4SE/Plugins/Streamline/
      DevMenu/Mods/CSAH/menu.json
      Shaders/
-     CSAH_Config/CSAH.ini
    ```
 
-   Keep the bundled Streamline DLLs and their `Licenses` directory together. Install any other runtime folders included in the mod archive as well.
-4. To use the supplied settings, copy `CSAH_Config/CSAH.ini` from the installed mod folder to `Documents/My Games/Fallout4VR/Mods_Config/CSAH/CSAH.ini` before launching. Keep a copy of any existing settings before replacing them. The preset is copied unchanged from the deployed configuration and enables Linear Lighting. Installing it through MO2 alone does not activate it: the plugin reads settings from Documents.
-5. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home** to configure the mod.
+   Keep the bundled Streamline DLLs together and preserve the archive's folder structure.
+4. Launch Fallout 4 VR through F4SEVR. In DevMenu, open **Community Shaders at Home (CSAH) VR** to configure the mod.
 
 ## Configuration
 
@@ -128,11 +126,11 @@ The active settings file is in your Windows Documents folder:
 Documents/My Games/Fallout4VR/Mods_Config/CSAH/CSAH.ini
 ```
 
-DevMenu and the plugin use this same file. Missing settings use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
+The plugin creates this file automatically on first launch when neither a current nor a legacy INI exists. Existing settings are preserved. DevMenu and the plugin use this same file. Missing keys in an existing file use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
 
 The **CSAH Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
 
-Linear Lighting defaults to **off**. Enable it explicitly to use the PBR pipeline, which depends on Linear Lighting. Quality settings are fixed choices: the mod does not automatically lower visual quality to meet an FPS target.
+The first-run gameplay preset enables **Linear Lighting**, which the PBR pipeline requires. Cloud Shadows, Hair Specular, Wrapped Grass Lighting, and Subsurface Scattering are disabled by default because they are not working. Quality settings are fixed choices: the mod does not automatically lower visual quality to meet an FPS target.
 
 On first launch, CSAH moves an existing `Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini` to the new location if `CSAH.ini` does not already exist. The migration preserves the file byte for byte, including values, comments, and encoding. An existing CSAH file takes precedence. If migration fails, the plugin reports the error and stops loading instead of silently replacing your settings with defaults. The existing `[CommunityShaders]` section name remains part of the INI format so saved feature switches remain compatible.
 
@@ -163,6 +161,10 @@ RMAOS stores **roughness, metalness, ambient occlusion, and dielectric specular*
 
 ## Limitations and troubleshooting
 
+**Runtime compatibility:** Testing reported so far used **OpenComposite**. **SteamVR is untested and has not been proven to work.**
+
+**Reported performance on an NVIDIA GeForce RTX 4090:** With **Skylighting and Contact Shadows enabled**, performance dropped from **90 FPS to 70 FPS during regular gameplay**, and to **59 FPS in downtown Boston**. These observations are not a performance guarantee for other hardware or settings.
+
 This mod is experimental. Lighting and reflection coverage, stereo artifacts, and compatibility with other rendering modifications still need testing across scenes and hardware. Skylighting, diffuse IBL, contact shadows, and glare can be expensive; choose settings for your headset resolution and GPU. Complex-material effects depend on the supplied assets, and authored PBR content still needs visual qualification.
 
 When reporting a problem, include the mod version, GPU, headset, render resolution, enabled features, relevant settings, reproduction steps, and a screenshot or short video where useful. Attach the log from the affected run:
@@ -180,8 +182,8 @@ The build requires **Visual Studio 2022 with the v143 C++ toolset**, a Windows S
 Clone this repository with its CommonLibF4VR submodule:
 
 ```powershell
-git clone --recurse-submodules https://github.com/brunocatani/CSAH.git
-cd CSAH
+git clone --recurse-submodules https://github.com/brunocatani/CSAH-VR.git
+cd CSAH-VR
 ```
 
 The checked-in presets expect vcpkg at `C:/vcpkg`. Adjust the toolchain and `VCPKG_ROOT` through a local preset if your installation differs. Point CMake at the initialized CommonLibF4VR checkout and your Streamline SDK:

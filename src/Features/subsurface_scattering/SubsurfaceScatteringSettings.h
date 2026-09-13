@@ -7,7 +7,7 @@ namespace csah::subsurface_scattering
 {
     struct Settings
     {
-        bool enabled{ true };
+        bool enabled{ false };
         float strength{ 0.55f };
         float radiusPixels{ 2.0f };
         float depthRejection{ 0.003f };

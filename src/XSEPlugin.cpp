@@ -52,8 +52,8 @@
 
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
-    version.PluginName("Community Shaders at Home");
-    version.PluginVersion(REL::Version(0, 0, 4));
+    version.PluginName("Community Shaders at Home (CSAH) VR");
+    version.PluginVersion(REL::Version(0, 0, 5));
     version.AuthorName("CSAH contributors");
     return version;
 }();
@@ -81,14 +81,14 @@ namespace
             std::snprintf(
                 message,
                 sizeof(message),
-                "Community Shaders at Home: %s failed: %s\n",
+                "Community Shaders at Home (CSAH) VR: %s failed: %s\n",
                 boundary,
                 detail);
         } else {
             std::snprintf(
                 message,
                 sizeof(message),
-                "Community Shaders at Home: %s failed with an unknown exception.\n",
+                "Community Shaders at Home (CSAH) VR: %s failed with an unknown exception.\n",
                 boundary);
         }
         OutputDebugStringA(message);
@@ -306,11 +306,11 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
 
         csah::logging::init();
         csah::logging::info(
-            "=== Community Shaders at Home v0.0.4 query ===");
+            "=== Community Shaders at Home (CSAH) VR v0.0.5 query ===");
 
         a_info->infoVersion = F4SE::PluginInfo::kVersion;
-        a_info->name = "Community Shaders at Home";
-        a_info->version = 4;
+        a_info->name = "Community Shaders at Home (CSAH) VR";
+        a_info->version = 5;
 
         if (a_f4se->IsEditor()) {
             csah::logging::critical(
@@ -368,18 +368,22 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
 
         const auto iniPath = csah::settings_path::resolveIniPath();
         std::error_code migrationError;
-        const auto migration = csah::settings_path::migrateLegacyIni(
+        const auto migration = csah::settings_path::initializeIni(
             iniPath, migrationError);
-        if (migration == csah::settings_path::MigrationResult::failed) {
+        if (migration == csah::settings_path::SetupResult::failed) {
             csah::logging::critical(
-                "CSAH settings migration failed for '{}': {}. Existing settings were not replaced; plugin remains unloaded.",
+                "CSAH VR settings setup failed for '{}': {}. Existing settings were not replaced; plugin remains unloaded.",
                 iniPath.string(), migrationError.message());
             return false;
         }
-        if (migration == csah::settings_path::MigrationResult::migrated) {
+        if (migration == csah::settings_path::SetupResult::migrated) {
             csah::logging::info(
                 "Migrated existing settings to '{}'; values and formatting preserved.",
                 iniPath.string());
+        }
+        if (migration == csah::settings_path::SetupResult::created) {
+            csah::logging::info(
+                "Created first-run CSAH VR settings at '{}'.", iniPath.string());
         }
 
         const auto minHookStatus = MH_Initialize();
@@ -509,7 +513,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
         }
 
         csah::logging::info(
-            "Community Shaders at Home loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, Volumetric Lighting enabled={}, quality={}, base={}, shafts={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
+            "Community Shaders at Home (CSAH) VR loaded; persisted upscaling enabled={}, mode={}, modelPreset={}, sharpening={}, sharpness={}; Linear Lighting enabled={}, Image Based Lighting enabled={}, Dynamic Cubemaps enabled={}, diffuse IBL enabled={}, diffuse level={}, PBR enabled={}, direct GGX={}, environment Fresnel={}, Skylighting enabled={}, quality={}, Contact Shadows enabled={}, samples={}, Wrapped Grass Lighting enabled={}, wrap amount={}, Hair Specular enabled={}, multiplier={}, Subsurface Scattering enabled={}, strength={}, Basic Wetness enabled={}, wetness={}, Cloud Shadows enabled={}, opacity={}, Volumetric Lighting enabled={}, quality={}, base={}, shafts={}, complex parallax enabled={}, parallax quality={}, Native Shadows enabled={}, four cascades={}, tiled deferred lighting={}, fixed shadow distance={}, Vanilla Fixes enabled={}, focus shadows={}, and replacements remain fail-closed until their verified render providers are ready.",
             dlaaSettings.enabled,
             csah::dlaa::modeName(dlaaSettings.mode),
             static_cast<std::uint32_t>(dlaaSettings.modelPreset),

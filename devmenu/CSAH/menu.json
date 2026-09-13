@@ -2,8 +2,8 @@
   "$schema": "../../menu.schema.json",
   "schemaVersion": 1,
   "id": "csah",
-  "name": "Community Shaders at Home",
-  "version": "0.0.4",
+  "name": "Community Shaders at Home (CSAH) VR",
+  "version": "0.0.5",
   "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack.",
   "accent": "#F0A04B",
   "tabs": [
@@ -31,7 +31,7 @@
                 { "id": "filmic-tonemapping", "type": "toggle", "label": "Filmic Tonemapping", "help": "Replaces the exact native HDR blend with hue-preserving highlight compression while retaining bloom, cinematic state, fade, and engine adaptation.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "FilmicTonemapping", "key": "bEnabled" } },
                 { "id": "bloom", "type": "toggle", "label": "Enhanced Bloom", "help": "Adds a stereo-isolated HDR mip-chain bloom while preserving Fallout's native bloom.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "Bloom", "key": "bEnabled" } },
                 { "id": "physical-glare", "type": "toggle", "label": "Physical Glare", "help": "Convolves bright HDR light with a wavelength-dependent optical point-spread function independently for each eye.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "PhysicalGlare", "key": "bEnabled" } },
-                { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "CloudShadows", "key": "bEnabled" } },
+                { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "CloudShadows", "key": "bEnabled" } },
                 { "id": "volumetric-lighting", "type": "toggle", "label": "Volumetric Lighting / Godrays", "help": "Hot-reloads the complete stereo world-space volumetric pipeline. This is the only user-facing Godrays switch.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "VolumetricLighting", "key": "bEnabled" } }
               ]
             }
@@ -48,9 +48,9 @@
                 { "id": "pbr", "type": "toggle", "label": "Physical Materials (PBR)", "help": "Requires Linear Lighting. Uses one energy-conserving GGX/Fresnel material response for direct light, IBL, dynamic cubemaps, wetness, and the native reflection fallback.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "PBR", "key": "bEnabled" } },
                 { "id": "complex-environment", "type": "toggle", "label": "Complex Metal Response", "help": "Enables complex-material environment response when validated IBL data is available.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "ComplexMaterials", "key": "bEnableEnvironmentResponse" } },
                 { "id": "complex-parallax", "type": "toggle", "label": "Complex Parallax", "help": "Enables parallax on assets authored for the CSAH complex-material contract.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "ComplexMaterials", "key": "bEnableParallax" } },
-                { "id": "wrapped-grass", "type": "toggle", "label": "Wrapped Grass Lighting", "help": "Wraps directional light around classified grass blades.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "WrappedGrassLighting", "key": "bEnabled" } },
-                { "id": "hair-specular", "type": "toggle", "label": "Hair Specular", "help": "Enables classified anisotropic hair highlights.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "HairSpecular", "key": "bEnabled" } },
-                { "id": "subsurface-scattering", "type": "toggle", "label": "Subsurface Scattering", "help": "Enables depth-aware diffusion on classified skin and face materials.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "SubsurfaceScattering", "key": "bEnabled" } },
+                { "id": "wrapped-grass", "type": "toggle", "label": "Wrapped Grass Lighting", "help": "Wraps directional light around classified grass blades.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "WrappedGrassLighting", "key": "bEnabled" } },
+                { "id": "hair-specular", "type": "toggle", "label": "Hair Specular", "help": "Enables classified anisotropic hair highlights.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "HairSpecular", "key": "bEnabled" } },
+                { "id": "subsurface-scattering", "type": "toggle", "label": "Subsurface Scattering", "help": "Enables depth-aware diffusion on classified skin and face materials.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "SubsurfaceScattering", "key": "bEnabled" } },
                 { "id": "basic-wetness", "type": "toggle", "label": "Basic Wetness", "help": "Applies the manual wet-state material response to classified wettable surfaces.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "BasicWetness", "key": "bEnabled" } }
               ]
             }

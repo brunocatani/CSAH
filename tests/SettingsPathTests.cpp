@@ -1,4 +1,6 @@
 #include "support/SettingsPath.h"
+#include "settings/FirstRunPreset.h"
+#include <Windows.h>
 
 #include <cstdlib>
 #include <chrono>
@@ -73,33 +75,46 @@ int main()
         return std::string(std::istreambuf_iterator<char>(stream), {});
     };
     std::error_code error;
-    using Result = settings_path::MigrationResult;
-    require(settings_path::migrateLegacyIni({}, error) == Result::failed && error,
+    using Result = settings_path::SetupResult;
+    require(settings_path::initializeIni({}, error) == Result::failed && error,
         "empty migration target must fail");
-    require(settings_path::migrateLegacyIni(target, error) == Result::notNeeded && !error,
-        "fresh install should not require migration");
-    require(!std::filesystem::exists(target.parent_path()),
-        "fresh install must not manufacture settings during migration");
+    require(settings_path::initializeIni(target, error) == Result::created && !error,
+        "fresh install must create its settings automatically");
+    require(read(target) == settings_path::kFirstRunIni,
+        "created settings must contain the full shipped preset");
+    for (const auto* section : { L"CloudShadows", L"HairSpecular",
+            L"WrappedGrassLighting", L"SubsurfaceScattering" }) {
+        require(GetPrivateProfileIntW(section, L"bEnabled", 1, target.c_str()) == 0,
+            "unfinished effects must be disabled in first-run settings");
+    }
+    require(GetPrivateProfileIntW(L"LinearLighting", L"bEnabled", 0, target.c_str()) == 1,
+        "first-run settings must retain the approved deployed lighting preset");
+    std::filesystem::remove(target);
     const std::string original = "\xEF\xBB\xBF; keep comments\r\n[CommunityShaders]\r\nbEnabled=0\r\n";
     write(legacy, original);
-    require(settings_path::migrateLegacyIni(target, error) == Result::migrated && !error,
+    require(settings_path::initializeIni(target, error) == Result::migrated && !error,
         "existing settings should migrate");
     require(read(target) == original && !std::filesystem::exists(legacy),
         "migration must preserve exact bytes and retire the old file");
-    require(settings_path::migrateLegacyIni(target, error) == Result::notNeeded && !error,
+    require(settings_path::initializeIni(target, error) == Result::existing && !error,
         "migration must be idempotent");
     write(legacy, "legacy settings must not replace CSAH settings");
-    require(settings_path::migrateLegacyIni(target, error) == Result::notNeeded && !error,
+    require(settings_path::initializeIni(target, error) == Result::existing && !error,
         "existing CSAH settings must take precedence");
     require(read(target) == original && std::filesystem::exists(legacy),
         "existing CSAH settings must not overwrite either file");
     std::filesystem::remove(target);
     std::filesystem::remove(target.parent_path());
     write(target.parent_path(), "blocked directory");
-    require(settings_path::migrateLegacyIni(target, error) == Result::failed && error,
+    require(settings_path::initializeIni(target, error) == Result::failed && error,
         "unavailable target directory must report migration failure");
     require(read(legacy) == "legacy settings must not replace CSAH settings",
         "failed migration must preserve the original settings");
+    std::filesystem::remove(legacy);
+    require(settings_path::initializeIni(target, error) == Result::failed && error,
+        "failed first-run creation must report the blocked destination");
+    require(read(target.parent_path()) == "blocked directory",
+        "failed first-run creation must preserve unrelated files");
 
     std::cout << "Settings path tests passed.\n";
     return EXIT_SUCCESS;

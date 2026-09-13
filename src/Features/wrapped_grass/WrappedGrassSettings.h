@@ -7,7 +7,7 @@ namespace csah::wrapped_grass
 {
     struct Settings
     {
-        bool enabled{ true };
+        bool enabled{ false };
         float wrapAmount{ 0.5f };
 
         [[nodiscard]] bool operator==(const Settings&) const noexcept = default;

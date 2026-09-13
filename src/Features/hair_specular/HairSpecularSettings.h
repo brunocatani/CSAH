@@ -7,7 +7,7 @@ namespace csah::hair_specular
 {
     struct Settings
     {
-        bool enabled{ true };
+        bool enabled{ false };
         float specularMultiplier{ 1.6f };
 
         [[nodiscard]] bool operator==(const Settings&) const noexcept = default;

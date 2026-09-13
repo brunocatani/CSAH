@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 4.2)
 
 set(NAME "CSAH")
-set(FRIENDLY_NAME "Community Shaders at Home")
-set(VERSION 0.0.4)
+set(FRIENDLY_NAME "Community Shaders at Home (CSAH) VR")
+set(VERSION 0.0.5)
 
 set(ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(SOURCE_DIR "${ROOT_DIR}/src")
@@ -2546,6 +2546,26 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   shell32
 )
 
+# Keep distribution notices inside the DLL so the install archive only
+# exposes game folders. The original notice text is preserved verbatim.
+set(CSAH_NOTICES_DIR "${BUILD_DIR}/generated/notices")
+file(MAKE_DIRECTORY "${CSAH_NOTICES_DIR}")
+set(CSAH_NOTICE_FILES "${ROOT_DIR}/LICENSE"
+  "${COMMON_LIB_F4VR_PATH_SELECTED}/LICENSE" ${STREAMLINE_LICENSE_FILES})
+foreach(package IN ITEMS fmt minhook nlohmann-json rapidcsv rsm-mmio spdlog xbyak)
+  list(APPEND CSAH_NOTICE_FILES
+    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${package}/copyright")
+endforeach()
+set(csahNotices "Community Shaders at Home (CSAH) VR - distribution notices\n")
+foreach(notice IN LISTS CSAH_NOTICE_FILES)
+  file(READ "${notice}" noticeText)
+  string(APPEND csahNotices "\n${noticeText}\n")
+endforeach()
+file(WRITE "${CSAH_NOTICES_DIR}/notices.txt" "${csahNotices}")
+file(WRITE "${CSAH_NOTICES_DIR}/notices.rc"
+  "65000 RCDATA \"${CSAH_NOTICES_DIR}/notices.txt\"\n")
+target_sources(${PROJECT_NAME} PRIVATE "${CSAH_NOTICES_DIR}/notices.rc")
+
 target_precompile_headers(${PROJECT_NAME} PRIVATE "${SOURCE_DIR}/PCH.h")
 target_compile_options(${PROJECT_NAME} PRIVATE
   /sdl
@@ -2647,7 +2667,7 @@ if(POST_BUILD_COPY_PLUGIN)
 endif()
 
 option(BUILD_CSAH_TESTS
-  "Build focused Community Shaders at Home tests." OFF)
+  "Build focused Community Shaders at Home (CSAH) VR tests." OFF)
 if(BUILD_CSAH_TESTS)
   enable_testing()
   find_program(PWSH_EXECUTABLE NAMES pwsh REQUIRED)

@@ -7,7 +7,7 @@ namespace csah::cloud_shadows
 {
     struct Settings
     {
-        bool enabled{ true };
+        bool enabled{ false };
         float opacity{ 0.55f };
 
         [[nodiscard]] bool operator==(const Settings&) const noexcept = default;

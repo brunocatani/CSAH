@@ -10,9 +10,9 @@ namespace csah::settings_path
 
     [[nodiscard]] std::filesystem::path resolveIniPath() noexcept;
 
-    enum class MigrationResult { notNeeded, migrated, failed };
+    enum class SetupResult { existing, migrated, created, failed };
 
-    [[nodiscard]] MigrationResult migrateLegacyIni(
+    [[nodiscard]] SetupResult initializeIni(
         const std::filesystem::path& iniPath,
         std::error_code& error) noexcept;
 
