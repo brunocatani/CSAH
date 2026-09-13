@@ -2978,6 +2978,7 @@ if(BUILD_FO4VR_CS_TESTS)
   add_test(NAME FO4VRCommunityShaders.NativeShadowsSource
     COMMAND "${CMAKE_COMMAND}"
       "-DNATIVE_SHADOW_RUNTIME_SOURCE=${NATIVE_SHADOW_RUNTIME_SOURCE}"
+      "-DNATIVE_SHADOW_RUNTIME_HEADER=${NATIVE_SHADOW_RUNTIME_HEADER}"
       "-DNATIVE_SHADOW_SETTINGS_HEADER=${NATIVE_SHADOW_SETTINGS_HEADER}"
       "-DNATIVE_SHADOW_SETTINGS_STORE_SOURCE=${NATIVE_SHADOW_SETTINGS_STORE_SOURCE}"
       "-DNATIVE_SHADOW_PATCH_MODEL=${NATIVE_SHADOW_PATCH_MODEL}"
@@ -3233,9 +3234,11 @@ if(BUILD_FO4VR_CS_TESTS)
   target_compile_options(
     FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
     /sdl /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /W4)
+  target_precompile_headers(
+    FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE "${SOURCE_DIR}/PCH.h")
   target_link_libraries(
     FO4VRCommunityShadersIblEnvironmentUpdaterTests PRIVATE
-    d3d11 spdlog::spdlog)
+    CommonLibF4::CommonLibF4 d3d11 shell32 spdlog::spdlog)
   add_test(NAME FO4VRCommunityShaders.IblEnvironmentUpdater
     COMMAND FO4VRCommunityShadersIblEnvironmentUpdaterTests "${ROOT_DIR}")
 

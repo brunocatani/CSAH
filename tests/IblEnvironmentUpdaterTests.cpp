@@ -194,17 +194,28 @@ namespace
         float forwardSign = 1.0F)
     {
         std::array<Float4, 85> rows{};
+        // Match the updater's ordinary view/projection inputs. The retired
+        // compressed projection rows at 63..70 are not consumed by the shader.
+        rows[0] = { forwardSign, 0.0f, 0.0f, 0.0f };
+        rows[1] = { 0.0f, 1.0f, 0.0f, 0.0f };
+        rows[2] = { 0.0f, 0.0f, forwardSign, 0.0f };
+        rows[20] = rows[0];
+        rows[21] = rows[1];
+        rows[22] = rows[2];
+        // Half-depth samples must lie beyond the near-geometry exclusion.
+        constexpr float nearPlane = 32.0f;
         for (std::size_t eye = 0; eye < 2; ++eye) {
-            const auto base = 63 + eye * 4;
+            const auto base = 4 + eye * 4;
             rows[base] = { 1.0f, 0.0f, 0.0f, 0.0f };
             rows[base + 1] = { 0.0f, 1.0f, 0.0f, 0.0f };
-            rows[base + 2] = {
-                0.0f,
-                0.0f,
-                forwardSign,
-                -1.0f,
-            };
-            rows[base + 3] = { 0.0f, 0.0f, forwardSign, 0.0f };
+            rows[base + 2] = { 0.0f, 0.0f, 1.0f, -nearPlane };
+            rows[base + 3] = { 0.0f, 0.0f, 1.0f, 0.0f };
+            const auto inverseBase = 32 + eye * 4;
+            rows[inverseBase] = rows[base];
+            rows[inverseBase + 1] = rows[base + 1];
+            rows[inverseBase + 2] = { 0.0f, 0.0f, 0.0f, 1.0f };
+            rows[inverseBase + 3] = {
+                0.0f, 0.0f, -1.0f / nearPlane, 1.0f / nearPlane };
         }
         D3D11_BUFFER_DESC description{};
         description.ByteWidth = static_cast<UINT>(sizeof(rows));
