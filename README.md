@@ -6,18 +6,89 @@ This is a Fallout 4 VR implementation with stereo rendering support. Feature cov
 
 [Downloads](https://github.com/brunocatani/fo4vr-community-shaders/releases) · [Report an issue](https://github.com/brunocatani/fo4vr-community-shaders/issues) · [GPL-3.0 license](LICENSE)
 
-## Included systems
+## Features
 
-| System | Features |
-| --- | --- |
-| Lighting | Linear lighting with native darkness preservation, diffuse image-based lighting, dynamic cubemaps, skylighting, and sun/moon lighting synchronization. |
-| Materials | Physically based material response, authored RMAOS materials, and complex-material parallax. |
-| Shadows and atmosphere | Contact shadows, fixed native-shadow controls, and stereo world-space volumetric lighting / god rays. |
-| Image quality | NVIDIA DLAA and DLSS, including selectable quality modes and a center-DLAA mode with TAA in the periphery. |
-| Post-processing | Filmic tonemapping, enhanced bloom, and physical glare. |
-| Renderer corrections | Integrated Vanilla Fixes for native rendering paths. |
+The list below follows the names and controls in [DevMenu](devmenu/fo4vr-community-shaders/menu.json). These are included systems, not a claim that every effect is visually complete. Incomplete or unconfirmed effects are identified below.
 
-The mod also exposes experimental controls for basic wetness, wrapped grass lighting, hair specular, subsurface scattering, and cloud shadows. Some of these effects remain incomplete or lack a confirmed visible result. A feature appearing in the menu is not a guarantee of complete visual coverage.
+### Lighting
+
+- **Linear Lighting** — Evaluates supported lighting and material colour operations in linear space. Includes separate response and intensity controls for direct light, ambient light, emission, fog, sky, water, and effects. Disabled by default.
+- **Preserve Native Darkness** — Preserves Fallout's darker response for native light, ambient, fog, and sky, keeping nights and unlit areas from becoming uniformly brighter.
+- **Image Based Lighting** — Supplies a shared stereo environment to the reflection and diffuse-lighting features.
+- **Dynamic Cubemaps** — Uses the captured scene environment for position-aware reflections, with each material's native cubemap retained when capture confidence is insufficient. Reflection placement and stereo behavior remain experimental.
+- **Diffuse IBL** — Adds environment-derived diffuse bounce lighting. Can be expensive in dense scenes.
+- **Skylighting** — Uses a shared world-space probe field to occlude sky light beneath roofs, trees, and overhangs. Probe quality requires a restart; visibility and zenith controls apply live.
+- **Sky Sync / Moon Lighting** — Aligns directional lighting and shadows with the Sun by day and Fallout's climate-enabled Moon by night.
+- **Cloud Shadows** — Includes the cloud-projection runtime and opacity control. The moving cloud-shadow effect is incomplete and has not been visually confirmed.
+
+### Materials
+
+- **Physical Materials (PBR)** — Provides a shared physical response for direct lighting, IBL, cubemaps, wetness, and native reflections. Requires Linear Lighting.
+- **Authored PBR Materials** — Supports content-mod manifests pairing base-colour textures with roughness, metalness, ambient-occlusion, and specular data. Textures stream when encountered; authored content still requires visual testing. See the material format below.
+- **Complex Metal Response** — Enables complex-material environment response when suitable assets and IBL data are available. A visible result remains unconfirmed with ordinary texture replacements.
+- **Complex Parallax** — Adds surface depth to assets authored for the complex-material texture contract, with quality, depth, grazing-angle, and distance-fade controls.
+- **Wrapped Grass Lighting** — Wraps directional lighting around grass blades. The confirmed visual response is subtle.
+- **Hair Specular** — Includes anisotropic highlights for classified hair materials. Existing visual tests have not confirmed a clear effect.
+- **Subsurface Scattering** — Includes depth-aware diffusion for skin and face materials, with strength, radius, and depth-rejection controls. Existing visual tests have not confirmed a clear effect.
+- **Basic Wetness** — Applies a manually selected wet appearance through diffuse darkening, specular response, and roughness. Material coverage is experimental; this is not a complete weather-driven wetness system.
+
+### PBR model controls
+
+- **Convert Legacy Materials** — Converts existing Fallout shininess and specular values into physical roughness and reflectance without rewriting the assets.
+- **Direct-Light GGX** — Uses a microfacet specular response for Sun and directional lighting.
+- **GGX on Grass** — Optionally applies that specular response to grass. Disabled by default.
+- **Environment Fresnel** — Makes environment reflections respond to viewing angle and material roughness.
+- **Energy Conservation** — Reduces diffuse lighting as reflected energy and metalness increase.
+- **Multiscatter Compensation** — Compensates for energy lost by the single-scatter specular model on rough surfaces.
+- **Specular Occlusion** — Limits environment-reflection leakage in strongly occluded material response.
+
+### Shadows and atmosphere
+
+- **Contact Shadows** — Adds short-range screen-space directional occlusion, with strength and ray-distance controls. Close-range coverage and stereo artifacts remain areas for testing.
+- **Foveated Sampling** — Reduces contact-shadow sampling work outside the center view while retaining center fidelity.
+- **Native Shadow Fixes** — Provides independently controlled native-shadow corrections, with fixed shadow distance, cascade blending, and orthographic filtering. Changes require a restart.
+- **Extended Directional Cascades** — Extends the native directional-shadow cascade setup. Requires a restart.
+- **Tiled Deferred Lighting** — Controls the native tiled deferred-lighting path through the native-shadow settings. Requires a restart.
+- **Volumetric Lighting / Godrays** — Adds stereo world-space light shafts derived from local shadow contrast. Includes fixed quality, shaft intensity, density, distance, temporal-stability, and wind controls. Base Volume defaults to zero to preserve native fog; rejected output passes through without applying the effect.
+
+### Tonemapping and optics
+
+- **Filmic Tonemapping** — Applies hue-preserving highlight compression while retaining native bloom, exposure, cinematic state, and fades. Its visible difference still needs isolated testing.
+- **Use Native Auto Exposure** — Uses Fallout's adapted luminance and weather/image-space exposure limits, with exposure compensation and white-point controls.
+- **Enhanced Bloom** — Adds a separate HDR bloom response for each eye while preserving native bloom. Includes threshold, intensity, and radius controls; visual qualification remains pending.
+- **Physical Glare** — Applies an independent optical glare convolution to each eye, with aperture, diffraction, chromatic-spread, and resolution controls. Visual and performance qualification remain pending.
+
+### Image quality
+
+- **DLAA** — Runs NVIDIA neural anti-aliasing at native render resolution through Streamline.
+- **DLSS** — Provides Quality, Balanced, Performance, and Ultra Performance upscaling modes through Streamline.
+- **Center DLAA + TAA Periphery** — Applies DLAA to an adjustable center region while retaining TAA in the periphery, with adjustable edge feathering.
+- **Transformer Model** — Selects the neural model preset used by the DLAA/DLSS subsystem.
+- **Motion Vector Repair** — Repairs motion-vector input used by the neural image-quality path.
+- **Post Sharpening** — Adds optional sharpening with an adjustable strength.
+- **Hard Reset On Load** — Resets image-quality history on loading transitions.
+
+### Vanilla renderer fixes
+
+- **Vanilla Fixes** — Independent master for the integrated native-renderer corrections. Changing this master requires a restart.
+- **Precipitation Occlusion** — Enables native precipitation occlusion through the renderer-fix controls.
+- **Image Space Modifiers** — Enables native image-space modifier processing through the renderer-fix controls.
+- **Stereo SAO** — Provides the stereo-aware screen-space ambient-occlusion path.
+- **Stable Screen-Space Reflections** — Uses per-eye reflection traversal, geometric reflection rays, shared scene-radiance retention, and corrected cubemap fallback. Water uses separate shaders and is unaffected by this control.
+- **Native Screen-Space Material Pipeline** — Controls Bethesda's shared skin-scattering and reflection image-space pipeline. This can affect SSR and dynamic cubemap capture; the separate Subsurface Scattering feature controls isolated skin diffusion.
+- **VR Lens Flare** — Enables the native lens-flare path through the VR renderer fixes.
+- **Focus Shadows** — Enables the integrated native focus-shadow path.
+- **Stable Stereo Sun Occlusion** — Keeps a peripheral Sun visibility query from discarding valid visibility reported by another completed query.
+
+### Configuration and diagnostics
+
+- **DevMenu Integration** — Provides the in-game interface for feature switches, fixed quality choices, and tuning controls.
+- **Live INI Reload** — Shares one settings file between the plugin and DevMenu. Most changes apply during play; restart-only settings are identified in the menu.
+- **Community Shaders Visual Suite** — Switches the visual suite independently of DLAA/DLSS, Vanilla Fixes, and Native Shadow Fixes.
+- **GPU Performance Profiling** — Records GPU timing and CPU submission measurements for selected feature groups.
+- **Exclusive Lighting Diagnostic** — Isolates lighting and reflection components for investigation while preserving saved feature settings.
+- **Visualize Center Region** — Displays the center-DLAA region for adjustment.
+- **Verbose Diagnostics** — Adds detailed diagnostics for the DLAA/DLSS subsystem.
 
 ## Requirements
 
@@ -50,7 +121,7 @@ The active settings file is in your Windows Documents folder:
 Documents/My Games/Fallout4VR/Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini
 ```
 
-DevMenu and the plugin use this same file. Missing settings use compiled defaults. Most feature changes reload during play; **Native Shadows settings and the Vanilla Fixes master switch require a game restart**.
+DevMenu and the plugin use this same file. Missing settings use compiled defaults. Most feature changes reload during play; **Native Shadows settings, Skylighting probe quality, and the Vanilla Fixes master switch require a game restart**.
 
 The **Community Shaders Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
 
@@ -105,6 +176,7 @@ cd fo4vr-community-shaders
 The checked-in presets expect vcpkg at `C:/vcpkg`. Adjust the toolchain and `VCPKG_ROOT` through a local preset if your installation differs. Point CMake at the initialized CommonLibF4VR checkout and your Streamline SDK:
 
 ```powershell
+$env:VCPKG_ROOT = "C:/vcpkg"
 cmake --preset fast -DCOMMON_LIB_F4VR_PATH="$PWD/extern/CommonLibF4VR" -DSTREAMLINE_SDK_ROOT="C:/SDKs/streamline-sdk-v2.12.0"
 cmake --build build-fast --config Release -- /m:1 /p:CL_MPCount=2
 ```
@@ -114,6 +186,7 @@ The build stages the plugin, Streamline runtime and notices, and DevMenu manifes
 To build and run the existing tests:
 
 ```powershell
+$env:VCPKG_ROOT = "C:/vcpkg"
 cmake --preset tests -DCOMMON_LIB_F4VR_PATH="$PWD/extern/CommonLibF4VR" -DSTREAMLINE_SDK_ROOT="C:/SDKs/streamline-sdk-v2.12.0"
 cmake --build build-tests --config Release -- /m:1 /p:CL_MPCount=2
 ctest --test-dir build-tests -C Release -j 4 --output-on-failure
