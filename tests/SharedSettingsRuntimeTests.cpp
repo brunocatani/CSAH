@@ -22,7 +22,8 @@ int main()
 
     const Snapshot baseline{};
     require(!baseline.cloudShadows.enabled && !baseline.hairSpecular.enabled &&
-            !baseline.wrappedGrass.enabled && !baseline.subsurfaceScattering.enabled,
+            !baseline.wrappedGrass.enabled && !baseline.subsurfaceScattering.enabled &&
+            !baseline.volumetricLighting.enabled,
         "unfinished effects must default to disabled");
     require(!diff(baseline, baseline).any(), "equal snapshots changed");
 
@@ -108,7 +109,7 @@ int main()
         [](Snapshot& value) { value.cloudShadows.enabled = true; },
         "Cloud Shadows diff");
     verifyLive(
-        [](Snapshot& value) { value.volumetricLighting.enabled = false; },
+        [](Snapshot& value) { value.volumetricLighting.enabled = true; },
         "Volumetric Lighting diff");
     auto vanillaFixesOff = baseline;
     vanillaFixesOff.vanillaFixes.enabled = false;

@@ -53,7 +53,7 @@
 extern "C" __declspec(dllexport) constinit F4SE::PluginVersionData F4SEPlugin_Version = []() noexcept {
     F4SE::PluginVersionData version{};
     version.PluginName("Community Shaders at Home (CSAH) VR");
-    version.PluginVersion(REL::Version(0, 0, 5));
+    version.PluginVersion(REL::Version(0, 0, 6));
     version.AuthorName("CSAH contributors");
     return version;
 }();
@@ -306,11 +306,11 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Query(
 
         csah::logging::init();
         csah::logging::info(
-            "=== Community Shaders at Home (CSAH) VR v0.0.5 query ===");
+            "=== Community Shaders at Home (CSAH) VR v0.0.6 query ===");
 
         a_info->infoVersion = F4SE::PluginInfo::kVersion;
         a_info->name = "Community Shaders at Home (CSAH) VR";
-        a_info->version = 5;
+        a_info->version = 6;
 
         if (a_f4se->IsEditor()) {
             csah::logging::critical(

@@ -8,7 +8,7 @@ namespace csah::volumetric_lighting
 {
     struct Settings final
     {
-        bool enabled{ true };
+        bool enabled{ false };
         std::uint32_t quality{ 2 };
         float intensity{ 1.0f };
         float baseScattering{};

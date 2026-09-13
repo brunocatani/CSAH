@@ -60,10 +60,21 @@ int main()
     TemporaryIni ini;
     const auto defaults = loadSettings(ini.path());
     require(defaults == Settings{}, "missing-file defaults");
+    require(!defaults.enabled, "missing INI must keep volumetric lighting off");
     require(defaults.baseScattering == 0.0f, "safe base default");
     require(defaults.densityContribution == 0.5f, "qualified density default");
     require(defaults.windSpeed == 0.0f, "stable wind default");
     require(defaults.maxDistance == 3000.0f, "qualified distance default");
+
+    ini.write("[CommunityShaders]\nbEnabled=1\n");
+    require(!loadSettings(ini.path()).enabled,
+        "missing volumetric section must default to off");
+    ini.write("[VolumetricLighting]\niQuality=1\n");
+    require(!loadSettings(ini.path()).enabled,
+        "missing volumetric enable key must default to off");
+    ini.write("[VolumetricLighting]\nbEnabled=invalid\n");
+    require(!loadSettings(ini.path()).enabled,
+        "invalid volumetric enable value must fail closed");
 
     ini.write(
         "[CommunityShaders]\n"

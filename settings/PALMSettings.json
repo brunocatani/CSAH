@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "csah",
   "name": "Community Shaders at Home (CSAH) VR",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Live controls for the FO4VR-native lighting, material, shadow, and image-quality stack.",
   "accent": "#F0A04B",
   "tabs": [
@@ -31,7 +31,7 @@
                 { "id": "bloom", "type": "toggle", "label": "Enhanced Bloom", "help": "Adds a stereo-isolated HDR mip-chain bloom while preserving Fallout's native bloom.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "Bloom", "key": "bEnabled" } },
                 { "id": "physical-glare", "type": "toggle", "label": "Physical Glare", "help": "Convolves bright HDR light with a wavelength-dependent optical point-spread function independently for each eye.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "PhysicalGlare", "key": "bEnabled" } },
                 { "id": "cloud-shadows", "type": "toggle", "label": "Cloud Shadows", "help": "Projects captured cloud cover along the directional light.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "CloudShadows", "key": "bEnabled" } },
-                { "id": "volumetric-lighting", "type": "toggle", "label": "Volumetric Lighting / Godrays", "help": "Hot-reloads the complete stereo world-space volumetric pipeline. This is the only user-facing Godrays switch.", "default": true, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "VolumetricLighting", "key": "bEnabled" } }
+                { "id": "volumetric-lighting", "type": "toggle", "label": "Volumetric Lighting / Godrays", "help": "Not working. Disabled by default. This setting controls Volumetric Lighting / Godrays.", "default": false, "binding": { "type": "ini", "root": "documents", "path": "Mods_Config/CSAH/CSAH.ini", "section": "VolumetricLighting", "key": "bEnabled" } }
               ]
             }
           ]

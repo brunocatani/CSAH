@@ -83,7 +83,7 @@ int main()
     require(read(target) == settings_path::kFirstRunIni,
         "created settings must contain the full shipped preset");
     for (const auto* section : { L"CloudShadows", L"HairSpecular",
-            L"WrappedGrassLighting", L"SubsurfaceScattering" }) {
+            L"WrappedGrassLighting", L"SubsurfaceScattering", L"VolumetricLighting" }) {
         require(GetPrivateProfileIntW(section, L"bEnabled", 1, target.c_str()) == 0,
             "unfinished effects must be disabled in first-run settings");
     }

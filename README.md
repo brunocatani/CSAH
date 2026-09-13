@@ -4,7 +4,7 @@ An experimental rendering mod for **Fallout 4 VR**, bringing Community Shaders l
 
 This is a Fallout 4 VR implementation with stereo rendering support. Feature coverage and visual results vary; it does not include every feature from Skyrim Community Shaders or Open Shaders.
 
-**[Download CSAH VR 0.0.5 Alpha — installable mod ZIP](https://github.com/brunocatani/CSAH-VR/releases/download/v0.0.5-alpha/CSAH-VR-0.0.5-Alpha.zip)**
+**[Download CSAH VR 0.0.6 Alpha — installable mod ZIP](https://github.com/brunocatani/CSAH-VR/releases/download/v0.0.6-alpha/CSAH-VR-0.0.6-Alpha.zip)**
 
 [All releases](https://github.com/brunocatani/CSAH-VR/releases) · [Report an issue](https://github.com/brunocatani/CSAH-VR/issues) · [GPL-3.0 license](LICENSE)
 
@@ -51,7 +51,7 @@ The included features are listed individually below. Incomplete or unconfirmed e
 - **Native Shadow Fixes** — Provides independently controlled native-shadow corrections, with fixed shadow distance, cascade blending, and orthographic filtering. Changes require a restart.
 - **Extended Directional Cascades** — Extends the native directional-shadow cascade setup. Requires a restart.
 - **Tiled Deferred Lighting** — Controls the native tiled deferred-lighting path through the native-shadow settings. Requires a restart.
-- **Volumetric Lighting / Godrays** — Adds stereo world-space light shafts derived from local shadow contrast. Includes fixed quality, shaft intensity, density, distance, temporal-stability, and wind controls. Base Volume defaults to zero to preserve native fog; rejected output passes through without applying the effect.
+- **Volumetric Lighting / Godrays — Not working.** Disabled by default in the plugin and automatically created INI.
 
 ### Tonemapping and optics
 
@@ -127,7 +127,7 @@ The plugin creates this file automatically on first launch when neither a curren
 
 The **CSAH Visual Suite** switch controls the lighting, material, and output effects. **DLAA/DLSS, Vanilla Fixes, and Native Shadows have independent switches** and keep their own state when the visual suite is disabled.
 
-The first-run gameplay preset enables **Linear Lighting**, which the PBR pipeline requires. Cloud Shadows, Hair Specular, Wrapped Grass Lighting, and Subsurface Scattering are disabled by default because they are not working. Quality settings are fixed choices: the mod does not automatically lower visual quality to meet an FPS target.
+The first-run gameplay preset enables **Linear Lighting**, which the PBR pipeline requires. Cloud Shadows, Hair Specular, Wrapped Grass Lighting, Subsurface Scattering, and Volumetric Lighting / Godrays are disabled by default because they are not working. Quality settings are fixed choices: the mod does not automatically lower visual quality to meet an FPS target.
 
 On first launch, CSAH moves an existing `Mods_Config/FO4VRCommunityShaders/FO4VRCommunityShaders.ini` to the new location if `CSAH.ini` does not already exist. The migration preserves the file byte for byte, including values, comments, and encoding. An existing CSAH file takes precedence. If migration fails, the plugin reports the error and stops loading instead of silently replacing your settings with defaults. The existing `[CommunityShaders]` section name remains part of the INI format so saved feature switches remain compatible.
 
