@@ -8,7 +8,7 @@ namespace csah::settings_path
     // remain authoritative; this is only used when no current or legacy INI exists.
     inline constexpr std::string_view kFirstRunIni =
         "; Community Shaders at Home (CSAH) VR runtime configuration.\r\n"
-        "; 0=Off and 1=On. DevMenu and this file control the same settings.\r\n"
+        "; 0=Off and 1=On. RobCo PALM and this file control the same settings.\r\n"
         "; Most settings hot-reload. Restart only where a section says it is required.\r\n"
         "\r\n"
         "; =============================================================================\r\n"

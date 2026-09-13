@@ -1,16 +1,16 @@
 foreach(variable IN ITEMS
-    DEVMENU_MANIFEST_SOURCE
+    PALM_SETTINGS_SOURCE
     PROJECT_CMAKE_SOURCE
     PLUGIN_SOURCE
     SHARED_SETTINGS_SOURCE
     SHARED_SETTINGS_HEADER
     SOURCE_ROOT)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
-    message(FATAL_ERROR "DevMenu verification input is missing: ${variable}")
+    message(FATAL_ERROR "PALM settings verification input is missing: ${variable}")
   endif()
 endforeach()
 
-file(READ "${DEVMENU_MANIFEST_SOURCE}" manifest)
+file(READ "${PALM_SETTINGS_SOURCE}" manifest)
 file(READ "${PROJECT_CMAKE_SOURCE}" projectCmake)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${SHARED_SETTINGS_SOURCE}" sharedSettingsSource)
@@ -20,12 +20,12 @@ string(JSON schemaVersion ERROR_VARIABLE jsonError
   GET "${manifest}" schemaVersion)
 if(NOT jsonError STREQUAL "NOTFOUND" OR NOT schemaVersion EQUAL 1)
   message(FATAL_ERROR
-    "CSAH DevMenu manifest is invalid: ${jsonError}")
+    "CSAH PALM settings manifest is invalid: ${jsonError}")
 endif()
 string(JSON packageId GET "${manifest}" id)
 if(NOT packageId STREQUAL "csah")
   message(FATAL_ERROR
-    "CSAH DevMenu package id changed: '${packageId}'")
+    "CSAH PALM settings package id changed: '${packageId}'")
 endif()
 
 set(controlIds)
@@ -51,7 +51,7 @@ foreach(tabIndex RANGE 0 ${lastTab})
         list(FIND controlIds "${controlId}" duplicateIndex)
         if(NOT duplicateIndex EQUAL -1)
           message(FATAL_ERROR
-            "CSAH DevMenu control id is duplicated: '${controlId}'")
+            "CSAH PALM settings control id is duplicated: '${controlId}'")
         endif()
         list(APPEND controlIds "${controlId}")
         math(EXPR controlCount "${controlCount} + 1")
@@ -67,7 +67,7 @@ foreach(tabIndex RANGE 0 ${lastTab})
              "Mods_Config/CSAH/CSAH.ini" OR
            bindingSection STREQUAL "" OR bindingKey STREQUAL "")
           message(FATAL_ERROR
-            "DevMenu control '${controlId}' lost its shared-INI ownership contract")
+            "PALM settings control '${controlId}' lost its shared-INI ownership contract")
         endif()
       endforeach()
     endforeach()
@@ -76,7 +76,7 @@ endforeach()
 
 if(NOT controlCount EQUAL 141)
   message(FATAL_ERROR
-    "CSAH DevMenu coverage changed: expected 141 controls, found ${controlCount}")
+    "CSAH PALM settings coverage changed: expected 141 controls, found ${controlCount}")
 endif()
 
 foreach(required IN ITEMS
@@ -107,7 +107,7 @@ foreach(required IN ITEMS
   list(FIND controlIds "${required}" controlIndex)
   if(controlIndex EQUAL -1)
     message(FATAL_ERROR
-      "CSAH DevMenu lost required control '${required}'")
+      "CSAH PALM settings lost required control '${required}'")
   endif()
 endforeach()
 
@@ -120,7 +120,7 @@ foreach(forbidden IN ITEMS
   string(FIND "${manifest}" "${forbidden}" found)
   if(NOT found EQUAL -1)
     message(FATAL_ERROR
-      "CSAH DevMenu retains obsolete wrist token '${forbidden}'")
+      "CSAH PALM settings retains obsolete wrist token '${forbidden}'")
   endif()
 endforeach()
 
@@ -139,7 +139,7 @@ foreach(required IN ITEMS
   string(FIND "${pluginSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "DevMenu-only bootstrap lost runtime ownership '${required}'")
+      "PALM settings bootstrap lost runtime ownership '${required}'")
   endif()
 endforeach()
 
@@ -165,7 +165,7 @@ foreach(required IN ITEMS
   string(FIND "${sharedSettingsSource}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "DevMenu shared-INI publication lost '${required}'")
+      "PALM settings shared-INI publication lost '${required}'")
   endif()
 endforeach()
 
@@ -203,11 +203,11 @@ endforeach()
 foreach(required IN ITEMS
     "remove_directory"
     "package/PrismaUI_F4/views/FO4VR-Community-Shaders"
-    "DevMenu/Mods/\${DEVMENU_PACKAGE_ID}")
+    "F4SE/Plugins/CSAH/PALMSettings.json")
   string(FIND "${projectCmake}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "Build graph lost DevMenu staging/legacy cleanup '${required}'")
+      "Build graph lost PALM settings staging/legacy cleanup '${required}'")
   endif()
 endforeach()
 
@@ -229,4 +229,4 @@ foreach(relativePath IN ITEMS
 endforeach()
 
 message(STATUS
-  "Verified DevMenu-only ownership: 141 shared-INI controls, direct runtime publication, no wrist provider or assets")
+  "Verified PALM settings ownership: 141 shared-INI controls, direct runtime publication, no wrist provider or assets")

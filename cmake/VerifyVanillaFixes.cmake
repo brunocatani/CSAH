@@ -30,7 +30,7 @@ foreach(input IN ITEMS
     VANILLA_SSLR_ENVIRONMENT_SOURCE
     VANILLA_IBL_RUNTIME_SOURCE
     VANILLA_D3D11_HOOK_SOURCE
-    VANILLA_DEVMENU_MANIFEST_SOURCE
+    VANILLA_PALM_SETTINGS_SOURCE
     VANILLA_SHARED_SETTINGS_SOURCE
     VANILLA_PLUGIN_SOURCE
     VANILLA_IBL_GENERATOR_SOURCE
@@ -365,8 +365,8 @@ if(NOT directional_diagnostic_reconcile_count EQUAL 4)
     "Exclusive directional diagnostic must reconcile retained binds at all four draw boundaries")
 endif()
 
-file(READ "${VANILLA_DEVMENU_MANIFEST_SOURCE}" devmenu)
-vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
+file(READ "${VANILLA_PALM_SETTINGS_SOURCE}" palmSettings)
+vanilla_fixes_require_text("${palmSettings}" "PALM settings controls"
   "\"id\": \"vanilla-fixes\""
   "\"section\": \"VanillaFixes\""
   "\"key\": \"bEnabled\""
@@ -391,7 +391,7 @@ vanilla_fixes_require_text("${devmenu}" "DevMenu controls"
   "\"label\": \"Synthetic DFLight Coverage (RGB)\""
   "\"label\": \"Synthetic Composite Coverage (RGB)\""
   "\"label\": \"Final HDR Output (RGB)\"")
-vanilla_fixes_require_text("${devmenu}" "lighting ownership controls"
+vanilla_fixes_require_text("${palmSettings}" "lighting ownership controls"
   "\"label\": \"Direct Diffuse Only\""
   "\"label\": \"Direct Specular Only\""
   "\"label\": \"Native SSR Only\""
@@ -598,4 +598,4 @@ if(DEFINED VANILLA_FXC_EXECUTABLE)
   endforeach()
 endif()
 
-message(STATUS "Verified Vanilla Fixes native, shader, settings, and DevMenu contracts")
+message(STATUS "Verified Vanilla Fixes native, shader, settings, and PALM settings contracts")

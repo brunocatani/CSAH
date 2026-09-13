@@ -27,7 +27,7 @@ foreach(variable IN ITEMS
     IBL_ENVIRONMENT_FILTER_SHADER_ASSET
     D3D11_HOOK_SOURCE
     GEOMETRY_HOOK_SOURCE
-    DEVMENU_MANIFEST_SOURCE
+    PALM_SETTINGS_SOURCE
     PLUGIN_SOURCE
     RESOURCE_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
@@ -60,7 +60,7 @@ file(READ "${IBL_ENVIRONMENT_UPDATE_SHADER_SOURCE}" updateShaderSource)
 file(READ "${IBL_ENVIRONMENT_FILTER_SHADER_SOURCE}" filterShaderSource)
 file(READ "${D3D11_HOOK_SOURCE}" hookSource)
 file(READ "${GEOMETRY_HOOK_SOURCE}" geometryHookSource)
-file(READ "${DEVMENU_MANIFEST_SOURCE}" devMenuManifest)
+file(READ "${PALM_SETTINGS_SOURCE}" palmSettings)
 file(READ "${PLUGIN_SOURCE}" pluginSource)
 file(READ "${RESOURCE_SOURCE}" resourceSource)
 
@@ -244,10 +244,10 @@ foreach(required IN ITEMS
     "\"section\": \"ImageBasedLighting\""
     "\"key\": \"bDiffuseEnabled\""
     "\"key\": \"fDiffuseLevel\"")
-  string(FIND "${devMenuManifest}" "${required}" found)
+  string(FIND "${palmSettings}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "IBL DevMenu regression: missing '${required}'")
+      "IBL PALM settings regression: missing '${required}'")
   endif()
 endforeach()
 

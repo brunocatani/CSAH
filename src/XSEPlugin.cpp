@@ -509,7 +509,7 @@ extern "C" __declspec(dllexport) bool F4SEAPI F4SEPlugin_Load(
             startLinearLightingQualificationReporter();
         if (!csah::shared_settings::startMonitor()) {
             csah::logging::warn(
-                "Shared CSAH INI monitor did not start; startup settings remain active, but DevMenu changes require the next launch.");
+                "Shared CSAH INI monitor did not start; startup settings remain active, but RobCo PALM changes require the next launch.");
         }
 
         csah::logging::info(

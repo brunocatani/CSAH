@@ -13,7 +13,7 @@ foreach(variable IN ITEMS
     SHARED_SETTINGS_SOURCE
     SHARED_SETTINGS_HEADER
     PLUGIN_SOURCE
-    DEVMENU_MANIFEST_SOURCE)
+    PALM_SETTINGS_SOURCE)
   if(NOT DEFINED ${variable} OR NOT EXISTS "${${variable}}")
     message(FATAL_ERROR "Skylighting verification input is missing: ${variable}")
   endif()
@@ -33,7 +33,7 @@ file(READ "${LINEAR_LIGHTING_RUNTIME_SOURCE}" linearRuntime)
 file(READ "${SHARED_SETTINGS_SOURCE}" sharedSettings)
 file(READ "${SHARED_SETTINGS_HEADER}" sharedSettingsHeader)
 file(READ "${PLUGIN_SOURCE}" plugin)
-file(READ "${DEVMENU_MANIFEST_SOURCE}" devMenu)
+file(READ "${PALM_SETTINGS_SOURCE}" palmSettings)
 
 foreach(required IN ITEMS
     "kWrapperRva = 0x00634300"
@@ -372,12 +372,12 @@ foreach(required IN ITEMS
     "\"id\": \"skylighting-diffuse-min\""
     "\"id\": \"skylighting-specular-min\""
     "\"id\": \"skylighting-zenith\"")
-  string(FIND "${devMenu}" "${required}" found)
+  string(FIND "${palmSettings}" "${required}" found)
   if(found EQUAL -1)
     message(FATAL_ERROR
-      "Skylighting DevMenu contract is missing '${required}'")
+      "Skylighting PALM settings contract is missing '${required}'")
   endif()
 endforeach()
 
 message(STATUS
-  "Verified Skylighting: exact FO4VR native capture, shared stereo near/far clipmap, 39 ambient contracts, and DevMenu ownership")
+  "Verified Skylighting: exact FO4VR native capture, shared stereo near/far clipmap, 39 ambient contracts, and PALM settings ownership")

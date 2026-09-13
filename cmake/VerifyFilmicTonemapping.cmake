@@ -11,7 +11,7 @@ foreach(required IN ITEMS
     SHARED_SETTINGS_SOURCE
     SHARED_SETTINGS_HEADER
     PLUGIN_SOURCE
-    DEVMENU_MANIFEST_SOURCE)
+    PALM_SETTINGS_SOURCE)
   if(NOT DEFINED ${required} OR NOT EXISTS "${${required}}")
     message(FATAL_ERROR
       "Filmic Tonemapping verification input is missing: ${required}")
@@ -85,14 +85,14 @@ require_token("${SHARED_SETTINGS_SOURCE}"
   "live settings publication")
 require_token("${PLUGIN_SOURCE}"
   "filmic_tonemapping::loadSettings" "startup settings load")
-require_token("${DEVMENU_MANIFEST_SOURCE}"
-  "Filmic Tonemapping" "DevMenu control")
-require_token("${DEVMENU_MANIFEST_SOURCE}"
-  "fExposureCompensationEV" "DevMenu exposure control")
-require_token("${DEVMENU_MANIFEST_SOURCE}"
-  "fFilmicStrength" "DevMenu filmic-strength control")
-require_token("${DEVMENU_MANIFEST_SOURCE}"
-  "fWhitePointScale" "DevMenu white-point control")
+require_token("${PALM_SETTINGS_SOURCE}"
+  "Filmic Tonemapping" "PALM settings control")
+require_token("${PALM_SETTINGS_SOURCE}"
+  "fExposureCompensationEV" "PALM settings exposure control")
+require_token("${PALM_SETTINGS_SOURCE}"
+  "fFilmicStrength" "PALM settings filmic-strength control")
+require_token("${PALM_SETTINGS_SOURCE}"
+  "fWhitePointScale" "PALM settings white-point control")
 
 message(STATUS
-  "Filmic Tonemapping contract verified: executing FO4VR base/fade HDR output family, native adaptation, scoped CB12, and DevMenu controls")
+  "Filmic Tonemapping contract verified: executing FO4VR base/fade HDR output family, native adaptation, scoped CB12, and PALM settings controls")
